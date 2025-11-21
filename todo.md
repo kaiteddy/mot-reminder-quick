@@ -131,3 +131,10 @@
 - [x] Add motExpiryDate field to reminders schema
 - [x] Display MOT expiry date in reminder cards
 - [x] Automatic DVLA enrichment during screenshot processing
+
+## Table View for Reminders
+- [x] Convert card-based reminders display to table format
+- [x] Show all reminder details in table columns (Type, Due Date, Registration, Customer, Phone, Email, Vehicle, MOT Expiry, Days Left, Status)
+- [x] Add action buttons column (Edit, Send WhatsApp, Delete)
+- [x] Make table responsive and sortable
+- [x] Highlight urgent reminders in table
