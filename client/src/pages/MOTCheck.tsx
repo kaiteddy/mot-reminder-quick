@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
 
 interface MOTTest {
   completedDate: string;
@@ -148,34 +149,49 @@ export default function MOTCheck() {
                       {vehicleData.make} {vehicleData.model}
                     </CardDescription>
                   </div>
-                  {vehicleData.motExpiryDate && daysUntilExpiry !== null && (
-                    <Badge
-                      variant={daysUntilExpiry < 0 ? "destructive" : daysUntilExpiry < 30 ? "default" : "secondary"}
-                      className="text-sm px-3 py-1"
-                    >
-                      {daysUntilExpiry < 0
-                        ? "EXPIRED"
-                        : daysUntilExpiry === 0
-                        ? "Expires Today"
-                        : `${daysUntilExpiry} days left`}
-                    </Badge>
-                  )}
+                  {vehicleData.motExpiryDate && (() => {
+                    const motInfo = formatMOTDate(vehicleData.motExpiryDate);
+                    if (typeof motInfo === 'string') return null;
+                    const badge = getMOTStatusBadge(motInfo);
+                    return (
+                      <Badge variant={badge.variant} className={`text-sm px-3 py-1 ${badge.className || ''}`}>
+                        {badge.text}
+                      </Badge>
+                    );
+                  })()}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* MOT Expiry */}
-                {vehicleData.motExpiryDate && (
-                  <Alert className={daysUntilExpiry && daysUntilExpiry < 30 ? "border-orange-500 bg-orange-50" : ""}>
-                    <Calendar className="h-4 w-4" />
-                    <AlertDescription className="font-medium">
-                      MOT Expires: {new Date(vehicleData.motExpiryDate).toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </AlertDescription>
-                  </Alert>
-                )}
+                {vehicleData.motExpiryDate && (() => {
+                  const motInfo = formatMOTDate(vehicleData.motExpiryDate);
+                  if (typeof motInfo === 'string') return null;
+                  return (
+                    <Alert className={
+                      motInfo.isExpired
+                        ? "border-red-500 bg-red-50"
+                        : motInfo.daysUntilExpiry <= 30
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-green-500 bg-green-50"
+                    }>
+                      <Calendar className="h-4 w-4" />
+                      <AlertDescription>
+                        <div className="font-semibold text-lg mb-1">
+                          MOT Expires: {motInfo.date}
+                        </div>
+                        <div className={
+                          motInfo.isExpired
+                            ? "text-red-700 font-medium"
+                            : motInfo.daysUntilExpiry <= 30
+                            ? "text-orange-700 font-medium"
+                            : "text-green-700 font-medium"
+                        }>
+                          {formatDaysUntilExpiry(motInfo.daysUntilExpiry)}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  );
+                })()}
 
                 {/* Vehicle Details Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">

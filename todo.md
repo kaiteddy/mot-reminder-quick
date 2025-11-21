@@ -79,3 +79,13 @@
 - [x] Display advisories and defects for each test
 - [x] Show mileage history from MOT tests
 - [x] Add tax status and expiry from DVLA API
+
+## MOT Expiry Display Improvements
+- [x] Add MOT expiry date display on MOT check page
+- [x] Add countdown days until expiry on MOT check page
+- [x] Show MOT expiry status badges (expired, due soon, valid)
+- [x] Update reminders list to show MOT expiry date
+- [x] Add days until expiry countdown in reminders list
+- [x] Replicate GitHub GarageManager MOT display design
+- [x] Highlight expired/critical MOT dates in red
+- [x] Show upcoming expiry dates in orange/yellow

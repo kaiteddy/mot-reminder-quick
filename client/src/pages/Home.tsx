@@ -10,6 +10,7 @@ import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
 
 export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
@@ -277,6 +278,20 @@ function ReminderCard({
               {reminder.status}
             </Badge>
             <span className="text-sm font-medium">{formattedDate}</span>
+            {(() => {
+              const motInfo = formatMOTDate(reminder.dueDate);
+              if (typeof motInfo === 'string') return null;
+              const badge = getMOTStatusBadge(motInfo);
+              return (
+                <Badge variant={badge.variant} className={badge.className}>
+                  {motInfo.isExpired
+                    ? `Expired ${Math.abs(motInfo.daysUntilExpiry)}d ago`
+                    : motInfo.daysUntilExpiry === 0
+                    ? "Due today"
+                    : `${motInfo.daysUntilExpiry}d left`}
+                </Badge>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2 text-sm">
