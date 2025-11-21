@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { Reminder } from "../../../drizzle/schema";
 import { ImageUpload } from "@/components/ImageUpload";
+import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Car, Mail, Phone, Plus } from "lucide-react";
+import { Calendar, Car, Mail, Phone, Plus, Send, Trash2, Loader2 } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { toast } from "sonner";
 export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   const utils = trpc.useUtils();
   const { data: reminders, isLoading } = trpc.reminders.list.useQuery();
@@ -86,7 +88,12 @@ export default function Home() {
             <CardContent>
               <div className="space-y-3">
                 {dueNow.map((reminder) => (
-                  <ReminderCard key={reminder.id} reminder={reminder} urgent />
+                  <ReminderCard
+                    key={reminder.id}
+                    reminder={reminder}
+                    urgent
+                    onEdit={() => setEditingReminder(reminder)}
+                  />
                 ))}
               </div>
             </CardContent>
@@ -109,7 +116,11 @@ export default function Home() {
             ) : reminders && reminders.length > 0 ? (
               <div className="space-y-3">
                 {reminders.map((reminder: Reminder) => (
-                  <ReminderCard key={reminder.id} reminder={reminder} />
+                  <ReminderCard
+                    key={reminder.id}
+                    reminder={reminder}
+                    onEdit={() => setEditingReminder(reminder)}
+                  />
                 ))}
               </div>
             ) : (
@@ -123,12 +134,117 @@ export default function Home() {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Dialog */}
+        {editingReminder && (
+          <EditReminderDialog
+            reminder={editingReminder}
+            open={!!editingReminder}
+            onOpenChange={(open) => !open && setEditingReminder(null)}
+            onSuccess={() => {
+              utils.reminders.list.invalidate();
+              setEditingReminder(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function ReminderCard({ reminder, urgent }: { reminder: Reminder; urgent?: boolean }) {
+function SendWhatsAppButton({ reminder }: { reminder: Reminder }) {
+  const utils = trpc.useUtils();
+  const sendMutation = trpc.reminders.sendWhatsApp.useMutation({
+    onSuccess: () => {
+      toast.success("WhatsApp message sent successfully");
+      utils.reminders.list.invalidate();
+    },
+    onError: (error: any) => {
+      toast.error(error.message);
+    },
+  });
+
+  const handleSend = () => {
+    if (!reminder.customerPhone) {
+      toast.error("No phone number available");
+      return;
+    }
+    
+    const confirmed = confirm(
+      `Send WhatsApp reminder to ${reminder.customerName || "customer"} at ${reminder.customerPhone}?`
+    );
+    
+    if (confirmed) {
+      sendMutation.mutate({
+        id: reminder.id,
+        phoneNumber: reminder.customerPhone,
+      });
+    }
+  };
+
+  return (
+    <Button
+      variant="default"
+      size="sm"
+      onClick={handleSend}
+      disabled={!reminder.customerPhone || sendMutation.isPending || reminder.status === "sent"}
+    >
+      {sendMutation.isPending ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <>
+          <Send className="w-4 h-4 mr-1" />
+          {reminder.status === "sent" ? "Sent" : "Send"}
+        </>
+      )}
+    </Button>
+  );
+}
+
+function DeleteButton({ reminderId }: { reminderId: number }) {
+  const utils = trpc.useUtils();
+  const deleteMutation = trpc.reminders.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Reminder deleted");
+      utils.reminders.list.invalidate();
+    },
+    onError: (error: any) => {
+      toast.error(error.message);
+    },
+  });
+
+  const handleDelete = () => {
+    const confirmed = confirm("Are you sure you want to delete this reminder?");
+    if (confirmed) {
+      deleteMutation.mutate({ id: reminderId });
+    }
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={handleDelete}
+      disabled={deleteMutation.isPending}
+    >
+      {deleteMutation.isPending ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <Trash2 className="w-4 h-4" />
+      )}
+    </Button>
+  );
+}
+
+function ReminderCard({
+  reminder,
+  urgent,
+  onEdit,
+}: {
+  reminder: Reminder;
+  urgent?: boolean;
+  onEdit: () => void;
+}) {
   const dueDate = new Date(reminder.dueDate);
   const formattedDate = dueDate.toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -183,9 +299,13 @@ function ReminderCard({ reminder, urgent }: { reminder: Reminder; urgent?: boole
           )}
         </div>
 
-        <Button variant="outline" size="sm">
-          Edit
-        </Button>
+        <div className="flex gap-2">
+          <SendWhatsAppButton reminder={reminder} />
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            Edit
+          </Button>
+          <DeleteButton reminderId={reminder.id} />
+        </div>
       </div>
     </div>
   );

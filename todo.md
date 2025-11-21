@@ -39,3 +39,26 @@
 - [x] Quick upload button
 - [ ] Search and filter functionality
 - [ ] Responsive design
+
+## New Features to Add
+
+### MOT API Integration
+- [x] Add MOT API credentials to environment
+- [x] Create MOT API service helper
+- [x] Add vehicle lookup by registration
+- [x] Auto-populate vehicle details from DVSA API
+- [x] Display MOT expiry date
+
+### Edit Functionality
+- [x] Create edit reminder dialog/modal
+- [x] Allow editing all reminder fields
+- [x] Update registration and re-fetch from API
+- [x] Mark reminder as sent/archived
+- [x] Delete reminder
+
+### SMS Sending
+- [x] Add Twilio credentials to environment
+- [x] Create SMS service helper (WhatsApp)
+- [x] Add send WhatsApp button to reminders
+- [x] Generate reminder messages
+- [x] Track sent status and timestamp

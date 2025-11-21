@@ -110,6 +110,127 @@ export const appRouter = router({
 
         return { count: reminders.length };
       }),
+    
+    lookupMOT: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+        const { getVehicleDetails } = await import("./dvlaApi");
+        
+        // Fetch from both APIs
+        const [motData, dvlaData] = await Promise.all([
+          getMOTHistory(input.registration).catch(() => null),
+          getVehicleDetails(input.registration).catch(() => null),
+        ]);
+        
+        if (!motData && !dvlaData) {
+          throw new Error("Vehicle not found");
+        }
+        
+        const motExpiry = motData ? getLatestMOTExpiry(motData) : null;
+        
+        return {
+          registration: input.registration,
+          make: motData?.make || dvlaData?.make,
+          model: motData?.model,
+          motExpiryDate: motExpiry,
+          colour: motData?.primaryColour || dvlaData?.colour,
+          fuelType: motData?.fuelType || dvlaData?.fuelType,
+          taxStatus: dvlaData?.taxStatus,
+          taxDueDate: dvlaData?.taxDueDate,
+        };
+      }),
+    
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        type: z.enum(["MOT", "Service"]).optional(),
+        dueDate: z.string().optional(),
+        registration: z.string().optional(),
+        customerName: z.string().optional(),
+        customerEmail: z.string().optional(),
+        customerPhone: z.string().optional(),
+        vehicleMake: z.string().optional(),
+        vehicleModel: z.string().optional(),
+        status: z.enum(["pending", "sent", "archived"]).optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { updateReminder } = await import("./db");
+        const { id, ...data } = input;
+        
+        const updateData: any = {};
+        if (data.type) updateData.type = data.type;
+        if (data.dueDate) updateData.dueDate = new Date(data.dueDate);
+        if (data.registration) updateData.registration = data.registration;
+        if (data.customerName !== undefined) updateData.customerName = data.customerName || null;
+        if (data.customerEmail !== undefined) updateData.customerEmail = data.customerEmail || null;
+        if (data.customerPhone !== undefined) updateData.customerPhone = data.customerPhone || null;
+        if (data.vehicleMake !== undefined) updateData.vehicleMake = data.vehicleMake || null;
+        if (data.vehicleModel !== undefined) updateData.vehicleModel = data.vehicleModel || null;
+        if (data.status) updateData.status = data.status;
+        if (data.notes !== undefined) updateData.notes = data.notes || null;
+        
+        await updateReminder(id, updateData);
+        return { success: true };
+      }),
+    
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deleteReminder } = await import("./db");
+        await deleteReminder(input.id);
+        return { success: true };
+      }),
+    
+    sendWhatsApp: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        phoneNumber: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const { getAllReminders, updateReminder } = await import("./db");
+        const { sendSMS, generateMOTReminderMessage, generateServiceReminderMessage } = await import("./smsService");
+        
+        // Get reminder details
+        const reminders = await getAllReminders();
+        const reminder = reminders.find(r => r.id === input.id);
+        
+        if (!reminder) {
+          throw new Error("Reminder not found");
+        }
+        
+        // Generate message
+        const message = reminder.type === "MOT"
+          ? generateMOTReminderMessage({
+              customerName: reminder.customerName || "Customer",
+              registration: reminder.registration,
+              dueDate: new Date(reminder.dueDate),
+            })
+          : generateServiceReminderMessage({
+              customerName: reminder.customerName || "Customer",
+              registration: reminder.registration,
+              dueDate: new Date(reminder.dueDate),
+            });
+        
+        // Send WhatsApp message
+        const result = await sendSMS({
+          to: input.phoneNumber,
+          message,
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || "Failed to send message");
+        }
+        
+        // Update reminder status
+        await updateReminder(input.id, {
+          status: "sent",
+          sentAt: new Date(),
+        });
+        
+        return { success: true, messageId: result.messageId };
+      }),
   }),
 });
 
