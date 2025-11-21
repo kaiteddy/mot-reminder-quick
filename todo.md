@@ -116,3 +116,9 @@
 - [x] Format defects and advisories properly
 - [x] Show complete vehicle technical data
 - [x] Add responsive grid layout for data display
+
+## MOT Expiry Display Issue
+- [x] Test MOT lookup with registration LN64XFG
+- [x] Verify MOT expiry date is showing on results
+- [x] Fix any issues preventing expiry display (DVLA API provides motExpiryDate!)
+- [x] Ensure expiry works for real registrations (not just TEST123)

@@ -161,13 +161,16 @@ export const appRouter = router({
           throw new Error("Vehicle not found. Try TEST123 to see a demo.");
         }
         
+        // DVLA provides MOT expiry date directly! Use it if available
+        const dvlaExpiry = dvlaData?.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null;
         const motExpiry = motData ? getLatestMOTExpiry(motData) : null;
+        const finalExpiry = dvlaExpiry || motExpiry;
         
         return {
           registration: input.registration,
           make: motData?.make || dvlaData?.make,
           model: motData?.model || dvlaData?.model,
-          motExpiryDate: motExpiry,
+          motExpiryDate: finalExpiry,
           colour: motData?.primaryColour || dvlaData?.colour,
           fuelType: motData?.fuelType || dvlaData?.fuelType,
           taxStatus: dvlaData?.taxStatus,

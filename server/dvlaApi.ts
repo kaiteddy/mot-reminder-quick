@@ -8,6 +8,7 @@ interface DVLAVehicle {
   taxStatus?: string;
   taxDueDate?: string;
   motStatus?: string;
+  motExpiryDate?: string; // DVLA provides MOT expiry date!
   make?: string;
   model?: string;
   yearOfManufacture?: number;
