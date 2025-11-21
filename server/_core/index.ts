@@ -35,6 +35,11 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  
+  // Twilio webhook endpoints
+  const { handleTwilioWebhook, handleTwilioStatusCallback } = await import("../webhooks/twilio");
+  app.post("/api/webhooks/twilio", handleTwilioWebhook);
+  app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
   // tRPC API
   app.use(
     "/api/trpc",

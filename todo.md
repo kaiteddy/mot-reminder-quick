@@ -62,3 +62,9 @@
 - [x] Add send WhatsApp button to reminders
 - [x] Generate reminder messages
 - [x] Track sent status and timestamp
+
+### Webhook Integration
+- [x] Create webhook endpoint for Twilio responses
+- [x] Handle incoming WhatsApp messages
+- [x] Log message responses
+- [x] Update reminder status based on responses
