@@ -46,6 +46,27 @@ interface VehicleData {
   taxStatus?: string;
   taxDueDate?: string;
   motTests?: MOTTest[];
+  // Additional DVLA fields
+  engineCapacity?: number;
+  co2Emissions?: number;
+  markedForExport?: boolean;
+  monthOfFirstRegistration?: string;
+  yearOfManufacture?: number;
+  euroStatus?: string;
+  realDrivingEmissions?: string;
+  dateOfLastV5CIssued?: string;
+  typeApproval?: string;
+  wheelplan?: string;
+  revenueWeight?: number;
+  artEndDate?: string;
+  // Additional MOT fields
+  primaryColour?: string;
+  secondaryColour?: string;
+  registrationDate?: string;
+  manufactureDate?: string;
+  firstUsedDate?: string;
+  dvlaId?: string;
+  motTestDueDate?: string;
 }
 
 export default function MOTCheck() {
@@ -194,7 +215,7 @@ export default function MOTCheck() {
                 })()}
 
                 {/* Vehicle Details Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-2">
                   {vehicleData.colour && (
                     <div className="flex items-center gap-2">
                       <Palette className="w-4 h-4 text-slate-500" />
@@ -230,6 +251,51 @@ export default function MOTCheck() {
                         <div className="font-medium">
                           {new Date(vehicleData.taxDueDate).toLocaleDateString("en-GB")}
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.engineCapacity && (
+                    <div className="flex items-center gap-2">
+                      <Gauge className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Engine</div>
+                        <div className="font-medium">{vehicleData.engineCapacity}cc</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.co2Emissions && (
+                    <div className="flex items-center gap-2">
+                      <Droplet className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">CO2</div>
+                        <div className="font-medium">{vehicleData.co2Emissions} g/km</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.yearOfManufacture && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Year</div>
+                        <div className="font-medium">{vehicleData.yearOfManufacture}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.euroStatus && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Euro Status</div>
+                        <div className="font-medium">{vehicleData.euroStatus}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.monthOfFirstRegistration && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">First Reg</div>
+                        <div className="font-medium">{vehicleData.monthOfFirstRegistration}</div>
                       </div>
                     </div>
                   )}

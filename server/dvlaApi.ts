@@ -9,6 +9,7 @@ interface DVLAVehicle {
   taxDueDate?: string;
   motStatus?: string;
   make?: string;
+  model?: string;
   yearOfManufacture?: number;
   engineCapacity?: number;
   co2Emissions?: number;
@@ -17,6 +18,12 @@ interface DVLAVehicle {
   colour?: string;
   typeApproval?: string;
   dateOfLastV5CIssued?: string;
+  monthOfFirstRegistration?: string;
+  euroStatus?: string;
+  realDrivingEmissions?: string;
+  wheelplan?: string;
+  revenueWeight?: number;
+  artEndDate?: string;
 }
 
 /**

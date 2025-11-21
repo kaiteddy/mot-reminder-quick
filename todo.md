@@ -96,3 +96,23 @@
 - [x] Add debug logging to check API response
 - [x] Fix display to show expiry prominently
 - [x] Add TEST123 mock registration for demo purposes
+
+## Process Screenshot and Run MOT Checks
+- [x] Upload screenshot to app via API
+- [x] Extract all reminders from screenshot using OCR (25 reminders extracted)
+- [x] Run MOT checks on all extracted registrations (DVLA working, MOT API needs credentials refresh)
+- [x] Display MOT history and expiry for each vehicle
+
+## DVSA MOT API Research
+- [ ] Research DVSA MOT History API documentation
+- [ ] Understand authentication and OAuth 2.0 requirements
+- [ ] Investigate Forbidden error causes
+- [ ] Find solutions to restore API access
+- [ ] Document proper API usage and troubleshooting steps
+
+## Complete API Response Display
+- [x] Update MOT check page to show all DVLA fields
+- [x] Display all MOT test history fields
+- [x] Format defects and advisories properly
+- [x] Show complete vehicle technical data
+- [x] Add responsive grid layout for data display

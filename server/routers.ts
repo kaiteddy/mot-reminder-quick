@@ -166,13 +166,28 @@ export const appRouter = router({
         return {
           registration: input.registration,
           make: motData?.make || dvlaData?.make,
-          model: motData?.model,
+          model: motData?.model || dvlaData?.model,
           motExpiryDate: motExpiry,
           colour: motData?.primaryColour || dvlaData?.colour,
           fuelType: motData?.fuelType || dvlaData?.fuelType,
           taxStatus: dvlaData?.taxStatus,
           taxDueDate: dvlaData?.taxDueDate,
           motTests: motData?.motTests || [],
+          // All DVLA fields
+          engineCapacity: dvlaData?.engineCapacity,
+          co2Emissions: dvlaData?.co2Emissions,
+          markedForExport: dvlaData?.markedForExport,
+          monthOfFirstRegistration: dvlaData?.monthOfFirstRegistration,
+          yearOfManufacture: dvlaData?.yearOfManufacture,
+          euroStatus: dvlaData?.euroStatus,
+          realDrivingEmissions: dvlaData?.realDrivingEmissions,
+          dateOfLastV5CIssued: dvlaData?.dateOfLastV5CIssued,
+          typeApproval: dvlaData?.typeApproval,
+          wheelplan: dvlaData?.wheelplan,
+          revenueWeight: dvlaData?.revenueWeight,
+          artEndDate: dvlaData?.artEndDate,
+          // Additional MOT fields
+          primaryColour: motData?.primaryColour,
         };
       }),
     
