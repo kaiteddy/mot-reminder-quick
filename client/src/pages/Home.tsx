@@ -5,10 +5,11 @@ import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Car, Mail, Phone, Plus, Send, Trash2, Loader2 } from "lucide-react";
+import { Calendar, Car, Mail, Phone, Plus, Send, Trash2, Loader2, Search } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
@@ -60,10 +61,18 @@ export default function Home() {
               Quick MOT reminders from screenshots
             </p>
           </div>
-          <Button onClick={() => setShowUpload(!showUpload)} size="lg">
-            <Plus className="w-4 h-4 mr-2" />
-            Upload Screenshot
-          </Button>
+          <div className="flex gap-3">
+            <Link href="/mot-check">
+              <Button variant="outline" size="lg">
+                <Search className="w-4 h-4 mr-2" />
+                MOT Check
+              </Button>
+            </Link>
+            <Button onClick={() => setShowUpload(!showUpload)} size="lg">
+              <Plus className="w-4 h-4 mr-2" />
+              Upload Screenshot
+            </Button>
+          </div>
         </div>
 
         {/* Upload Section */}

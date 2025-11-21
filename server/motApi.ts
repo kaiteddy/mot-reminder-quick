@@ -122,8 +122,32 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
       throw new Error(`MOT API error: ${response.statusText}`);
     }
 
-    const data: MOTHistory[] = await response.json();
-    return data[0] || null;
+    const data: any[] = await response.json();
+    
+    if (!data || data.length === 0) {
+      return null;
+    }
+    
+    const vehicle = data[0];
+    
+    // Transform MOT tests to include defects
+    if (vehicle.motTests) {
+      vehicle.motTests = vehicle.motTests.map((test: any) => ({
+        completedDate: test.completedDate,
+        testResult: test.testResult,
+        expiryDate: test.expiryDate,
+        odometerValue: test.odometerValue,
+        odometerUnit: test.odometerUnit,
+        motTestNumber: test.motTestNumber,
+        defects: test.rfrAndComments?.map((item: any) => ({
+          text: item.text,
+          type: item.type,
+          dangerous: item.dangerous || false,
+        })) || [],
+      }));
+    }
+    
+    return vehicle as MOTHistory;
   } catch (error) {
     console.error("Error fetching MOT history:", error);
     throw error;

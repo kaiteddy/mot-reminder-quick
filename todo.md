@@ -68,3 +68,14 @@
 - [x] Handle incoming WhatsApp messages
 - [x] Log message responses
 - [x] Update reminder status based on responses
+
+## MOT Check Page
+- [x] Create MOT check page with registration input
+- [x] Add navigation link to MOT check page
+- [x] Display vehicle details (make, model, colour, fuel type)
+- [x] Show MOT expiry date prominently
+- [x] Display complete MOT test history
+- [x] Show test results (pass/fail) with dates
+- [x] Display advisories and defects for each test
+- [x] Show mileage history from MOT tests
+- [x] Add tax status and expiry from DVLA API

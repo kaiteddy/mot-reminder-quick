@@ -138,6 +138,7 @@ export const appRouter = router({
           fuelType: motData?.fuelType || dvlaData?.fuelType,
           taxStatus: dvlaData?.taxStatus,
           taxDueDate: dvlaData?.taxDueDate,
+          motTests: motData?.motTests || [],
         };
       }),
     
