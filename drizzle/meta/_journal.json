@@ -15,6 +15,13 @@
       "when": 1763725116163,
       "tag": "0001_groovy_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1763737287736,
+      "tag": "0002_freezing_banshee",
+      "breakpoints": true
     }
   ]
 }

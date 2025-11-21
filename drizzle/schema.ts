@@ -71,6 +71,7 @@ export const reminders = mysqlTable("reminders", {
   customerPhone: varchar("customerPhone", { length: 20 }),
   vehicleMake: varchar("vehicleMake", { length: 100 }),
   vehicleModel: varchar("vehicleModel", { length: 100 }),
+  motExpiryDate: timestamp("motExpiryDate"),
   status: mysqlEnum("status", ["pending", "sent", "archived"]).default("pending").notNull(),
   sentAt: timestamp("sentAt"),
   notes: text("notes"),

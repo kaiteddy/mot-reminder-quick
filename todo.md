@@ -122,3 +122,12 @@
 - [x] Verify MOT expiry date is showing on results
 - [x] Fix any issues preventing expiry display (DVLA API provides motExpiryDate!)
 - [x] Ensure expiry works for real registrations (not just TEST123)
+
+## Bulk Screenshot Processing
+- [x] Update processImage to return array of structured reminders
+- [x] Create bulkSaveReminders procedure
+- [x] Enrich each reminder with DVLA API data (MOT expiry, vehicle details)
+- [x] Save all reminders, customers, and vehicles to database
+- [x] Add motExpiryDate field to reminders schema
+- [x] Display MOT expiry date in reminder cards
+- [x] Automatic DVLA enrichment during screenshot processing

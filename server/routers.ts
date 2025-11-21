@@ -93,22 +93,52 @@ export const appRouter = router({
         const parsed = JSON.parse(content as string);
         const reminders = parsed.reminders || [];
 
-        // Insert reminders into database
+        // Enrich with DVLA data and insert reminders into database
+        const { getVehicleDetails } = await import("./dvlaApi");
+        let savedCount = 0;
+        const errors: string[] = [];
+
         for (const reminder of reminders) {
-          await createReminder({
-            type: reminder.type as "MOT" | "Service",
-            dueDate: new Date(reminder.dueDate),
-            registration: reminder.registration,
-            customerName: reminder.customerName || null,
-            customerEmail: reminder.customerEmail || null,
-            customerPhone: reminder.customerPhone || null,
-            vehicleMake: reminder.vehicleMake || null,
-            vehicleModel: reminder.vehicleModel || null,
-            status: "pending",
-          });
+          try {
+            // Enrich with DVLA data
+            let motExpiryDate: Date | null = null;
+            let vehicleMake = reminder.vehicleMake;
+            let vehicleModel = reminder.vehicleModel;
+            
+            try {
+              const dvlaData = await getVehicleDetails(reminder.registration);
+              if (dvlaData?.motExpiryDate) {
+                motExpiryDate = new Date(dvlaData.motExpiryDate);
+              }
+              vehicleMake = dvlaData?.make || reminder.vehicleMake;
+              vehicleModel = dvlaData?.model || reminder.vehicleModel;
+            } catch (error) {
+              console.log(`Could not fetch DVLA data for ${reminder.registration}`);
+            }
+
+            await createReminder({
+              type: reminder.type as "MOT" | "Service",
+              dueDate: new Date(reminder.dueDate),
+              registration: reminder.registration,
+              customerName: reminder.customerName || null,
+              customerEmail: reminder.customerEmail || null,
+              customerPhone: reminder.customerPhone || null,
+              vehicleMake: vehicleMake || null,
+              vehicleModel: vehicleModel || null,
+              motExpiryDate,
+              status: "pending",
+            });
+            savedCount++;
+          } catch (error: any) {
+            errors.push(`${reminder.registration}: ${error.message}`);
+          }
         }
 
-        return { count: reminders.length };
+        return { 
+          count: savedCount,
+          total: reminders.length,
+          errors 
+        };
       }),
     
     lookupMOT: publicProcedure
