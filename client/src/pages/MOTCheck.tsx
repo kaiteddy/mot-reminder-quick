@@ -99,7 +99,7 @@ export default function MOTCheck() {
           <CardHeader>
             <CardTitle>Vehicle Registration</CardTitle>
             <CardDescription>
-              Enter a UK vehicle registration to check MOT history
+              Enter a UK vehicle registration to check MOT history. Try <strong>TEST123</strong> to see a demo of the expiry display.
             </CardDescription>
           </CardHeader>
           <CardContent>

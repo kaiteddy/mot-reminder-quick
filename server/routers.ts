@@ -117,14 +117,48 @@ export const appRouter = router({
         const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { getVehicleDetails } = await import("./dvlaApi");
         
+        // Use mock data for testing if registration is TEST123
+        if (input.registration.toUpperCase() === "TEST123") {
+          const mockExpiryDate = new Date();
+          mockExpiryDate.setDate(mockExpiryDate.getDate() + 15); // 15 days from now
+          
+          return {
+            registration: "TEST123",
+            make: "Ford",
+            model: "Focus",
+            motExpiryDate: mockExpiryDate,
+            colour: "Blue",
+            fuelType: "Petrol",
+            taxStatus: "Taxed",
+            taxDueDate: "2025-12-31",
+            motTests: [
+              {
+                completedDate: "2024-11-01",
+                testResult: "PASSED",
+                expiryDate: mockExpiryDate.toISOString(),
+                odometerValue: "45000",
+                odometerUnit: "mi",
+                motTestNumber: "123456789",
+                defects: [],
+              },
+            ],
+          };
+        }
+        
         // Fetch from both APIs
         const [motData, dvlaData] = await Promise.all([
-          getMOTHistory(input.registration).catch(() => null),
-          getVehicleDetails(input.registration).catch(() => null),
+          getMOTHistory(input.registration).catch((err) => {
+            console.error("MOT API Error:", err.message);
+            return null;
+          }),
+          getVehicleDetails(input.registration).catch((err) => {
+            console.error("DVLA API Error:", err.message);
+            return null;
+          }),
         ]);
         
         if (!motData && !dvlaData) {
-          throw new Error("Vehicle not found");
+          throw new Error("Vehicle not found. Try TEST123 to see a demo.");
         }
         
         const motExpiry = motData ? getLatestMOTExpiry(motData) : null;

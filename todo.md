@@ -89,3 +89,10 @@
 - [x] Replicate GitHub GarageManager MOT display design
 - [x] Highlight expired/critical MOT dates in red
 - [x] Show upcoming expiry dates in orange/yellow
+
+## MOT Expiry Display Fix
+- [x] Investigate why MOT expiry not showing on MOT check page
+- [x] Ensure motExpiryDate is being returned from API
+- [x] Add debug logging to check API response
+- [x] Fix display to show expiry prominently
+- [x] Add TEST123 mock registration for demo purposes
