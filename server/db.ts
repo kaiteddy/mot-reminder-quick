@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, InsertReminder } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,36 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Reminder queries
+export async function getAllReminders() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { reminders } = await import("../drizzle/schema");
+  return db.select().from(reminders).orderBy(reminders.dueDate);
+}
+
+export async function createReminder(data: InsertReminder) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { reminders } = await import("../drizzle/schema");
+  const result = await db.insert(reminders).values(data);
+  return result;
+}
+
+export async function updateReminder(id: number, data: Partial<InsertReminder>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { reminders } = await import("../drizzle/schema");
+  await db.update(reminders).set(data).where(eq(reminders.id, id));
+}
+
+export async function deleteReminder(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { reminders } = await import("../drizzle/schema");
+  await db.delete(reminders).where(eq(reminders.id, id));
+}

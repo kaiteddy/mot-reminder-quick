@@ -1,5 +1,20 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763725059989,
+      "tag": "0000_large_sentry",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1763725116163,
+      "tag": "0001_groovy_cassandra_nova",
+      "breakpoints": true
+    }
+  ]
 }
