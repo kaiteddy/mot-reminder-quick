@@ -92,15 +92,31 @@ export function mapReminderType(templateId: string, templates: GA4ReminderTempla
  * Parse GA4 date format (DD/MM/YYYY) to Date object
  */
 export function parseGA4Date(dateStr: string): Date | null {
-  if (!dateStr) return null;
+  if (!dateStr || dateStr.trim() === '') return null;
   
   // Handle DD/MM/YYYY format
-  const parts = dateStr.split('/');
+  const parts = dateStr.trim().split('/');
   if (parts.length === 3) {
     const day = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
     const year = parseInt(parts[2], 10);
-    return new Date(year, month, day);
+    
+    // Validate date components
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    if (day < 1 || day > 31) return null;
+    if (month < 0 || month > 11) return null;
+    if (year < 1900 || year > 2100) return null;
+    
+    // Create date and validate it's valid
+    const date = new Date(year, month, day);
+    if (isNaN(date.getTime())) return null;
+    
+    // Check if the date components match (handles invalid dates like Feb 31)
+    if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
+      return null;
+    }
+    
+    return date;
   }
   
   return null;

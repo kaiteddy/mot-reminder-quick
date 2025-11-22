@@ -21,7 +21,7 @@ export const importRouter = router({
    */
   importCustomers: publicProcedure
     .input(z.object({
-      csvData: z.string(), // Base64 encoded CSV data
+      csvData: z.string().min(1), // Base64 encoded CSV data (data URL format)
     }))
     .mutation(async ({ input }) => {
       const { 
@@ -32,7 +32,11 @@ export const importRouter = router({
       } = await import("../db");
       
       // Decode base64 and parse CSV
-      const buffer = Buffer.from(input.csvData.split(',')[1], 'base64');
+      // Handle both data URL format (data:text/csv;base64,xxx) and raw base64
+      const base64Data = input.csvData.includes(',') 
+        ? input.csvData.split(',')[1] 
+        : input.csvData;
+      const buffer = Buffer.from(base64Data, 'base64');
       const customers = parseCSV<GA4Customer>(buffer);
       
       let imported = 0;
@@ -147,7 +151,7 @@ export const importRouter = router({
    */
   importVehicles: publicProcedure
     .input(z.object({
-      csvData: z.string(), // Base64 encoded CSV data
+      csvData: z.string().min(1), // Base64 encoded CSV data (data URL format)
       enrichWithDVLA: z.boolean().default(false),
     }))
     .mutation(async ({ input }) => {
@@ -161,7 +165,11 @@ export const importRouter = router({
       const { getVehicleDetails } = await import("../dvlaApi");
       
       // Decode base64 and parse CSV
-      const buffer = Buffer.from(input.csvData.split(',')[1], 'base64');
+      // Handle both data URL format (data:text/csv;base64,xxx) and raw base64
+      const base64Data = input.csvData.includes(',') 
+        ? input.csvData.split(',')[1] 
+        : input.csvData;
+      const buffer = Buffer.from(base64Data, 'base64');
       const vehicles = parseCSV<GA4Vehicle>(buffer);
       
       let imported = 0;
@@ -325,15 +333,22 @@ export const importRouter = router({
    */
   importReminders: publicProcedure
     .input(z.object({
-      remindersCSV: z.string(),
-      templatesCSV: z.string(),
+      remindersCSV: z.string().min(1),
+      templatesCSV: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
       const { createReminder, getVehicleByExternalId } = await import("../db");
       
       // Parse both CSVs
-      const remindersBuffer = Buffer.from(input.remindersCSV.split(',')[1], 'base64');
-      const templatesBuffer = Buffer.from(input.templatesCSV.split(',')[1], 'base64');
+      // Handle both data URL format and raw base64
+      const remindersBase64 = input.remindersCSV.includes(',') 
+        ? input.remindersCSV.split(',')[1] 
+        : input.remindersCSV;
+      const templatesBase64 = input.templatesCSV.includes(',') 
+        ? input.templatesCSV.split(',')[1] 
+        : input.templatesCSV;
+      const remindersBuffer = Buffer.from(remindersBase64, 'base64');
+      const templatesBuffer = Buffer.from(templatesBase64, 'base64');
       
       const reminders = parseCSV<GA4Reminder>(remindersBuffer);
       const templates = parseCSV<GA4ReminderTemplate>(templatesBuffer);

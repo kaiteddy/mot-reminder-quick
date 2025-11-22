@@ -188,3 +188,9 @@
 - [x] Implement graceful degradation for API failures
 - [ ] Improve UI/UX for MOT results display
 - [ ] Add vehicle history display
+
+## Fix Import Error
+- [x] Debug base64 pattern validation error on /import page
+- [x] Fix CSV data encoding/format issue (handle both data URL and raw base64)
+- [x] Fix invalid date parsing error in vehicle import
+- [ ] Test import with actual CSV files
