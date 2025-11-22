@@ -169,3 +169,22 @@
 - [ ] Create vehicle detail page showing MOT history and reminders
 - [x] Add navigation links to customers and vehicles pages
 - [x] Add database queries for customers and vehicles
+
+## Review and Update Import Logic from garage-management-system
+- [x] Clone garage-management-system repository
+- [x] Analyze existing CSV import scripts
+- [x] Review data mapping and linking logic
+- [x] Compare with current MOT Reminder Quick implementation
+- [x] Update import router with smart merge logic for customers
+- [x] Update import router with smart merge and linking for vehicles
+- [x] Add connection preservation tracking
+- [ ] Add performance indexes for faster imports
+- [ ] Test import with actual GA4 CSV files
+
+## Improve MOT Checker
+- [x] Review current MOT checker implementation
+- [x] Add better error handling for DVLA/MOT API
+- [x] Add UK registration validation
+- [x] Implement graceful degradation for API failures
+- [ ] Improve UI/UX for MOT results display
+- [ ] Add vehicle history display

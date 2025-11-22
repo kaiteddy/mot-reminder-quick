@@ -17,33 +17,44 @@ import {
 
 export const importRouter = router({
   /**
-   * Import customers from GA4 CSV
+   * Import customers from GA4 CSV with smart merge
    */
   importCustomers: publicProcedure
     .input(z.object({
       csvData: z.string(), // Base64 encoded CSV data
     }))
     .mutation(async ({ input }) => {
-      const { createCustomer, getCustomerByExternalId } = await import("../db");
+      const { 
+        createCustomer, 
+        findCustomerBySmartMatch,
+        updateCustomer,
+        getCustomerByExternalId 
+      } = await import("../db");
       
       // Decode base64 and parse CSV
       const buffer = Buffer.from(input.csvData.split(',')[1], 'base64');
       const customers = parseCSV<GA4Customer>(buffer);
       
       let imported = 0;
-      let skipped = 0;
       let updated = 0;
+      let skipped = 0;
       const errors: string[] = [];
+      
+      console.log(`[IMPORT-CUSTOMERS] Processing ${customers.length} customers with smart merge...`);
       
       for (const ga4Customer of customers) {
         try {
-          // Check if customer already exists
-          const existing = await getCustomerByExternalId(ga4Customer._ID);
+          const name = buildCustomerName(ga4Customer);
+          const phone = getPhoneNumber(ga4Customer);
+          const email = ga4Customer.contactEmail || null;
+          
+          // Smart match: phone > email > name
+          const existing = await findCustomerBySmartMatch(phone, email, name);
           
           const customerData = {
-            name: buildCustomerName(ga4Customer),
-            email: ga4Customer.contactEmail || null,
-            phone: getPhoneNumber(ga4Customer),
+            name,
+            email,
+            phone,
             externalId: ga4Customer._ID,
             address: buildAddress(ga4Customer),
             postcode: ga4Customer.addressPostCode || null,
@@ -51,31 +62,88 @@ export const importRouter = router({
           };
           
           if (existing) {
-            // Update existing customer
-            // TODO: Add update customer function
-            updated++;
+            // Smart merge: only update if new data is better
+            const updates: any = {};
+            
+            // Name: update if existing is empty, shorter, or generic
+            if (name && name.length > 0) {
+              if (!existing.name || 
+                  existing.name.length < name.length ||
+                  existing.name.toLowerCase().includes('customer') ||
+                  existing.name.toLowerCase().includes('unknown')) {
+                updates.name = name;
+              }
+            }
+            
+            // Phone: update if existing is empty or new is longer
+            if (phone && phone.length >= 10) {
+              if (!existing.phone || existing.phone.length < phone.length) {
+                updates.phone = phone;
+              }
+            }
+            
+            // Email: update if existing is empty, placeholder, or new is better
+            if (email && email.includes('@') && !email.includes('placeholder')) {
+              if (!existing.email || 
+                  existing.email.includes('placeholder') ||
+                  existing.email.length < email.length) {
+                updates.email = email;
+              }
+            }
+            
+            // Address: update if existing is empty
+            if (customerData.address && !existing.address) {
+              updates.address = customerData.address;
+            }
+            
+            // Postcode: update if existing is empty
+            if (customerData.postcode && !existing.postcode) {
+              updates.postcode = customerData.postcode;
+            }
+            
+            // Notes: update if existing is empty
+            if (customerData.notes && !existing.notes) {
+              updates.notes = customerData.notes;
+            }
+            
+            // External ID: always update to maintain link
+            if (!existing.externalId) {
+              updates.externalId = ga4Customer._ID;
+            }
+            
+            if (Object.keys(updates).length > 0) {
+              await updateCustomer(existing.id, updates);
+              console.log(`[IMPORT-CUSTOMERS] Updated: ${name} with ${Object.keys(updates).length} fields`);
+              updated++;
+            } else {
+              skipped++;
+            }
           } else {
             // Create new customer
             await createCustomer(customerData);
+            console.log(`[IMPORT-CUSTOMERS] Created: ${name}`);
             imported++;
           }
         } catch (error: any) {
           errors.push(`Customer ${ga4Customer._ID}: ${error.message}`);
+          console.error(`[IMPORT-CUSTOMERS] Error:`, error);
           skipped++;
         }
       }
+      
+      console.log(`[IMPORT-CUSTOMERS] Completed: ${imported} new, ${updated} updated, ${skipped} skipped`);
       
       return {
         total: customers.length,
         imported,
         updated,
         skipped,
-        errors,
+        errors: errors.slice(0, 3), // Only return first 3 errors
       };
     }),
 
   /**
-   * Import vehicles from GA4 CSV
+   * Import vehicles from GA4 CSV with smart merge and customer linking
    */
   importVehicles: publicProcedure
     .input(z.object({
@@ -83,7 +151,13 @@ export const importRouter = router({
       enrichWithDVLA: z.boolean().default(false),
     }))
     .mutation(async ({ input }) => {
-      const { createVehicle, getVehicleByExternalId, getCustomerByExternalId } = await import("../db");
+      const { 
+        createVehicle, 
+        findVehicleByRegistration,
+        updateVehicle,
+        getCustomerByExternalId,
+        findCustomerByName,
+      } = await import("../db");
       const { getVehicleDetails } = await import("../dvlaApi");
       
       // Decode base64 and parse CSV
@@ -91,73 +165,158 @@ export const importRouter = router({
       const vehicles = parseCSV<GA4Vehicle>(buffer);
       
       let imported = 0;
-      let skipped = 0;
       let updated = 0;
+      let skipped = 0;
+      let preservedConnections = 0;
+      let smartLinked = 0;
       const errors: string[] = [];
+      
+      console.log(`[IMPORT-VEHICLES] Processing ${vehicles.length} vehicles with smart merge and linking...`);
       
       for (const ga4Vehicle of vehicles) {
         try {
-          if (!ga4Vehicle.Registration) {
+          const registration = ga4Vehicle.Registration?.toUpperCase().replace(/\s/g, '');
+          
+          if (!registration) {
             skipped++;
             continue;
           }
           
-          // Check if vehicle already exists
-          const existing = await getVehicleByExternalId(ga4Vehicle._ID);
+          // Find existing vehicle by normalized registration
+          const existing = await findVehicleByRegistration(registration);
           
-          // Find customer by external ID
-          let customerId: number | null = null;
+          // Find customer by external ID or name
+          let customerId = null;
           if (ga4Vehicle._ID_Customer) {
             const customer = await getCustomerByExternalId(ga4Vehicle._ID_Customer);
-            customerId = customer?.id || null;
-          }
-          
-          // Optionally enrich with DVLA data
-          let dvlaData: any = null;
-          if (input.enrichWithDVLA) {
-            try {
-              dvlaData = await getVehicleDetails(ga4Vehicle.Registration);
-            } catch (error) {
-              console.log(`Could not fetch DVLA data for ${ga4Vehicle.Registration}`);
+            if (customer) {
+              customerId = customer.id;
             }
           }
           
-          const vehicleData = {
-            registration: ga4Vehicle.Registration.toUpperCase(),
-            make: dvlaData?.make || ga4Vehicle.Make || null,
-            model: dvlaData?.model || ga4Vehicle.Model || null,
-            customerId,
-            externalId: ga4Vehicle._ID,
-            colour: dvlaData?.colour || ga4Vehicle.Colour || null,
-            fuelType: dvlaData?.fuelType || ga4Vehicle.FuelType || null,
-            dateOfRegistration: parseGA4Date(ga4Vehicle.DateofReg || ''),
+          // Prepare vehicle data
+          const vehicleData: any = {
+            registration,
+            make: ga4Vehicle.Make || null,
+            model: ga4Vehicle.Model || null,
+            colour: ga4Vehicle.Colour || null,
+            fuelType: ga4Vehicle.FuelType || null,
             vin: ga4Vehicle.VIN || null,
-            engineCC: ga4Vehicle.EngineCC ? parseInt(ga4Vehicle.EngineCC, 10) : null,
-            notes: [ga4Vehicle.Notes, ga4Vehicle.Notes_Reminders].filter(Boolean).join('\n\n') || null,
-            motExpiryDate: dvlaData?.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null,
+            engineCC: ga4Vehicle.EngineCC ? parseInt(ga4Vehicle.EngineCC) : null,
+            notes: ga4Vehicle.Notes || null,
+            externalId: ga4Vehicle._ID,
+            customerId,
           };
           
+          // Extract year from DateofReg if available
+          if (ga4Vehicle.DateofReg) {
+            const dateParts = ga4Vehicle.DateofReg.split('/');
+            if (dateParts.length === 3) {
+              vehicleData.dateOfRegistration = parseGA4Date(ga4Vehicle.DateofReg);
+            }
+          }
+          
+          // Enrich with DVLA data if requested
+          if (input.enrichWithDVLA) {
+            try {
+              const dvlaData = await getVehicleDetails(registration);
+              if (dvlaData) {
+                vehicleData.make = dvlaData.make || vehicleData.make;
+                vehicleData.model = dvlaData.model || vehicleData.model;
+                vehicleData.colour = dvlaData.colour || vehicleData.colour;
+                vehicleData.fuelType = dvlaData.fuelType || vehicleData.fuelType;
+                vehicleData.motExpiryDate = dvlaData.motExpiryDate || null;
+              }
+            } catch (dvlaError) {
+              console.log(`[IMPORT-VEHICLES] DVLA enrichment failed for ${registration}`);
+            }
+          }
+          
           if (existing) {
-            // Update existing vehicle
-            // TODO: Add update vehicle function
-            updated++;
+            const hasExistingConnection = !!existing.customerId;
+            
+            // Smart merge: only update if new data is better
+            const updates: any = {};
+            
+            // Make: update if existing is empty or new is longer
+            if (vehicleData.make && vehicleData.make.length > 2) {
+              if (!existing.make || existing.make.length < vehicleData.make.length) {
+                updates.make = vehicleData.make;
+              }
+            }
+            
+            // Model: update if existing is empty or new is longer
+            if (vehicleData.model && vehicleData.model.length > 2) {
+              if (!existing.model || existing.model.length < vehicleData.model.length) {
+                updates.model = vehicleData.model;
+              }
+            }
+            
+            // Other fields: update if existing is empty
+            if (vehicleData.colour && !existing.colour) updates.colour = vehicleData.colour;
+            if (vehicleData.fuelType && !existing.fuelType) updates.fuelType = vehicleData.fuelType;
+            if (vehicleData.vin && !existing.vin) updates.vin = vehicleData.vin;
+            if (vehicleData.engineCC && !existing.engineCC) updates.engineCC = vehicleData.engineCC;
+            if (vehicleData.notes && !existing.notes) updates.notes = vehicleData.notes;
+            if (vehicleData.dateOfRegistration && !existing.dateOfRegistration) {
+              updates.dateOfRegistration = vehicleData.dateOfRegistration;
+            }
+            if (vehicleData.motExpiryDate && !existing.motExpiryDate) {
+              updates.motExpiryDate = vehicleData.motExpiryDate;
+            }
+            
+            // External ID: always update to maintain link
+            if (!existing.externalId) {
+              updates.externalId = ga4Vehicle._ID;
+            }
+            
+            // Smart customer linking if no existing connection
+            if (!hasExistingConnection && customerId) {
+              updates.customerId = customerId;
+              smartLinked++;
+            }
+            
+            if (Object.keys(updates).length > 0) {
+              await updateVehicle(existing.id, updates);
+              console.log(`[IMPORT-VEHICLES] Updated: ${registration} with ${Object.keys(updates).length} fields`);
+              updated++;
+              
+              if (hasExistingConnection) {
+                preservedConnections++;
+              }
+            } else {
+              if (hasExistingConnection) {
+                preservedConnections++;
+              }
+              skipped++;
+            }
           } else {
             // Create new vehicle
             await createVehicle(vehicleData);
+            console.log(`[IMPORT-VEHICLES] Created: ${registration}${customerId ? ' (linked to customer)' : ''}`);
             imported++;
+            
+            if (customerId) {
+              smartLinked++;
+            }
           }
         } catch (error: any) {
           errors.push(`Vehicle ${ga4Vehicle.Registration}: ${error.message}`);
+          console.error(`[IMPORT-VEHICLES] Error:`, error);
           skipped++;
         }
       }
+      
+      console.log(`[IMPORT-VEHICLES] Completed: ${imported} new, ${updated} updated, ${skipped} skipped, ${preservedConnections} preserved, ${smartLinked} smart-linked`);
       
       return {
         total: vehicles.length,
         imported,
         updated,
         skipped,
-        errors,
+        preservedConnections,
+        smartLinked,
+        errors: errors.slice(0, 3),
       };
     }),
 
@@ -166,13 +325,13 @@ export const importRouter = router({
    */
   importReminders: publicProcedure
     .input(z.object({
-      remindersCSV: z.string(), // Base64 encoded CSV data
-      templatesCSV: z.string(), // Base64 encoded CSV data
+      remindersCSV: z.string(),
+      templatesCSV: z.string(),
     }))
     .mutation(async ({ input }) => {
-      const { createReminder, getVehicleByExternalId, getCustomerById } = await import("../db");
+      const { createReminder, getVehicleByExternalId } = await import("../db");
       
-      // Decode and parse CSVs
+      // Parse both CSVs
       const remindersBuffer = Buffer.from(input.remindersCSV.split(',')[1], 'base64');
       const templatesBuffer = Buffer.from(input.templatesCSV.split(',')[1], 'base64');
       
@@ -183,44 +342,42 @@ export const importRouter = router({
       let skipped = 0;
       const errors: string[] = [];
       
+      console.log(`[IMPORT-REMINDERS] Processing ${reminders.length} reminders...`);
+      
       for (const ga4Reminder of reminders) {
         try {
-          // Get vehicle by external ID
+          // Find vehicle
           const vehicle = await getVehicleByExternalId(ga4Reminder._ID_Vehicle);
           if (!vehicle) {
-            errors.push(`Reminder ${ga4Reminder._ID}: Vehicle not found`);
             skipped++;
             continue;
           }
           
-          // Get customer
-          let customer: any = null;
-          if (vehicle.customerId) {
-            customer = await getCustomerById(vehicle.customerId);
+          // Parse due date
+          const dueDate = parseGA4Date(ga4Reminder.DueDate);
+          if (!dueDate) {
+            skipped++;
+            continue;
           }
           
-          // Map reminder type
-          const type = mapReminderType(ga4Reminder._ID_Template, templates);
-          
-          // Determine status
+          // Determine status and sent info
           const actioned = isReminderActioned(ga4Reminder);
           const actionedInfo = getReminderActionedInfo(ga4Reminder);
           
           const reminderData = {
-            type,
-            dueDate: parseGA4Date(ga4Reminder.DueDate) || new Date(),
-            registration: vehicle.registration,
-            customerName: customer?.name || null,
-            customerEmail: customer?.email || null,
-            customerPhone: customer?.phone || null,
-            vehicleMake: vehicle.make || null,
-            vehicleModel: vehicle.model || null,
-            motExpiryDate: vehicle.motExpiryDate || null,
-            status: actioned ? "sent" as const : "pending" as const,
-            sentAt: actionedInfo.date,
-            sentMethod: actionedInfo.method,
+            type: mapReminderType(ga4Reminder._ID_Template, templates),
+            dueDate,
             vehicleId: vehicle.id,
-            customerId: customer?.id || null,
+            customerId: vehicle.customerId,
+            registration: vehicle.registration,
+            customer: null, // Will be populated from customer table if needed
+            phone: null,
+            email: null,
+            vehicle: `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || null,
+            motExpiryDate: vehicle.motExpiryDate,
+            status: (actioned ? 'sent' : 'pending') as 'sent' | 'pending',
+            sentMethod: actionedInfo.method,
+            sentDate: actionedInfo.date,
             externalId: ga4Reminder._ID,
           };
           
@@ -232,11 +389,13 @@ export const importRouter = router({
         }
       }
       
+      console.log(`[IMPORT-REMINDERS] Completed: ${imported} imported, ${skipped} skipped`);
+      
       return {
         total: reminders.length,
         imported,
         skipped,
-        errors,
+        errors: errors.slice(0, 3),
       };
     }),
 
@@ -244,38 +403,16 @@ export const importRouter = router({
    * Get import statistics
    */
   getImportStats: publicProcedure.query(async () => {
-    const { getDb } = await import("../db");
-    const { customers, vehicles, reminders } = await import("../../drizzle/schema");
-    const { sql } = await import("drizzle-orm");
+    const { getAllCustomers, getAllVehicles, getAllReminders } = await import("../db");
     
-    const db = await getDb();
-    if (!db) {
-      return {
-        customersTotal: 0,
-        customersImported: 0,
-        vehiclesTotal: 0,
-        vehiclesImported: 0,
-        remindersTotal: 0,
-        remindersImported: 0,
-      };
-    }
-    
-    const [customersCount] = await db.select({ count: sql<number>`count(*)` }).from(customers);
-    const [customersImportedCount] = await db.select({ count: sql<number>`count(*)` }).from(customers).where(sql`externalId IS NOT NULL`);
-    
-    const [vehiclesCount] = await db.select({ count: sql<number>`count(*)` }).from(vehicles);
-    const [vehiclesImportedCount] = await db.select({ count: sql<number>`count(*)` }).from(vehicles).where(sql`externalId IS NOT NULL`);
-    
-    const [remindersCount] = await db.select({ count: sql<number>`count(*)` }).from(reminders);
-    const [remindersImportedCount] = await db.select({ count: sql<number>`count(*)` }).from(reminders).where(sql`externalId IS NOT NULL`);
+    const customers = await getAllCustomers();
+    const vehicles = await getAllVehicles();
+    const reminders = await getAllReminders();
     
     return {
-      customersTotal: Number(customersCount?.count || 0),
-      customersImported: Number(customersImportedCount?.count || 0),
-      vehiclesTotal: Number(vehiclesCount?.count || 0),
-      vehiclesImported: Number(vehiclesImportedCount?.count || 0),
-      remindersTotal: Number(remindersCount?.count || 0),
-      remindersImported: Number(remindersImportedCount?.count || 0),
+      customers: customers.length,
+      vehicles: vehicles.length,
+      reminders: reminders.length,
     };
   }),
 });

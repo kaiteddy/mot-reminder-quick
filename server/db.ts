@@ -224,3 +224,85 @@ export async function getVehicleByRegistration(registration: string) {
   const result = await db.select().from(vehicles).where(eq(vehicles.registration, registration.toUpperCase())).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
+
+// Smart customer matching (phone, email, or name)
+export async function findCustomerBySmartMatch(phone: string | null, email: string | null, name: string | null) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { customers } = await import("../drizzle/schema");
+  const { sql: rawSql, or, and } = await import("drizzle-orm");
+  
+  const conditions = [];
+  
+  // Phone match (highest priority)
+  if (phone && phone.length >= 10) {
+    conditions.push(eq(customers.phone, phone));
+  }
+  
+  // Email match (second priority)
+  if (email && email.includes('@') && !email.includes('placeholder')) {
+    conditions.push(eq(customers.email, email));
+  }
+  
+  // Name match (lowest priority)
+  if (name && name.trim().length > 0) {
+    conditions.push(rawSql`LOWER(${customers.name}) = LOWER(${name})`);
+  }
+  
+  if (conditions.length === 0) return undefined;
+  
+  const result = await db.select().from(customers).where(or(...conditions)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Update customer with smart merge
+export async function updateCustomer(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { customers } = await import("../drizzle/schema");
+  await db.update(customers).set(data).where(eq(customers.id, id));
+}
+
+// Find vehicle by normalized registration
+export async function findVehicleByRegistration(registration: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { vehicles } = await import("../drizzle/schema");
+  const { sql: rawSql } = await import("drizzle-orm");
+  
+  // Normalize: uppercase, no spaces
+  const normalized = registration.toUpperCase().replace(/\s/g, '');
+  
+  const result = await db.select().from(vehicles)
+    .where(rawSql`UPPER(REPLACE(${vehicles.registration}, ' ', '')) = ${normalized}`)
+    .limit(1);
+    
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Update vehicle
+export async function updateVehicle(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { vehicles } = await import("../drizzle/schema");
+  await db.update(vehicles).set(data).where(eq(vehicles.id, id));
+}
+
+// Find customer by name (supports "First Last" or "Last, First")
+export async function findCustomerByName(name: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { customers } = await import("../drizzle/schema");
+  const { sql: rawSql, or } = await import("drizzle-orm");
+  
+  const result = await db.select().from(customers)
+    .where(rawSql`LOWER(${customers.name}) = LOWER(${name})`)
+    .limit(1);
+    
+  return result.length > 0 ? result[0] : undefined;
+}

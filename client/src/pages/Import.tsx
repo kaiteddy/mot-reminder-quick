@@ -159,24 +159,15 @@ export default function Import() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <div className="text-sm text-muted-foreground">Customers</div>
-                  <div className="text-2xl font-bold">{stats.customersTotal}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {stats.customersImported} imported from GA4
-                  </div>
+                  <div className="text-2xl font-bold">{stats.customers}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Vehicles</div>
-                  <div className="text-2xl font-bold">{stats.vehiclesTotal}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {stats.vehiclesImported} imported from GA4
-                  </div>
+                  <div className="text-2xl font-bold">{stats.vehicles}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Reminders</div>
-                  <div className="text-2xl font-bold">{stats.remindersTotal}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {stats.remindersImported} imported from GA4
-                  </div>
+                  <div className="text-2xl font-bold">{stats.reminders}</div>
                 </div>
               </div>
             </CardContent>
