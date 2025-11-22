@@ -138,3 +138,12 @@
 - [x] Add action buttons column (Edit, Send WhatsApp, Delete)
 - [x] Make table responsive and sortable
 - [x] Highlight urgent reminders in table
+
+## Table Sorting and Filtering
+- [x] Add sortable column headers (Type, Due Date, Registration, Customer, MOT Expiry, Days Left, Status)
+- [x] Implement sort state management (column, direction)
+- [x] Add sort indicators (up/down arrows) to column headers
+- [x] Create filter dropdowns for Type (MOT, Service, All)
+- [x] Create filter dropdowns for Status (pending, sent, archived, All)
+- [x] Combine filters with sorting
+- [x] Persist sort/filter state in component

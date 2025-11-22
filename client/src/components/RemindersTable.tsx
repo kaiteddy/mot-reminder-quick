@@ -10,7 +10,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Send, Trash2, Loader2, Pencil } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
@@ -20,34 +27,230 @@ interface RemindersTableProps {
   onEdit: (reminder: Reminder) => void;
 }
 
+type SortColumn = "type" | "dueDate" | "registration" | "customer" | "motExpiry" | "daysLeft" | "status";
+type SortDirection = "asc" | "desc";
+
 export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
+  const [sortColumn, setSortColumn] = useState<SortColumn>("dueDate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="w-4 h-4 ml-1 opacity-30" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-4 h-4 ml-1" />
+    ) : (
+      <ArrowDown className="w-4 h-4 ml-1" />
+    );
+  };
+
+  // Filter reminders
+  let filteredReminders = reminders;
+  
+  if (typeFilter !== "all") {
+    filteredReminders = filteredReminders.filter(r => r.type.toLowerCase() === typeFilter);
+  }
+  
+  if (statusFilter !== "all") {
+    filteredReminders = filteredReminders.filter(r => r.status === statusFilter);
+  }
+
+  // Sort reminders
+  const sortedReminders = [...filteredReminders].sort((a, b) => {
+    let aValue: any;
+    let bValue: any;
+
+    switch (sortColumn) {
+      case "type":
+        aValue = a.type;
+        bValue = b.type;
+        break;
+      case "dueDate":
+        aValue = new Date(a.dueDate).getTime();
+        bValue = new Date(b.dueDate).getTime();
+        break;
+      case "registration":
+        aValue = a.registration;
+        bValue = b.registration;
+        break;
+      case "customer":
+        aValue = a.customerName || "";
+        bValue = b.customerName || "";
+        break;
+      case "motExpiry":
+        aValue = a.motExpiryDate ? new Date(a.motExpiryDate).getTime() : 0;
+        bValue = b.motExpiryDate ? new Date(b.motExpiryDate).getTime() : 0;
+        break;
+      case "daysLeft":
+        const aDays = a.motExpiryDate 
+          ? Math.ceil((new Date(a.motExpiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : 999999;
+        const bDays = b.motExpiryDate 
+          ? Math.ceil((new Date(b.motExpiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : 999999;
+        aValue = aDays;
+        bValue = bDays;
+        break;
+      case "status":
+        aValue = a.status;
+        bValue = b.status;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+    if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+    return 0;
+  });
+
   return (
-    <div className="rounded-md border">
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">Type:</label>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="mot">MOT</SelectItem>
+              <SelectItem value="service">Service</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">Status:</label>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="text-sm text-muted-foreground flex items-center ml-auto">
+          Showing {sortedReminders.length} of {reminders.length} reminders
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Type</TableHead>
-            <TableHead>Due Date</TableHead>
-            <TableHead>Registration</TableHead>
-            <TableHead>Customer</TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("type")}
+              >
+                Type
+                {getSortIcon("type")}
+              </Button>
+            </TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("dueDate")}
+              >
+                Due Date
+                {getSortIcon("dueDate")}
+              </Button>
+            </TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("registration")}
+              >
+                Registration
+                {getSortIcon("registration")}
+              </Button>
+            </TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("customer")}
+              >
+                Customer
+                {getSortIcon("customer")}
+              </Button>
+            </TableHead>
             <TableHead>Phone</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Vehicle</TableHead>
-            <TableHead>MOT Expiry</TableHead>
-            <TableHead>Days Left</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("motExpiry")}
+              >
+                MOT Expiry
+                {getSortIcon("motExpiry")}
+              </Button>
+            </TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("daysLeft")}
+              >
+                Days Left
+                {getSortIcon("daysLeft")}
+              </Button>
+            </TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 font-semibold"
+                onClick={() => handleSort("status")}
+              >
+                Status
+                {getSortIcon("status")}
+              </Button>
+            </TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {reminders.length === 0 ? (
+          {sortedReminders.length === 0 ? (
             <TableRow>
               <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                 No reminders found
               </TableCell>
             </TableRow>
           ) : (
-            reminders.map((reminder) => (
+            sortedReminders.map((reminder) => (
               <ReminderRow
                 key={reminder.id}
                 reminder={reminder}
@@ -57,6 +260,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }
