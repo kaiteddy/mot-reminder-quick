@@ -306,3 +306,49 @@ export async function findCustomerByName(name: string) {
     
   return result.length > 0 ? result[0] : undefined;
 }
+
+// Get all vehicles with customer information
+export async function getAllVehiclesWithCustomers() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { vehicles, customers } = await import("../drizzle/schema");
+  
+  const result = await db
+    .select({
+      id: vehicles.id,
+      registration: vehicles.registration,
+      make: vehicles.make,
+      model: vehicles.model,
+      colour: vehicles.colour,
+      fuelType: vehicles.fuelType,
+      vin: vehicles.vin,
+      engineCC: vehicles.engineCC,
+      motExpiryDate: vehicles.motExpiryDate,
+      dateOfRegistration: vehicles.dateOfRegistration,
+      notes: vehicles.notes,
+      customerId: vehicles.customerId,
+      customerName: customers.name,
+      customerPhone: customers.phone,
+      customerEmail: customers.email,
+      customerAddress: customers.address,
+    })
+    .from(vehicles)
+    .leftJoin(customers, eq(vehicles.customerId, customers.id))
+    .orderBy(vehicles.registration);
+    
+  return result;
+}
+
+// Bulk update vehicle MOT data
+export async function bulkUpdateVehicleMOT(updates: Array<{ id: number; motExpiryDate: Date | null; make?: string; model?: string; colour?: string; fuelType?: string }>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { vehicles } = await import("../drizzle/schema");
+  
+  for (const update of updates) {
+    const { id, ...data } = update;
+    await db.update(vehicles).set(data).where(eq(vehicles.id, id));
+  }
+}

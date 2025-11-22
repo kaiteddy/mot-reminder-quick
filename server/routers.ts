@@ -361,6 +361,98 @@ export const appRouter = router({
         return { success: true, messageId: result.messageId };
       }),
   }),
+  
+  // Database overview
+  database: router({
+    getAllVehiclesWithCustomers: publicProcedure.query(async () => {
+      const { getAllVehiclesWithCustomers } = await import("./db");
+      return await getAllVehiclesWithCustomers();
+    }),
+    
+    bulkUpdateMOT: publicProcedure
+      .input(z.object({
+        vehicleIds: z.array(z.number()).optional(), // If empty, update all
+      }))
+      .mutation(async ({ input }) => {
+        const { getAllVehicles, bulkUpdateVehicleMOT } = await import("./db");
+        const { getVehicleDetails } = await import("./dvlaApi");
+        
+        // Get vehicles to update
+        const allVehicles = await getAllVehicles();
+        const vehiclesToUpdate = input.vehicleIds && input.vehicleIds.length > 0
+          ? allVehicles.filter(v => input.vehicleIds!.includes(v.id))
+          : allVehicles;
+        
+        let updated = 0;
+        let failed = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+        const updates: Array<{ id: number; motExpiryDate: Date | null; make?: string; model?: string; colour?: string; fuelType?: string }> = [];
+        
+        console.log(`[BULK-MOT] Starting bulk MOT check for ${vehiclesToUpdate.length} vehicles...`);
+        
+        for (const vehicle of vehiclesToUpdate) {
+          try {
+            if (!vehicle.registration) {
+              skipped++;
+              continue;
+            }
+            
+            const dvlaData = await getVehicleDetails(vehicle.registration);
+            
+            if (dvlaData && dvlaData.motExpiryDate) {
+              const update: any = {
+                id: vehicle.id,
+                motExpiryDate: new Date(dvlaData.motExpiryDate),
+              };
+              
+              // Update other fields if they're better
+              if (dvlaData.make && (!vehicle.make || dvlaData.make.length > vehicle.make.length)) {
+                update.make = dvlaData.make;
+              }
+              if (dvlaData.model && (!vehicle.model || dvlaData.model.length > vehicle.model.length)) {
+                update.model = dvlaData.model;
+              }
+              if (dvlaData.colour && !vehicle.colour) {
+                update.colour = dvlaData.colour;
+              }
+              if (dvlaData.fuelType && !vehicle.fuelType) {
+                update.fuelType = dvlaData.fuelType;
+              }
+              
+              updates.push(update);
+              updated++;
+              console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${dvlaData.motExpiryDate}`);
+            } else {
+              skipped++;
+              console.log(`[BULK-MOT] No MOT data for ${vehicle.registration}`);
+            }
+            
+            // Add small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (error: any) {
+            failed++;
+            errors.push(`${vehicle.registration}: ${error.message}`);
+            console.error(`[BULK-MOT] Error for ${vehicle.registration}:`, error);
+          }
+        }
+        
+        // Apply all updates
+        if (updates.length > 0) {
+          await bulkUpdateVehicleMOT(updates);
+        }
+        
+        console.log(`[BULK-MOT] Completed: ${updated} updated, ${failed} failed, ${skipped} skipped`);
+        
+        return {
+          total: vehiclesToUpdate.length,
+          updated,
+          failed,
+          skipped,
+          errors: errors.slice(0, 10), // Return first 10 errors
+        };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

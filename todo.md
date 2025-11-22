@@ -194,3 +194,13 @@
 - [x] Fix CSV data encoding/format issue (handle both data URL and raw base64)
 - [x] Fix invalid date parsing error in vehicle import
 - [ ] Test import with actual CSV files
+
+## Database Overview Page
+- [x] Create database query to fetch all vehicles with customer and MOT data
+- [x] Create database overview page component
+- [x] Add MOT status indicators (expired/due/valid)
+- [x] Add sorting and filtering capabilities
+- [x] Add search functionality
+- [x] Add bulk MOT API check functionality
+- [x] Add progress tracking for bulk updates
+- [x] Add route and navigation link
