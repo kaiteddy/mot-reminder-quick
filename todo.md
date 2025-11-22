@@ -212,3 +212,11 @@
 - [x] Add diagnostic endpoint to check specific vehicles
 - [x] Create report showing reasons for missing MOT data
 - [x] Add diagnostic page with recommendations
+
+## Date-Range Filters for MOT Expiry
+- [x] Add filter categories for expired vehicles (90, 60, 30, 7 days ago)
+- [x] Add filter categories for expiring vehicles (7, 14, 30, 60, 90 days ahead)
+- [x] Update Database page UI with date-range filter buttons
+- [x] Add statistics cards for each date range
+- [x] Make filters clickable to show only matching vehicles
+- [x] Combine date-range filters with existing search and status filters

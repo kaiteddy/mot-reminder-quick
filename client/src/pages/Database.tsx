@@ -35,12 +35,14 @@ import { Link } from "wouter";
 type SortField = "registration" | "customer" | "make" | "motExpiry";
 type SortDirection = "asc" | "desc";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
+type DateRangeFilter = "all" | "expired-90" | "expired-60" | "expired-30" | "expired-7" | "expiring-7" | "expiring-14" | "expiring-30" | "expiring-60" | "expiring-90";
 
 export default function Database() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("registration");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [motStatusFilter, setMOTStatusFilter] = useState<MOTStatusFilter>("all");
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
 
   const { data: vehicles, isLoading, refetch } = trpc.database.getAllVehiclesWithCustomers.useQuery();
   
@@ -114,6 +116,46 @@ export default function Database() {
         if (status !== motStatusFilter) return false;
       }
       
+      // Date range filter
+      if (dateRangeFilter !== "all") {
+        if (!vehicle.motExpiryDate) return false;
+        
+        const today = new Date();
+        const expiry = new Date(vehicle.motExpiryDate);
+        const diffTime = expiry.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        switch (dateRangeFilter) {
+          case "expired-90":
+            if (diffDays >= 0 || diffDays < -90) return false;
+            break;
+          case "expired-60":
+            if (diffDays >= 0 || diffDays < -60) return false;
+            break;
+          case "expired-30":
+            if (diffDays >= 0 || diffDays < -30) return false;
+            break;
+          case "expired-7":
+            if (diffDays >= 0 || diffDays < -7) return false;
+            break;
+          case "expiring-7":
+            if (diffDays < 0 || diffDays > 7) return false;
+            break;
+          case "expiring-14":
+            if (diffDays < 0 || diffDays > 14) return false;
+            break;
+          case "expiring-30":
+            if (diffDays < 0 || diffDays > 30) return false;
+            break;
+          case "expiring-60":
+            if (diffDays < 0 || diffDays > 60) return false;
+            break;
+          case "expiring-90":
+            if (diffDays < 0 || diffDays > 90) return false;
+            break;
+        }
+      }
+      
       return true;
     });
     
@@ -148,7 +190,7 @@ export default function Database() {
     });
     
     return filtered;
-  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter]);
+  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -160,27 +202,56 @@ export default function Database() {
   };
 
   const stats = useMemo(() => {
-    if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0 };
+    if (!vehicles) return { 
+      total: 0, expired: 0, due: 0, valid: 0, noData: 0,
+      expired90: 0, expired60: 0, expired30: 0, expired7: 0,
+      expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0
+    };
     
     let expired = 0;
     let due = 0;
     let valid = 0;
     let noData = 0;
+    let expired90 = 0, expired60 = 0, expired30 = 0, expired7 = 0;
+    let expiring7 = 0, expiring14 = 0, expiring30 = 0, expiring60 = 0, expiring90 = 0;
+    
+    const today = new Date();
     
     vehicles.forEach(vehicle => {
       const { status } = getMOTStatus(vehicle.motExpiryDate);
       if (!vehicle.motExpiryDate) {
         noData++;
-      } else if (status === "expired") {
-        expired++;
-      } else if (status === "due") {
-        due++;
       } else {
-        valid++;
+        const expiry = new Date(vehicle.motExpiryDate);
+        const diffTime = expiry.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (status === "expired") {
+          expired++;
+          if (diffDays >= -90) expired90++;
+          if (diffDays >= -60) expired60++;
+          if (diffDays >= -30) expired30++;
+          if (diffDays >= -7) expired7++;
+        } else if (status === "due") {
+          due++;
+        } else {
+          valid++;
+        }
+        
+        // Count expiring vehicles
+        if (diffDays >= 0 && diffDays <= 7) expiring7++;
+        if (diffDays >= 0 && diffDays <= 14) expiring14++;
+        if (diffDays >= 0 && diffDays <= 30) expiring30++;
+        if (diffDays >= 0 && diffDays <= 60) expiring60++;
+        if (diffDays >= 0 && diffDays <= 90) expiring90++;
       }
     });
     
-    return { total: vehicles.length, expired, due, valid, noData };
+    return { 
+      total: vehicles.length, expired, due, valid, noData,
+      expired90, expired60, expired30, expired7,
+      expiring7, expiring14, expiring30, expiring60, expiring90
+    };
   }, [vehicles]);
 
   return (
@@ -269,6 +340,113 @@ export default function Database() {
             </CardHeader>
           </Card>
         </div>
+
+        {/* Date Range Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filter by Date Range</CardTitle>
+            <CardDescription>Click a category to filter vehicles by MOT expiry timeframe</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Expired Categories */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Expired</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <Button
+                    variant={dateRangeFilter === "expired-90" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-90" ? "all" : "expired-90")}
+                    className="justify-between"
+                  >
+                    <span>Last 90 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expired90}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expired-60" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-60" ? "all" : "expired-60")}
+                    className="justify-between"
+                  >
+                    <span>Last 60 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expired60}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expired-30" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-30" ? "all" : "expired-30")}
+                    className="justify-between"
+                  >
+                    <span>Last 30 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expired30}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expired-7" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-7" ? "all" : "expired-7")}
+                    className="justify-between"
+                  >
+                    <span>Last 7 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expired7}</Badge>
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Expiring Categories */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Expiring Soon</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  <Button
+                    variant={dateRangeFilter === "expiring-7" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-7" ? "all" : "expiring-7")}
+                    className="justify-between"
+                  >
+                    <span>Next 7 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expiring7}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expiring-14" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-14" ? "all" : "expiring-14")}
+                    className="justify-between"
+                  >
+                    <span>Next 14 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expiring14}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expiring-30" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-30" ? "all" : "expiring-30")}
+                    className="justify-between"
+                  >
+                    <span>Next 30 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expiring30}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expiring-60" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-60" ? "all" : "expiring-60")}
+                    className="justify-between"
+                  >
+                    <span>Next 60 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expiring60}</Badge>
+                  </Button>
+                  <Button
+                    variant={dateRangeFilter === "expiring-90" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-90" ? "all" : "expiring-90")}
+                    className="justify-between"
+                  >
+                    <span>Next 90 days</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expiring90}</Badge>
+                  </Button>
+                </div>
+              </div>
+              
+              {dateRangeFilter !== "all" && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setDateRangeFilter("all")}
+                  className="w-full"
+                >
+                  Clear Date Filter
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Filters */}
         <Card>
