@@ -5,7 +5,7 @@ import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Plus, Search } from "lucide-react";
+import { Calendar, Plus, Search, Upload } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -68,6 +68,12 @@ export default function Home() {
               <Button variant="outline" size="lg">
                 <Search className="w-4 h-4 mr-2" />
                 MOT Check
+              </Button>
+            </Link>
+            <Link href="/import">
+              <Button variant="outline" size="lg">
+                <Upload className="w-4 h-4 mr-2" />
+                Import from GA4
               </Button>
             </Link>
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">

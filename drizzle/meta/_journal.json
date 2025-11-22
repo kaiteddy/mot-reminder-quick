@@ -22,6 +22,13 @@
       "when": 1763737287736,
       "tag": "0002_freezing_banshee",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1763828344626,
+      "tag": "0003_bouncy_veda",
+      "breakpoints": true
     }
   ]
 }

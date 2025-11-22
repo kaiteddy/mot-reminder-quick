@@ -130,6 +130,8 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="mot">MOT</SelectItem>
               <SelectItem value="service">Service</SelectItem>
+              <SelectItem value="cambelt">Cambelt</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
             </SelectContent>
           </Select>
         </div>

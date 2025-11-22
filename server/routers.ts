@@ -3,10 +3,12 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import { importRouter } from "./routers/import";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+  import: importRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -66,7 +68,7 @@ export const appRouter = router({
                     items: {
                       type: "object",
                       properties: {
-                        type: { type: "string", enum: ["MOT", "Service"] },
+                        type: { type: "string", enum: ["MOT", "Service", "Cambelt", "Other"] },
                         dueDate: { type: "string" },
                         registration: { type: "string" },
                         customerName: { type: "string" },
@@ -117,7 +119,7 @@ export const appRouter = router({
             }
 
             await createReminder({
-              type: reminder.type as "MOT" | "Service",
+              type: reminder.type as "MOT" | "Service" | "Cambelt" | "Other",
               dueDate: new Date(reminder.dueDate),
               registration: reminder.registration,
               customerName: reminder.customerName || null,
@@ -227,7 +229,7 @@ export const appRouter = router({
     update: publicProcedure
       .input(z.object({
         id: z.number(),
-        type: z.enum(["MOT", "Service"]).optional(),
+        type: z.enum(["MOT", "Service", "Cambelt", "Other"]).optional(),
         dueDate: z.string().optional(),
         registration: z.string().optional(),
         customerName: z.string().optional(),

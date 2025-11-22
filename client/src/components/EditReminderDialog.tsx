@@ -115,10 +115,12 @@ export function EditReminderDialog({ reminder, open, onOpenChange, onSuccess }: 
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MOT">MOT</SelectItem>
-                  <SelectItem value="Service">Service</SelectItem>
-                </SelectContent>
+            <SelectContent>
+              <SelectItem value="MOT">MOT</SelectItem>
+              <SelectItem value="Service">Service</SelectItem>
+              <SelectItem value="Cambelt">Cambelt</SelectItem>
+              <SelectItem value="Other">Other</SelectItem>
+            </SelectContent>
               </Select>
             </div>
 

@@ -147,3 +147,15 @@
 - [x] Create filter dropdowns for Status (pending, sent, archived, All)
 - [x] Combine filters with sorting
 - [x] Persist sort/filter state in component
+
+## CSV Import from Garage Assistant 4
+- [x] Analyze CSV file structures (Customers, Vehicles, Reminders, Reminder_Templates)
+- [x] Create CSV upload interface
+- [x] Implement CSV parsing for Customers.csv
+- [x] Implement CSV parsing for Vehicles.csv
+- [x] Implement CSV parsing for Reminders.csv
+- [x] Map Garage Assistant 4 fields to MOT Reminder Quick schema
+- [x] Handle duplicate detection and merging
+- [x] Add import progress indicator
+- [x] Create import summary report
+- [ ] Test with real Garage Assistant 4 data

@@ -33,6 +33,10 @@ export const customers = mysqlTable("customers", {
   name: text("name").notNull(),
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 20 }),
+  externalId: varchar("externalId", { length: 255 }), // GA4 _ID
+  address: text("address"),
+  postcode: varchar("postcode", { length: 20 }),
+  notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -51,6 +55,13 @@ export const vehicles = mysqlTable("vehicles", {
   motExpiryDate: timestamp("motExpiryDate"),
   lastChecked: timestamp("lastChecked"),
   customerId: int("customerId"),
+  externalId: varchar("externalId", { length: 255 }), // GA4 _ID
+  colour: varchar("colour", { length: 50 }),
+  fuelType: varchar("fuelType", { length: 50 }),
+  dateOfRegistration: timestamp("dateOfRegistration"),
+  vin: varchar("vin", { length: 50 }),
+  engineCC: int("engineCC"),
+  notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -63,7 +74,7 @@ export type InsertVehicle = typeof vehicles.$inferInsert;
  */
 export const reminders = mysqlTable("reminders", {
   id: int("id").autoincrement().primaryKey(),
-  type: mysqlEnum("type", ["MOT", "Service"]).notNull(),
+  type: mysqlEnum("type", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
   dueDate: timestamp("dueDate").notNull(),
   registration: varchar("registration", { length: 20 }).notNull(),
   customerName: text("customerName"),
@@ -74,9 +85,11 @@ export const reminders = mysqlTable("reminders", {
   motExpiryDate: timestamp("motExpiryDate"),
   status: mysqlEnum("status", ["pending", "sent", "archived"]).default("pending").notNull(),
   sentAt: timestamp("sentAt"),
+  sentMethod: varchar("sentMethod", { length: 20 }), // email, print, sms, whatsapp
   notes: text("notes"),
   vehicleId: int("vehicleId"),
   customerId: int("customerId"),
+  externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -122,3 +122,50 @@ export async function deleteReminder(id: number) {
   const { reminders } = await import("../drizzle/schema");
   await db.delete(reminders).where(eq(reminders.id, id));
 }
+
+// Customer queries
+export async function createCustomer(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { customers } = await import("../drizzle/schema");
+  const result = await db.insert(customers).values(data);
+  return result;
+}
+
+export async function getCustomerByExternalId(externalId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { customers } = await import("../drizzle/schema");
+  const result = await db.select().from(customers).where(eq(customers.externalId, externalId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getCustomerById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { customers } = await import("../drizzle/schema");
+  const result = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Vehicle queries
+export async function createVehicle(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { vehicles } = await import("../drizzle/schema");
+  const result = await db.insert(vehicles).values(data);
+  return result;
+}
+
+export async function getVehicleByExternalId(externalId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { vehicles } = await import("../drizzle/schema");
+  const result = await db.select().from(vehicles).where(eq(vehicles.externalId, externalId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
