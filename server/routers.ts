@@ -527,8 +527,35 @@ export const appRouter = router({
         tested: diagnostics.length,
         diagnostics,
       };
-    }),
+      }),
   }),
+  
+  // Test WhatsApp/SMS
+  testWhatsApp: publicProcedure
+    .input(z.object({
+      phoneNumber: z.string(),
+      message: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { sendSMS } = await import("./smsService");
+      
+      const testMessage = input.message || `Test message from MOT Reminder Quick App. This is a test to verify WhatsApp integration is working correctly. Sent at ${new Date().toLocaleString("en-GB")}.`;
+      
+      const result = await sendSMS({
+        to: input.phoneNumber,
+        message: testMessage,
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send WhatsApp message");
+      }
+      
+      return {
+        success: true,
+        messageId: result.messageId,
+        message: "Test message sent successfully!",
+      };
+    }),
 });
 
 export type AppRouter = typeof appRouter;

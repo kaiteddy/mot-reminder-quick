@@ -5,7 +5,7 @@ import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Plus, Search, Upload, Users, Car, Database } from "lucide-react";
+import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -92,6 +92,12 @@ export default function Home() {
               <Button variant="outline" size="lg">
                 <Upload className="w-4 h-4 mr-2" />
                 Import from GA4
+              </Button>
+            </Link>
+            <Link href="/test-whatsapp">
+              <Button variant="outline" size="lg">
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Test WhatsApp
               </Button>
             </Link>
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">

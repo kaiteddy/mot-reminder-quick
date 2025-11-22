@@ -220,3 +220,10 @@
 - [x] Add statistics cards for each date range
 - [x] Make filters clickable to show only matching vehicles
 - [x] Combine date-range filters with existing search and status filters
+
+## WhatsApp/SMS Testing
+- [x] Review current WhatsApp integration
+- [x] Create test message endpoint
+- [x] Create test WhatsApp page
+- [ ] Send test message to +447843275372
+- [ ] Verify message delivery
