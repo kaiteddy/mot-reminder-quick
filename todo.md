@@ -204,3 +204,11 @@
 - [x] Add bulk MOT API check functionality
 - [x] Add progress tracking for bulk updates
 - [x] Add route and navigation link
+
+## Investigate Vehicles with No MOT Data
+- [x] Query database for vehicles without MOT expiry dates
+- [x] Check registration format validity
+- [x] Test DVLA API with sample registrations
+- [x] Add diagnostic endpoint to check specific vehicles
+- [x] Create report showing reasons for missing MOT data
+- [x] Add diagnostic page with recommendations

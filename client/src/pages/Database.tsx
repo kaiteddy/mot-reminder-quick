@@ -199,6 +199,14 @@ export default function Database() {
             <Button variant="outline" asChild>
               <Link href="/">← Back to Home</Link>
             </Button>
+            {stats.noData > 0 && (
+              <Button variant="outline" asChild>
+                <Link href="/diagnose-mot">
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Diagnose {stats.noData} Missing MOT
+                </Link>
+              </Button>
+            )}
             <Button 
               onClick={handleBulkUpdate}
               disabled={bulkUpdateMutation.isPending || isLoading}

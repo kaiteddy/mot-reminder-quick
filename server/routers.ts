@@ -452,6 +452,82 @@ export const appRouter = router({
           errors: errors.slice(0, 10), // Return first 10 errors
         };
       }),
+    
+    // Diagnostic endpoint to investigate vehicles without MOT data
+    diagnoseNoMOT: publicProcedure.query(async () => {
+      const { getAllVehicles } = await import("./db");
+      const { getVehicleDetails } = await import("./dvlaApi");
+      
+      const allVehicles = await getAllVehicles();
+      const vehiclesWithoutMOT = allVehicles.filter(v => !v.motExpiryDate);
+      
+      console.log(`[DIAGNOSE] Found ${vehiclesWithoutMOT.length} vehicles without MOT data`);
+      
+      const diagnostics = [];
+      
+      for (const vehicle of vehiclesWithoutMOT.slice(0, 20)) { // Test first 20
+        const diagnosis: any = {
+          id: vehicle.id,
+          registration: vehicle.registration,
+          make: vehicle.make,
+          model: vehicle.model,
+          issues: [],
+        };
+        
+        // Check if registration exists
+        if (!vehicle.registration) {
+          diagnosis.issues.push("No registration number");
+          diagnostics.push(diagnosis);
+          continue;
+        }
+        
+        // Check registration format
+        const cleanReg = vehicle.registration.replace(/\s+/g, "").toUpperCase();
+        const patterns = [
+          /^[A-Z]{2}\d{2}[A-Z]{3}$/, // Current (AB12CDE)
+          /^[A-Z]\d{1,3}[A-Z]{3}$/, // Prefix (A123BCD)
+          /^[A-Z]{3}\d{1,3}[A-Z]$/, // Suffix (ABC123D)
+          /^[A-Z]{1,3}\d{1,4}$/, // Dateless (ABC1234)
+        ];
+        
+        const isValidFormat = patterns.some(pattern => pattern.test(cleanReg));
+        if (!isValidFormat) {
+          diagnosis.issues.push(`Invalid UK registration format: ${cleanReg}`);
+        }
+        
+        // Try DVLA API
+        try {
+          const dvlaData = await getVehicleDetails(vehicle.registration);
+          if (!dvlaData) {
+            diagnosis.issues.push("DVLA API returned no data (404 or vehicle not found)");
+          } else if (!dvlaData.motExpiryDate) {
+            diagnosis.issues.push("DVLA API returned data but no MOT expiry date (vehicle may be exempt or too new)");
+            diagnosis.dvlaData = {
+              make: dvlaData.make,
+              model: dvlaData.model,
+              yearOfManufacture: dvlaData.yearOfManufacture,
+              taxStatus: dvlaData.taxStatus,
+            };
+          } else {
+            diagnosis.issues.push("DVLA API has MOT data - needs database update");
+            diagnosis.motExpiryDate = dvlaData.motExpiryDate;
+          }
+        } catch (error: any) {
+          diagnosis.issues.push(`DVLA API error: ${error.message}`);
+        }
+        
+        diagnostics.push(diagnosis);
+        
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      return {
+        total: vehiclesWithoutMOT.length,
+        tested: diagnostics.length,
+        diagnostics,
+      };
+    }),
   }),
 });
 

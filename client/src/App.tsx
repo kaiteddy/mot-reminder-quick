@@ -10,6 +10,7 @@ import Import from "./pages/Import";
 import Customers from "./pages/Customers";
 import Vehicles from "./pages/Vehicles";
 import Database from "./pages/Database";
+import DiagnoseMOT from "./pages/DiagnoseMOT";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/customers" component={Customers} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/database" component={Database} />
+      <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
