@@ -169,3 +169,58 @@ export async function getVehicleByExternalId(externalId: string) {
   const result = await db.select().from(vehicles).where(eq(vehicles.externalId, externalId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
+
+// Get all customers
+export async function getAllCustomers() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { customers } = await import("../drizzle/schema");
+  return db.select().from(customers).orderBy(customers.name);
+}
+
+// Get all vehicles
+export async function getAllVehicles() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { vehicles } = await import("../drizzle/schema");
+  return db.select().from(vehicles).orderBy(vehicles.registration);
+}
+
+// Get vehicles by customer ID
+export async function getVehiclesByCustomerId(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { vehicles } = await import("../drizzle/schema");
+  return db.select().from(vehicles).where(eq(vehicles.customerId, customerId));
+}
+
+// Get reminders by customer ID
+export async function getRemindersByCustomerId(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { reminders } = await import("../drizzle/schema");
+  return db.select().from(reminders).where(eq(reminders.customerId, customerId));
+}
+
+// Get reminders by vehicle ID
+export async function getRemindersByVehicleId(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { reminders } = await import("../drizzle/schema");
+  return db.select().from(reminders).where(eq(reminders.vehicleId, vehicleId));
+}
+
+// Get vehicle by registration
+export async function getVehicleByRegistration(registration: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { vehicles } = await import("../drizzle/schema");
+  const result = await db.select().from(vehicles).where(eq(vehicles.registration, registration.toUpperCase())).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}

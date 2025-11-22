@@ -159,3 +159,13 @@
 - [x] Add import progress indicator
 - [x] Create import summary report
 - [ ] Test with real Garage Assistant 4 data
+
+## Customer and Vehicle Management Views
+- [x] Create customers list page with table view
+- [x] Add customer search and filtering
+- [ ] Create customer detail page showing vehicles and reminders
+- [x] Create vehicles list page with table view
+- [x] Add vehicle search and filtering
+- [ ] Create vehicle detail page showing MOT history and reminders
+- [x] Add navigation links to customers and vehicles pages
+- [x] Add database queries for customers and vehicles

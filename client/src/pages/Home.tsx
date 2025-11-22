@@ -5,7 +5,7 @@ import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Plus, Search, Upload } from "lucide-react";
+import { Calendar, Plus, Search, Upload, Users, Car } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -64,6 +64,18 @@ export default function Home() {
             </p>
           </div>
           <div className="flex gap-3">
+            <Link href="/customers">
+              <Button variant="outline" size="lg">
+                <Users className="w-4 h-4 mr-2" />
+                Customers
+              </Button>
+            </Link>
+            <Link href="/vehicles">
+              <Button variant="outline" size="lg">
+                <Car className="w-4 h-4 mr-2" />
+                Vehicles
+              </Button>
+            </Link>
             <Link href="/mot-check">
               <Button variant="outline" size="lg">
                 <Search className="w-4 h-4 mr-2" />

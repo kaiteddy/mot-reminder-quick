@@ -20,6 +20,50 @@ export const appRouter = router({
     }),
   }),
 
+  customers: router({
+    list: publicProcedure.query(async () => {
+      const { getAllCustomers } = await import("./db");
+      return getAllCustomers();
+    }),
+    
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getCustomerById, getVehiclesByCustomerId, getRemindersByCustomerId } = await import("./db");
+        const customer = await getCustomerById(input.id);
+        if (!customer) return null;
+        
+        const vehicles = await getVehiclesByCustomerId(input.id);
+        const reminders = await getRemindersByCustomerId(input.id);
+        
+        return { customer, vehicles, reminders };
+      }),
+  }),
+  
+  vehicles: router({
+    list: publicProcedure.query(async () => {
+      const { getAllVehicles } = await import("./db");
+      return getAllVehicles();
+    }),
+    
+    getByRegistration: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { getVehicleByRegistration, getCustomerById, getRemindersByVehicleId } = await import("./db");
+        const vehicle = await getVehicleByRegistration(input.registration);
+        if (!vehicle) return null;
+        
+        let customer = null;
+        if (vehicle.customerId) {
+          customer = await getCustomerById(vehicle.customerId);
+        }
+        
+        const reminders = await getRemindersByVehicleId(vehicle.id);
+        
+        return { vehicle, customer, reminders };
+      }),
+  }),
+
   reminders: router({
     list: publicProcedure.query(async () => {
       const { getAllReminders } = await import("./db");
