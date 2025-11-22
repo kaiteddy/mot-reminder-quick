@@ -227,3 +227,9 @@
 - [x] Create test WhatsApp page
 - [ ] Send test message to +447843275372
 - [ ] Verify message delivery
+
+## Fix WhatsApp Number Formatting
+- [x] Check TWILIO_WHATSAPP_NUMBER format in environment
+- [x] Ensure From number includes whatsapp: prefix
+- [x] Fix smsService.ts to handle both formats
+- [ ] Test message delivery to +447843275372

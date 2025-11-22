@@ -44,9 +44,14 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     // Format recipient number for WhatsApp if not already formatted
     const toNumber = params.to.startsWith('whatsapp:') ? params.to : `whatsapp:${params.to}`;
     
+    // Ensure From number also has whatsapp: prefix
+    const fromNumber = config.whatsappNumber.startsWith('whatsapp:') 
+      ? config.whatsappNumber 
+      : `whatsapp:${config.whatsappNumber}`;
+    
     const formData = new URLSearchParams({
       To: toNumber,
-      From: config.whatsappNumber,
+      From: fromNumber,
       Body: params.message,
     });
 
