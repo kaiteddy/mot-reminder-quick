@@ -280,3 +280,12 @@
 - [x] Add response dialog/page to view customer replies
 - [x] Show response timestamps and content
 - [x] Add mark as read functionality
+
+## Group Reminders by Customer
+- [x] Update RemindersTable to group reminders by customer
+- [x] Show customer name as group header with phone number
+- [x] Display all reminder types (MOT, Service, etc.) under each customer
+- [x] Add visual grouping with cards and borders
+- [x] Maintain sorting and filtering within groups
+- [x] Show reminder count badge per customer
+- [ ] Add "Send All" button per customer group
