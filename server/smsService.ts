@@ -205,3 +205,46 @@ export async function sendServiceReminderWithTemplate(params: {
     },
   });
 }
+
+/**
+ * Format customer name for WhatsApp templates
+ * Handles various name field combinations
+ */
+export function formatCustomerName(params: {
+  title?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  surname?: string | null;
+  fullName?: string | null;
+}): string {
+  // If fullName is provided, use it
+  if (params.fullName) {
+    return params.fullName.trim();
+  }
+
+  const parts: string[] = [];
+
+  // Add title if present
+  if (params.title) {
+    parts.push(params.title.trim());
+  }
+
+  // Add first name if present
+  if (params.firstName) {
+    parts.push(params.firstName.trim());
+  }
+
+  // Add last name or surname (prefer lastName)
+  const lastNamePart = params.lastName || params.surname;
+  if (lastNamePart) {
+    parts.push(lastNamePart.trim());
+  }
+
+  // If we have parts, join them
+  if (parts.length > 0) {
+    return parts.join(' ');
+  }
+
+  // Fallback
+  return 'Customer';
+}

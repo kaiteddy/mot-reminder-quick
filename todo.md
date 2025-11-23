@@ -303,3 +303,22 @@
 - [x] Add servicereminder template support (HXac307a9bd92b65df83038c2b2a3eeeff)
 - [x] Update sendWhatsApp mutation to use servicereminder for Service type reminders
 - [ ] Test both templates with real messages
+
+## Test WhatsApp Templates
+- [x] Send MOT reminder test to +447843275372 using motreminder template
+- [x] Send Service reminder test to +447843275372 using servicereminder template
+- [ ] Verify both messages received correctly
+
+## Ungroup Reminders Table
+- [x] Remove customer grouping from RemindersTable
+- [x] Show individual reminder rows
+- [x] Add visual indicator when customer has multiple services due
+- [x] Highlight rows for same customer with amber background and "Multiple" badge
+
+## Fix Customer Name Mapping for Templates
+- [x] Create helper function to format customer names for templates
+- [x] Handle variations: title + first + last, first + last, last only, surname only
+- [x] Test with different name variations (6 test cases sent)
+- [x] Send test reminders to +447843275372 with proper formatting
+- [ ] Update sendWhatsApp mutation to use formatted names when customer data available
+- [ ] Update CSV import to use formatCustomerName helper

@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import type { Reminder } from "../../../drizzle/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -18,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Users } from "lucide-react";
+import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
@@ -36,6 +35,30 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const utils = trpc.useUtils();
+
+  const deleteReminder = trpc.reminders.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Reminder deleted");
+      utils.reminders.list.invalidate();
+      utils.reminders.generateFromVehicles.invalidate();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete: ${error.message}`);
+    },
+  });
+
+  const sendWhatsApp = trpc.reminders.sendWhatsApp.useMutation({
+    onSuccess: () => {
+      toast.success("WhatsApp message sent");
+      utils.reminders.list.invalidate();
+      utils.reminders.generateFromVehicles.invalidate();
+    },
+    onError: (error) => {
+      toast.error(`Failed to send: ${error.message}`);
+    },
+  });
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -56,6 +79,16 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
       <ArrowDown className="w-4 h-4 ml-1" />
     );
   };
+
+  // Count reminders per customer
+  const customerReminderCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    reminders.forEach(r => {
+      const key = r.customerName || "Unknown";
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  }, [reminders]);
 
   // Filter reminders
   let filteredReminders = reminders;
@@ -117,24 +150,6 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
     return 0;
   });
 
-  // Group reminders by customer
-  const groupedReminders = useMemo(() => {
-    const groups = new Map<string, Reminder[]>();
-    
-    sortedReminders.forEach(reminder => {
-      const key = reminder.customerName || "Unknown Customer";
-      if (!groups.has(key)) {
-        groups.set(key, []);
-      }
-      groups.get(key)!.push(reminder);
-    });
-
-    return Array.from(groups.entries()).map(([customerName, customerReminders]) => ({
-      customerName,
-      reminders: customerReminders,
-    }));
-  }, [sortedReminders]);
-
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -175,278 +190,233 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
         </div>
       </div>
 
-      {/* Grouped Reminders */}
-      {groupedReminders.length === 0 ? (
+      {/* Reminders Table */}
+      {sortedReminders.length === 0 ? (
         <div className="rounded-md border p-8 text-center text-muted-foreground">
           No reminders found
         </div>
       ) : (
-        <div className="space-y-6">
-          {groupedReminders.map(({ customerName, reminders: customerReminders }) => (
-            <Card key={customerName} className="border-2">
-              <CardHeader className="pb-3 bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Users className="w-5 h-5" />
-                    {customerName}
-                    <Badge variant="secondary" className="ml-2">
-                      {customerReminders.length} reminder{customerReminders.length > 1 ? 's' : ''}
-                    </Badge>
-                  </CardTitle>
-                  {customerReminders[0]?.customerPhone && (
-                    <div className="text-sm text-muted-foreground font-mono">
-                      {customerReminders[0].customerPhone}
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="rounded-md">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("type")}
-                          >
-                            Type
-                            {getSortIcon("type")}
-                          </Button>
-                        </TableHead>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("dueDate")}
-                          >
-                            Due Date
-                            {getSortIcon("dueDate")}
-                          </Button>
-                        </TableHead>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("registration")}
-                          >
-                            Registration
-                            {getSortIcon("registration")}
-                          </Button>
-                        </TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Vehicle</TableHead>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("motExpiry")}
-                          >
-                            MOT Expiry
-                            {getSortIcon("motExpiry")}
-                          </Button>
-                        </TableHead>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("daysLeft")}
-                          >
-                            Days Left
-                            {getSortIcon("daysLeft")}
-                          </Button>
-                        </TableHead>
-                        <TableHead>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 font-semibold"
-                            onClick={() => handleSort("status")}
-                          >
-                            Status
-                            {getSortIcon("status")}
-                          </Button>
-                        </TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {customerReminders.map((reminder) => (
-                        <ReminderRow
-                          key={reminder.id}
-                          reminder={reminder}
-                          onEdit={onEdit}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("type")}
+                  >
+                    Type
+                    {getSortIcon("type")}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("dueDate")}
+                  >
+                    Due Date
+                    {getSortIcon("dueDate")}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("registration")}
+                  >
+                    Registration
+                    {getSortIcon("registration")}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("customer")}
+                  >
+                    Customer
+                    {getSortIcon("customer")}
+                  </Button>
+                </TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Vehicle</TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("motExpiry")}
+                  >
+                    MOT Expiry
+                    {getSortIcon("motExpiry")}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("daysLeft")}
+                  >
+                    Days Left
+                    {getSortIcon("daysLeft")}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 font-semibold"
+                    onClick={() => handleSort("status")}
+                  >
+                    Status
+                    {getSortIcon("status")}
+                  </Button>
+                </TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedReminders.map((reminder) => {
+                const customerName = reminder.customerName || "Unknown Customer";
+                const hasMultipleServices = (customerReminderCounts.get(customerName) || 0) > 1;
+                
+                return (
+                  <TableRow key={reminder.id} className={hasMultipleServices ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={reminder.type === "MOT" ? "default" : "secondary"}>
+                          {reminder.type}
+                        </Badge>
+                        {hasMultipleServices && (
+                          <Badge variant="outline" className="text-amber-600 border-amber-600">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Multiple
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const motInfo = formatMOTDate(reminder.dueDate);
+                        return typeof motInfo === 'string' ? motInfo : motInfo.date;
+                      })()}
+                    </TableCell>
+                    <TableCell className="font-mono font-semibold">{reminder.registration}</TableCell>
+                    <TableCell>{customerName}</TableCell>
+                    <TableCell className="font-mono text-sm">{reminder.customerPhone || "-"}</TableCell>
+                    <TableCell className="text-sm">{reminder.customerEmail || "-"}</TableCell>
+                    <TableCell className="text-sm">
+                      {reminder.vehicleMake && reminder.vehicleModel
+                        ? `${reminder.vehicleMake} ${reminder.vehicleModel}`
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      {reminder.motExpiryDate ? (() => {
+                        const motInfo = formatMOTDate(reminder.motExpiryDate);
+                        const badge = getMOTStatusBadge(motInfo);
+                        return (
+                          <Badge variant={badge.variant} className={badge.className}>
+                            {badge.text}
+                          </Badge>
+                        );
+                      })() : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {reminder.motExpiryDate ? (
+                        <>
+                          {Math.ceil(
+                            (new Date(reminder.motExpiryDate).getTime() - Date.now()) /
+                              (1000 * 60 * 60 * 24)
+                          )}{" "}
+                          days
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          reminder.status === "sent"
+                            ? "default"
+                            : reminder.status === "archived"
+                            ? "secondary"
+                            : "outline"
+                        }
+                      >
+                        {reminder.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit(reminder)}
+                          disabled={deleteReminder.isPending || sendWhatsApp.isPending}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (!reminder.customerPhone) {
+                              toast.error("No phone number available");
+                              return;
+                            }
+                            sendWhatsApp.mutate({
+                              id: reminder.id,
+                              phoneNumber: reminder.customerPhone,
+                            });
+                          }}
+                          disabled={
+                            !reminder.customerPhone ||
+                            deleteReminder.isPending ||
+                            sendWhatsApp.isPending
+                          }
+                        >
+                          {sendWhatsApp.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Send className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this reminder?")) {
+                              deleteReminder.mutate({ id: reminder.id });
+                            }
+                          }}
+                          disabled={deleteReminder.isPending || sendWhatsApp.isPending}
+                        >
+                          {deleteReminder.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>
-  );
-}
-
-function ReminderRow({
-  reminder,
-  onEdit,
-}: {
-  reminder: Reminder;
-  onEdit: (reminder: Reminder) => void;
-}) {
-  const utils = trpc.useUtils();
-  const dueDate = new Date(reminder.dueDate);
-  const formattedDate = dueDate.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-
-  const sendMutation = trpc.reminders.sendWhatsApp.useMutation({
-    onSuccess: () => {
-      toast.success("WhatsApp message sent successfully");
-      utils.reminders.list.invalidate();
-    },
-    onError: (error: any) => {
-      toast.error(error.message);
-    },
-  });
-
-  const deleteMutation = trpc.reminders.delete.useMutation({
-    onSuccess: () => {
-      toast.success("Reminder deleted");
-      utils.reminders.list.invalidate();
-    },
-    onError: (error: any) => {
-      toast.error(error.message);
-    },
-  });
-
-  const handleSend = () => {
-    if (!reminder.customerPhone) {
-      toast.error("No phone number available");
-      return;
-    }
-
-    const confirmed = confirm(
-      `Send WhatsApp reminder to ${reminder.customerName || "customer"} at ${reminder.customerPhone}?`
-    );
-
-    if (confirmed) {
-      sendMutation.mutate({
-        id: reminder.id,
-        phoneNumber: reminder.customerPhone,
-      });
-    }
-  };
-
-  const handleDelete = () => {
-    const confirmed = confirm("Are you sure you want to delete this reminder?");
-    if (confirmed) {
-      deleteMutation.mutate({ id: reminder.id });
-    }
-  };
-
-  // Calculate days until due
-  const today = new Date();
-  const diffTime = dueDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  // Determine if urgent (due within 7 days)
-  const isUrgent = diffDays <= 7 && diffDays >= 0 && reminder.status === "pending";
-
-  // MOT expiry info
-  let motExpiryDisplay = "-";
-  let daysLeftDisplay = "-";
-  let motBadge = null;
-
-  if (reminder.motExpiryDate) {
-    const motDateInfo = formatMOTDate(reminder.motExpiryDate);
-    motExpiryDisplay = typeof motDateInfo === 'string' ? motDateInfo : motDateInfo.date;
-    const motDate = new Date(reminder.motExpiryDate);
-    const motDiffDays = Math.ceil((motDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    daysLeftDisplay = motDiffDays.toString();
-    const badgeInfo = getMOTStatusBadge(motDateInfo);
-    motBadge = <Badge variant={badgeInfo.variant} className={badgeInfo.className}>{badgeInfo.text}</Badge>;
-  }
-
-  return (
-    <TableRow className={isUrgent ? "bg-orange-50" : ""}>
-      <TableCell>
-        <Badge variant={reminder.type === "MOT" ? "default" : "secondary"}>
-          {reminder.type}
-        </Badge>
-      </TableCell>
-      <TableCell className="font-medium">{formattedDate}</TableCell>
-      <TableCell className="font-mono font-semibold">{reminder.registration}</TableCell>
-      <TableCell className="text-sm">{reminder.customerEmail || "-"}</TableCell>
-      <TableCell className="text-sm">{reminder.vehicleMake && reminder.vehicleModel ? `${reminder.vehicleMake} ${reminder.vehicleModel}` : "-"}</TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          {motExpiryDisplay}
-          {motBadge}
-        </div>
-      </TableCell>
-      <TableCell>{daysLeftDisplay}</TableCell>
-      <TableCell>
-        <Badge
-          variant={
-            reminder.status === "sent"
-              ? "default"
-              : reminder.status === "archived"
-              ? "secondary"
-              : "outline"
-          }
-        >
-          {reminder.status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex gap-2 justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(reminder)}
-          >
-            <Pencil className="w-4 h-4" />
-          </Button>
-          {reminder.type === "MOT" && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleSend}
-              disabled={sendMutation.isPending || !reminder.customerPhone}
-            >
-              {sendMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
-          )}
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-          >
-            {deleteMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Trash2 className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
   );
 }
