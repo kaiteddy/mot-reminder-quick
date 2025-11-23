@@ -11,7 +11,10 @@ interface SMSConfig {
 
 interface SendSMSParams {
   to: string;
-  message: string;
+  message?: string;
+  useTemplate?: boolean;
+  templateSid?: string;
+  templateVariables?: Record<string, string>;
 }
 
 interface SendSMSResult {
@@ -49,11 +52,28 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
       ? config.whatsappNumber 
       : `whatsapp:${config.whatsappNumber}`;
     
-    const formData = new URLSearchParams({
-      To: toNumber,
-      From: fromNumber,
-      Body: params.message,
-    });
+    let formData: URLSearchParams;
+    
+    if (params.useTemplate && params.templateSid) {
+      // Use WhatsApp Message Template (no 24-hour window restriction)
+      formData = new URLSearchParams({
+        To: toNumber,
+        From: fromNumber,
+        ContentSid: params.templateSid,
+      });
+      
+      // Add template variables
+      if (params.templateVariables) {
+        formData.append('ContentVariables', JSON.stringify(params.templateVariables));
+      }
+    } else {
+      // Use freeform message (requires 24-hour window)
+      formData = new URLSearchParams({
+        To: toNumber,
+        From: fromNumber,
+        Body: params.message || '',
+      });
+    }
 
     const response = await fetch(url, {
       method: "POST",
@@ -124,4 +144,34 @@ export function generateServiceReminderMessage(params: {
   const garageName = params.garageName || "your garage";
 
   return `Hi ${params.customerName}, this is a reminder that your vehicle ${params.registration} is due for a service on ${formattedDate}. Please contact ${garageName} to book your service. Thank you!`;
+}
+
+/**
+ * Send MOT reminder using WhatsApp template
+ */
+export async function sendMOTReminderWithTemplate(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  motExpiryDate: Date;
+}): Promise<SendSMSResult> {
+  const daysLeft = Math.ceil((params.motExpiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  
+  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  
+  return sendSMS({
+    to: params.to,
+    useTemplate: true,
+    templateSid: 'HX7989152000fc9771c99762c03f72785d', // mot_reminder_eli_motors
+    templateVariables: {
+      '1': params.customerName,
+      '2': params.registration,
+      '3': formattedDate,
+      '4': daysLeft.toString(),
+    },
+  });
 }

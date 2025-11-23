@@ -233,3 +233,26 @@
 - [x] Ensure From number includes whatsapp: prefix
 - [x] Fix smsService.ts to handle both formats
 - [ ] Test message delivery to +447843275372
+
+## Twilio Webhook Configuration
+- [ ] Provide correct webhook URL for Twilio console
+- [ ] Verify webhook endpoint is accessible
+- [ ] Document webhook setup instructions
+- [ ] Test incoming message handling
+
+## Debug WhatsApp Message Sending
+- [x] Check server logs for WhatsApp sending errors
+- [x] Verify Twilio credentials are correct
+- [x] Check TWILIO_WHATSAPP_NUMBER format
+- [x] Test Twilio API directly
+- [x] Verify recipient number format
+- [x] Identified issue: 24-hour messaging window restriction
+
+## WhatsApp Message Templates
+- [x] Check existing approved templates in Twilio
+- [x] Found mot_reminder_eli_motors template
+- [x] Update smsService to support templates
+- [x] Test template-based messaging
+- [x] Verified message delivery to +447843275372
+- [x] Update all Send WhatsApp buttons to use templates
+- [ ] Update Test WhatsApp page to use templates

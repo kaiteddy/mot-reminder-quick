@@ -319,7 +319,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { getAllReminders, updateReminder } = await import("./db");
-        const { sendSMS, generateMOTReminderMessage, generateServiceReminderMessage } = await import("./smsService");
+        const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
         
         // Get reminder details
         const reminders = await getAllReminders();
@@ -329,24 +329,33 @@ export const appRouter = router({
           throw new Error("Reminder not found");
         }
         
-        // Generate message
-        const message = reminder.type === "MOT"
-          ? generateMOTReminderMessage({
-              customerName: reminder.customerName || "Customer",
-              registration: reminder.registration,
-              dueDate: new Date(reminder.dueDate),
-            })
-          : generateServiceReminderMessage({
-              customerName: reminder.customerName || "Customer",
-              registration: reminder.registration,
-              dueDate: new Date(reminder.dueDate),
-            });
+        let result;
         
-        // Send WhatsApp message
-        const result = await sendSMS({
-          to: input.phoneNumber,
-          message,
-        });
+        if (reminder.type === "MOT") {
+          // Use WhatsApp template for MOT reminders (no 24-hour window restriction)
+          let motExpiryDate = new Date(reminder.dueDate);
+          
+          // Use the reminder's due date as MOT expiry date
+          
+          result = await sendMOTReminderWithTemplate({
+            to: input.phoneNumber,
+            customerName: reminder.customerName || "Customer",
+            registration: reminder.registration,
+            motExpiryDate,
+          });
+        } else {
+          // Use freeform message for Service reminders
+          const message = generateServiceReminderMessage({
+            customerName: reminder.customerName || "Customer",
+            registration: reminder.registration,
+            dueDate: new Date(reminder.dueDate),
+          });
+          
+          result = await sendSMS({
+            to: input.phoneNumber,
+            message,
+          });
+        }
         
         if (!result.success) {
           throw new Error(result.error || "Failed to send message");
