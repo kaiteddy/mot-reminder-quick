@@ -96,3 +96,45 @@ export const reminders = mysqlTable("reminders", {
 
 export type Reminder = typeof reminders.$inferSelect;
 export type InsertReminder = typeof reminders.$inferInsert;
+/**
+ * Reminder Logs table - tracks all sent reminders
+ */
+export const reminderLogs = mysqlTable("reminderLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  reminderId: int("reminderId"),
+  customerId: int("customerId"),
+  vehicleId: int("vehicleId"),
+  messageType: mysqlEnum("messageType", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
+  recipient: varchar("recipient", { length: 20 }).notNull(), // phone number
+  messageSid: varchar("messageSid", { length: 100 }), // Twilio message ID
+  status: mysqlEnum("status", ["queued", "sent", "delivered", "failed"]).default("queued").notNull(),
+  templateUsed: varchar("templateUsed", { length: 255 }), // template SID or name
+  customerName: text("customerName"),
+  registration: varchar("registration", { length: 20 }),
+  dueDate: timestamp("dueDate"),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  deliveredAt: timestamp("deliveredAt"),
+  errorMessage: text("errorMessage"),
+});
+
+export type ReminderLog = typeof reminderLogs.$inferSelect;
+export type InsertReminderLog = typeof reminderLogs.$inferInsert;
+
+/**
+ * Customer Messages table - stores incoming WhatsApp messages from customers
+ */
+export const customerMessages = mysqlTable("customerMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  messageSid: varchar("messageSid", { length: 100 }).notNull().unique(), // Twilio message ID
+  fromNumber: varchar("fromNumber", { length: 20 }).notNull(),
+  toNumber: varchar("toNumber", { length: 20 }).notNull(),
+  messageBody: text("messageBody"),
+  customerId: int("customerId"), // linked customer if found
+  relatedLogId: int("relatedLogId"), // linked to reminder log if applicable
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+  read: int("read").default(0).notNull(), // 0 = unread, 1 = read
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CustomerMessage = typeof customerMessages.$inferSelect;
+export type InsertCustomerMessage = typeof customerMessages.$inferInsert;

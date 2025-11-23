@@ -256,3 +256,27 @@
 - [x] Verified message delivery to +447843275372
 - [x] Update all Send WhatsApp buttons to use templates
 - [ ] Update Test WhatsApp page to use templates
+
+## Service Reminder Template
+- [x] Check for existing Service reminder template in Twilio
+- [x] Create Service reminder template guide
+- [ ] User needs to create template in Twilio Console
+- [ ] Update smsService to support Service template after approval
+- [ ] Test Service reminder with template
+
+## Reminder Log System
+- [x] Add reminderLogs table to database schema
+- [x] Create log entry when reminder is sent
+- [x] Add API endpoints for viewing logs
+- [x] Add log viewing page/dialog
+- [x] Show log history per customer
+- [x] Display sent date, message type, status
+
+## Customer Response Tracking
+- [x] Update webhook to store incoming WhatsApp messages
+- [x] Create customerMessages table in database
+- [x] Add API endpoints for viewing messages
+- [x] Link customers by phone number
+- [x] Add response dialog/page to view customer replies
+- [x] Show response timestamps and content
+- [x] Add mark as read functionality

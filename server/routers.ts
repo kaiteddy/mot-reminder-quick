@@ -318,7 +318,7 @@ export const appRouter = router({
         phoneNumber: z.string(),
       }))
       .mutation(async ({ input }) => {
-        const { getAllReminders, updateReminder } = await import("./db");
+        const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
         const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
         
         // Get reminder details
@@ -364,6 +364,23 @@ export const appRouter = router({
         // Update reminder status
         await updateReminder(input.id, {
           status: "sent",
+          sentAt: new Date(),
+          sentMethod: "whatsapp",
+        });
+        
+        // Create reminder log
+        await createReminderLog({
+          reminderId: input.id,
+          customerId: reminder.customerId,
+          vehicleId: reminder.vehicleId,
+          messageType: reminder.type,
+          recipient: input.phoneNumber,
+          messageSid: result.messageId,
+          status: "sent",
+          templateUsed: reminder.type === "MOT" ? "mot_reminder_eli_motors" : "freeform",
+          customerName: reminder.customerName,
+          registration: reminder.registration,
+          dueDate: new Date(reminder.dueDate),
           sentAt: new Date(),
         });
         
@@ -565,6 +582,44 @@ export const appRouter = router({
         message: "Test message sent successfully!",
       };
     }),
+  
+  // Reminder Logs
+  logs: router({
+    list: publicProcedure.query(async () => {
+      const { getAllReminderLogs } = await import("./db");
+      return getAllReminderLogs();
+    }),
+    
+    byCustomer: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getReminderLogsByCustomerId } = await import("./db");
+        return getReminderLogsByCustomerId(input.customerId);
+      }),
+  }),
+  
+  // Customer Messages
+  messages: router({
+    list: publicProcedure.query(async () => {
+      const { getAllCustomerMessages } = await import("./db");
+      return getAllCustomerMessages();
+    }),
+    
+    byCustomer: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getCustomerMessagesByCustomerId } = await import("./db");
+        return getCustomerMessagesByCustomerId(input.customerId);
+      }),
+      
+    markAsRead: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { markMessageAsRead } = await import("./db");
+        await markMessageAsRead(input.id);
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

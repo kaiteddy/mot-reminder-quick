@@ -352,3 +352,86 @@ export async function bulkUpdateVehicleMOT(updates: Array<{ id: number; motExpir
     await db.update(vehicles).set(data).where(eq(vehicles.id, id));
   }
 }
+
+// Reminder Log functions
+export async function createReminderLog(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { reminderLogs } = await import("../drizzle/schema");
+  const result = await db.insert(reminderLogs).values(data);
+  return result;
+}
+
+export async function getAllReminderLogs() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { reminderLogs } = await import("../drizzle/schema");
+  return db.select().from(reminderLogs).orderBy(reminderLogs.sentAt);
+}
+
+export async function getReminderLogsByCustomerId(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { reminderLogs } = await import("../drizzle/schema");
+  return db.select().from(reminderLogs).where(eq(reminderLogs.customerId, customerId)).orderBy(reminderLogs.sentAt);
+}
+
+export async function updateReminderLogStatus(messageSid: string, status: string, deliveredAt?: Date, errorMessage?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { reminderLogs } = await import("../drizzle/schema");
+  const updateData: any = { status };
+  if (deliveredAt) updateData.deliveredAt = deliveredAt;
+  if (errorMessage) updateData.errorMessage = errorMessage;
+  
+  await db.update(reminderLogs).set(updateData).where(eq(reminderLogs.messageSid, messageSid));
+}
+
+// Customer Message functions
+export async function createCustomerMessage(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  const result = await db.insert(customerMessages).values(data);
+  return result;
+}
+
+export async function getAllCustomerMessages() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  return db.select().from(customerMessages).orderBy(customerMessages.receivedAt);
+}
+
+export async function getCustomerMessagesByCustomerId(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  return db.select().from(customerMessages).where(eq(customerMessages.customerId, customerId)).orderBy(customerMessages.receivedAt);
+}
+
+export async function markMessageAsRead(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  await db.update(customerMessages).set({ read: 1 }).where(eq(customerMessages.id, id));
+}
+
+export async function findCustomerByPhone(phone: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { customers } = await import("../drizzle/schema");
+  // Normalize phone number for matching (remove spaces, dashes, etc.)
+  const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
+  const result = await db.select().from(customers).where(eq(customers.phone, normalizedPhone)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}

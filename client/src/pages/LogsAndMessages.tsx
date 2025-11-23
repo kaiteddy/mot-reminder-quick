@@ -1,0 +1,228 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { APP_TITLE, getLoginUrl } from "@/const";
+import { trpc } from "@/lib/trpc";
+import { AlertCircle, CheckCircle2, Clock, Loader2, MessageSquare, Send, XCircle } from "lucide-react";
+import { Link } from "wouter";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+export default function LogsAndMessages() {
+  const { user, loading: authLoading } = useAuth();
+  
+  const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery();
+  const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery();
+  const markAsReadMutation = trpc.messages.markAsRead.useMutation();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Authentication Required</CardTitle>
+            <CardDescription>Please log in to view logs and messages</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full">
+              <a href={getLoginUrl()}>Log In</a>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "delivered":
+        return <Badge variant="default" className="bg-green-500"><CheckCircle2 className="w-3 h-3 mr-1" />Delivered</Badge>;
+      case "sent":
+        return <Badge variant="default" className="bg-blue-500"><Send className="w-3 h-3 mr-1" />Sent</Badge>;
+      case "queued":
+        return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />Queued</Badge>;
+      case "failed":
+        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const unreadCount = messages?.filter(m => m.read === 0).length || 0;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="container mx-auto py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">{APP_TITLE}</h1>
+              <p className="text-muted-foreground">Reminder Logs & Customer Messages</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/">Home</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/database">Database</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto py-8 space-y-8">
+        {/* Reminder Logs */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Send className="w-5 h-5" />
+              Sent Reminders Log
+            </CardTitle>
+            <CardDescription>
+              Track all sent WhatsApp reminders and their delivery status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {logsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : !logs || logs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No reminders sent yet</p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date/Time</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Message ID</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="font-medium">
+                          {new Date(log.sentAt).toLocaleString("en-GB")}
+                        </TableCell>
+                        <TableCell>{log.customerName || "—"}</TableCell>
+                        <TableCell>{log.registration || "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{log.messageType}</Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{log.recipient}</TableCell>
+                        <TableCell>{getStatusBadge(log.status)}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {log.messageSid?.substring(0, 12)}...
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Customer Messages */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Customer Responses
+              {unreadCount > 0 && (
+                <Badge variant="destructive" className="ml-2">{unreadCount} New</Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              View incoming WhatsApp messages from customers
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {messagesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : !messages || messages.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No customer messages yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {messages.map((message) => (
+                  <Dialog key={message.id}>
+                    <DialogTrigger asChild>
+                      <Card className={`cursor-pointer hover:bg-accent transition-colors ${message.read === 0 ? 'border-primary' : ''}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-semibold">{message.fromNumber}</span>
+                                {message.read === 0 && (
+                                  <Badge variant="destructive" className="text-xs">New</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground line-clamp-2">
+                                {message.messageBody}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {new Date(message.receivedAt).toLocaleString("en-GB")}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Customer Message</DialogTitle>
+                        <DialogDescription>
+                          From: {message.fromNumber}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <ScrollArea className="max-h-[400px] w-full rounded-md border p-4">
+                        <p className="whitespace-pre-wrap">{message.messageBody}</p>
+                      </ScrollArea>
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>Received: {new Date(message.receivedAt).toLocaleString("en-GB")}</span>
+                        {message.read === 0 && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              markAsReadMutation.mutate({ id: message.id });
+                            }}
+                          >
+                            Mark as Read
+                          </Button>
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}

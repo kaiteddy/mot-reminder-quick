@@ -94,18 +94,40 @@ async function logIncomingMessage(data: {
   status?: string;
   timestamp: Date;
 }) {
-  const { getDb } = await import("../db");
-  const db = await getDb();
-
-  if (!db) {
-    console.warn("[Twilio Webhook] Database not available");
-    return;
-  }
+  const { createCustomerMessage, findCustomerByPhone } = await import("../db");
 
   try {
-    // You can create a whatsapp_messages table to store these
-    // For now, just log to console
-    console.log("[Twilio Webhook] Message logged:", data);
+    // Extract phone number from WhatsApp format (whatsapp:+1234567890)
+    const fromNumber = data.from.replace('whatsapp:', '');
+    const toNumber = data.to.replace('whatsapp:', '');
+    
+    // Try to find customer by phone number
+    let customerId = null;
+    try {
+      const customer = await findCustomerByPhone(fromNumber);
+      if (customer) {
+        customerId = customer.id;
+      }
+    } catch (error) {
+      console.warn("[Twilio Webhook] Could not find customer:", error);
+    }
+    
+    // Store the message
+    await createCustomerMessage({
+      messageSid: data.messageSid,
+      fromNumber,
+      toNumber,
+      messageBody: data.body,
+      customerId,
+      receivedAt: data.timestamp,
+      read: 0,
+    });
+    
+    console.log("[Twilio Webhook] Message stored:", {
+      messageSid: data.messageSid,
+      from: fromNumber,
+      customerId,
+    });
   } catch (error) {
     console.error("[Twilio Webhook] Failed to log message:", error);
   }
@@ -119,25 +141,21 @@ async function updateMessageStatus(data: {
   status?: string;
   timestamp: Date;
 }) {
-  const { getDb } = await import("../db");
-  const db = await getDb();
-
-  if (!db) {
-    console.warn("[Twilio Status] Database not available");
-    return;
-  }
+  const { updateReminderLogStatus } = await import("../db");
 
   try {
-    // Update reminder status based on message delivery status
+    // Update reminder log status
     console.log("[Twilio Status] Status updated:", data);
     
     // Possible statuses: queued, sending, sent, delivered, undelivered, failed
     if (data.status === "delivered") {
-      // Mark reminder as successfully delivered
+      await updateReminderLogStatus(data.messageSid, "delivered", data.timestamp);
       console.log(`[Twilio Status] Message ${data.messageSid} delivered successfully`);
     } else if (data.status === "failed" || data.status === "undelivered") {
-      // Mark reminder as failed
+      await updateReminderLogStatus(data.messageSid, "failed", undefined, `Status: ${data.status}`);
       console.log(`[Twilio Status] Message ${data.messageSid} failed: ${data.status}`);
+    } else if (data.status === "sent") {
+      await updateReminderLogStatus(data.messageSid, "sent");
     }
   } catch (error) {
     console.error("[Twilio Status] Failed to update status:", error);
