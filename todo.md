@@ -322,3 +322,13 @@
 - [x] Send test reminders to +447843275372 with proper formatting
 - [ ] Update sendWhatsApp mutation to use formatted names when customer data available
 - [ ] Update CSV import to use formatCustomerName helper
+
+## Delivery Status Tracking
+- [x] Update Logs & Messages page to show delivery status (queued/sent/delivered/failed)
+- [x] Add status badges with colors (green=delivered, blue=sent, gray=queued, red=failed)
+- [x] Display error messages for failed deliveries
+- [x] Add "No WhatsApp" detection in error message column
+- [x] Show delivery timestamps (Sent At and Delivered At)
+- [x] Add auto-refresh for status updates (every 10 seconds)
+- [x] Highlight failed rows with red background
+- [ ] Test with real delivery status webhooks

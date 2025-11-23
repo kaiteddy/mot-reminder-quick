@@ -13,8 +13,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export default function LogsAndMessages() {
   const { user, loading: authLoading } = useAuth();
   
-  const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery();
-  const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery();
+  // Auto-refresh logs every 10 seconds to show updated delivery status
+  const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery(undefined, {
+    refetchInterval: 10000,
+  });
+  const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery(undefined, {
+    refetchInterval: 10000,
+  });
   const markAsReadMutation = trpc.messages.markAsRead.useMutation();
 
   if (authLoading) {
@@ -108,30 +113,59 @@ export default function LogsAndMessages() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date/Time</TableHead>
+                      <TableHead>Sent At</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Vehicle</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Phone</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Message ID</TableHead>
+                      <TableHead>Delivered At</TableHead>
+                      <TableHead>Error</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {logs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell className="font-medium">
-                          {new Date(log.sentAt).toLocaleString("en-GB")}
+                      <TableRow key={log.id} className={log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                        <TableCell className="font-medium text-sm">
+                          {new Date(log.sentAt).toLocaleString("en-GB", {
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </TableCell>
                         <TableCell>{log.customerName || "—"}</TableCell>
-                        <TableCell>{log.registration || "—"}</TableCell>
+                        <TableCell className="font-mono text-sm">{log.registration || "—"}</TableCell>
                         <TableCell>
                           <Badge variant="outline">{log.messageType}</Badge>
                         </TableCell>
                         <TableCell className="font-mono text-sm">{log.recipient}</TableCell>
                         <TableCell>{getStatusBadge(log.status)}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {log.messageSid?.substring(0, 12)}...
+                        <TableCell className="text-sm">
+                          {log.deliveredAt ? (
+                            <span className="text-green-600 dark:text-green-400">
+                              {new Date(log.deliveredAt).toLocaleString("en-GB", {
+                                day: '2-digit',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          ) : log.status === 'delivered' ? (
+                            <span className="text-muted-foreground">Recently</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {log.errorMessage ? (
+                            <div className="flex items-start gap-1">
+                              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                              <span className="text-xs text-destructive">{log.errorMessage}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
