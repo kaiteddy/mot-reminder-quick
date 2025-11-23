@@ -3,6 +3,7 @@ import type { Reminder } from "../../../drizzle/schema";
 import { ImageUpload } from "@/components/ImageUpload";
 import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
+import { UnreadMessageBadge } from "@/components/UnreadMessageBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText } from "lucide-react";
@@ -102,9 +103,10 @@ export default function Home() {
               </Button>
             </Link>
             <Link href="/logs">
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" className="relative">
                 <FileText className="w-4 h-4 mr-2" />
                 Logs & Messages
+                <UnreadMessageBadge />
               </Button>
             </Link>
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">

@@ -425,6 +425,26 @@ export async function markMessageAsRead(id: number) {
   await db.update(customerMessages).set({ read: 1 }).where(eq(customerMessages.id, id));
 }
 
+export async function getUnreadMessageCount() {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  const { sql } = await import("drizzle-orm");
+  const result = await db.select({ count: sql<number>`count(*)` })
+    .from(customerMessages)
+    .where(eq(customerMessages.read, 0));
+  return result[0]?.count || 0;
+}
+
+export async function markAllMessagesAsRead() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { customerMessages } = await import("../drizzle/schema");
+  await db.update(customerMessages).set({ read: 1 }).where(eq(customerMessages.read, 0));
+}
+
 export async function findCustomerByPhone(phone: string) {
   const db = await getDb();
   if (!db) return undefined;

@@ -680,6 +680,17 @@ export const appRouter = router({
         await markMessageAsRead(input.id);
         return { success: true };
       }),
+      
+    getUnreadCount: publicProcedure.query(async () => {
+      const { getUnreadMessageCount } = await import("./db");
+      return getUnreadMessageCount();
+    }),
+    
+    markAllAsRead: publicProcedure.mutation(async () => {
+      const { markAllMessagesAsRead } = await import("./db");
+      await markAllMessagesAsRead();
+      return { success: true };
+    }),
   }),
 });
 

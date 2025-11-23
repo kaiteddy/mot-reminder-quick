@@ -332,3 +332,14 @@
 - [x] Add auto-refresh for status updates (every 10 seconds)
 - [x] Highlight failed rows with red background
 - [ ] Test with real delivery status webhooks
+
+## Real-Time Notifications for Customer Responses
+- [x] Add unread count field to customerMessages table
+- [x] Create backend endpoint to get unread message count
+- [x] Add polling mechanism to check for new messages
+- [x] Implement browser notification permission request
+- [x] Show browser notification when new customer response arrives
+- [x] Add unread counter badge in navigation header
+- [x] Update unread count when user views messages
+- [x] Add Mark All as Read button
+- [x] Write and pass vitest tests for unread functionality

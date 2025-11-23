@@ -20,7 +20,19 @@ export default function LogsAndMessages() {
   const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery(undefined, {
     refetchInterval: 10000,
   });
-  const markAsReadMutation = trpc.messages.markAsRead.useMutation();
+  const utils = trpc.useUtils();
+  const markAsReadMutation = trpc.messages.markAsRead.useMutation({
+    onSuccess: () => {
+      utils.messages.list.invalidate();
+      utils.messages.getUnreadCount.invalidate();
+    },
+  });
+  const markAllAsReadMutation = trpc.messages.markAllAsRead.useMutation({
+    onSuccess: () => {
+      utils.messages.list.invalidate();
+      utils.messages.getUnreadCount.invalidate();
+    },
+  });
 
   if (authLoading) {
     return (
@@ -179,16 +191,33 @@ export default function LogsAndMessages() {
         {/* Customer Messages */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Customer Responses
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Customer Responses
+                  {unreadCount > 0 && (
+                    <Badge variant="destructive" className="ml-2">{unreadCount} New</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  View incoming WhatsApp messages from customers
+                </CardDescription>
+              </div>
               {unreadCount > 0 && (
-                <Badge variant="destructive" className="ml-2">{unreadCount} New</Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => markAllAsReadMutation.mutate()}
+                  disabled={markAllAsReadMutation.isPending}
+                >
+                  {markAllAsReadMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Mark All as Read
+                </Button>
               )}
-            </CardTitle>
-            <CardDescription>
-              View incoming WhatsApp messages from customers
-            </CardDescription>
+            </div>
           </CardHeader>
           <CardContent>
             {messagesLoading ? (
