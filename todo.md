@@ -289,3 +289,17 @@
 - [x] Maintain sorting and filtering within groups
 - [x] Show reminder count badge per customer
 - [ ] Add "Send All" button per customer group
+
+## Auto-Generate Reminders from Vehicles
+- [x] Create API endpoint to generate reminders from vehicles with MOT expiry dates
+- [x] Calculate reminder due dates based on MOT expiry (30 days before)
+- [x] Link reminders to customers via vehicle ownership
+- [x] Update home page to show auto-generated reminders instead of manual ones
+- [x] Keep grouped table view on home page
+- [ ] Add refresh/regenerate button to update reminders from latest vehicle data
+
+## Update WhatsApp Template Names
+- [x] Update smsService to use new template name: motreminder (HX127c47f8a63b992d86b43943394a1740)
+- [x] Add servicereminder template support (HXac307a9bd92b65df83038c2b2a3eeeff)
+- [x] Update sendWhatsApp mutation to use servicereminder for Service type reminders
+- [ ] Test both templates with real messages

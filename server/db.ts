@@ -435,3 +435,38 @@ export async function findCustomerByPhone(phone: string) {
   const result = await db.select().from(customers).where(eq(customers.phone, normalizedPhone)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
+
+// Get vehicles with customers for auto-generating reminders
+export async function getVehiclesWithCustomersForReminders() {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get vehicles: database not available");
+    return [];
+  }
+
+  try {
+    const { vehicles, customers } = await import("../drizzle/schema");
+    const { sql: rawSql } = await import("drizzle-orm");
+    
+    const result = await db
+      .select({
+        vehicleId: vehicles.id,
+        registration: vehicles.registration,
+        make: vehicles.make,
+        model: vehicles.model,
+        motExpiryDate: vehicles.motExpiryDate,
+        customerId: vehicles.customerId,
+        customerName: customers.name,
+        customerEmail: customers.email,
+        customerPhone: customers.phone,
+      })
+      .from(vehicles)
+      .leftJoin(customers, eq(vehicles.customerId, customers.id))
+      .where(rawSql`${vehicles.motExpiryDate} IS NOT NULL`);
+
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to get vehicles with customers:", error);
+    return [];
+  }
+}

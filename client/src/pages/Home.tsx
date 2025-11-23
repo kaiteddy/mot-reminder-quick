@@ -17,7 +17,8 @@ export default function Home() {
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   const utils = trpc.useUtils();
-  const { data: reminders, isLoading } = trpc.reminders.list.useQuery();
+  // Use auto-generated reminders from vehicles instead of manual reminders
+  const { data: reminders, isLoading } = trpc.reminders.generateFromVehicles.useQuery();
   const processImage = trpc.reminders.processImage.useMutation({
     onSuccess: (data) => {
       toast.success(`Extracted ${data.count} reminders`);

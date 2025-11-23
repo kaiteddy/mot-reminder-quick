@@ -166,7 +166,37 @@ export async function sendMOTReminderWithTemplate(params: {
   return sendSMS({
     to: params.to,
     useTemplate: true,
-    templateSid: 'HX7989152000fc9771c99762c03f72785d', // mot_reminder_eli_motors
+    templateSid: 'HX127c47f8a63b992d86b43943394a1740', // motreminder
+    templateVariables: {
+      '1': params.customerName,
+      '2': params.registration,
+      '3': formattedDate,
+      '4': daysLeft.toString(),
+    },
+  });
+}
+
+/**
+ * Send Service reminder using WhatsApp template
+ */
+export async function sendServiceReminderWithTemplate(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  serviceDueDate: Date;
+}): Promise<SendSMSResult> {
+  const daysLeft = Math.ceil((params.serviceDueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  
+  const formattedDate = params.serviceDueDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  
+  return sendSMS({
+    to: params.to,
+    useTemplate: true,
+    templateSid: 'HXac307a9bd92b65df83038c2b2a3eeeff', // servicereminder
     templateVariables: {
       '1': params.customerName,
       '2': params.registration,

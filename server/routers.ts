@@ -343,8 +343,17 @@ export const appRouter = router({
             registration: reminder.registration,
             motExpiryDate,
           });
+        } else if (reminder.type === "Service") {
+          // Use WhatsApp template for Service reminders
+          const { sendServiceReminderWithTemplate } = await import("./smsService");
+          result = await sendServiceReminderWithTemplate({
+            to: input.phoneNumber,
+            customerName: reminder.customerName || "Customer",
+            registration: reminder.registration,
+            serviceDueDate: new Date(reminder.dueDate),
+          });
         } else {
-          // Use freeform message for Service reminders
+          // Use freeform message for other reminder types (Cambelt, Other)
           const message = generateServiceReminderMessage({
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
@@ -377,7 +386,7 @@ export const appRouter = router({
           recipient: input.phoneNumber,
           messageSid: result.messageId,
           status: "sent",
-          templateUsed: reminder.type === "MOT" ? "mot_reminder_eli_motors" : "freeform",
+          templateUsed: reminder.type === "MOT" ? "motreminder" : reminder.type === "Service" ? "servicereminder" : "freeform",
           customerName: reminder.customerName,
           registration: reminder.registration,
           dueDate: new Date(reminder.dueDate),
@@ -386,6 +395,58 @@ export const appRouter = router({
         
         return { success: true, messageId: result.messageId };
       }),
+    
+    // Auto-generate reminders from vehicles
+    generateFromVehicles: publicProcedure.query(async () => {
+      const { getVehiclesWithCustomersForReminders } = await import("./db");
+      
+      const vehiclesWithCustomers = await getVehiclesWithCustomersForReminders();
+      
+      // Generate reminders for vehicles with MOT expiry dates
+      const generatedReminders = vehiclesWithCustomers
+        .filter(v => v.motExpiryDate)
+        .map(v => {
+          const motDate = new Date(v.motExpiryDate!);
+          const today = new Date();
+          const daysUntilExpiry = Math.ceil((motDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Calculate reminder due date (30 days before MOT expiry)
+          const dueDate = new Date(motDate);
+          dueDate.setDate(dueDate.getDate() - 30);
+          
+          // Determine status based on days until expiry
+          let status: "pending" | "sent" | "archived" = "pending";
+          if (daysUntilExpiry < 0) {
+            status = "archived"; // Expired
+          } else if (daysUntilExpiry > 30) {
+            status = "pending"; // Not yet due
+          }
+          
+          return {
+            id: v.vehicleId, // Use vehicle ID as temporary ID
+            type: "MOT" as const,
+            dueDate,
+            registration: v.registration,
+            customerName: v.customerName || null,
+            customerEmail: v.customerEmail || null,
+            customerPhone: v.customerPhone || null,
+            vehicleMake: v.make || null,
+            vehicleModel: v.model || null,
+            motExpiryDate: v.motExpiryDate,
+            status,
+            sentAt: null,
+            sentMethod: null,
+            notes: null,
+            vehicleId: v.vehicleId,
+            customerId: v.customerId || null,
+            externalId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        });
+      
+      return generatedReminders;
+    }),
   }),
   
   // Database overview
