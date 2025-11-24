@@ -444,3 +444,22 @@
 - [x] Check ChatHistory component query for received messages
 - [x] Add auto-refresh (5 second interval) to ChatHistory queries
 - [x] Messages now automatically appear in chat without page refresh
+
+## Debug Webhook Not Receiving Customer Responses
+- [ ] Check server logs for incoming webhook calls
+- [ ] Verify Twilio is calling the webhook URL
+- [ ] Query customerMessages table to see if messages are stored
+- [ ] Check webhook response format and error handling
+- [ ] Test with actual customer response
+
+## Fix Chat UI and Add Quick Reply Templates
+- [x] Fix chat messages overflowing outside window
+- [x] Add proper scrolling to chat container with overflow-hidden
+- [x] Delete test messages from database
+- [x] Create quick reply template system
+- [x] Add date/time offer template (tomorrow with 3 time slots)
+- [x] Add confirmation message template
+- [x] Add request details template
+- [x] Add MOT reminder template
+- [x] Show templates as buttons with icons
+- [x] Remove debug console.log statements

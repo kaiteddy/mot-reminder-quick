@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, messageSid, fromNumber, messageBody, receivedAt FROM customerMessages WHERE messageSid = 'TEST123'",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT id, messageSid, fromNumber, messageBody, receivedAt FROM customerMessages WHERE messageSid = 'TEST123'",
+  "rows": [
+    {
+      "id": "30001",
+      "messageSid": "TEST123",
+      "fromNumber": " 447843275372",
+      "messageBody": "Hello this is a test response",
+      "receivedAt": "2025-11-24 14:51:36"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tmessageSid\tfromNumber\tmessageBody\treceivedAt\n30001\tTEST123\t 447843275372\tHello this is a test response\t2025-11-24 14:51:36\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

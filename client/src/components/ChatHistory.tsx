@@ -98,7 +98,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
   };
   
   return (
-    <Card className="h-[600px] flex flex-col">
+    <Card className="h-[600px] max-w-full flex flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="w-5 h-5" />
@@ -108,7 +108,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
           {phoneNumber} • {allConversation.length} messages
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col gap-4 min-h-0">
+      <CardContent className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
         {/* Message History */}
         <ScrollArea className="flex-1 pr-4">
           <div className="space-y-4">
@@ -153,9 +153,49 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
           </div>
         </ScrollArea>
         
+        {/* Quick Reply Templates */}
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-sm font-medium">Quick Replies</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTestMessage("Thanks for confirming! We'll book you in.")}
+            >
+              ✓ Confirm Booking
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const dateStr = tomorrow.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+                setTestMessage(`We have availability on ${dateStr} at 9:00 AM, 11:00 AM, or 2:00 PM. Which time works best for you?`);
+              }}
+            >
+              📅 Offer Times
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTestMessage("Could you please confirm your vehicle registration number?")}
+            >
+              🚗 Request Details
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTestMessage("Your MOT is due soon. Would you like to book an appointment?")}
+            >
+              ⏰ MOT Reminder
+            </Button>
+          </div>
+        </div>
+        
         {/* Test Message Input */}
         <div className="border-t pt-4">
-          <p className="text-sm font-medium mb-2">Send Test Message</p>
+          <p className="text-sm font-medium mb-2">Custom Message</p>
           <div className="flex gap-2">
             <Input
               placeholder="Type a test message..."

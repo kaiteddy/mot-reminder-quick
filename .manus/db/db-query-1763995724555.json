@@ -1,0 +1,34 @@
+{
+  "query": "SELECT id, fromNumber, toNumber, messageBody, receivedAt, `read` FROM customerMessages ORDER BY receivedAt DESC",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT id, fromNumber, toNumber, messageBody, receivedAt, `read` FROM customerMessages ORDER BY receivedAt DESC",
+  "rows": [
+    {
+      "id": "5",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 1",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1"
+    },
+    {
+      "id": "6",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 2",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1"
+    },
+    {
+      "id": "7",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 3",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfromNumber\ttoNumber\tmessageBody\treceivedAt\tread\n5\t+447843275372\t+441234567890\tTest message 1\t2025-11-23 22:20:57\t1\n6\t+447843275372\t+441234567890\tTest message 2\t2025-11-23 22:20:57\t1\n7\t+447843275372\t+441234567890\tTest message 3\t2025-11-23 22:20:57\t1\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}

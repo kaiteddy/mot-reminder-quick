@@ -1,0 +1,46 @@
+{
+  "query": "SELECT * FROM customerMessages ORDER BY receivedAt DESC LIMIT 10",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT * FROM customerMessages ORDER BY receivedAt DESC LIMIT 10",
+  "rows": [
+    {
+      "id": "6",
+      "messageSid": "test-sid-bulk-2",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 2",
+      "customerId": "NULL",
+      "relatedLogId": "NULL",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1",
+      "createdAt": "2025-11-23 22:20:57"
+    },
+    {
+      "id": "7",
+      "messageSid": "test-sid-bulk-3",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 3",
+      "customerId": "NULL",
+      "relatedLogId": "NULL",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1",
+      "createdAt": "2025-11-23 22:20:57"
+    },
+    {
+      "id": "5",
+      "messageSid": "test-sid-bulk-1",
+      "fromNumber": "+447843275372",
+      "toNumber": "+441234567890",
+      "messageBody": "Test message 1",
+      "customerId": "NULL",
+      "relatedLogId": "NULL",
+      "receivedAt": "2025-11-23 22:20:57",
+      "read": "1",
+      "createdAt": "2025-11-23 22:20:57"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tmessageSid\tfromNumber\ttoNumber\tmessageBody\tcustomerId\trelatedLogId\treceivedAt\tread\tcreatedAt\n6\ttest-sid-bulk-2\t+447843275372\t+441234567890\tTest message 2\tNULL\tNULL\t2025-11-23 22:20:57\t1\t2025-11-23 22:20:57\n7\ttest-sid-bulk-3\t+447843275372\t+441234567890\tTest message 3\tNULL\tNULL\t2025-11-23 22:20:57\t1\t2025-11-23 22:20:57\n5\ttest-sid-bulk-1\t+447843275372\t+441234567890\tTest message 1\tNULL\tNULL\t2025-11-23 22:20:57\t1\t2025-11-23 22:20:57\n",
+  "stderr": "",
+  "execution_time_ms": 102
+}
