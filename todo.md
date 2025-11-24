@@ -380,3 +380,8 @@
 - [x] Show percentage and current/total records
 - [x] Display estimated time remaining
 - [x] Simulated progress for better UX during processing
+
+## Fix Remaining require() in Cleanup Script
+- [x] Find remaining require() calls in cleanup script
+- [x] Replace with proper ES6 imports (removed require.main check)
+- [x] Test cleanup functionality

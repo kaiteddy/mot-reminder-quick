@@ -149,34 +149,4 @@ export async function cleanupCustomerPhoneNumbers(
   }
 }
 
-// Allow running from command line
-if (require.main === module) {
-  const dryRun = process.argv.includes('--dry-run') || !process.argv.includes('--apply');
-  
-  cleanupCustomerPhoneNumbers(dryRun)
-    .then((stats) => {
-      console.log('\n[Phone Cleanup] Complete!');
-      
-      // Show first 10 changes as examples
-      if (stats.details.length > 0) {
-        console.log('\n[Phone Cleanup] Sample changes:');
-        stats.details.slice(0, 10).forEach((detail) => {
-          console.log(`  ${detail.name}:`);
-          console.log(`    Original: ${detail.originalPhone}`);
-          console.log(`    New: ${detail.newPhone || 'REMOVED (invalid)'}`);
-          if (detail.extractedEmail) {
-            console.log(`    Extracted email: ${detail.extractedEmail}`);
-          }
-          if (detail.issues.length > 0) {
-            console.log(`    Issues: ${detail.issues.join(', ')}`);
-          }
-        });
-      }
-      
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('[Phone Cleanup] Failed:', error);
-      process.exit(1);
-    });
-}
+// This module is imported by tRPC, not run directly from command line
