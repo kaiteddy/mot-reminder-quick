@@ -1,5 +1,6 @@
 import { parse } from 'csv-parse/sync';
 import iconv from 'iconv-lite';
+import { cleanPhoneField } from '../utils/phoneUtils';
 
 export interface GA4Customer {
   _ID: string;
@@ -183,8 +184,6 @@ export function buildAddress(customer: GA4Customer): string {
  * Now with validation and normalization
  */
 export function getPhoneNumber(customer: GA4Customer): string | null {
-  const { cleanPhoneField } = require('../utils/phoneUtils');
-  
   // Try mobile first
   if (customer.contactMobile) {
     const { phone } = cleanPhoneField(customer.contactMobile);
@@ -204,8 +203,6 @@ export function getPhoneNumber(customer: GA4Customer): string | null {
  * Extract email from customer data, including from phone fields
  */
 export function getCustomerEmail(customer: GA4Customer): string | null {
-  const { cleanPhoneField } = require('../utils/phoneUtils');
-  
   // First check the email field
   if (customer.contactEmail && customer.contactEmail.includes('@')) {
     return customer.contactEmail;

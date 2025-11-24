@@ -369,3 +369,7 @@
 ## Fix Phone Cleanup Authentication
 - [x] Remove authentication requirement from phone cleanup page
 - [x] Make cleanup accessible without login
+
+## Fix ES Module Error in Phone Utilities
+- [x] Replace require() with import in csv-import.ts
+- [x] Test phone cleanup functionality
