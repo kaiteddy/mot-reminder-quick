@@ -365,3 +365,7 @@
 - [x] Create cleanup UI page with dry run and apply options
 - [x] Create cleanup report showing what was changed
 - [x] Add tRPC endpoint for phone cleanup
+
+## Fix Phone Cleanup Authentication
+- [x] Remove authentication requirement from phone cleanup page
+- [x] Make cleanup accessible without login
