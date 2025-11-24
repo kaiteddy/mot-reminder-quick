@@ -402,3 +402,9 @@
 - [x] Store interval reference using useRef
 - [x] Clear progress interval on success and error
 - [x] Prevent interval from clearing itself prematurely
+
+## Fix MOT Expiry Display to Show Date Instead of Days
+- [x] Update MOT Expiry column to show actual date
+- [x] Keep Days Left column for quick reference
+- [x] Show date above status badge in stacked layout
+- [x] Use formatMOTDate for consistent date formatting

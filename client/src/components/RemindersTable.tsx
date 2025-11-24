@@ -326,10 +326,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                       {reminder.motExpiryDate ? (() => {
                         const motInfo = formatMOTDate(reminder.motExpiryDate);
                         const badge = getMOTStatusBadge(motInfo);
+                        const displayDate = typeof motInfo === 'string' ? motInfo : motInfo.date;
                         return (
-                          <Badge variant={badge.variant} className={badge.className}>
-                            {badge.text}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-medium">{displayDate}</span>
+                            <Badge variant={badge.variant} className={badge.className + " w-fit"}>
+                              {badge.text}
+                            </Badge>
+                          </div>
                         );
                       })() : (
                         <span className="text-muted-foreground">-</span>
