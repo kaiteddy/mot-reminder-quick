@@ -13,6 +13,7 @@ import {
   buildCustomerName,
   buildAddress,
   getPhoneNumber,
+  getCustomerEmail,
 } from "../services/csv-import";
 
 export const importRouter = router({
@@ -50,7 +51,7 @@ export const importRouter = router({
         try {
           const name = buildCustomerName(ga4Customer);
           const phone = getPhoneNumber(ga4Customer);
-          const email = ga4Customer.contactEmail || null;
+          const email = getCustomerEmail(ga4Customer);
           
           // Smart match: phone > email > name
           const existing = await findCustomerBySmartMatch(phone, email, name);

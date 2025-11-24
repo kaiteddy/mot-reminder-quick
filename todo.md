@@ -351,3 +351,17 @@
 - [x] Add error handling and retry logic to prevent crashes
 - [x] Add console logging for debugging
 - [x] Test the fix to ensure errors are resolved
+
+## Phone Number Data Cleanup and Validation
+- [x] Create phone number validation utility function
+- [x] Create phone number normalization function (standardize to +44 format)
+- [x] Handle edge cases: home numbers, emails in phone fields, invalid formats
+- [x] Build database cleanup script to fix existing customer phone numbers
+- [x] Add phone validation to CSV import process
+- [x] Separate mobile vs landline numbers
+- [x] Extract emails from phone fields and move to email column
+- [x] Remove invalid entries (single "0", slashes, etc.)
+- [x] Test cleanup with 21 passing unit tests
+- [x] Create cleanup UI page with dry run and apply options
+- [x] Create cleanup report showing what was changed
+- [x] Add tRPC endpoint for phone cleanup

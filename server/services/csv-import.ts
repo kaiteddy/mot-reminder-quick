@@ -180,18 +180,48 @@ export function buildAddress(customer: GA4Customer): string {
 
 /**
  * Get phone number (prefer mobile over landline)
+ * Now with validation and normalization
  */
 export function getPhoneNumber(customer: GA4Customer): string | null {
-  // Clean phone numbers - extract first number if multiple
-  const cleanPhone = (phone?: string) => {
-    if (!phone) return null;
-    // Extract first phone number (before any text)
-    const match = phone.match(/^(\d[\d\s]+)/);
-    return match ? match[1].replace(/\s/g, '') : phone.replace(/\s/g, '');
-  };
+  const { cleanPhoneField } = require('../utils/phoneUtils');
   
-  const mobile = cleanPhone(customer.contactMobile);
-  const telephone = cleanPhone(customer.contactTelephone);
+  // Try mobile first
+  if (customer.contactMobile) {
+    const { phone } = cleanPhoneField(customer.contactMobile);
+    if (phone) return phone;
+  }
   
-  return mobile || telephone || null;
+  // Fall back to landline
+  if (customer.contactTelephone) {
+    const { phone } = cleanPhoneField(customer.contactTelephone);
+    if (phone) return phone;
+  }
+  
+  return null;
+}
+
+/**
+ * Extract email from customer data, including from phone fields
+ */
+export function getCustomerEmail(customer: GA4Customer): string | null {
+  const { cleanPhoneField } = require('../utils/phoneUtils');
+  
+  // First check the email field
+  if (customer.contactEmail && customer.contactEmail.includes('@')) {
+    return customer.contactEmail;
+  }
+  
+  // Check if email is mixed in mobile field
+  if (customer.contactMobile) {
+    const { email } = cleanPhoneField(customer.contactMobile);
+    if (email) return email;
+  }
+  
+  // Check if email is mixed in telephone field
+  if (customer.contactTelephone) {
+    const { email } = cleanPhoneField(customer.contactTelephone);
+    if (email) return email;
+  }
+  
+  return null;
 }

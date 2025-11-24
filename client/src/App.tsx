@@ -13,6 +13,7 @@ import Database from "./pages/Database";
 import DiagnoseMOT from "./pages/DiagnoseMOT";
 import TestWhatsApp from "./pages/TestWhatsApp";
 import LogsAndMessages from "./pages/LogsAndMessages";
+import PhoneCleanup from "./pages/PhoneCleanup";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path="/test-whatsapp" component={TestWhatsApp} />
       <Route path="/logs" component={LogsAndMessages} />
+      <Route path="/phone-cleanup" component={PhoneCleanup} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

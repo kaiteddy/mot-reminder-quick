@@ -6,7 +6,7 @@ import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { UnreadMessageBadge } from "@/components/UnreadMessageBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText } from "lucide-react";
+import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText, Wrench } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -118,6 +118,12 @@ export default function Home() {
                 <FileText className="w-4 h-4 mr-2" />
                 Logs & Messages
                 <UnreadMessageBadge />
+              </Button>
+            </Link>
+            <Link href="/phone-cleanup">
+              <Button variant="outline" size="lg">
+                <Wrench className="w-4 h-4 mr-2" />
+                Phone Cleanup
               </Button>
             </Link>
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">

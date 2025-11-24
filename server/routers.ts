@@ -660,6 +660,16 @@ export const appRouter = router({
   }),
   
   // Customer Messages
+  // Phone number cleanup
+  cleanup: router({
+    phoneNumbers: publicProcedure
+      .input(z.object({ dryRun: z.boolean().default(true) }))
+      .mutation(async ({ input }) => {
+        const { cleanupCustomerPhoneNumbers } = await import("./scripts/cleanupPhoneNumbers");
+        return cleanupCustomerPhoneNumbers(input.dryRun);
+      }),
+  }),
+  
   messages: router({
     list: publicProcedure.query(async () => {
       const { getAllCustomerMessages } = await import("./db");
