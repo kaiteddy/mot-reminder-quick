@@ -131,7 +131,7 @@ export default function Home() {
               Quick MOT reminders from screenshots
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link href="/database">
               <Button variant="outline" size="lg">
                 <Database className="w-4 h-4 mr-2" />

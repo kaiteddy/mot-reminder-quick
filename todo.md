@@ -408,3 +408,8 @@
 - [x] Keep Days Left column for quick reference
 - [x] Show date above status badge in stacked layout
 - [x] Use formatMOTDate for consistent date formatting
+
+## Fix Navigation Buttons Overflowing Viewport
+- [x] Change button container from flex to flex-wrap
+- [x] Ensure buttons wrap to multiple rows on smaller screens
+- [x] Maintain proper spacing between wrapped buttons with gap-3
