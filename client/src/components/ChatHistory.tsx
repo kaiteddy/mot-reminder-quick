@@ -98,7 +98,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
   };
   
   return (
-    <Card className="h-[600px] max-w-full flex flex-col">
+    <Card className="h-[700px] max-w-full flex flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="w-5 h-5" />
@@ -110,7 +110,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
         {/* Message History */}
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="h-[350px] pr-4">
           <div className="space-y-4">
             {allConversation.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">

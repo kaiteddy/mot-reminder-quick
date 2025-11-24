@@ -463,3 +463,8 @@
 - [x] Add MOT reminder template
 - [x] Show templates as buttons with icons
 - [x] Remove debug console.log statements
+
+## Fix Quick Reply Buttons Visibility
+- [x] Adjust chat container height to 700px (from 600px)
+- [x] Set fixed ScrollArea height to 350px for message history
+- [x] Quick reply section now always visible below scroll area
