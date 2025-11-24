@@ -487,3 +487,11 @@
 - [x] Update ChatHistory component to display messageContent instead of hardcoded template
 - [x] Write tests for messageContent logging functionality
 - [x] All tests passing (3/3)
+
+## Fix Chat Window UI Flow
+- [x] Investigate current chat window layout and message display
+- [x] Fix message flow to show proper conversation (sent right, received left)
+- [x] Ensure chat window fits within viewport without overflow
+- [x] Test with customer responses and sent messages
+- [x] Verify scrolling behavior works correctly
+- [x] Ensure quick reply buttons and input are always visible

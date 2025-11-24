@@ -249,14 +249,19 @@ export default function LogsAndMessages() {
                         </CardContent>
                       </Card>
                     </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-3xl max-h-[80vh]">
                       <DialogHeader>
                         <DialogTitle>Chat with {message.fromNumber}</DialogTitle>
+                        <DialogDescription>
+                          View conversation history and send messages
+                        </DialogDescription>
                       </DialogHeader>
-                      <ChatHistory
-                        phoneNumber={message.fromNumber}
-                        customerName={message.fromNumber}
-                      />
+                      <div className="mt-4">
+                        <ChatHistory
+                          phoneNumber={message.fromNumber}
+                          customerName={message.fromNumber}
+                        />
+                      </div>
                     </DialogContent>
                   </Dialog>
                 ))}
@@ -276,11 +281,13 @@ export default function LogsAndMessages() {
               Test WhatsApp messaging with +447843275372
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChatHistory
-              phoneNumber="+447843275372"
-              customerName="Test User"
-            />
+          <CardContent className="p-6">
+            <div className="max-w-2xl mx-auto">
+              <ChatHistory
+                phoneNumber="+447843275372"
+                customerName="Test User"
+              />
+            </div>
           </CardContent>
         </Card>
       </main>
