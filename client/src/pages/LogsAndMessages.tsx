@@ -71,6 +71,33 @@ export default function LogsAndMessages() {
 
   const unreadCount = messages?.filter(m => m.read === 0).length || 0;
 
+  // Group messages by phone number
+  const groupedMessages = messages?.reduce((acc, message) => {
+    const phoneNumber = message.fromNumber;
+    if (!acc[phoneNumber]) {
+      acc[phoneNumber] = {
+        phoneNumber,
+        messages: [],
+        latestMessage: message,
+        unreadCount: 0,
+      };
+    }
+    acc[phoneNumber].messages.push(message);
+    if (message.read === 0) {
+      acc[phoneNumber].unreadCount++;
+    }
+    // Update latest message if this one is newer
+    if (new Date(message.receivedAt) > new Date(acc[phoneNumber].latestMessage.receivedAt)) {
+      acc[phoneNumber].latestMessage = message;
+    }
+    return acc;
+  }, {} as Record<string, { phoneNumber: string; messages: typeof messages; latestMessage: typeof messages[0]; unreadCount: number }>);
+
+  // Convert to array and sort by latest message time
+  const conversations = Object.values(groupedMessages || {}).sort(
+    (a, b) => new Date(b.latestMessage.receivedAt).getTime() - new Date(a.latestMessage.receivedAt).getTime()
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -225,24 +252,29 @@ export default function LogsAndMessages() {
               </div>
             ) : (
               <div className="space-y-2">
-                {messages.map((message) => (
-                  <Dialog key={message.id}>
+                {conversations.map((conversation) => (
+                  <Dialog key={conversation.phoneNumber}>
                     <DialogTrigger asChild>
-                      <Card className={`cursor-pointer hover:bg-accent transition-colors ${message.read === 0 ? 'border-primary' : ''}`}>
+                      <Card className={`cursor-pointer hover:bg-accent transition-colors ${conversation.unreadCount > 0 ? 'border-primary' : ''}`}>
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-semibold">{message.fromNumber}</span>
-                                {message.read === 0 && (
-                                  <Badge variant="destructive" className="text-xs">New</Badge>
+                                <span className="font-semibold">{conversation.phoneNumber}</span>
+                                {conversation.unreadCount > 0 && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    {conversation.unreadCount} New
+                                  </Badge>
                                 )}
+                                <Badge variant="outline" className="text-xs">
+                                  {conversation.messages.length} {conversation.messages.length === 1 ? 'message' : 'messages'}
+                                </Badge>
                               </div>
                               <p className="text-sm text-muted-foreground line-clamp-2">
-                                {message.messageBody}
+                                {conversation.latestMessage.messageBody}
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                {new Date(message.receivedAt).toLocaleString("en-GB")}
+                                {new Date(conversation.latestMessage.receivedAt).toLocaleString("en-GB")}
                               </p>
                             </div>
                           </div>
@@ -251,15 +283,15 @@ export default function LogsAndMessages() {
                     </DialogTrigger>
                     <DialogContent className="max-w-3xl max-h-[80vh]">
                       <DialogHeader>
-                        <DialogTitle>Chat with {message.fromNumber}</DialogTitle>
+                        <DialogTitle>Chat with {conversation.phoneNumber}</DialogTitle>
                         <DialogDescription>
-                          View conversation history and send messages
+                          {conversation.messages.length} {conversation.messages.length === 1 ? 'message' : 'messages'} • View conversation history and send messages
                         </DialogDescription>
                       </DialogHeader>
                       <div className="mt-4">
                         <ChatHistory
-                          phoneNumber={message.fromNumber}
-                          customerName={message.fromNumber}
+                          phoneNumber={conversation.phoneNumber}
+                          customerName={conversation.phoneNumber}
                         />
                       </div>
                     </DialogContent>

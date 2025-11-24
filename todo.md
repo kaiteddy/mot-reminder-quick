@@ -495,3 +495,10 @@
 - [x] Test with customer responses and sent messages
 - [x] Verify scrolling behavior works correctly
 - [x] Ensure quick reply buttons and input are always visible
+
+## Group Customer Messages by Phone Number
+- [x] Update LogsAndMessages to group messages by phone number
+- [x] Show one card per customer with latest message preview
+- [x] Display message count per conversation
+- [x] Show unread indicator per conversation
+- [x] Sort conversations by most recent message
