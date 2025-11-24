@@ -25,7 +25,10 @@ interface CleanupStats {
   }>;
 }
 
-export async function cleanupCustomerPhoneNumbers(dryRun: boolean = true): Promise<CleanupStats> {
+export async function cleanupCustomerPhoneNumbers(
+  dryRun: boolean = true,
+  onProgress?: (current: number, total: number, customerName: string) => void
+): Promise<CleanupStats> {
   const db = await getDb();
   if (!db) {
     throw new Error('Database not available');
@@ -49,7 +52,14 @@ export async function cleanupCustomerPhoneNumbers(dryRun: boolean = true): Promi
     console.log(`[Phone Cleanup] Processing ${stats.total} customers...`);
     console.log(`[Phone Cleanup] Mode: ${dryRun ? 'DRY RUN (no changes will be saved)' : 'LIVE (changes will be saved)'}`);
 
-    for (const customer of allCustomers) {
+    for (let i = 0; i < allCustomers.length; i++) {
+      const customer = allCustomers[i];
+      
+      // Report progress
+      if (onProgress) {
+        onProgress(i + 1, allCustomers.length, customer.name || 'Unknown');
+      }
+      
       try {
         const originalPhone = customer.phone;
         

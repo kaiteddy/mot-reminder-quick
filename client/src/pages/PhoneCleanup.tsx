@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,20 +14,50 @@ import { toast } from "sonner";
 export default function PhoneCleanup() {
   const [showResults, setShowResults] = useState(false);
   const [cleanupResults, setCleanupResults] = useState<any>(null);
+  const [progress, setProgress] = useState({ current: 0, total: 0, name: '' });
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const cleanupMutation = trpc.cleanup.phoneNumbers.useMutation({
     onSuccess: (data) => {
       setCleanupResults(data);
       setShowResults(true);
+      setIsProcessing(false);
+      setProgress({ current: 0, total: 0, name: '' });
       toast.success(`Cleanup complete! ${data.cleaned} phone numbers cleaned.`);
     },
     onError: (error) => {
+      setIsProcessing(false);
+      setProgress({ current: 0, total: 0, name: '' });
       toast.error(`Cleanup failed: ${error.message}`);
     },
   });
 
   const runCleanup = (dryRun: boolean) => {
     setShowResults(false);
+    setIsProcessing(true);
+    // Simulate progress for better UX (actual processing happens on server)
+    // Estimate: ~100ms per record for processing
+    const estimatedTotal = 6000; // Approximate customer count
+    const estimatedDuration = estimatedTotal * 0.05; // 50ms per record
+    const updateInterval = 100; // Update every 100ms
+    const steps = estimatedDuration / updateInterval;
+    let currentStep = 0;
+    
+    const progressInterval = setInterval(() => {
+      currentStep++;
+      const progressPercent = Math.min((currentStep / steps) * 100, 95); // Cap at 95% until complete
+      const currentRecord = Math.floor((progressPercent / 100) * estimatedTotal);
+      setProgress({ 
+        current: currentRecord, 
+        total: estimatedTotal, 
+        name: 'Processing...' 
+      });
+      
+      if (currentStep >= steps) {
+        clearInterval(progressInterval);
+      }
+    }, updateInterval);
+    
     cleanupMutation.mutate({ dryRun });
   };
 
@@ -94,10 +125,21 @@ export default function PhoneCleanup() {
               </Button>
             </div>
             
-            {cleanupMutation.isPending && (
-              <p className="text-sm text-muted-foreground">
-                Processing... This may take a few moments for large datasets.
-              </p>
+            {isProcessing && progress.total > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Processing customer records...
+                  </span>
+                  <span className="font-medium">
+                    {progress.current} / {progress.total} ({Math.round((progress.current / progress.total) * 100)}%)
+                  </span>
+                </div>
+                <Progress value={(progress.current / progress.total) * 100} className="h-2" />
+                <p className="text-xs text-muted-foreground">
+                  Estimated time remaining: {Math.max(0, Math.ceil((progress.total - progress.current) * 0.05 / 1000))}s
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>

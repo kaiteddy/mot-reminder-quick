@@ -373,3 +373,10 @@
 ## Fix ES Module Error in Phone Utilities
 - [x] Replace require() with import in csv-import.ts
 - [x] Test phone cleanup functionality
+
+## Add Progress Bar to Phone Cleanup
+- [x] Modify cleanup script to report progress updates
+- [x] Add progress bar UI component
+- [x] Show percentage and current/total records
+- [x] Display estimated time remaining
+- [x] Simulated progress for better UX during processing
