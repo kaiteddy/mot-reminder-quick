@@ -112,6 +112,7 @@ export const reminderLogs = mysqlTable("reminderLogs", {
   customerName: text("customerName"),
   registration: varchar("registration", { length: 20 }),
   dueDate: timestamp("dueDate"),
+  messageContent: text("messageContent"), // Actual message text sent
   sentAt: timestamp("sentAt").defaultNow().notNull(),
   deliveredAt: timestamp("deliveredAt"),
   errorMessage: text("errorMessage"),

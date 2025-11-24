@@ -358,6 +358,7 @@ export const appRouter = router({
             customerName: "Test User",
             registration: "TEST123",
             dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            messageContent: input.customMessage || undefined,
           });
           
           return { success: true, messageSid: result.messageId };
@@ -372,12 +373,20 @@ export const appRouter = router({
         }
         
         let result;
+        let messageContent: string;
         
         if (reminder.type === "MOT") {
           // Use WhatsApp template for MOT reminders (no 24-hour window restriction)
           let motExpiryDate = new Date(reminder.dueDate);
+          const daysLeft = Math.ceil((motExpiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const formattedDate = motExpiryDate.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          });
           
-          // Use the reminder's due date as MOT expiry date
+          // Construct the message content that matches the template
+          messageContent = `Hi ${reminder.customerName || "Customer"}, this is a reminder that the MOT for your vehicle ${reminder.registration} expires on ${formattedDate} (${daysLeft} days). Please contact us to book your MOT test.`;
           
           result = await sendMOTReminderWithTemplate({
             to: input.phoneNumber,
@@ -388,11 +397,22 @@ export const appRouter = router({
         } else if (reminder.type === "Service") {
           // Use WhatsApp template for Service reminders
           const { sendServiceReminderWithTemplate } = await import("./smsService");
+          const serviceDueDate = new Date(reminder.dueDate);
+          const daysLeft = Math.ceil((serviceDueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const formattedDate = serviceDueDate.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          });
+          
+          // Construct the message content that matches the template
+          messageContent = `Hi ${reminder.customerName || "Customer"}, this is a reminder that your vehicle ${reminder.registration} is due for a service on ${formattedDate} (${daysLeft} days). Please contact us to book your service.`;
+          
           result = await sendServiceReminderWithTemplate({
             to: input.phoneNumber,
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
-            serviceDueDate: new Date(reminder.dueDate),
+            serviceDueDate,
           });
         } else {
           // Use freeform message for other reminder types (Cambelt, Other)
@@ -401,6 +421,8 @@ export const appRouter = router({
             registration: reminder.registration,
             dueDate: new Date(reminder.dueDate),
           });
+          
+          messageContent = message;
           
           result = await sendSMS({
             to: input.phoneNumber,
@@ -432,6 +454,7 @@ export const appRouter = router({
           customerName: reminder.customerName,
           registration: reminder.registration,
           dueDate: new Date(reminder.dueDate),
+          messageContent: messageContent,
           sentAt: new Date(),
         });
         

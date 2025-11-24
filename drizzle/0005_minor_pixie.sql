@@ -1,0 +1,1 @@
+ALTER TABLE `reminderLogs` ADD `messageContent` text;

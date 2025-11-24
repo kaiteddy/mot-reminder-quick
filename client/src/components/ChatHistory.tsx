@@ -25,6 +25,8 @@ interface SentLog {
   status: string;
   registration: string | null;
   customerName: string | null;
+  messageContent: string | null;
+  messageType: string;
 }
 
 interface ChatHistoryProps {
@@ -79,7 +81,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
     ...sentMessages.map((log) => ({
       id: `sent-${log.id}`,
       type: 'sent' as const,
-      message: `MOT Reminder for ${log.registration || 'vehicle'}`,
+      message: log.messageContent || `${log.messageType} Reminder for ${log.registration || 'vehicle'}`,
       timestamp: new Date(log.sentAt),
       status: log.status,
     })),

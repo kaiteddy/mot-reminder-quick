@@ -474,3 +474,16 @@
 - [x] Pass custom message content from ChatHistory to mutation
 - [x] Send actual message text instead of hardcoded reminder
 - [x] Use sendSMS for custom messages, template for default
+
+## Fix Message Content Display in Chat History
+- [ ] Update reminderLogs to store actual custom message content
+- [ ] Pass custom message text to createReminderLog
+- [ ] Display logged message content instead of hardcoded text
+- [ ] Test that sent messages show correct content
+
+## Fix Chat Message Display Bug
+- [x] Add messageContent field to reminderLogs schema
+- [x] Update sendWhatsApp mutation to store actual message content
+- [x] Update ChatHistory component to display messageContent instead of hardcoded template
+- [x] Write tests for messageContent logging functionality
+- [x] All tests passing (3/3)
