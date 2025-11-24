@@ -9,9 +9,9 @@ import { AlertCircle, CheckCircle2, Clock, Loader2, MessageSquare, Send, XCircle
 import { Link } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChatHistory } from "@/components/ChatHistory";
 
 export default function LogsAndMessages() {
-  const { user, loading: authLoading } = useAuth();
   
   // Auto-refresh logs every 10 seconds to show updated delivery status
   const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery(undefined, {
@@ -34,20 +34,14 @@ export default function LogsAndMessages() {
     },
   });
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const isLoading = logsLoading || messagesLoading;
 
-  if (!user) {
+  if (false) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Authentication Required</CardTitle>
+            <CardTitle>Placeholder</CardTitle>
             <CardDescription>Please log in to view logs and messages</CardDescription>
           </CardHeader>
           <CardContent>
@@ -255,34 +249,35 @@ export default function LogsAndMessages() {
                         </CardContent>
                       </Card>
                     </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Customer Message</DialogTitle>
-                        <DialogDescription>
-                          From: {message.fromNumber}
-                        </DialogDescription>
-                      </DialogHeader>
-                      <ScrollArea className="max-h-[400px] w-full rounded-md border p-4">
-                        <p className="whitespace-pre-wrap">{message.messageBody}</p>
-                      </ScrollArea>
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
-                        <span>Received: {new Date(message.receivedAt).toLocaleString("en-GB")}</span>
-                        {message.read === 0 && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              markAsReadMutation.mutate({ id: message.id });
-                            }}
-                          >
-                            Mark as Read
-                          </Button>
-                        )}
-                      </div>
+                    <DialogContent className="max-w-2xl">
+                      <ChatHistory
+                        phoneNumber={message.fromNumber}
+                        customerName={message.fromNumber}
+                      />
                     </DialogContent>
                   </Dialog>
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Test Chat */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              Test Chat
+            </CardTitle>
+            <CardDescription>
+              Test WhatsApp messaging with +447843275372
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChatHistory
+              phoneNumber="+447843275372"
+              customerName="Test User"
+            />
           </CardContent>
         </Card>
       </main>

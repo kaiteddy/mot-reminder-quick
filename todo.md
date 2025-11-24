@@ -413,3 +413,14 @@
 - [x] Change button container from flex to flex-wrap
 - [x] Ensure buttons wrap to multiple rows on smaller screens
 - [x] Maintain proper spacing between wrapped buttons with gap-3
+
+## Fix Logs & Messages Login and Add Chat History
+- [x] Remove authentication requirement from Logs & Messages page
+- [x] Create chat history interface for each customer
+- [x] Show all messages with timestamps in conversation format
+- [x] Display sent messages vs received messages differently (blue vs gray)
+- [x] Add test message functionality for +447843275372
+- [x] Group messages by customer/conversation
+- [x] Show message status badges on sent messages
+- [x] Add test input field to send messages directly from chat
+- [x] Combine sent and received messages in chronological order
