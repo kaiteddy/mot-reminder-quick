@@ -490,3 +490,21 @@ export async function getVehiclesWithCustomersForReminders() {
     return [];
   }
 }
+
+export async function updateVehicleMOTExpiryDate(registration: string, motExpiryDate: Date) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot update vehicle: database not available");
+    return;
+  }
+
+  try {
+    const { vehicles } = await import("../drizzle/schema");
+    await db.update(vehicles)
+      .set({ motExpiryDate })
+      .where(eq(vehicles.registration, registration));
+  } catch (error) {
+    console.error("[Database] Failed to update vehicle MOT expiry date:", error);
+    throw error;
+  }
+}

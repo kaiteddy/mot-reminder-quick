@@ -447,6 +447,64 @@ export const appRouter = router({
       
       return generatedReminders;
     }),
+    
+    bulkVerifyMOT: publicProcedure
+      .input(z.object({ 
+        registrations: z.array(z.string()),
+      }))
+      .mutation(async ({ input }) => {
+        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+        const { updateVehicleMOTExpiryDate } = await import("./db");
+        
+        const results = [];
+        
+        for (const registration of input.registrations) {
+          try {
+            const motHistory = await getMOTHistory(registration);
+            
+            if (motHistory) {
+              const expiryDate = getLatestMOTExpiry(motHistory);
+              
+              if (expiryDate) {
+                // Update vehicle MOT date in database
+                await updateVehicleMOTExpiryDate(registration, expiryDate);
+                
+                results.push({
+                  registration,
+                  success: true,
+                  motExpiryDate: expiryDate.toISOString(),
+                  make: motHistory.make,
+                  model: motHistory.model,
+                  verified: true,
+                });
+              } else {
+                results.push({
+                  registration,
+                  success: false,
+                  error: 'No valid MOT expiry date found',
+                  verified: false,
+                });
+              }
+            } else {
+              results.push({
+                registration,
+                success: false,
+                error: 'No MOT data found',
+                verified: false,
+              });
+            }
+          } catch (error: any) {
+            results.push({
+              registration,
+              success: false,
+              error: error.message || 'Failed to verify MOT',
+              verified: false,
+            });
+          }
+        }
+        
+        return results;
+      }),
   }),
   
   // Database overview

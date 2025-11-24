@@ -244,8 +244,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                     {getSortIcon("customer")}
                   </Button>
                 </TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Contact</TableHead>
                 <TableHead>Vehicle</TableHead>
                 <TableHead>
                   <Button
@@ -309,11 +308,16 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                         return typeof motInfo === 'string' ? motInfo : motInfo.date;
                       })()}
                     </TableCell>
-                    <TableCell className="font-mono font-semibold">{reminder.registration}</TableCell>
-                    <TableCell>{customerName}</TableCell>
-                    <TableCell className="font-mono text-sm">{reminder.customerPhone || "-"}</TableCell>
-                    <TableCell className="text-sm">{reminder.customerEmail || "-"}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="font-mono font-semibold text-sm">{reminder.registration}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="font-medium">{customerName}</div>
+                        {reminder.customerPhone && (
+                          <div className="text-xs text-muted-foreground font-mono">{reminder.customerPhone}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
                       {reminder.vehicleMake && reminder.vehicleModel
                         ? `${reminder.vehicleMake} ${reminder.vehicleModel}`
                         : "-"}

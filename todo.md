@@ -385,3 +385,13 @@
 - [x] Find remaining require() calls in cleanup script
 - [x] Replace with proper ES6 imports (removed require.main check)
 - [x] Test cleanup functionality
+
+## Add MOT Refresh Functionality
+- [x] Create backend endpoint to bulk verify MOT dates via DVLA API
+- [x] Add progress tracking for bulk verification
+- [x] Update RemindersTable to show verified expiry dates
+- [x] Add refresh button to home page with progress counter
+- [x] Remove horizontal scrolling from table
+- [x] Optimize table layout - combined Contact column (name + phone)
+- [x] Made columns more compact with smaller text
+- [x] Show verification status in success toast

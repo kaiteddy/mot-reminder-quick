@@ -6,7 +6,7 @@ import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { UnreadMessageBadge } from "@/components/UnreadMessageBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText, Wrench } from "lucide-react";
+import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText, Wrench, RefreshCw, CheckCircle } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0 });
 
   const utils = trpc.useUtils();
   // Use auto-generated reminders from vehicles instead of manual reminders
@@ -43,6 +45,59 @@ export default function Home() {
       setIsProcessing(false);
     },
   });
+
+  const bulkVerifyMOT = trpc.reminders.bulkVerifyMOT.useMutation({
+    onSuccess: (results) => {
+      const successful = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success).length;
+      
+      setIsRefreshing(false);
+      setRefreshProgress({ current: 0, total: 0 });
+      
+      if (successful > 0) {
+        toast.success(`Verified ${successful} MOT dates successfully${failed > 0 ? `, ${failed} failed` : ''}`);
+        utils.reminders.generateFromVehicles.invalidate();
+      } else {
+        toast.error('Failed to verify any MOT dates');
+      }
+    },
+    onError: (error) => {
+      setIsRefreshing(false);
+      setRefreshProgress({ current: 0, total: 0 });
+      toast.error(`Verification failed: ${error.message}`);
+    },
+  });
+
+  const handleRefreshMOT = async () => {
+    if (!reminders || reminders.length === 0) return;
+    
+    // Get unique registrations from reminders
+    const registrations = Array.from(new Set(reminders.map(r => r.registration).filter(Boolean)));
+    
+    if (registrations.length === 0) {
+      toast.error('No registrations to verify');
+      return;
+    }
+    
+    setIsRefreshing(true);
+    setRefreshProgress({ current: 0, total: registrations.length });
+    
+    // Simulate progress updates
+    const progressInterval = setInterval(() => {
+      setRefreshProgress(prev => {
+        if (prev.current < prev.total) {
+          return { ...prev, current: prev.current + 1 };
+        }
+        return prev;
+      });
+    }, 500);
+    
+    try {
+      await bulkVerifyMOT.mutateAsync({ registrations });
+    } finally {
+      clearInterval(progressInterval);
+    }
+  };
 
   const handleImageUpload = async (file: File) => {
     setIsProcessing(true);
@@ -164,10 +219,32 @@ export default function Home() {
         {/* All Reminders */}
         <Card>
           <CardHeader>
-            <CardTitle>All Reminders</CardTitle>
-            <CardDescription>
-              {allReminders.length} total reminders
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>All Reminders</CardTitle>
+                <CardDescription>
+                  {allReminders.length} total reminders
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleRefreshMOT}
+                disabled={isRefreshing || allReminders.length === 0}
+                variant="outline"
+                size="sm"
+              >
+                {isRefreshing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Verifying {refreshProgress.current}/{refreshProgress.total}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Verify MOT Dates
+                  </>
+                )}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
