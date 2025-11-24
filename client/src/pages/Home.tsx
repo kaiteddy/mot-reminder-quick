@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Reminder } from "../../../drizzle/schema";
 import { ImageUpload } from "@/components/ImageUpload";
 import { RemindersTable } from "@/components/RemindersTable";
@@ -19,7 +19,18 @@ export default function Home() {
 
   const utils = trpc.useUtils();
   // Use auto-generated reminders from vehicles instead of manual reminders
-  const { data: reminders, isLoading } = trpc.reminders.generateFromVehicles.useQuery();
+  const { data: reminders, isLoading, error: remindersError } = trpc.reminders.generateFromVehicles.useQuery(undefined, {
+    retry: 2,
+    retryDelay: 1000,
+  });
+  
+  // Show error toast if query fails
+  useEffect(() => {
+    if (remindersError) {
+      console.error("[Home] Error loading reminders:", remindersError);
+      toast.error("Failed to load reminders. Please refresh the page.");
+    }
+  }, [remindersError]);
   const processImage = trpc.reminders.processImage.useMutation({
     onSuccess: (data) => {
       toast.success(`Extracted ${data.count} reminders`);

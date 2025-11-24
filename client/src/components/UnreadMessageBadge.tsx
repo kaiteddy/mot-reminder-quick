@@ -12,10 +12,19 @@ export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
   const [hasPermission, setHasPermission] = useState(false);
   
   // Poll for unread count every 10 seconds
-  const { data: unreadCount = 0 } = trpc.messages.getUnreadCount.useQuery(undefined, {
+  const { data: unreadCount = 0, error } = trpc.messages.getUnreadCount.useQuery(undefined, {
     refetchInterval: 10000, // 10 seconds
     refetchIntervalInBackground: true,
+    retry: 3,
+    retryDelay: 1000,
   });
+  
+  // Log errors but don't crash
+  useEffect(() => {
+    if (error) {
+      console.error("[UnreadMessageBadge] Error fetching unread count:", error);
+    }
+  }, [error]);
 
   // Request notification permission on mount
   useEffect(() => {

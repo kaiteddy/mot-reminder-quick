@@ -343,3 +343,11 @@
 - [x] Update unread count when user views messages
 - [x] Add Mark All as Read button
 - [x] Write and pass vitest tests for unread functionality
+
+## Fix API Query Pattern Matching Errors
+- [x] Investigate "string did not match expected pattern" errors on home page
+- [x] Check server logs for detailed error information
+- [x] Identify which API query is causing the issue
+- [x] Add error handling and retry logic to prevent crashes
+- [x] Add console logging for debugging
+- [x] Test the fix to ensure errors are resolved
