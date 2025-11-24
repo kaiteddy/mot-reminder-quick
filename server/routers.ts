@@ -316,6 +316,7 @@ export const appRouter = router({
       .input(z.object({
         id: z.number(),
         phoneNumber: z.string(),
+        customMessage: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
@@ -323,12 +324,22 @@ export const appRouter = router({
         
         // Handle test messages (id = 0)
         if (input.id === 0) {
-          const result = await sendMOTReminderWithTemplate({
-            to: input.phoneNumber,
-            customerName: "Test User",
-            registration: "TEST123",
-            motExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-          });
+          // If custom message provided, send it directly
+          let result;
+          if (input.customMessage) {
+            result = await sendSMS({
+              to: input.phoneNumber,
+              message: input.customMessage,
+            });
+          } else {
+            // Otherwise send default MOT reminder
+            result = await sendMOTReminderWithTemplate({
+              to: input.phoneNumber,
+              customerName: "Test User",
+              registration: "TEST123",
+              motExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+            });
+          }
           
           if (!result.success) {
             throw new Error(result.error || "Failed to send test message");

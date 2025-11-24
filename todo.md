@@ -468,3 +468,9 @@
 - [x] Adjust chat container height to 700px (from 600px)
 - [x] Set fixed ScrollArea height to 350px for message history
 - [x] Quick reply section now always visible below scroll area
+
+## Fix Custom Message Sending
+- [x] Update sendWhatsApp endpoint to accept customMessage parameter
+- [x] Pass custom message content from ChatHistory to mutation
+- [x] Send actual message text instead of hardcoded reminder
+- [x] Use sendSMS for custom messages, template for default

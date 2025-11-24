@@ -94,6 +94,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
     sendTestMessage.mutate({
       id: 0, // Test message
       phoneNumber: phoneNumber,
+      customMessage: testMessage,
     });
   };
   
