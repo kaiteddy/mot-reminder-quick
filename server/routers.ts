@@ -38,6 +38,13 @@ export const appRouter = router({
         
         return { customer, vehicles, reminders };
       }),
+    
+    getByPhone: publicProcedure
+      .input(z.object({ phone: z.string() }))
+      .query(async ({ input }) => {
+        const { getCustomerWithVehiclesByPhone } = await import("./db");
+        return getCustomerWithVehiclesByPhone(input.phone);
+      }),
   }),
   
   vehicles: router({

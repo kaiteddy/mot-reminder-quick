@@ -20,6 +20,22 @@ export default function LogsAndMessages() {
   const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery(undefined, {
     refetchInterval: 10000,
   });
+  
+  // Get unique phone numbers from messages to fetch customer data
+  const uniquePhoneNumbers = Array.from(new Set(messages?.map(m => m.fromNumber) || []));
+  
+  // Fetch customer and vehicle info for each phone number
+  const customerQueries = uniquePhoneNumbers.map(phone => 
+    trpc.customers.getByPhone.useQuery({ phone }, { enabled: !!phone })
+  );
+  
+  // Create a map of phone number to customer/vehicle data
+  const customerDataMap = new Map();
+  customerQueries.forEach((query, index) => {
+    if (query.data) {
+      customerDataMap.set(uniquePhoneNumbers[index], query.data);
+    }
+  });
   const utils = trpc.useUtils();
   const markAsReadMutation = trpc.messages.markAsRead.useMutation({
     onSuccess: () => {
@@ -260,7 +276,9 @@ export default function LogsAndMessages() {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-semibold">{conversation.phoneNumber}</span>
+                                <span className="font-semibold">
+                                  {customerDataMap.get(conversation.phoneNumber)?.customer?.name || conversation.phoneNumber}
+                                </span>
                                 {conversation.unreadCount > 0 && (
                                   <Badge variant="destructive" className="text-xs">
                                     {conversation.unreadCount} New
@@ -270,6 +288,46 @@ export default function LogsAndMessages() {
                                   {conversation.messages.length} {conversation.messages.length === 1 ? 'message' : 'messages'}
                                 </Badge>
                               </div>
+                              
+                              {/* Vehicle Information */}
+                              {(() => {
+                                const customerData = customerDataMap.get(conversation.phoneNumber);
+                                const vehicle = customerData?.vehicles?.[0]; // Show first vehicle
+                                if (vehicle) {
+                                  const motExpiry = vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate) : null;
+                                  const daysUntilExpiry = motExpiry ? Math.ceil((motExpiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                                  
+                                  return (
+                                    <div className="text-xs text-muted-foreground mb-2 space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-mono font-semibold text-foreground">{vehicle.registration}</span>
+                                        <span>•</span>
+                                        <span>{vehicle.make} {vehicle.model}</span>
+                                      </div>
+                                      {motExpiry && (
+                                        <div className="flex items-center gap-1">
+                                          <span>MOT expires:</span>
+                                          <span className={daysUntilExpiry !== null && daysUntilExpiry < 30 ? 'text-orange-600 font-medium' : ''}>
+                                            {motExpiry.toLocaleDateString('en-GB')}
+                                          </span>
+                                          {daysUntilExpiry !== null && (
+                                            <span className={daysUntilExpiry < 0 ? 'text-red-600 font-medium' : daysUntilExpiry < 30 ? 'text-orange-600 font-medium' : ''}>
+                                              ({daysUntilExpiry < 0 ? `${Math.abs(daysUntilExpiry)} days ago` : `${daysUntilExpiry} days`})
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {customerData.vehicles.length > 1 && (
+                                        <div className="text-blue-600">
+                                          +{customerData.vehicles.length - 1} more {customerData.vehicles.length === 2 ? 'vehicle' : 'vehicles'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+                              
                               <p className="text-sm text-muted-foreground line-clamp-2">
                                 {conversation.latestMessage.messageBody}
                               </p>

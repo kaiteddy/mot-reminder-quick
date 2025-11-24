@@ -508,3 +508,24 @@ export async function updateVehicleMOTExpiryDate(registration: string, motExpiry
     throw error;
   }
 }
+
+export async function getCustomerWithVehiclesByPhone(phone: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const { customers, vehicles } = await import("../drizzle/schema");
+  
+  // Get customer by phone
+  const customerResult = await db.select().from(customers).where(eq(customers.phone, phone)).limit(1);
+  if (customerResult.length === 0) return null;
+  
+  const customer = customerResult[0];
+  
+  // Get all vehicles for this customer
+  const customerVehicles = await db.select().from(vehicles).where(eq(vehicles.customerId, customer.id));
+  
+  return {
+    customer,
+    vehicles: customerVehicles,
+  };
+}

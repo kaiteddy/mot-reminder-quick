@@ -502,3 +502,11 @@
 - [x] Display message count per conversation
 - [x] Show unread indicator per conversation
 - [x] Sort conversations by most recent message
+
+## Add Vehicle Info to Customer Conversations
+- [x] Create backend query to get customer and vehicle info by phone number
+- [x] Add tRPC endpoint to fetch customer vehicle details
+- [x] Update conversation cards to display registration, make/model
+- [x] Show MOT expiry date in conversation preview
+- [x] Handle customers with multiple vehicles
+- [x] Write and pass tests for customer vehicle lookup (3/3 passing)
