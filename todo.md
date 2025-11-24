@@ -424,3 +424,16 @@
 - [x] Show message status badges on sent messages
 - [x] Add test input field to send messages directly from chat
 - [x] Combine sent and received messages in chronological order
+
+## Fix Test Chat Section Not Visible
+- [x] Investigate why test chat section isn't showing
+- [x] Check if it's hidden by authentication logic
+- [x] Verify component is properly rendered
+- [x] Test chat section is at bottom of page - user needs to scroll down
+
+## Fix Dialog Accessibility and Test Message Errors
+- [x] Add DialogTitle to chat dialog for screen reader accessibility
+- [x] Fix "Reminder not found" error when sending test messages
+- [x] Update sendWhatsApp endpoint to handle test messages (id: 0)
+- [x] Log test messages to reminderLogs table
+- [x] Use correct property names (messageId instead of messageSid)

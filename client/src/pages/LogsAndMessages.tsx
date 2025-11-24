@@ -250,6 +250,9 @@ export default function LogsAndMessages() {
                       </Card>
                     </DialogTrigger>
                     <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Chat with {message.fromNumber}</DialogTitle>
+                      </DialogHeader>
                       <ChatHistory
                         phoneNumber={message.fromNumber}
                         customerName={message.fromNumber}

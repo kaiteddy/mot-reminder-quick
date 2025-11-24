@@ -321,7 +321,38 @@ export const appRouter = router({
         const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
         const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
         
-        // Get reminder details
+        // Handle test messages (id = 0)
+        if (input.id === 0) {
+          const result = await sendMOTReminderWithTemplate({
+            to: input.phoneNumber,
+            customerName: "Test User",
+            registration: "TEST123",
+            motExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+          });
+          
+          if (!result.success) {
+            throw new Error(result.error || "Failed to send test message");
+          }
+          
+          // Log test message
+          await createReminderLog({
+            reminderId: null,
+            customerId: null,
+            vehicleId: null,
+            messageType: "MOT",
+            recipient: input.phoneNumber,
+            messageSid: result.messageId || null,
+            status: "sent",
+            templateUsed: null,
+            customerName: "Test User",
+            registration: "TEST123",
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
+          
+          return { success: true, messageSid: result.messageId };
+        }
+        
+        // Get reminder details for non-test messages
         const reminders = await getAllReminders();
         const reminder = reminders.find(r => r.id === input.id);
         
