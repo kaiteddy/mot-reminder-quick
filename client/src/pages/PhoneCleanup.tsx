@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -16,9 +16,16 @@ export default function PhoneCleanup() {
   const [cleanupResults, setCleanupResults] = useState<any>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, name: '' });
   const [isProcessing, setIsProcessing] = useState(false);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const cleanupMutation = trpc.cleanup.phoneNumbers.useMutation({
     onSuccess: (data) => {
+      // Clear progress interval
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      
       setCleanupResults(data);
       setShowResults(true);
       setIsProcessing(false);
@@ -26,6 +33,12 @@ export default function PhoneCleanup() {
       toast.success(`Cleanup complete! ${data.cleaned} phone numbers cleaned.`);
     },
     onError: (error) => {
+      // Clear progress interval
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      
       setIsProcessing(false);
       setProgress({ current: 0, total: 0, name: '' });
       toast.error(`Cleanup failed: ${error.message}`);
@@ -35,15 +48,20 @@ export default function PhoneCleanup() {
   const runCleanup = (dryRun: boolean) => {
     setShowResults(false);
     setIsProcessing(true);
+    
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    
     // Simulate progress for better UX (actual processing happens on server)
-    // Estimate: ~100ms per record for processing
     const estimatedTotal = 6000; // Approximate customer count
     const estimatedDuration = estimatedTotal * 0.05; // 50ms per record
     const updateInterval = 100; // Update every 100ms
     const steps = estimatedDuration / updateInterval;
     let currentStep = 0;
     
-    const progressInterval = setInterval(() => {
+    progressIntervalRef.current = setInterval(() => {
       currentStep++;
       const progressPercent = Math.min((currentStep / steps) * 100, 95); // Cap at 95% until complete
       const currentRecord = Math.floor((progressPercent / 100) * estimatedTotal);
@@ -53,9 +71,7 @@ export default function PhoneCleanup() {
         name: 'Processing...' 
       });
       
-      if (currentStep >= steps) {
-        clearInterval(progressInterval);
-      }
+      // Don't clear the interval here - let onSuccess/onError handle it
     }, updateInterval);
     
     cleanupMutation.mutate({ dryRun });
