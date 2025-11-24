@@ -36,9 +36,13 @@ interface ChatHistoryProps {
 export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryProps) {
   const [testMessage, setTestMessage] = useState("");
   
-  // Get all messages for this phone number
-  const { data: allMessages } = trpc.messages.list.useQuery();
-  const { data: allLogs } = trpc.logs.list.useQuery();
+  // Get all messages for this phone number (auto-refresh every 5 seconds)
+  const { data: allMessages } = trpc.messages.list.useQuery(undefined, {
+    refetchInterval: 5000,
+  });
+  const { data: allLogs } = trpc.logs.list.useQuery(undefined, {
+    refetchInterval: 5000,
+  });
   
   const utils = trpc.useUtils();
   

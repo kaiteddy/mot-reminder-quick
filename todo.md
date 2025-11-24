@@ -437,3 +437,10 @@
 - [x] Update sendWhatsApp endpoint to handle test messages (id: 0)
 - [x] Log test messages to reminderLogs table
 - [x] Use correct property names (messageId instead of messageSid)
+
+## Fix Customer Responses Not Showing in Chat
+- [x] Check webhook endpoint for receiving WhatsApp messages
+- [x] Verify customerMessages table is being populated
+- [x] Check ChatHistory component query for received messages
+- [x] Add auto-refresh (5 second interval) to ChatHistory queries
+- [x] Messages now automatically appear in chat without page refresh
