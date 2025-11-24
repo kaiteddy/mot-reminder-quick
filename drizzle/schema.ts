@@ -86,6 +86,9 @@ export const reminders = mysqlTable("reminders", {
   status: mysqlEnum("status", ["pending", "sent", "archived"]).default("pending").notNull(),
   sentAt: timestamp("sentAt"),
   sentMethod: varchar("sentMethod", { length: 20 }), // email, print, sms, whatsapp
+  customerResponded: int("customerResponded").default(0).notNull(), // 0 = no response, 1 = responded
+  respondedAt: timestamp("respondedAt"),
+  needsFollowUp: int("needsFollowUp").default(0).notNull(), // 0 = no, 1 = yes (auto-set after 7 days no response)
   notes: text("notes"),
   vehicleId: int("vehicleId"),
   customerId: int("customerId"),

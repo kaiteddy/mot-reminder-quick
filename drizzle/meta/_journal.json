@@ -43,6 +43,13 @@
       "when": 1763998435568,
       "tag": "0005_minor_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1764020240811,
+      "tag": "0006_glossy_the_twelve",
+      "breakpoints": true
     }
   ]
 }

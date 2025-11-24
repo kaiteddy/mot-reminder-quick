@@ -515,6 +515,9 @@ export const appRouter = router({
             status,
             sentAt: null,
             sentMethod: null,
+            customerResponded: 0,
+            respondedAt: null,
+            needsFollowUp: 0,
             notes: null,
             vehicleId: v.vehicleId,
             customerId: v.customerId || null,
@@ -584,6 +587,44 @@ export const appRouter = router({
         
         return results;
       }),
+    
+    markResponded: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { updateReminder } = await import("./db");
+        await updateReminder(input.id, {
+          customerResponded: 1,
+          respondedAt: new Date(),
+          needsFollowUp: 0, // Clear follow-up flag when customer responds
+        });
+        return { success: true };
+      }),
+    
+    updateFollowUpFlags: publicProcedure.mutation(async () => {
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      
+      const { reminders } = await import("../drizzle/schema");
+      const { eq, and, lt } = await import("drizzle-orm");
+      
+      // Update needsFollowUp flag for reminders sent more than 7 days ago with no response
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      await db.update(reminders)
+        .set({ needsFollowUp: 1 })
+        .where(
+          and(
+            eq(reminders.status, "sent"),
+            lt(reminders.sentAt, sevenDaysAgo),
+            eq(reminders.customerResponded, 0),
+            eq(reminders.needsFollowUp, 0)
+          )
+        );
+      
+      return { success: true };
+    }),
   }),
   
   // Database overview

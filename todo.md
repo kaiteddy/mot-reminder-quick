@@ -517,3 +517,27 @@
 - [x] Test page loads without errors
 - [x] Verify vehicle info still displays correctly
 - [x] Write and pass tests for bulk customer lookup (4/4 passing)
+
+## Reminder Lifecycle Management
+- [ ] Update sendWhatsApp to auto-archive reminders after sending
+- [ ] Create archive/history view for sent reminders
+- [ ] Add search functionality for archived reminders
+- [ ] Add filters for archive (date range, type, customer, status)
+- [ ] Implement 7-day follow-up tracking
+- [ ] Create follow-up actions page showing reminders needing follow-up
+- [ ] Add "needs follow-up" indicator based on no response in 7 days
+- [ ] Add ability to manually mark reminder as responded
+- [ ] Test complete workflow from send to archive to follow-up
+
+## Reminder Lifecycle Management
+- [x] Add database fields for customer response tracking (customerResponded, respondedAt, needsFollowUp)
+- [x] Update sendWhatsApp mutation to set status='sent' after sending
+- [x] Create ReminderArchive page with search and filters
+- [x] Create FollowUpActions page for reminders needing follow-up
+- [x] Implement 7-day follow-up tracking system
+- [x] Add markResponded mutation to clear follow-up flag
+- [x] Add updateFollowUpFlags mutation to auto-flag old reminders
+- [x] Add routes for archive and follow-up pages
+- [x] Update dashboard navigation with new pages
+- [x] Test complete workflow (3/3 tests passing)
+- [x] Auto-run follow-up flag updates on dashboard mount and every 5 minutes

@@ -20,6 +20,22 @@ export default function Home() {
   const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0 });
 
   const utils = trpc.useUtils();
+  
+  // Auto-update follow-up flags on mount and every 5 minutes
+  const updateFollowUpMutation = trpc.reminders.updateFollowUpFlags.useMutation();
+  
+  useEffect(() => {
+    // Update on mount
+    updateFollowUpMutation.mutate();
+    
+    // Update every 5 minutes
+    const interval = setInterval(() => {
+      updateFollowUpMutation.mutate();
+    }, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
   // Use auto-generated reminders from vehicles instead of manual reminders
   const { data: reminders, isLoading, error: remindersError } = trpc.reminders.generateFromVehicles.useQuery(undefined, {
     retry: 2,
