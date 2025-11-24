@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, or, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, InsertReminder } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -528,4 +528,35 @@ export async function getCustomerWithVehiclesByPhone(phone: string) {
     customer,
     vehicles: customerVehicles,
   };
+}
+
+export async function getCustomersWithVehiclesByPhones(phones: string[]) {
+  const db = await getDb();
+  if (!db || phones.length === 0) return [];
+  
+  const { customers, vehicles } = await import("../drizzle/schema");
+  
+  // Get all customers by phone numbers using inArray
+  const allCustomers = await db.select().from(customers).where(inArray(customers.phone, phones));
+  
+  if (allCustomers.length === 0) return [];
+  
+  // Get all vehicles for these customers using inArray
+  const customerIds = allCustomers.map(c => c.id);
+  const allVehicles = await db.select().from(vehicles).where(inArray(vehicles.customerId, customerIds));
+  
+  // Group vehicles by customer ID
+  const vehiclesByCustomerId = allVehicles.reduce((acc, vehicle) => {
+    if (!vehicle.customerId) return acc;
+    if (!acc[vehicle.customerId]) acc[vehicle.customerId] = [];
+    acc[vehicle.customerId].push(vehicle);
+    return acc;
+  }, {} as Record<number, typeof allVehicles>);
+  
+  // Map customers to result format
+  return allCustomers.map(customer => ({
+    phone: customer.phone,
+    customer,
+    vehicles: vehiclesByCustomerId[customer.id] || [],
+  }));
 }

@@ -510,3 +510,10 @@
 - [x] Show MOT expiry date in conversation preview
 - [x] Handle customers with multiple vehicles
 - [x] Write and pass tests for customer vehicle lookup (3/3 passing)
+
+## Fix React Hooks Violation Error
+- [x] Create bulk endpoint to fetch customers by multiple phone numbers
+- [x] Update LogsAndMessages to use single query instead of loop
+- [x] Test page loads without errors
+- [x] Verify vehicle info still displays correctly
+- [x] Write and pass tests for bulk customer lookup (4/4 passing)

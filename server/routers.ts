@@ -45,6 +45,13 @@ export const appRouter = router({
         const { getCustomerWithVehiclesByPhone } = await import("./db");
         return getCustomerWithVehiclesByPhone(input.phone);
       }),
+    
+    getByPhones: publicProcedure
+      .input(z.object({ phones: z.array(z.string()) }))
+      .query(async ({ input }) => {
+        const { getCustomersWithVehiclesByPhones } = await import("./db");
+        return getCustomersWithVehiclesByPhones(input.phones);
+      }),
   }),
   
   vehicles: router({

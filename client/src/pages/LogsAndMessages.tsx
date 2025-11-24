@@ -24,16 +24,17 @@ export default function LogsAndMessages() {
   // Get unique phone numbers from messages to fetch customer data
   const uniquePhoneNumbers = Array.from(new Set(messages?.map(m => m.fromNumber) || []));
   
-  // Fetch customer and vehicle info for each phone number
-  const customerQueries = uniquePhoneNumbers.map(phone => 
-    trpc.customers.getByPhone.useQuery({ phone }, { enabled: !!phone })
+  // Fetch customer and vehicle info for all phone numbers in a single query
+  const { data: customersData } = trpc.customers.getByPhones.useQuery(
+    { phones: uniquePhoneNumbers },
+    { enabled: uniquePhoneNumbers.length > 0 }
   );
   
   // Create a map of phone number to customer/vehicle data
   const customerDataMap = new Map();
-  customerQueries.forEach((query, index) => {
-    if (query.data) {
-      customerDataMap.set(uniquePhoneNumbers[index], query.data);
+  customersData?.forEach((data) => {
+    if (data.phone) {
+      customerDataMap.set(data.phone, data);
     }
   });
   const utils = trpc.useUtils();
