@@ -62,6 +62,19 @@ export default function Home() {
     },
   });
 
+  const refreshVisibleMutation = trpc.database.bulkUpdateMOT.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Refreshed ${result.updated} MOT dates${result.failed > 0 ? `, ${result.failed} failed` : ''}`);
+      if (result.errors.length > 0) {
+        toast.error(`Errors: ${result.errors.join(", ")}`);
+      }
+      utils.reminders.generateFromVehicles.invalidate();
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to refresh: ${error.message}`);
+    }
+  });
+
   const bulkVerifyMOT = trpc.reminders.bulkVerifyMOT.useMutation({
     onSuccess: (results) => {
       const successful = results.filter(r => r.success).length;
@@ -148,6 +161,22 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => {
+                const visibleVehicleIds = allReminders.map(r => r.vehicleId).filter((id): id is number => id !== null);
+                if (visibleVehicleIds.length === 0) {
+                  toast.error("No vehicles to refresh");
+                  return;
+                }
+                refreshVisibleMutation.mutate({ vehicleIds: visibleVehicleIds });
+              }}
+              disabled={refreshVisibleMutation.isPending}
+              variant="outline"
+              size="lg"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh Visible ({allReminders.length})
+            </Button>
             <Link href="/database">
               <Button variant="outline" size="lg">
                 <Database className="w-4 h-4 mr-2" />

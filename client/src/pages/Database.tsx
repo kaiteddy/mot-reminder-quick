@@ -297,6 +297,31 @@ export default function Database() {
               </Button>
             )}
             <Button 
+              onClick={() => {
+                const visibleIds = filteredAndSortedVehicles.map(v => v.id);
+                if (visibleIds.length === 0) {
+                  toast.error("No vehicles to update");
+                  return;
+                }
+                bulkUpdateMutation.mutate({ vehicleIds: visibleIds });
+              }}
+              disabled={bulkUpdateMutation.isPending || isLoading}
+              variant="outline"
+              className="gap-2"
+            >
+              {bulkUpdateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh Visible ({filteredAndSortedVehicles.length})
+                </>
+              )}
+            </Button>
+            <Button 
               onClick={handleBulkUpdate}
               disabled={bulkUpdateMutation.isPending || isLoading}
               className="gap-2"
@@ -309,7 +334,7 @@ export default function Database() {
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4" />
-                  Bulk MOT Check
+                  Bulk MOT Check (All)
                 </>
               )}
             </Button>

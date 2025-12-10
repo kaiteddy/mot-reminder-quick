@@ -581,3 +581,12 @@
 - [x] Adjust column widths to prevent overflow
 - [x] Test on different screen sizes
 - [x] Ensure all content remains readable
+
+## Quick MOT Refresh for Current Page
+- [x] Add "Refresh MOT" button to Database page
+- [x] Update only visible/filtered vehicles in Database table
+- [x] Add "Refresh MOT" button to Home/Reminders page
+- [x] Update only vehicles shown in reminders list
+- [x] Show progress indicator during refresh
+- [x] Display success/error summary after refresh
+- [x] Test with filtered and sorted tables
