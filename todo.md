@@ -566,3 +566,11 @@
 - [ ] Add bulk selection to Vehicles page
 - [ ] Add bulk selection to Reminders table
 - [x] Test bulk operations with multiple selections
+
+## Clickable Database Rows for History
+- [x] Make database table rows clickable (except checkbox)
+- [x] Navigate to vehicle detail page on row click
+- [x] Create/enhance vehicle detail page with MOT history
+- [x] Add customer history section to detail page
+- [x] Show reminder history for the vehicle
+- [x] Test navigation from database to detail pages

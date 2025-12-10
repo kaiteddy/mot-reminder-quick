@@ -593,11 +593,21 @@ export default function Database() {
                   {filteredAndSortedVehicles.map((vehicle) => {
                     const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
                     return (
-                      <TableRow key={vehicle.id} className={
-                        status === "expired" ? "bg-red-50" :
-                        status === "due" ? "bg-orange-50" :
-                        ""
-                      }>
+                      <TableRow 
+                        key={vehicle.id} 
+                        className={`cursor-pointer hover:bg-slate-100 ${
+                          status === "expired" ? "bg-red-50" :
+                          status === "due" ? "bg-orange-50" :
+                          ""
+                        }`}
+                        onClick={(e) => {
+                          // Don't navigate if clicking checkbox
+                          if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
+                            return;
+                          }
+                          window.location.href = `/vehicles/${vehicle.registration}`;
+                        }}
+                      >
                         <TableCell>
                           <Checkbox
                             checked={selectedVehicles.has(vehicle.id)}
