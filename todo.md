@@ -574,3 +574,10 @@
 - [x] Add customer history section to detail page
 - [x] Show reminder history for the vehicle
 - [x] Test navigation from database to detail pages
+
+## Fix Database Table Horizontal Scrolling
+- [x] Remove horizontal scroll from database table
+- [x] Make table responsive to fit viewport width
+- [x] Adjust column widths to prevent overflow
+- [x] Test on different screen sizes
+- [x] Ensure all content remains readable

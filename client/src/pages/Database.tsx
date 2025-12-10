@@ -546,10 +546,11 @@ export default function Database() {
                 <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
               </div>
             ) : (
+              <div className="w-full">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">
+                    <TableHead className="w-10">
                       <Checkbox
                         checked={selectedVehicles.size === filteredAndSortedVehicles.length && filteredAndSortedVehicles.length > 0}
                         onCheckedChange={(checked) => {
@@ -561,32 +562,32 @@ export default function Database() {
                         }}
                       />
                     </TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("registration")}>
+                    <TableHead className="cursor-pointer w-28" onClick={() => toggleSort("registration")}>
                       <div className="flex items-center gap-1">
-                        Registration
-                        <ArrowUpDown className="w-4 h-4" />
+                        Reg
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
                     <TableHead className="cursor-pointer" onClick={() => toggleSort("customer")}>
                       <div className="flex items-center gap-1">
                         Customer
-                        <ArrowUpDown className="w-4 h-4" />
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("make")}>
+                    <TableHead className="hidden md:table-cell">Phone</TableHead>
+                    <TableHead className="cursor-pointer hidden lg:table-cell" onClick={() => toggleSort("make")}>
                       <div className="flex items-center gap-1">
                         Vehicle
-                        <ArrowUpDown className="w-4 h-4" />
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
                     <TableHead className="cursor-pointer" onClick={() => toggleSort("motExpiry")}>
                       <div className="flex items-center gap-1">
-                        MOT Expiry
-                        <ArrowUpDown className="w-4 h-4" />
+                        MOT
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="w-24">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -634,8 +635,8 @@ export default function Database() {
                             </Link>
                           ) : "-"}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">{vehicle.customerPhone || "-"}</TableCell>
-                        <TableCell>
+                        <TableCell className="font-mono text-sm hidden md:table-cell">{vehicle.customerPhone || "-"}</TableCell>
+                        <TableCell className="hidden lg:table-cell">
                           {vehicle.make || vehicle.model ? (
                             <div>
                               <div className="font-medium">{vehicle.make || "Unknown"}</div>
@@ -658,6 +659,7 @@ export default function Database() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
