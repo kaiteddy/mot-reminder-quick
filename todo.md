@@ -541,3 +541,28 @@
 - [x] Update dashboard navigation with new pages
 - [x] Test complete workflow (3/3 tests passing)
 - [x] Auto-run follow-up flag updates on dashboard mount and every 5 minutes
+
+## Add Bulk MOT Refresh to Database Page
+- [ ] Check current Database page implementation
+- [ ] Add "Refresh All MOT Data" button to Database page
+- [ ] Implement bulk DVLA API query with progress tracking
+- [ ] Update vehicle MOT expiry dates in database
+- [ ] Show success/error messages for each vehicle
+- [ ] Test with real vehicles
+
+## Ensure Consistent Navigation Across All Pages
+- [ ] Audit all pages to check which ones have DashboardLayout
+- [ ] Add DashboardLayout to pages missing navigation
+- [ ] Test navigation works on every page
+- [ ] Verify sidebar shows on all pages
+
+## Bulk Selection and Actions
+- [x] Add checkbox column to Database page vehicle table
+- [x] Implement select all/deselect all functionality
+- [x] Add bulk action toolbar when items are selected
+- [x] Create bulk send reminder functionality
+- [x] Make customer names clickable to view details
+- [ ] Add bulk selection to Customers page
+- [ ] Add bulk selection to Vehicles page
+- [ ] Add bulk selection to Reminders table
+- [x] Test bulk operations with multiple selections

@@ -26,8 +26,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  MessageSquare,
+  Send
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -43,8 +46,23 @@ export default function Database() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [motStatusFilter, setMOTStatusFilter] = useState<MOTStatusFilter>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
+  const [selectedVehicles, setSelectedVehicles] = useState<Set<number>>(new Set());
 
   const { data: vehicles, isLoading, refetch } = trpc.database.getAllVehiclesWithCustomers.useQuery();
+  
+  const bulkSendMutation = trpc.reminders.bulkSendReminders.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Sent ${result.sent} reminder${result.sent > 1 ? 's' : ''}!`);
+      if (result.failed > 0) {
+        toast.error(`Failed: ${result.failed}. Errors: ${result.errors.slice(0, 3).join(", ")}`);
+      }
+      setSelectedVehicles(new Set());
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Bulk send failed: ${error.message}`);
+    },
+  });
   
   const bulkUpdateMutation = trpc.database.bulkUpdateMOT.useMutation({
     onSuccess: (result) => {
@@ -482,6 +500,44 @@ export default function Database() {
           </CardContent>
         </Card>
 
+        {/* Bulk Actions Toolbar */}
+        {selectedVehicles.size > 0 && (
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                  <span className="font-medium text-blue-900">
+                    {selectedVehicles.size} vehicle{selectedVehicles.size > 1 ? 's' : ''} selected
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedVehicles(new Set())}
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={bulkSendMutation.isPending}
+                    onClick={() => {
+                      bulkSendMutation.mutate({
+                        vehicleIds: Array.from(selectedVehicles),
+                      });
+                    }}
+                  >
+                    <Send className="w-4 h-4" />
+                    Send Reminders ({selectedVehicles.size})
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Table */}
         <Card>
           <CardContent className="p-0">
@@ -493,6 +549,18 @@ export default function Database() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedVehicles.size === filteredAndSortedVehicles.length && filteredAndSortedVehicles.length > 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedVehicles(new Set(filteredAndSortedVehicles.map(v => v.id)));
+                          } else {
+                            setSelectedVehicles(new Set());
+                          }
+                        }}
+                      />
+                    </TableHead>
                     <TableHead className="cursor-pointer" onClick={() => toggleSort("registration")}>
                       <div className="flex items-center gap-1">
                         Registration
@@ -530,10 +598,32 @@ export default function Database() {
                         status === "due" ? "bg-orange-50" :
                         ""
                       }>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedVehicles.has(vehicle.id)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedVehicles);
+                              if (checked) {
+                                newSelected.add(vehicle.id);
+                              } else {
+                                newSelected.delete(vehicle.id);
+                              }
+                              setSelectedVehicles(newSelected);
+                            }}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono font-semibold">
                           {vehicle.registration || "-"}
                         </TableCell>
-                        <TableCell>{vehicle.customerName || "-"}</TableCell>
+                        <TableCell>
+                          {vehicle.customerName ? (
+                            <Link href={`/customers`}>
+                              <button className="text-blue-600 hover:text-blue-800 hover:underline font-medium">
+                                {vehicle.customerName}
+                              </button>
+                            </Link>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell className="font-mono text-sm">{vehicle.customerPhone || "-"}</TableCell>
                         <TableCell>
                           {vehicle.make || vehicle.model ? (
