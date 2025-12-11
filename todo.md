@@ -679,3 +679,13 @@
 - [x] Verified dialog shows customer info, message content, delivery timeline
 - [x] Verified "View Full Conversation History" button opens chat dialog
 - [x] Tested with delivered message - all features working correctly
+
+## Add Automatic MOT Template Selection (Expired vs Expiring)
+- [x] Add copy_motreminder template configuration with template SID (HX0a553ba697cdc3acce4a935f5d462ada)
+- [x] Update sendWhatsApp logic to check if MOT has expired (date < today)
+- [x] Use mot_expired template when MOT has already expired
+- [x] Use mot_reminder template when MOT is expiring soon (date >= today)
+- [x] Update message content to reflect expired vs expiring status
+- [x] Update templateUsed field in logs to show copy_motreminder or mot_reminder
+- [x] Updated to use correct template name: copy_motreminder (not mot_expired)
+- [x] Test with both expired and expiring MOT dates

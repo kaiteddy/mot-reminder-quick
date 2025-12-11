@@ -377,14 +377,22 @@ export const appRouter = router({
               serviceDueDate: expiryDate,
             });
           } else {
-            // Send MOT reminder template
+            // Send MOT reminder template (automatically selects expired or expiring template)
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const expDate = new Date(expiryDate);
+            expDate.setHours(0, 0, 0, 0);
+            const isExpired = expDate < now;
+            
             const formattedDate = expiryDate.toLocaleDateString("en-GB", {
               day: "2-digit",
               month: "long",
               year: "numeric",
             });
             
-            messageContent = `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${formattedDate} (${daysUntil} days). Please contact us to book your MOT test.`;
+            messageContent = isExpired
+              ? `Hi ${customerName}, your vehicle ${registration} MOT expired on ${formattedDate}. Please contact us to book your MOT test.`
+              : `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${formattedDate} (${daysUntil} days). Please contact us to book your MOT test.`;
             
             result = await sendMOTReminderWithTemplate({
               to: input.phoneNumber,
@@ -399,6 +407,12 @@ export const appRouter = router({
           }
           
           // Log test message
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const expDate = new Date(expiryDate);
+          expDate.setHours(0, 0, 0, 0);
+          const isExpired = expDate < now;
+          
           await createReminderLog({
             reminderId: null,
             customerId: null,
@@ -407,7 +421,7 @@ export const appRouter = router({
             recipient: input.phoneNumber,
             messageSid: result.messageId || null,
             status: "sent",
-            templateUsed: messageType === "MOT" ? "motreminder" : "servicereminder",
+            templateUsed: messageType === "MOT" ? (isExpired ? "copy_motreminder" : "mot_reminder") : "servicereminder",
             customerName,
             registration,
             dueDate: expiryDate,
@@ -427,6 +441,7 @@ export const appRouter = router({
         
         let result;
         let messageContent: string;
+        let isExpired = false; // Track if MOT has expired
         
         if (reminder.type === "MOT") {
           // Use WhatsApp template for MOT reminders (no 24-hour window restriction)
@@ -438,8 +453,17 @@ export const appRouter = router({
             year: "numeric",
           });
           
+          // Check if MOT has expired
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const expDate = new Date(motExpiryDate);
+          expDate.setHours(0, 0, 0, 0);
+          isExpired = expDate < now;
+          
           // Construct the message content that matches the template
-          messageContent = `Hi ${reminder.customerName || "Customer"}, this is a reminder that the MOT for your vehicle ${reminder.registration} expires on ${formattedDate} (${daysLeft} days). Please contact us to book your MOT test.`;
+          messageContent = isExpired
+            ? `Hi ${reminder.customerName || "Customer"}, your vehicle ${reminder.registration} MOT expired on ${formattedDate}. Please contact us to book your MOT test.`
+            : `Hi ${reminder.customerName || "Customer"}, this is a reminder that the MOT for your vehicle ${reminder.registration} expires on ${formattedDate} (${daysLeft} days). Please contact us to book your MOT test.`;
           
           result = await sendMOTReminderWithTemplate({
             to: input.phoneNumber,
@@ -503,7 +527,7 @@ export const appRouter = router({
           recipient: input.phoneNumber,
           messageSid: result.messageId,
           status: "sent",
-          templateUsed: reminder.type === "MOT" ? "motreminder" : reminder.type === "Service" ? "servicereminder" : "freeform",
+          templateUsed: reminder.type === "MOT" ? (isExpired ? "copy_motreminder" : "mot_reminder") : reminder.type === "Service" ? "servicereminder" : "freeform",
           customerName: reminder.customerName,
           registration: reminder.registration,
           dueDate: new Date(reminder.dueDate),

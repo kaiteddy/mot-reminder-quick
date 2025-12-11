@@ -159,7 +159,14 @@ export async function sendMOTReminderWithTemplate(params: {
   registration: string;
   motExpiryDate: Date;
 }): Promise<SendSMSResult> {
-  const daysLeft = Math.ceil((params.motExpiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const now = new Date();
+  now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+  
+  const expiryDate = new Date(params.motExpiryDate);
+  expiryDate.setHours(0, 0, 0, 0);
+  
+  const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const isExpired = expiryDate < now;
   
   const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -167,16 +174,29 @@ export async function sendMOTReminderWithTemplate(params: {
     year: "numeric",
   });
   
+  // Choose template based on whether MOT has expired
+  const templateSid = isExpired 
+    ? 'HX0a553ba697cdc3acce4a935f5d462ada' // copy_motreminder (expired)
+    : 'HX127c47f8a63b992d86b43943394a1740'; // motreminder (expiring)
+  
+  // For expired MOTs, we only need 3 variables (name, registration, date)
+  // For expiring MOTs, we need 4 variables (name, registration, date, days)
+  const templateVariables: Record<string, string> = isExpired ? {
+    '1': params.customerName,
+    '2': params.registration,
+    '3': formattedDate,
+  } : {
+    '1': params.customerName,
+    '2': params.registration,
+    '3': formattedDate,
+    '4': daysLeft.toString(),
+  };
+  
   return sendSMS({
     to: params.to,
     useTemplate: true,
-    templateSid: 'HX127c47f8a63b992d86b43943394a1740', // motreminder
-    templateVariables: {
-      '1': params.customerName,
-      '2': params.registration,
-      '3': formattedDate,
-      '4': daysLeft.toString(),
-    },
+    templateSid,
+    templateVariables,
   });
 }
 
