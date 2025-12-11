@@ -368,7 +368,8 @@ export async function getAllReminderLogs() {
   if (!db) return [];
   
   const { reminderLogs } = await import("../drizzle/schema");
-  return db.select().from(reminderLogs).orderBy(reminderLogs.sentAt);
+  const { desc } = await import("drizzle-orm");
+  return db.select().from(reminderLogs).orderBy(desc(reminderLogs.sentAt));
 }
 
 export async function getReminderLogsByCustomerId(customerId: number) {

@@ -638,3 +638,7 @@
 - [x] Removed sent logs from latest message calculation entirely
 - [x] Latest message now always shows customer's reply, not sent reminders
 - [x] Test with conversation that has messages after sent reminders
+
+## Fix Logs Sorting Order
+- [x] Change Sent Reminders Log table to show latest first (most recent at top)
+- [x] Update sorting to DESC order by sentAt timestamp
