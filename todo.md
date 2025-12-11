@@ -556,37 +556,18 @@
 - [ ] Test navigation works on every page
 - [ ] Verify sidebar shows on all pages
 
-## Bulk Selection and Actions
-- [x] Add checkbox column to Database page vehicle table
-- [x] Implement select all/deselect all functionality
-- [x] Add bulk action toolbar when items are selected
-- [x] Create bulk send reminder functionality
-- [x] Make customer names clickable to view details
-- [ ] Add bulk selection to Customers page
-- [ ] Add bulk selection to Vehicles page
-- [ ] Add bulk selection to Reminders table
-- [x] Test bulk operations with multiple selections
+## Investigate Twilio WhatsApp Message Sending Issue
+- [x] Check Twilio credentials configuration
+- [x] Review phone number formatting
+- [x] Verify WhatsApp sender number setup
+- [x] Test message sending with debug logging
+- [x] Provide troubleshooting guidance
+- [x] Identified issue: WhatsApp requires approved templates, not freeform messages
 
-## Clickable Database Rows for History
-- [x] Make database table rows clickable (except checkbox)
-- [x] Navigate to vehicle detail page on row click
-- [x] Create/enhance vehicle detail page with MOT history
-- [x] Add customer history section to detail page
-- [x] Show reminder history for the vehicle
-- [x] Test navigation from database to detail pages
-
-## Fix Database Table Horizontal Scrolling
-- [x] Remove horizontal scroll from database table
-- [x] Make table responsive to fit viewport width
-- [x] Adjust column widths to prevent overflow
-- [x] Test on different screen sizes
-- [x] Ensure all content remains readable
-
-## Quick MOT Refresh for Current Page
-- [x] Add "Refresh MOT" button to Database page
-- [x] Update only visible/filtered vehicles in Database table
-- [x] Add "Refresh MOT" button to Home/Reminders page
-- [x] Update only vehicles shown in reminders list
-- [x] Show progress indicator during refresh
-- [x] Display success/error summary after refresh
-- [x] Test with filtered and sorted tables
+## Implement WhatsApp Message Templates
+- [x] Update SMS service to use templates by default
+- [x] Get approved template SIDs from Twilio account
+- [x] Update sendWhatsApp mutation to use templates
+- [x] Fix MOT template SID typo (HX127c47f8a63b992d80b43943394a1740)
+- [x] Service template SID configured (HXac307a9bd92b65df83038c2b2a3eeeff)
+- [ ] Test template-based messaging with real phone number

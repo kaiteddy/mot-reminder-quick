@@ -16,7 +16,6 @@ import LogsAndMessages from "./pages/LogsAndMessages";
 import PhoneCleanup from "./pages/PhoneCleanup";
 import ReminderArchive from "./pages/ReminderArchive";
 import FollowUpActions from "./pages/FollowUpActions";
-import VehicleDetail from "./pages/VehicleDetail";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -26,7 +25,6 @@ function Router() {
       <Route path="/mot-check" component={MOTCheck} />
       <Route path="/import" component={Import} />
       <Route path="/customers" component={Customers} />
-      <Route path="/vehicles/:registration" component={VehicleDetail} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/database" component={Database} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />

@@ -166,7 +166,7 @@ export async function sendMOTReminderWithTemplate(params: {
   return sendSMS({
     to: params.to,
     useTemplate: true,
-    templateSid: 'HX127c47f8a63b992d86b43943394a1740', // motreminder
+    templateSid: 'HX127c47f8a63b992d80b43943394a1740', // motreminder
     templateVariables: {
       '1': params.customerName,
       '2': params.registration,
