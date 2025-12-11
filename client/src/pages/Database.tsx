@@ -26,7 +26,8 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Send
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -58,6 +59,39 @@ export default function Database() {
       toast.error(`Bulk update failed: ${error.message}`);
     },
   });
+
+  const sendReminderMutation = trpc.reminders.sendWhatsApp.useMutation({
+    onSuccess: () => {
+      toast.success("Reminder sent successfully!");
+    },
+    onError: (error) => {
+      toast.error(`Failed to send reminder: ${error.message}`);
+    },
+  });
+
+  const handleSendReminder = (vehicle: any) => {
+    if (!vehicle.customerPhone) {
+      toast.error("No phone number available for this customer");
+      return;
+    }
+    if (!vehicle.registration) {
+      toast.error("No vehicle registration available");
+      return;
+    }
+    
+    // Determine reminder type based on MOT status
+    const { status } = getMOTStatus(vehicle.motExpiryDate);
+    const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
+    
+    sendReminderMutation.mutate({
+      id: vehicle.id,
+      phoneNumber: vehicle.customerPhone,
+      messageType: reminderType,
+      customerName: vehicle.customerName || "Customer",
+      registration: vehicle.registration,
+      expiryDate: vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB") : "Unknown",
+    });
+  };
 
   const handleBulkUpdate = () => {
     if (!vehicles || vehicles.length === 0) {
@@ -519,6 +553,7 @@ export default function Database() {
                       </div>
                     </TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -552,6 +587,23 @@ export default function Database() {
                         </TableCell>
                         <TableCell>
                           {getMOTStatusBadge(status, daysLeft)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSendReminder(vehicle)}
+                            disabled={sendReminderMutation.isPending || !vehicle.customerPhone}
+                          >
+                            {sendReminderMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4 mr-1" />
+                                Send
+                              </>
+                            )}
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );

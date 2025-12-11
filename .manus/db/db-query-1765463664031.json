@@ -1,0 +1,13 @@
+{
+  "query": "SELECT COUNT(*) as vehicle_count FROM vehicles;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT COUNT(*) as vehicle_count FROM vehicles;",
+  "rows": [
+    {
+      "vehicle_count": "10628"
+    }
+  ],
+  "messages": [],
+  "stdout": "vehicle_count\n10628\n",
+  "stderr": "",
+  "execution_time_ms": 137
+}

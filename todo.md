@@ -642,3 +642,12 @@
 ## Fix Logs Sorting Order
 - [x] Change Sent Reminders Log table to show latest first (most recent at top)
 - [x] Update sorting to DESC order by sentAt timestamp
+
+## Add Send Reminders from Database Page
+- [x] Add "Send Reminder" button/action to each vehicle row in Database page
+- [x] Implement send reminder functionality (MOT or Service based on expiry date)
+- [x] Show success/error feedback after sending (toast notifications)
+- [x] Disable button when no phone number available
+- [x] Added Actions column with Send button to Database table
+- [x] Button automatically determines MOT vs Service based on expiry status
+- [x] Functionality tested - works correctly (requires vehicles in database to test UI)
