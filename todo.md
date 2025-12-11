@@ -571,3 +571,24 @@
 - [x] Fix MOT template SID typo (HX127c47f8a63b992d80b43943394a1740)
 - [x] Service template SID configured (HXac307a9bd92b65df83038c2b2a3eeeff)
 - [ ] Test template-based messaging with real phone number
+
+## WhatsApp Message Status Tracking
+- [ ] Update reminderLogs schema to track status timestamps
+- [ ] Add status fields: sentAt, deliveredAt, readAt, failedAt
+- [ ] Enhance Twilio status webhook to capture all updates
+- [ ] Add visual status indicators (✓ sent, ✓✓ delivered, ✓✓ read)
+- [ ] Update ChatHistory to show status icons
+- [ ] Update LogsAndMessages to show delivery status
+- [ ] Create status tracking dashboard/report view
+- [ ] Test with real WhatsApp messages
+
+## Message Status Tracking (Delivery & Read Receipts)
+- [x] Add readAt and failedAt fields to reminderLogs schema
+- [x] Update status enum to include "read"
+- [x] Create updateReminderLogStatus function in db.ts
+- [x] Update Twilio webhook handler to process status callbacks
+- [x] Add MessageStatusIcon component with WhatsApp-style checkmarks
+- [x] Integrate status indicators into ChatHistory component
+- [x] Update LogsAndMessages page to show "read" status
+- [x] Create comprehensive test suite for status tracking
+- [x] All 5 tests passing (sent, delivered, read, failed, progression)

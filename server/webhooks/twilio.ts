@@ -147,15 +147,18 @@ async function updateMessageStatus(data: {
     // Update reminder log status
     console.log("[Twilio Status] Status updated:", data);
     
-    // Possible statuses: queued, sending, sent, delivered, undelivered, failed
-    if (data.status === "delivered") {
+    // Possible statuses: queued, sending, sent, delivered, read, undelivered, failed
+    if (data.status === "read") {
+      await updateReminderLogStatus(data.messageSid, "read", data.timestamp);
+      console.log(`[Twilio Status] Message ${data.messageSid} read by recipient`);
+    } else if (data.status === "delivered") {
       await updateReminderLogStatus(data.messageSid, "delivered", data.timestamp);
       console.log(`[Twilio Status] Message ${data.messageSid} delivered successfully`);
     } else if (data.status === "failed" || data.status === "undelivered") {
-      await updateReminderLogStatus(data.messageSid, "failed", undefined, `Status: ${data.status}`);
+      await updateReminderLogStatus(data.messageSid, "failed", data.timestamp, `Status: ${data.status}`);
       console.log(`[Twilio Status] Message ${data.messageSid} failed: ${data.status}`);
     } else if (data.status === "sent") {
-      await updateReminderLogStatus(data.messageSid, "sent");
+      await updateReminderLogStatus(data.messageSid, "sent", data.timestamp);
     }
   } catch (error) {
     console.error("[Twilio Status] Failed to update status:", error);

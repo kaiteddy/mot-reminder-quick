@@ -110,7 +110,7 @@ export const reminderLogs = mysqlTable("reminderLogs", {
   messageType: mysqlEnum("messageType", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
   recipient: varchar("recipient", { length: 20 }).notNull(), // phone number
   messageSid: varchar("messageSid", { length: 100 }), // Twilio message ID
-  status: mysqlEnum("status", ["queued", "sent", "delivered", "failed"]).default("queued").notNull(),
+  status: mysqlEnum("status", ["queued", "sent", "delivered", "read", "failed"]).default("queued").notNull(),
   templateUsed: varchar("templateUsed", { length: 255 }), // template SID or name
   customerName: text("customerName"),
   registration: varchar("registration", { length: 20 }),
@@ -118,6 +118,8 @@ export const reminderLogs = mysqlTable("reminderLogs", {
   messageContent: text("messageContent"), // Actual message text sent
   sentAt: timestamp("sentAt").defaultNow().notNull(),
   deliveredAt: timestamp("deliveredAt"),
+  readAt: timestamp("readAt"),
+  failedAt: timestamp("failedAt"),
   errorMessage: text("errorMessage"),
 });
 

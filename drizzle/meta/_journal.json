@@ -50,6 +50,13 @@
       "when": 1764020240811,
       "tag": "0006_glossy_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1765452711577,
+      "tag": "0007_smooth_boomer",
+      "breakpoints": true
     }
   ]
 }

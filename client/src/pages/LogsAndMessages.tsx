@@ -73,6 +73,8 @@ export default function LogsAndMessages() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "read":
+        return <Badge variant="default" className="bg-blue-600"><CheckCircle2 className="w-3 h-3 mr-1" />Read</Badge>;
       case "delivered":
         return <Badge variant="default" className="bg-green-500"><CheckCircle2 className="w-3 h-3 mr-1" />Delivered</Badge>;
       case "sent":

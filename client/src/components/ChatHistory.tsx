@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Send, Loader2 } from "lucide-react";
+import { MessageSquare, Send, Loader2, Check, CheckCheck, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -23,10 +23,27 @@ interface SentLog {
   templateUsed: string | null;
   sentAt: Date;
   status: string;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+  failedAt: Date | null;
   registration: string | null;
   customerName: string | null;
   messageContent: string | null;
   messageType: string;
+}
+
+// Status indicator component
+function MessageStatusIcon({ status }: { status: string }) {
+  if (status === "read") {
+    return <CheckCheck className="w-3 h-3 text-blue-500" />;
+  } else if (status === "delivered") {
+    return <CheckCheck className="w-3 h-3 text-gray-400" />;
+  } else if (status === "sent") {
+    return <Check className="w-3 h-3 text-gray-400" />;
+  } else if (status === "failed") {
+    return <X className="w-3 h-3 text-red-500" />;
+  }
+  return <Loader2 className="w-3 h-3 text-gray-400 animate-spin" />; // queued
 }
 
 interface ChatHistoryProps {
@@ -158,17 +175,7 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
                     })}
                   </p>
                   {item.type === 'sent' && (
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs h-4 px-1 border-blue-300 ${
-                        item.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                        item.status === 'sent' ? 'bg-blue-100 text-blue-700' :
-                        item.status === 'failed' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {item.status}
-                    </Badge>
+                    <MessageStatusIcon status={item.status} />
                   )}
                 </div>
               </div>

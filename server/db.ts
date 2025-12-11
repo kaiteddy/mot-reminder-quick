@@ -379,13 +379,24 @@ export async function getReminderLogsByCustomerId(customerId: number) {
   return db.select().from(reminderLogs).where(eq(reminderLogs.customerId, customerId)).orderBy(reminderLogs.sentAt);
 }
 
-export async function updateReminderLogStatus(messageSid: string, status: string, deliveredAt?: Date, errorMessage?: string) {
+export async function updateReminderLogStatus(messageSid: string, status: string, timestamp?: Date, errorMessage?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
   const { reminderLogs } = await import("../drizzle/schema");
   const updateData: any = { status };
-  if (deliveredAt) updateData.deliveredAt = deliveredAt;
+  
+  // Set appropriate timestamp field based on status
+  if (timestamp) {
+    if (status === "delivered") {
+      updateData.deliveredAt = timestamp;
+    } else if (status === "read") {
+      updateData.readAt = timestamp;
+    } else if (status === "failed") {
+      updateData.failedAt = timestamp;
+    }
+  }
+  
   if (errorMessage) updateData.errorMessage = errorMessage;
   
   await db.update(reminderLogs).set(updateData).where(eq(reminderLogs.messageSid, messageSid));
