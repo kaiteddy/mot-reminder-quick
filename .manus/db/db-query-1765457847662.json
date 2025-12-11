@@ -1,0 +1,25 @@
+{
+  "query": "SELECT 'SENT' as type, sentAt as exact_timestamp, messageType as content FROM reminderLogs WHERE recipient = '+447950586880' UNION ALL SELECT 'RECEIVED' as type, receivedAt as exact_timestamp, LEFT(messageBody, 50) as content FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY exact_timestamp DESC",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT 'SENT' as type, sentAt as exact_timestamp, messageType as content FROM reminderLogs WHERE recipient = '+447950586880' UNION ALL SELECT 'RECEIVED' as type, receivedAt as exact_timestamp, LEFT(messageBody, 50) as content FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY exact_timestamp DESC",
+  "rows": [
+    {
+      "type": "SENT",
+      "exact_timestamp": "2025-12-11 12:42:21",
+      "content": "MOT"
+    },
+    {
+      "type": "RECEIVED",
+      "exact_timestamp": "2025-12-11 12:37:47",
+      "content": "That’s a lie its already expired 🤣🤣🤣"
+    },
+    {
+      "type": "SENT",
+      "exact_timestamp": "2025-12-11 12:37:02",
+      "content": "MOT"
+    }
+  ],
+  "messages": [],
+  "stdout": "type\texact_timestamp\tcontent\nSENT\t2025-12-11 12:42:21\tMOT\nRECEIVED\t2025-12-11 12:37:47\tThat’s a lie its already expired 🤣🤣🤣\nSENT\t2025-12-11 12:37:02\tMOT\n",
+  "stderr": "",
+  "execution_time_ms": 48
+}

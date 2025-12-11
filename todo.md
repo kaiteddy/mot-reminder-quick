@@ -632,3 +632,9 @@
 - [x] Auto-mark messages as read when conversation dialog opens
 - [x] Include both sent and received messages in latest message calculation
 - [x] Sort conversations by most recent activity (sent or received)
+
+## Fix Latest Message Timestamp Issue
+- [x] Fix latest message to show actual latest received customer message
+- [x] Removed sent logs from latest message calculation entirely
+- [x] Latest message now always shows customer's reply, not sent reminders
+- [x] Test with conversation that has messages after sent reminders

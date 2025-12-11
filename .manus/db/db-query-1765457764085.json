@@ -1,0 +1,28 @@
+{
+  "query": "SELECT 'SENT' as type, DATE_FORMAT(sentAt, '%Y-%m-%d %H:%i:%s') as timestamp, messageType, recipient FROM reminderLogs WHERE recipient = '+447950586880' UNION ALL SELECT 'RECEIVED' as type, DATE_FORMAT(receivedAt, '%Y-%m-%d %H:%i:%s') as timestamp, LEFT(messageBody, 40) as messageType, fromNumber as recipient FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY timestamp DESC",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT 'SENT' as type, DATE_FORMAT(sentAt, '%Y-%m-%d %H:%i:%s') as timestamp, messageType, recipient FROM reminderLogs WHERE recipient = '+447950586880' UNION ALL SELECT 'RECEIVED' as type, DATE_FORMAT(receivedAt, '%Y-%m-%d %H:%i:%s') as timestamp, LEFT(messageBody, 40) as messageType, fromNumber as recipient FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY timestamp DESC",
+  "rows": [
+    {
+      "type": "SENT",
+      "timestamp": "2025-12-11 12:42:21",
+      "messageType": "MOT",
+      "recipient": "+447950586880"
+    },
+    {
+      "type": "RECEIVED",
+      "timestamp": "2025-12-11 12:37:47",
+      "messageType": "That’s a lie its already expired 🤣🤣🤣",
+      "recipient": "+447950586880"
+    },
+    {
+      "type": "SENT",
+      "timestamp": "2025-12-11 12:37:02",
+      "messageType": "MOT",
+      "recipient": "+447950586880"
+    }
+  ],
+  "messages": [],
+  "stdout": "type\ttimestamp\tmessageType\trecipient\nSENT\t2025-12-11 12:42:21\tMOT\t+447950586880\nRECEIVED\t2025-12-11 12:37:47\tThat’s a lie its already expired 🤣🤣🤣\t+447950586880\nSENT\t2025-12-11 12:37:02\tMOT\t+447950586880\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

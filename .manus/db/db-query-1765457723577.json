@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, fromNumber, messageBody, receivedAt, `read` FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY receivedAt DESC LIMIT 10",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT id, fromNumber, messageBody, receivedAt, `read` FROM customerMessages WHERE fromNumber = '+447950586880' ORDER BY receivedAt DESC LIMIT 10",
+  "rows": [
+    {
+      "id": "90002",
+      "fromNumber": "+447950586880",
+      "messageBody": "That’s a lie its already expired 🤣🤣🤣",
+      "receivedAt": "2025-12-11 12:37:47",
+      "read": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfromNumber\tmessageBody\treceivedAt\tread\n90002\t+447950586880\tThat’s a lie its already expired 🤣🤣🤣\t2025-12-11 12:37:47\t1\n",
+  "stderr": "",
+  "execution_time_ms": 620
+}

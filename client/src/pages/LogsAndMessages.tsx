@@ -217,20 +217,9 @@ export default function LogsAndMessages() {
     }
   });
 
-  // Add sent logs to update latest message if they're newer
-  logs?.forEach(log => {
-    const phoneNumber = log.recipient;
-    const existing = conversationMap.get(phoneNumber);
-    const timestamp = new Date(log.sentAt);
-    
-    if (existing) {
-      // Update latest if this sent message is newer
-      if (timestamp > existing.latestTimestamp) {
-        existing.latestTimestamp = timestamp;
-        existing.latestContent = `You: ${log.messageType} reminder sent`;
-      }
-    }
-  });
+  // Note: We intentionally do NOT include sent logs in the latest message calculation
+  // The "latest message" should always be from the actual conversation (received messages)
+  // This provides a better UX - users want to see the customer's latest reply, not their own sent reminders
 
   // Convert to array and sort by latest timestamp
   const conversations = Array.from(conversationMap.values()).sort(
