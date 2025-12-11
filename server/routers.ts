@@ -331,6 +331,12 @@ export const appRouter = router({
         id: z.number(),
         phoneNumber: z.string(),
         customMessage: z.string().optional(),
+        // Template parameters for test messages (id = 0)
+        customerName: z.string().optional(),
+        registration: z.string().optional(),
+        expiryDate: z.string().optional(),
+        daysUntil: z.number().optional(),
+        messageType: z.enum(["MOT", "Service"]).optional(),
       }))
       .mutation(async ({ input }) => {
         const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
@@ -338,20 +344,53 @@ export const appRouter = router({
         
         // Handle test messages (id = 0)
         if (input.id === 0) {
-          // If custom message provided, send it directly
           let result;
+          let messageContent: string;
+          const messageType = input.messageType || "MOT";
+          const customerName = input.customerName || "Test User";
+          const registration = input.registration || "TEST123";
+          const expiryDate = input.expiryDate ? new Date(input.expiryDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          const daysUntil = input.daysUntil ?? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          
+          // If custom message provided, send it directly (for chat quick replies)
           if (input.customMessage) {
             result = await sendSMS({
               to: input.phoneNumber,
               message: input.customMessage,
             });
+            messageContent = input.customMessage;
+          } else if (messageType === "Service") {
+            // Send Service reminder template
+            const { sendServiceReminderWithTemplate } = await import("./smsService");
+            const formattedDate = expiryDate.toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+            
+            messageContent = `Hi ${customerName}, this is a reminder that the service for your vehicle ${registration} is due on ${formattedDate} (${daysUntil} days). Please contact us to book your service.`;
+            
+            result = await sendServiceReminderWithTemplate({
+              to: input.phoneNumber,
+              customerName,
+              registration,
+              serviceDueDate: expiryDate,
+            });
           } else {
-            // Otherwise send default MOT reminder
+            // Send MOT reminder template
+            const formattedDate = expiryDate.toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+            
+            messageContent = `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${formattedDate} (${daysUntil} days). Please contact us to book your MOT test.`;
+            
             result = await sendMOTReminderWithTemplate({
               to: input.phoneNumber,
-              customerName: "Test User",
-              registration: "TEST123",
-              motExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+              customerName,
+              registration,
+              motExpiryDate: expiryDate,
             });
           }
           
@@ -364,15 +403,15 @@ export const appRouter = router({
             reminderId: null,
             customerId: null,
             vehicleId: null,
-            messageType: "MOT",
+            messageType,
             recipient: input.phoneNumber,
             messageSid: result.messageId || null,
             status: "sent",
-            templateUsed: null,
-            customerName: "Test User",
-            registration: "TEST123",
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            messageContent: input.customMessage || undefined,
+            templateUsed: messageType === "MOT" ? "motreminder" : "servicereminder",
+            customerName,
+            registration,
+            dueDate: expiryDate,
+            messageContent,
           });
           
           return { success: true, messageSid: result.messageId };

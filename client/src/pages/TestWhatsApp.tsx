@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageSquare, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -11,12 +11,18 @@ import { Link } from "wouter";
 
 export default function TestWhatsApp() {
   const [phoneNumber, setPhoneNumber] = useState("+447843275372");
-  const [customMessage, setCustomMessage] = useState("");
-  const [useCustomMessage, setUseCustomMessage] = useState(false);
+  const [templateType, setTemplateType] = useState<"MOT" | "Service">("MOT");
+  const [customerName, setCustomerName] = useState("Test Customer");
+  const [registration, setRegistration] = useState("TEST123");
+  const [expiryDate, setExpiryDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 14); // 14 days from now
+    return date.toISOString().split('T')[0];
+  });
 
-  const testMutation = trpc.testWhatsApp.useMutation({
-    onSuccess: (result) => {
-      toast.success(result.message);
+  const sendMutation = trpc.reminders.sendWhatsApp.useMutation({
+    onSuccess: () => {
+      toast.success("Test message sent successfully!");
     },
     onError: (error) => {
       toast.error(`Failed to send message: ${error.message}`);
@@ -28,10 +34,25 @@ export default function TestWhatsApp() {
       toast.error("Please enter a phone number");
       return;
     }
+    if (!customerName || !registration || !expiryDate) {
+      toast.error("Please fill in all fields");
+      return;
+    }
 
-    testMutation.mutate({
+    // Calculate days until expiry
+    const expiry = new Date(expiryDate);
+    const today = new Date();
+    const daysUntil = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Send using the template system (id: 0 means test message)
+    sendMutation.mutate({
+      id: 0,
       phoneNumber,
-      message: useCustomMessage && customMessage ? customMessage : undefined,
+      customerName,
+      registration,
+      expiryDate,
+      daysUntil,
+      messageType: templateType,
     });
   };
 
@@ -43,9 +64,9 @@ export default function TestWhatsApp() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
               <MessageSquare className="w-8 h-8 text-green-600" />
-              Test WhatsApp
+              Test WhatsApp Templates
             </h1>
-            <p className="text-slate-600 mt-1">Send a test WhatsApp message to verify integration</p>
+            <p className="text-slate-600 mt-1">Send a test message using approved WhatsApp templates</p>
           </div>
           <Button variant="outline" asChild>
             <Link href="/">← Back to Home</Link>
@@ -55,17 +76,20 @@ export default function TestWhatsApp() {
         {/* Info Card */}
         <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle className="text-blue-900">About WhatsApp Testing</CardTitle>
+            <CardTitle className="text-blue-900">About WhatsApp Templates</CardTitle>
           </CardHeader>
-          <CardContent className="text-blue-800">
+          <CardContent className="text-blue-800 space-y-2">
             <p>
-              This page allows you to test the WhatsApp integration by sending a test message to any phone number. 
-              Make sure the number is in international format (e.g., +447843275372 for UK numbers).
+              WhatsApp requires approved message templates for business messaging. This page uses the 
+              same templates as the main app to ensure messages are delivered successfully.
             </p>
-            <p className="mt-2">
-              <strong>Note:</strong> The recipient must have WhatsApp installed and have previously messaged your 
-              Twilio WhatsApp number, or you must have an approved WhatsApp Business template.
+            <p>
+              <strong>Available Templates:</strong>
             </p>
+            <ul className="list-disc list-inside ml-4 space-y-1">
+              <li><strong>MOT Reminder</strong> - Notifies customers about upcoming MOT expiry</li>
+              <li><strong>Service Reminder</strong> - Notifies customers about upcoming service due date</li>
+            </ul>
           </CardContent>
         </Card>
 
@@ -73,7 +97,7 @@ export default function TestWhatsApp() {
         <Card>
           <CardHeader>
             <CardTitle>Send Test Message</CardTitle>
-            <CardDescription>Enter a phone number to receive the test WhatsApp message</CardDescription>
+            <CardDescription>Fill in the details to send a test WhatsApp message</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -92,41 +116,71 @@ export default function TestWhatsApp() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useCustomMessage"
-                  checked={useCustomMessage}
-                  onChange={(e) => setUseCustomMessage(e.target.checked)}
-                  className="rounded"
+              <Label htmlFor="templateType">Template Type</Label>
+              <Select value={templateType} onValueChange={(value) => setTemplateType(value as "MOT" | "Service")}>
+                <SelectTrigger id="templateType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MOT">MOT Reminder</SelectItem>
+                  <SelectItem value="Service">Service Reminder</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="customerName">Customer Name</Label>
+                <Input
+                  id="customerName"
+                  placeholder="John Smith"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
                 />
-                <Label htmlFor="useCustomMessage">Use custom message</Label>
               </div>
-              
-              {useCustomMessage && (
-                <Textarea
-                  placeholder="Enter your custom test message..."
-                  value={customMessage}
-                  onChange={(e) => setCustomMessage(e.target.value)}
-                  rows={4}
+
+              <div className="space-y-2">
+                <Label htmlFor="registration">Vehicle Registration</Label>
+                <Input
+                  id="registration"
+                  placeholder="AB12 CDE"
+                  value={registration}
+                  onChange={(e) => setRegistration(e.target.value.toUpperCase())}
+                  className="font-mono"
                 />
-              )}
-              
-              {!useCustomMessage && (
-                <div className="p-3 bg-slate-50 rounded border text-sm text-slate-600">
-                  Default message: "Test message from MOT Reminder Quick App. This is a test to verify 
-                  WhatsApp integration is working correctly. Sent at [current time]."
-                </div>
-              )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expiryDate">
+                {templateType === "MOT" ? "MOT Expiry Date" : "Service Due Date"}
+              </Label>
+              <Input
+                id="expiryDate"
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+              />
+            </div>
+
+            {/* Preview */}
+            <div className="p-4 bg-slate-50 rounded border space-y-2">
+              <p className="text-sm font-medium text-slate-700">Message Preview:</p>
+              <p className="text-sm text-slate-600">
+                {templateType === "MOT" 
+                  ? `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${new Date(expiryDate).toLocaleDateString('en-GB')} (${Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days). Please contact us to book your MOT test.`
+                  : `Hi ${customerName}, this is a reminder that the service for your vehicle ${registration} is due on ${new Date(expiryDate).toLocaleDateString('en-GB')} (${Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days). Please contact us to book your service.`
+                }
+              </p>
             </div>
 
             <Button
               onClick={handleSendTest}
-              disabled={testMutation.isPending || !phoneNumber}
+              disabled={sendMutation.isPending || !phoneNumber || !customerName || !registration || !expiryDate}
               className="w-full gap-2"
               size="lg"
             >
-              {testMutation.isPending ? (
+              {sendMutation.isPending ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
                   Sending...
@@ -142,7 +196,7 @@ export default function TestWhatsApp() {
         </Card>
 
         {/* Result */}
-        {testMutation.isSuccess && (
+        {sendMutation.isSuccess && (
           <Card className="border-green-200 bg-green-50">
             <CardHeader>
               <CardTitle className="text-green-900 flex items-center gap-2">
@@ -152,14 +206,14 @@ export default function TestWhatsApp() {
             </CardHeader>
             <CardContent className="text-green-800">
               <p>The test WhatsApp message has been sent to {phoneNumber}.</p>
-              {testMutation.data?.messageId && (
-                <p className="mt-2 text-sm">Message ID: <code className="bg-green-100 px-2 py-1 rounded">{testMutation.data.messageId}</code></p>
-              )}
+              <p className="mt-2 text-sm">
+                You can view this message in the <Link href="/logs" className="underline font-medium">Logs & Messages</Link> page.
+              </p>
             </CardContent>
           </Card>
         )}
 
-        {testMutation.isError && (
+        {sendMutation.isError && (
           <Card className="border-red-200 bg-red-50">
             <CardHeader>
               <CardTitle className="text-red-900 flex items-center gap-2">
@@ -168,14 +222,14 @@ export default function TestWhatsApp() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-red-800">
-              <p>{testMutation.error.message}</p>
+              <p>{sendMutation.error.message}</p>
               <div className="mt-4 space-y-2 text-sm">
                 <p><strong>Common issues:</strong></p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>Twilio credentials not configured in environment variables</li>
-                  <li>WhatsApp number not verified in Twilio console</li>
-                  <li>Recipient hasn't messaged your Twilio WhatsApp number first</li>
+                  <li>WhatsApp template not approved in Twilio console</li>
                   <li>Invalid phone number format</li>
+                  <li>Recipient phone number not reachable</li>
                 </ul>
               </div>
             </CardContent>
@@ -185,22 +239,20 @@ export default function TestWhatsApp() {
         {/* Configuration Info */}
         <Card>
           <CardHeader>
-            <CardTitle>Configuration</CardTitle>
-            <CardDescription>Required environment variables for WhatsApp integration</CardDescription>
+            <CardTitle>Approved Templates</CardTitle>
+            <CardDescription>WhatsApp templates configured in Twilio</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <code className="bg-slate-100 px-2 py-1 rounded">TWILIO_ACCOUNT_SID</code>
-                <span className="text-slate-600">- Your Twilio Account SID</span>
+            <div className="space-y-3 text-sm">
+              <div className="p-3 bg-slate-50 rounded border">
+                <p className="font-medium mb-1">MOT Reminder Template</p>
+                <p className="text-slate-600">SID: HX127c47f8a63b992d80b43943394a1740</p>
+                <p className="text-slate-600 mt-1">Name: motreminder</p>
               </div>
-              <div className="flex items-center gap-2">
-                <code className="bg-slate-100 px-2 py-1 rounded">TWILIO_AUTH_TOKEN</code>
-                <span className="text-slate-600">- Your Twilio Auth Token</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="bg-slate-100 px-2 py-1 rounded">TWILIO_WHATSAPP_NUMBER</code>
-                <span className="text-slate-600">- Your Twilio WhatsApp number (e.g., whatsapp:+14155238886)</span>
+              <div className="p-3 bg-slate-50 rounded border">
+                <p className="font-medium mb-1">Service Reminder Template</p>
+                <p className="text-slate-600">SID: HXac307a9bd92b65df83038c2b2a3eeeff</p>
+                <p className="text-slate-600 mt-1">Name: servicereminder</p>
               </div>
             </div>
           </CardContent>

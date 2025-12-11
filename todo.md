@@ -592,3 +592,12 @@
 - [x] Update LogsAndMessages page to show "read" status
 - [x] Create comprehensive test suite for status tracking
 - [x] All 5 tests passing (sent, delivered, read, failed, progression)
+
+## Fix Test WhatsApp Page to Use Templates
+- [x] Update Test WhatsApp page to use approved templates (MOT/Service)
+- [x] Remove freeform message option (won't work outside 24-hour window)
+- [x] Add template selection dropdown (MOT or Service)
+- [x] Add test vehicle data fields (registration, customer name, expiry date)
+- [x] Test message sending with templates
+- [x] Update sendWhatsApp mutation to accept template parameters
+- [x] Create comprehensive test suite (4 tests passing)
