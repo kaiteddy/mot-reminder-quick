@@ -608,3 +608,18 @@
 - [x] Fix template variable formatting (typo in MOT template SID)
 - [x] Correct SID: HX127c47f8a63b992d86b43943394a1740 (was d80, now d86)
 - [x] Test with real message sending (SUCCESS! Message sent to +447843275372)
+
+## Create WhatsApp Message Log View Page
+- [x] Design log view page UI with table/list layout
+- [x] Add filters for status (sent, delivered, read, failed)
+- [x] Add type filter (MOT, Service, Custom)
+- [x] Add search by phone number or customer name
+- [x] Show delivery timestamps (sent, delivered, read)
+- [x] Add statistics cards showing total/sent/delivered/read/failed counts
+- [x] Add CSV export functionality
+- [x] Display read receipts with blue double-check marks
+- [x] Show filtered results count
+- [x] Improve mobile responsiveness
+- [x] Backend uses existing tRPC procedures with client-side filtering (efficient for current scale)
+- [ ] Add pagination for large datasets (future enhancement when needed)
+- [x] Navigation link already exists in main menu
