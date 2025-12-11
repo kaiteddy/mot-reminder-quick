@@ -666,3 +666,16 @@
 - [x] Shows "Never" for vehicles with no sent reminders
 - [ ] Consider adding relative time (e.g., "2 hours ago") as enhancement
 - [ ] Consider adding to Reminders page as well
+
+## Add Clickable Log Entries with Message Details
+- [x] Create message detail dialog component
+- [x] Make log table rows clickable with hover effect
+- [x] Display full message content in dialog
+- [x] Show delivery status timeline (sent → delivered → read) with timestamps
+- [x] Show customer interaction history via "View Full Conversation History" button
+- [x] Display message metadata (template used, sent time, delivery time, read time)
+- [x] Add "View Conversation" button to open full chat history
+- [x] Test with various message types (MOT, Service, Custom)
+- [x] Verified dialog shows customer info, message content, delivery timeline
+- [x] Verified "View Full Conversation History" button opens chat dialog
+- [x] Tested with delivered message - all features working correctly

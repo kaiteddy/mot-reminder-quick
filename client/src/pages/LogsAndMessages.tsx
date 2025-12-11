@@ -12,11 +12,13 @@ import { Link } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatHistory } from "@/components/ChatHistory";
+import { MessageDetailDialog } from "@/components/MessageDetailDialog";
 
 export default function LogsAndMessages() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
   
   // Auto-refresh logs every 10 seconds to show updated delivery status
   const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery(undefined, {
@@ -377,7 +379,11 @@ export default function LogsAndMessages() {
                   </TableHeader>
                   <TableBody>
                     {filteredLogs.map((log) => (
-                      <TableRow key={log.id} className={log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                      <TableRow 
+                        key={log.id} 
+                        className={`cursor-pointer hover:bg-slate-50 transition-colors ${log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''}`}
+                        onClick={() => setSelectedLog(log)}
+                      >
                         <TableCell className="font-medium text-sm whitespace-nowrap">
                           {new Date(log.sentAt).toLocaleString("en-GB", {
                             day: '2-digit',
@@ -562,6 +568,15 @@ export default function LogsAndMessages() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Message Detail Dialog */}
+      {selectedLog && (
+        <MessageDetailDialog
+          open={!!selectedLog}
+          onOpenChange={(open) => !open && setSelectedLog(null)}
+          log={selectedLog}
+        />
+      )}
     </div>
   );
 }
