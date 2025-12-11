@@ -181,31 +181,60 @@ export default function LogsAndMessages() {
     URL.revokeObjectURL(url);
   };
 
-  // Group messages by phone number
-  const groupedMessages = messages?.reduce((acc, message) => {
-    const phoneNumber = message.fromNumber;
-    if (!acc[phoneNumber]) {
-      acc[phoneNumber] = {
-        phoneNumber,
-        messages: [],
-        latestMessage: message,
-        unreadCount: 0,
-      };
-    }
-    acc[phoneNumber].messages.push(message);
-    if (message.read === 0) {
-      acc[phoneNumber].unreadCount++;
-    }
-    // Update latest message if this one is newer
-    if (new Date(message.receivedAt) > new Date(acc[phoneNumber].latestMessage.receivedAt)) {
-      acc[phoneNumber].latestMessage = message;
-    }
-    return acc;
-  }, {} as Record<string, { phoneNumber: string; messages: typeof messages; latestMessage: typeof messages[0]; unreadCount: number }>);
+  // Group conversations by phone number, including both received messages and sent logs
+  const conversationMap = new Map<string, {
+    phoneNumber: string;
+    messages: typeof messages;
+    latestTimestamp: Date;
+    latestContent: string;
+    unreadCount: number;
+  }>();
 
-  // Convert to array and sort by latest message time
-  const conversations = Object.values(groupedMessages || {}).sort(
-    (a, b) => new Date(b.latestMessage.receivedAt).getTime() - new Date(a.latestMessage.receivedAt).getTime()
+  // Add received messages
+  messages?.forEach(message => {
+    const phoneNumber = message.fromNumber;
+    const existing = conversationMap.get(phoneNumber);
+    const timestamp = new Date(message.receivedAt);
+    
+    if (!existing) {
+      conversationMap.set(phoneNumber, {
+        phoneNumber,
+        messages: [message],
+        latestTimestamp: timestamp,
+        latestContent: message.messageBody || '',
+        unreadCount: message.read === 0 ? 1 : 0,
+      });
+    } else {
+      existing.messages?.push(message);
+      if (message.read === 0) {
+        existing.unreadCount++;
+      }
+      // Update latest if this message is newer
+      if (timestamp > existing.latestTimestamp) {
+        existing.latestTimestamp = timestamp;
+        existing.latestContent = message.messageBody || '';
+      }
+    }
+  });
+
+  // Add sent logs to update latest message if they're newer
+  logs?.forEach(log => {
+    const phoneNumber = log.recipient;
+    const existing = conversationMap.get(phoneNumber);
+    const timestamp = new Date(log.sentAt);
+    
+    if (existing) {
+      // Update latest if this sent message is newer
+      if (timestamp > existing.latestTimestamp) {
+        existing.latestTimestamp = timestamp;
+        existing.latestContent = `You: ${log.messageType} reminder sent`;
+      }
+    }
+  });
+
+  // Convert to array and sort by latest timestamp
+  const conversations = Array.from(conversationMap.values()).sort(
+    (a, b) => b.latestTimestamp.getTime() - a.latestTimestamp.getTime()
   );
 
   return (
@@ -495,7 +524,7 @@ export default function LogsAndMessages() {
                                 )}
                               </div>
                               <p className="text-sm text-muted-foreground truncate">
-                                {conversation.latestMessage.messageBody}
+                                {conversation.latestContent}
                               </p>
                               {customerData && (
                                 <p className="text-xs text-muted-foreground mt-1">
@@ -505,7 +534,7 @@ export default function LogsAndMessages() {
                             </div>
                           </div>
                           <div className="text-xs text-muted-foreground whitespace-nowrap ml-4">
-                            {new Date(conversation.latestMessage.receivedAt).toLocaleString("en-GB", {
+                            {conversation.latestTimestamp.toLocaleString("en-GB", {
                               day: '2-digit',
                               month: 'short',
                               hour: '2-digit',

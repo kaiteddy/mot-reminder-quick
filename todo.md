@@ -623,3 +623,12 @@
 - [x] Backend uses existing tRPC procedures with client-side filtering (efficient for current scale)
 - [ ] Add pagination for large datasets (future enhancement when needed)
 - [x] Navigation link already exists in main menu
+
+## Fix Customer Responses Issues
+- [x] Fix unread badge not clearing after reading messages in ChatHistory dialog
+- [x] Fix latest message not updating to show most recent sent/received message
+- [x] Ensure mark as read functionality works correctly
+- [x] Test with real message flow (send and receive)
+- [x] Auto-mark messages as read when conversation dialog opens
+- [x] Include both sent and received messages in latest message calculation
+- [x] Sort conversations by most recent activity (sent or received)

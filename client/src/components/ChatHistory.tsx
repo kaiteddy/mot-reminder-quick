@@ -66,6 +66,27 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
   
   const utils = trpc.useUtils();
   
+  // Mark messages as read mutation
+  const markAsReadMutation = trpc.messages.markAsRead.useMutation({
+    onSuccess: () => {
+      utils.messages.list.invalidate();
+      utils.messages.getUnreadCount.invalidate();
+    },
+  });
+  
+  // Filter messages for this phone number
+  const receivedMessages = (allMessages || []).filter(
+    (msg) => msg.fromNumber === phoneNumber
+  );
+  
+  // Auto-mark all unread messages as read when dialog opens
+  useEffect(() => {
+    const unreadMessages = receivedMessages.filter(msg => msg.read === 0);
+    unreadMessages.forEach(msg => {
+      markAsReadMutation.mutate({ id: msg.id });
+    });
+  }, [phoneNumber]); // Only run when phoneNumber changes (dialog opens)
+  
   const sendTestMessage = trpc.reminders.sendWhatsApp.useMutation({
     onSuccess: () => {
       toast.success("Message sent!");
@@ -76,11 +97,6 @@ export function ChatHistory({ phoneNumber, customerName, onClose }: ChatHistoryP
       toast.error(`Failed to send: ${error.message}`);
     },
   });
-  
-  // Filter messages for this phone number
-  const receivedMessages = (allMessages || []).filter(
-    (msg) => msg.fromNumber === phoneNumber
-  );
   
   // Filter sent logs for this phone number
   const sentMessages = (allLogs || []).filter(
