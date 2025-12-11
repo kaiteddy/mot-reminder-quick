@@ -4,6 +4,7 @@ import { ImageUpload } from "@/components/ImageUpload";
 import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { UnreadMessageBadge } from "@/components/UnreadMessageBadge";
+import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Plus, Search, Upload, Users, Car, Database, MessageSquare, FileText, Wrench, RefreshCw, CheckCircle } from "lucide-react";
@@ -16,8 +17,7 @@ export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0 });
+
 
   const utils = trpc.useUtils();
   
@@ -62,58 +62,7 @@ export default function Home() {
     },
   });
 
-  const bulkVerifyMOT = trpc.reminders.bulkVerifyMOT.useMutation({
-    onSuccess: (results) => {
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
-      
-      setIsRefreshing(false);
-      setRefreshProgress({ current: 0, total: 0 });
-      
-      if (successful > 0) {
-        toast.success(`Verified ${successful} MOT dates successfully${failed > 0 ? `, ${failed} failed` : ''}`);
-        utils.reminders.generateFromVehicles.invalidate();
-      } else {
-        toast.error('Failed to verify any MOT dates');
-      }
-    },
-    onError: (error) => {
-      setIsRefreshing(false);
-      setRefreshProgress({ current: 0, total: 0 });
-      toast.error(`Verification failed: ${error.message}`);
-    },
-  });
 
-  const handleRefreshMOT = async () => {
-    if (!reminders || reminders.length === 0) return;
-    
-    // Get unique registrations from reminders
-    const registrations = Array.from(new Set(reminders.map(r => r.registration).filter(Boolean)));
-    
-    if (registrations.length === 0) {
-      toast.error('No registrations to verify');
-      return;
-    }
-    
-    setIsRefreshing(true);
-    setRefreshProgress({ current: 0, total: registrations.length });
-    
-    // Simulate progress updates
-    const progressInterval = setInterval(() => {
-      setRefreshProgress(prev => {
-        if (prev.current < prev.total) {
-          return { ...prev, current: prev.current + 1 };
-        }
-        return prev;
-      });
-    }, 500);
-    
-    try {
-      await bulkVerifyMOT.mutateAsync({ registrations });
-    } finally {
-      clearInterval(progressInterval);
-    }
-  };
 
   const handleImageUpload = async (file: File) => {
     setIsProcessing(true);
@@ -242,24 +191,13 @@ export default function Home() {
                   {allReminders.length} total reminders
                 </CardDescription>
               </div>
-              <Button
-                onClick={handleRefreshMOT}
-                disabled={isRefreshing || allReminders.length === 0}
+              <MOTRefreshButton
+                registrations={Array.from(new Set(allReminders.map(r => r.registration).filter(Boolean)))}
+                label="Refresh MOT"
                 variant="outline"
                 size="sm"
-              >
-                {isRefreshing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Verifying {refreshProgress.current}/{refreshProgress.total}
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Verify MOT Dates
-                  </>
-                )}
-              </Button>
+                onComplete={() => utils.reminders.generateFromVehicles.invalidate()}
+              />
             </div>
           </CardHeader>
           <CardContent>

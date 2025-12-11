@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Send
 } from "lucide-react";
+import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -314,23 +315,18 @@ export default function Database() {
                 </Link>
               </Button>
             )}
-            <Button 
-              onClick={handleBulkUpdate}
-              disabled={bulkUpdateMutation.isPending || isLoading}
-              className="gap-2"
-            >
-              {bulkUpdateMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  Bulk MOT Check
-                </>
-              )}
-            </Button>
+            <MOTRefreshButton
+              registrations={filteredAndSortedVehicles.map(v => v.registration).filter(Boolean)}
+              label="Refresh Visible"
+              variant="default"
+              onComplete={refetch}
+            />
+            <MOTRefreshButton
+              registrations={vehicles?.map(v => v.registration).filter(Boolean) || []}
+              label="Bulk MOT Check (All)"
+              variant="outline"
+              onComplete={refetch}
+            />
           </div>
         </div>
 

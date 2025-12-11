@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Car, Search } from "lucide-react";
+import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 
 export default function Vehicles() {
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: vehicles, isLoading } = trpc.vehicles.list.useQuery();
+  const { data: vehicles, isLoading, refetch } = trpc.vehicles.list.useQuery();
 
   const filteredVehicles = vehicles?.filter((vehicle) => {
     const search = searchTerm.toLowerCase();
@@ -54,13 +55,24 @@ export default function Vehicles() {
         {/* Search */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Car className="w-5 h-5" />
-              Vehicle List
-            </CardTitle>
-            <CardDescription>
-              {vehicles?.length || 0} vehicles in database
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Car className="w-5 h-5" />
+                  Vehicle List
+                </CardTitle>
+                <CardDescription>
+                  {vehicles?.length || 0} vehicles in database
+                </CardDescription>
+              </div>
+              <MOTRefreshButton
+                registrations={filteredVehicles.map(v => v.registration).filter(Boolean)}
+                label="Refresh MOT"
+                variant="outline"
+                size="sm"
+                onComplete={refetch}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2">

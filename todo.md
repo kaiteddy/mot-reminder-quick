@@ -703,3 +703,16 @@
 - [x] Verified MOT Expired selection updates UI and message preview
 - [x] Verified date field is disabled when MOT Expired is selected
 - [x] All template information cards display correct SIDs and variables
+
+## Add MOT Refresh Button to All Pages
+- [x] Identify all pages that display reminders/vehicles (Home, Database, Vehicles)
+- [x] Create reusable MOTRefreshButton component that accepts vehicle registrations array
+- [x] Ensure backend bulkVerifyMOT endpoint works with selected registrations
+- [x] Add MOT refresh button to Home page (reminders table) - refresh visible reminders
+- [x] Update Database page MOT refresh to work with current selection/filters
+- [x] Add "Refresh Visible" button to Database page for filtered vehicles
+- [x] Add "Bulk MOT Check (All)" button to Database page for all vehicles
+- [x] Add MOT refresh button to Vehicles page
+- [x] Add progress indicators and success/error feedback for all refresh operations
+- [x] Test MOT refresh with vitest (3 tests passing)
+- [x] Verify MOT dates update correctly in database and UI after refresh
