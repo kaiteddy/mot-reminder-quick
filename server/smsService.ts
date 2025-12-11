@@ -64,7 +64,10 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
       
       // Add template variables
       if (params.templateVariables) {
-        formData.append('ContentVariables', JSON.stringify(params.templateVariables));
+        const contentVars = JSON.stringify(params.templateVariables);
+        console.log('[SMS Service] ContentSid:', params.templateSid);
+        console.log('[SMS Service] ContentVariables:', contentVars);
+        formData.append('ContentVariables', contentVars);
       }
     } else {
       // Use freeform message (requires 24-hour window)
@@ -86,6 +89,7 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('[SMS Service] Twilio API Error:', JSON.stringify(errorData, null, 2));
       return {
         success: false,
         error: errorData.message || `Twilio API error: ${response.statusText}`,
@@ -166,7 +170,7 @@ export async function sendMOTReminderWithTemplate(params: {
   return sendSMS({
     to: params.to,
     useTemplate: true,
-    templateSid: 'HX127c47f8a63b992d80b43943394a1740', // motreminder
+    templateSid: 'HX127c47f8a63b992d86b43943394a1740', // motreminder
     templateVariables: {
       '1': params.customerName,
       '2': params.registration,

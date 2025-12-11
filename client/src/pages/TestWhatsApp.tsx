@@ -246,7 +246,7 @@ export default function TestWhatsApp() {
             <div className="space-y-3 text-sm">
               <div className="p-3 bg-slate-50 rounded border">
                 <p className="font-medium mb-1">MOT Reminder Template</p>
-                <p className="text-slate-600">SID: HX127c47f8a63b992d80b43943394a1740</p>
+                <p className="text-slate-600">SID: HX127c47f8a63b992d86b43943394a1740</p>
                 <p className="text-slate-600 mt-1">Name: motreminder</p>
               </div>
               <div className="p-3 bg-slate-50 rounded border">
