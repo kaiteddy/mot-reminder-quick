@@ -689,3 +689,17 @@
 - [x] Update templateUsed field in logs to show copy_motreminder or mot_reminder
 - [x] Updated to use correct template name: copy_motreminder (not mot_expired)
 - [x] Test with both expired and expiring MOT dates
+
+## Update Test WhatsApp Page with Template Selection
+- [x] Add template dropdown with all available templates (MOT Reminder, MOT Expired, Service Reminder)
+- [x] Show template details (SID, variables, description) for each selection
+- [x] Update form fields based on selected template
+- [x] Show live preview of which template will be used based on expiry date
+- [x] Add template information cards for each template
+- [x] Added "Active Template" indicator showing which template will be used
+- [x] Added "MOT_EXPIRED" option to force expired template for testing
+- [x] Test sending messages with each template type
+- [x] Verified template dropdown shows all 3 options correctly
+- [x] Verified MOT Expired selection updates UI and message preview
+- [x] Verified date field is disabled when MOT Expired is selected
+- [x] All template information cards display correct SIDs and variables

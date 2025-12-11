@@ -4,14 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { MessageSquare, Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
 
+type TemplateType = "MOT" | "MOT_EXPIRED" | "Service";
+
 export default function TestWhatsApp() {
   const [phoneNumber, setPhoneNumber] = useState("+447843275372");
-  const [templateType, setTemplateType] = useState<"MOT" | "Service">("MOT");
+  const [templateType, setTemplateType] = useState<TemplateType>("MOT");
   const [customerName, setCustomerName] = useState("Test Customer");
   const [registration, setRegistration] = useState("TEST123");
   const [expiryDate, setExpiryDate] = useState(() => {
@@ -44,17 +46,43 @@ export default function TestWhatsApp() {
     const today = new Date();
     const daysUntil = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
+    // For MOT_EXPIRED, set the expiry date to past to trigger the expired template
+    let actualExpiryDate = expiryDate;
+    if (templateType === "MOT_EXPIRED") {
+      const pastDate = new Date();
+      pastDate.setDate(pastDate.getDate() - 30); // 30 days ago
+      actualExpiryDate = pastDate.toISOString().split('T')[0];
+    }
+
     // Send using the template system (id: 0 means test message)
     sendMutation.mutate({
       id: 0,
       phoneNumber,
       customerName,
       registration,
-      expiryDate,
+      expiryDate: actualExpiryDate,
       daysUntil,
-      messageType: templateType,
+      messageType: templateType === "MOT_EXPIRED" ? "MOT" : templateType,
     });
   };
+
+  // Determine which template will be used based on expiry date
+  const getActiveTemplate = () => {
+    if (templateType === "Service") return "servicereminder";
+    if (templateType === "MOT_EXPIRED") return "copy_motreminder";
+    
+    // For MOT, check if date is in past
+    const expiry = new Date(expiryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expiry.setHours(0, 0, 0, 0);
+    
+    return expiry < today ? "copy_motreminder" : "motreminder";
+  };
+
+  const activeTemplate = getActiveTemplate();
+  const daysUntilExpiry = Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+  const isExpired = daysUntilExpiry < 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6">
@@ -88,10 +116,31 @@ export default function TestWhatsApp() {
             </p>
             <ul className="list-disc list-inside ml-4 space-y-1">
               <li><strong>MOT Reminder</strong> - Notifies customers about upcoming MOT expiry</li>
+              <li><strong>MOT Expired</strong> - Notifies customers that their MOT has already expired</li>
               <li><strong>Service Reminder</strong> - Notifies customers about upcoming service due date</li>
             </ul>
           </CardContent>
         </Card>
+
+        {/* Active Template Indicator */}
+        {templateType === "MOT" && (
+          <Card className={`border-2 ${isExpired ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50'}`}>
+            <CardHeader>
+              <CardTitle className={`flex items-center gap-2 ${isExpired ? 'text-red-900' : 'text-green-900'}`}>
+                <AlertCircle className="w-5 h-5" />
+                Active Template: {activeTemplate === "copy_motreminder" ? "MOT Expired" : "MOT Reminder"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className={isExpired ? 'text-red-800' : 'text-green-800'}>
+              <p>
+                {isExpired 
+                  ? `The expiry date is in the past, so the "copy_motreminder" template will be used for expired MOTs.`
+                  : `The expiry date is in the future, so the "motreminder" template will be used for upcoming MOTs.`
+                }
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Test Form */}
         <Card>
@@ -117,15 +166,24 @@ export default function TestWhatsApp() {
 
             <div className="space-y-2">
               <Label htmlFor="templateType">Template Type</Label>
-              <Select value={templateType} onValueChange={(value) => setTemplateType(value as "MOT" | "Service")}>
+              <Select value={templateType} onValueChange={(value) => setTemplateType(value as TemplateType)}>
                 <SelectTrigger id="templateType">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="MOT">MOT Reminder</SelectItem>
+                  <SelectItem value="MOT">MOT Reminder (Auto-select based on date)</SelectItem>
+                  <SelectItem value="MOT_EXPIRED">MOT Expired (Force expired template)</SelectItem>
                   <SelectItem value="Service">Service Reminder</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-sm text-slate-500">
+                {templateType === "MOT" 
+                  ? "Automatically selects expired or reminder template based on expiry date"
+                  : templateType === "MOT_EXPIRED"
+                  ? "Forces the expired template regardless of date entered"
+                  : "Uses the service reminder template"
+                }
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -153,23 +211,31 @@ export default function TestWhatsApp() {
 
             <div className="space-y-2">
               <Label htmlFor="expiryDate">
-                {templateType === "MOT" ? "MOT Expiry Date" : "Service Due Date"}
+                {templateType === "Service" ? "Service Due Date" : "MOT Expiry Date"}
               </Label>
               <Input
                 id="expiryDate"
                 type="date"
                 value={expiryDate}
                 onChange={(e) => setExpiryDate(e.target.value)}
+                disabled={templateType === "MOT_EXPIRED"}
               />
+              {templateType === "MOT_EXPIRED" && (
+                <p className="text-sm text-slate-500">
+                  Date is ignored for expired template test - will use a past date automatically
+                </p>
+              )}
             </div>
 
             {/* Preview */}
             <div className="p-4 bg-slate-50 rounded border space-y-2">
               <p className="text-sm font-medium text-slate-700">Message Preview:</p>
               <p className="text-sm text-slate-600">
-                {templateType === "MOT" 
-                  ? `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${new Date(expiryDate).toLocaleDateString('en-GB')} (${Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days). Please contact us to book your MOT test.`
-                  : `Hi ${customerName}, this is a reminder that the service for your vehicle ${registration} is due on ${new Date(expiryDate).toLocaleDateString('en-GB')} (${Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days). Please contact us to book your service.`
+                {templateType === "Service" 
+                  ? `Hi ${customerName}, this is a reminder that the service for your vehicle ${registration} is due on ${new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} (${daysUntilExpiry} days). Please contact us to book your service.`
+                  : templateType === "MOT_EXPIRED" || isExpired
+                  ? `Hi ${customerName}, your vehicle ${registration} MOT expired on ${new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}. Please contact us to book your MOT test.`
+                  : `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} (${daysUntilExpiry} days). Please contact us to book your MOT test.`
                 }
               </p>
             </div>
@@ -245,14 +311,22 @@ export default function TestWhatsApp() {
           <CardContent>
             <div className="space-y-3 text-sm">
               <div className="p-3 bg-slate-50 rounded border">
-                <p className="font-medium mb-1">MOT Reminder Template</p>
+                <p className="font-medium mb-1">MOT Reminder Template (Expiring Soon)</p>
                 <p className="text-slate-600">SID: HX127c47f8a63b992d86b43943394a1740</p>
                 <p className="text-slate-600 mt-1">Name: motreminder</p>
+                <p className="text-slate-600 mt-1">Variables: Customer name, Registration, Expiry date, Days until expiry</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded border">
+                <p className="font-medium mb-1">MOT Expired Template</p>
+                <p className="text-slate-600">SID: HX0a553ba697cdc3acce4a935f5d462ada</p>
+                <p className="text-slate-600 mt-1">Name: copy_motreminder</p>
+                <p className="text-slate-600 mt-1">Variables: Customer name, Registration, Expiry date</p>
               </div>
               <div className="p-3 bg-slate-50 rounded border">
                 <p className="font-medium mb-1">Service Reminder Template</p>
                 <p className="text-slate-600">SID: HXac307a9bd92b65df83038c2b2a3eeeff</p>
                 <p className="text-slate-600 mt-1">Name: servicereminder</p>
+                <p className="text-slate-600 mt-1">Variables: Customer name, Registration, Service due date, Days until due</p>
               </div>
             </div>
           </CardContent>
