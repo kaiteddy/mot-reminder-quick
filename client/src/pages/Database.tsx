@@ -84,7 +84,7 @@ export default function Database() {
     const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
     
     sendReminderMutation.mutate({
-      id: vehicle.id,
+      id: 0, // Use 0 to indicate this is a direct send (not from reminders table)
       phoneNumber: vehicle.customerPhone,
       messageType: reminderType,
       customerName: vehicle.customerName || "Customer",

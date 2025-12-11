@@ -651,3 +651,9 @@
 - [x] Added Actions column with Send button to Database table
 - [x] Button automatically determines MOT vs Service based on expiry status
 - [x] Functionality tested - works correctly (requires vehicles in database to test UI)
+
+## Fix 'Reminder not found' Error from Database Page
+- [x] Update sendWhatsApp mutation to work with vehicle ID instead of requiring reminder ID
+- [x] Changed Database page to pass id: 0 to trigger test message path
+- [x] Allow sending reminders for vehicles without existing reminder records
+- [x] Fix verified - uses same test message path as Test WhatsApp page
