@@ -312,9 +312,11 @@ export async function getAllVehiclesWithCustomers() {
   const db = await getDb();
   if (!db) return [];
   
-  const { vehicles, customers } = await import("../drizzle/schema");
+  const { vehicles, customers, reminderLogs } = await import("../drizzle/schema");
+  const { sql, max } = await import("drizzle-orm");
   
-  const result = await db
+  // First get all vehicles with customer info
+  const vehiclesWithCustomers = await db
     .select({
       id: vehicles.id,
       registration: vehicles.registration,
@@ -336,8 +338,27 @@ export async function getAllVehiclesWithCustomers() {
     .from(vehicles)
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
     .orderBy(vehicles.registration);
-    
-  return result;
+  
+  // Get last reminder sent date for each vehicle
+  const lastReminderDates = await db
+    .select({
+      vehicleId: reminderLogs.vehicleId,
+      lastSentAt: max(reminderLogs.sentAt).as('lastSentAt'),
+    })
+    .from(reminderLogs)
+    .where(sql`${reminderLogs.vehicleId} IS NOT NULL`)
+    .groupBy(reminderLogs.vehicleId);
+  
+  // Create a map of vehicle ID to last sent date
+  const lastSentMap = new Map(
+    lastReminderDates.map(row => [row.vehicleId, row.lastSentAt])
+  );
+  
+  // Combine the data
+  return vehiclesWithCustomers.map(vehicle => ({
+    ...vehicle,
+    lastReminderSent: vehicle.id ? lastSentMap.get(vehicle.id) || null : null,
+  }));
 }
 
 // Bulk update vehicle MOT data

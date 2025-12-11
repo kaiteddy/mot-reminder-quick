@@ -63,6 +63,8 @@ export default function Database() {
   const sendReminderMutation = trpc.reminders.sendWhatsApp.useMutation({
     onSuccess: () => {
       toast.success("Reminder sent successfully!");
+      // Refresh vehicle data to show updated last sent date
+      refetch();
     },
     onError: (error) => {
       toast.error(`Failed to send reminder: ${error.message}`);
@@ -553,6 +555,7 @@ export default function Database() {
                       </div>
                     </TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Last Sent</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -587,6 +590,23 @@ export default function Database() {
                         </TableCell>
                         <TableCell>
                           {getMOTStatusBadge(status, daysLeft)}
+                        </TableCell>
+                        <TableCell>
+                          {vehicle.lastReminderSent ? (
+                            <div className="text-sm">
+                              <div className="font-medium text-slate-700">
+                                {new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {new Date(vehicle.lastReminderSent).toLocaleTimeString("en-GB", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-sm">Never</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button

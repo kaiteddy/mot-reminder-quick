@@ -657,3 +657,12 @@
 - [x] Changed Database page to pass id: 0 to trigger test message path
 - [x] Allow sending reminders for vehicles without existing reminder records
 - [x] Fix verified - uses same test message path as Test WhatsApp page
+
+## Add Last Reminder Sent Tracking
+- [x] Add "Last Reminder Sent" column to Database page table
+- [x] Query reminder logs to get last sent date for each vehicle
+- [x] Display sent date in human-readable format (date + time)
+- [x] Update UI to refresh after sending reminder to show new sent date
+- [x] Shows "Never" for vehicles with no sent reminders
+- [ ] Consider adding relative time (e.g., "2 hours ago") as enhancement
+- [ ] Consider adding to Reminders page as well
