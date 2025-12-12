@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
+import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle2, Clock, XCircle as XCircleIcon, Eye } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
@@ -35,6 +36,8 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isSendingBatch, setIsSendingBatch] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -59,6 +62,84 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
       toast.error(`Failed to send: ${error.message}`);
     },
   });
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const pendingIds = sortedReminders
+        .filter(r => r.status === "pending" && r.customerPhone)
+        .map(r => r.id);
+      setSelectedIds(new Set(pendingIds));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectOne = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBatchSend = async () => {
+    const remindersToSend = sortedReminders.filter(r => selectedIds.has(r.id));
+    
+    if (remindersToSend.length === 0) {
+      toast.error("No reminders selected");
+      return;
+    }
+
+    setIsSendingBatch(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const reminder of remindersToSend) {
+      if (!reminder.customerPhone) {
+        failCount++;
+        continue;
+      }
+
+      try {
+        await sendWhatsApp.mutateAsync({
+          id: reminder.id,
+          phoneNumber: reminder.customerPhone,
+        });
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setIsSendingBatch(false);
+    setSelectedIds(new Set());
+
+    if (successCount > 0) {
+      toast.success(`Sent ${successCount} message${successCount !== 1 ? 's' : ''}`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to send ${failCount} message${failCount !== 1 ? 's' : ''}`);
+    }
+  };
+
+  const getDeliveryStatusIcon = (reminder: any) => {
+    if (!reminder.deliveryStatus) return null;
+    
+    switch (reminder.deliveryStatus) {
+      case "read":
+        return <span title="Read"><Eye className="w-4 h-4 text-blue-600" /></span>;
+      case "delivered":
+        return <span title="Delivered"><CheckCircle2 className="w-4 h-4 text-green-600" /></span>;
+      case "sent":
+        return <span title="Sent"><Clock className="w-4 h-4 text-yellow-600" /></span>;
+      case "failed":
+        return <span title="Failed"><XCircleIcon className="w-4 h-4 text-red-600" /></span>;
+      default:
+        return <span title="Queued"><Clock className="w-4 h-4 text-gray-400" /></span>;
+    }
+  };
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -185,8 +266,29 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
           </Select>
         </div>
 
-        <div className="text-sm text-muted-foreground flex items-center ml-auto">
-          Showing {sortedReminders.length} of {reminders.length} reminders
+        <div className="flex items-center gap-4 ml-auto">
+          {selectedIds.size > 0 && (
+            <Button
+              onClick={handleBatchSend}
+              disabled={isSendingBatch}
+              size="sm"
+            >
+              {isSendingBatch ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Sending {selectedIds.size}...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Selected ({selectedIds.size})
+                </>
+              )}
+            </Button>
+          )}
+          <div className="text-sm text-muted-foreground">
+            Showing {sortedReminders.length} of {reminders.length} reminders
+          </div>
         </div>
       </div>
 
@@ -200,6 +302,12 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={selectedIds.size > 0 && selectedIds.size === sortedReminders.filter(r => r.status === "pending" && r.customerPhone).length}
+                    onCheckedChange={handleSelectAll}
+                  />
+                </TableHead>
                 <TableHead>
                   <Button
                     variant="ghost"
@@ -290,6 +398,13 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                 return (
                   <TableRow key={reminder.id} className={hasMultipleServices ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
                     <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(reminder.id)}
+                        onCheckedChange={(checked) => handleSelectOne(reminder.id, checked as boolean)}
+                        disabled={reminder.status !== "pending" || !reminder.customerPhone || isSendingBatch}
+                      />
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant={reminder.type === "MOT" ? "default" : "secondary"}>
                           {reminder.type}
@@ -353,17 +468,25 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          reminder.status === "sent"
-                            ? "default"
-                            : reminder.status === "archived"
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {reminder.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            reminder.status === "sent"
+                              ? "default"
+                              : reminder.status === "archived"
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {reminder.status}
+                        </Badge>
+                        {reminder.status === "sent" && getDeliveryStatusIcon(reminder)}
+                        {reminder.sentAt && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(reminder.sentAt).toLocaleDateString('en-GB')}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

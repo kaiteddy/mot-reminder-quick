@@ -540,9 +540,40 @@ export const appRouter = router({
     
     // Auto-generate reminders from vehicles
     generateFromVehicles: publicProcedure.query(async () => {
-      const { getVehiclesWithCustomersForReminders } = await import("./db");
+      const { getVehiclesWithCustomersForReminders, getDb } = await import("./db");
       
       const vehiclesWithCustomers = await getVehiclesWithCustomersForReminders();
+      const db = await getDb();
+      
+      if (!db) {
+        throw new Error("Database not available");
+      }
+      
+      // Get latest reminder logs for each vehicle to track send status
+      const { reminderLogs } = await import("../drizzle/schema");
+      const { desc, eq, and, sql } = await import("drizzle-orm");
+      
+      // Get latest log for each vehicle
+      const latestLogs = await db
+        .select({
+          vehicleId: reminderLogs.vehicleId,
+          sentAt: reminderLogs.sentAt,
+          status: reminderLogs.status,
+          messageSid: reminderLogs.messageSid,
+          deliveredAt: reminderLogs.deliveredAt,
+          readAt: reminderLogs.readAt,
+        })
+        .from(reminderLogs)
+        .where(sql`${reminderLogs.vehicleId} IS NOT NULL`)
+        .orderBy(desc(reminderLogs.sentAt));
+      
+      // Create a map of vehicleId -> latest log
+      const logMap = new Map();
+      latestLogs.forEach(log => {
+        if (log.vehicleId && !logMap.has(log.vehicleId)) {
+          logMap.set(log.vehicleId, log);
+        }
+      });
       
       // Generate reminders for vehicles with MOT expiry dates
       const generatedReminders = vehiclesWithCustomers
@@ -556,12 +587,28 @@ export const appRouter = router({
           const dueDate = new Date(motDate);
           dueDate.setDate(dueDate.getDate() - 30);
           
-          // Determine status based on days until expiry
+          // Get latest log for this vehicle
+          const latestLog = logMap.get(v.vehicleId);
+          
+          // Determine status based on latest log and days until expiry
           let status: "pending" | "sent" | "archived" = "pending";
-          if (daysUntilExpiry < 0) {
-            status = "archived"; // Expired
-          } else if (daysUntilExpiry > 30) {
-            status = "pending"; // Not yet due
+          let sentAt: Date | null = null;
+          let sentMethod: string | null = null;
+          let deliveryStatus: "queued" | "sent" | "delivered" | "read" | "failed" | null = null;
+          
+          if (latestLog) {
+            // Check if the log is recent (within last 60 days)
+            const logAge = Math.ceil((today.getTime() - new Date(latestLog.sentAt).getTime()) / (1000 * 60 * 60 * 24));
+            if (logAge <= 60) {
+              status = "sent";
+              sentAt = new Date(latestLog.sentAt);
+              sentMethod = "whatsapp";
+              deliveryStatus = latestLog.status as any;
+            }
+          }
+          
+          if (daysUntilExpiry < 0 && status !== "sent") {
+            status = "archived"; // Expired and not sent
           }
           
           return {
@@ -576,8 +623,11 @@ export const appRouter = router({
             vehicleModel: v.model || null,
             motExpiryDate: v.motExpiryDate,
             status,
-            sentAt: null,
-            sentMethod: null,
+            sentAt,
+            sentMethod,
+            deliveryStatus,
+            deliveredAt: latestLog?.deliveredAt || null,
+            readAt: latestLog?.readAt || null,
             customerResponded: 0,
             respondedAt: null,
             needsFollowUp: 0,

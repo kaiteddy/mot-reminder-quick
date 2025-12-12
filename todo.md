@@ -749,3 +749,17 @@
 - [x] Updated error messages to be more specific (vehicle not found vs no MOT data)
 - [x] Updated tests to reflect DVLA API usage
 - [x] All tests passing (3/3)
+
+## Fix Reminder Sending and Status Updates
+- [x] Investigate why send button doesn't update reminder status
+- [x] Fixed generateFromVehicles to query latest reminder logs for send status
+- [x] Status now persists by checking reminderLogs table (last 60 days)
+- [x] Added sentAt timestamp display next to status badge
+- [x] Implement multi-select checkboxes for batch sending
+- [x] Added "Send Selected" button with count display
+- [x] Added delivery status tracking from reminderLogs (queued, sent, delivered, read, failed)
+- [x] Added status icons: Eye (read), CheckCircle (delivered), Clock (sent/queued), XCircle (failed)
+- [x] Database schema already has delivery tracking in reminderLogs table
+- [x] Batch send processes selected reminders sequentially
+- [x] Checkboxes only enabled for pending reminders with phone numbers
+- [x] Select all checkbox for batch operations
