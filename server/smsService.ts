@@ -151,6 +151,36 @@ export function generateServiceReminderMessage(params: {
 }
 
 /**
+ * Generate full MOT reminder template content (for display/storage)
+ * This matches what customers see in WhatsApp including emojis, contact details, and footer
+ */
+export function generateFullMOTTemplateContent(params: {
+  customerName: string;
+  registration: string;
+  motExpiryDate: Date;
+  isExpired: boolean;
+  daysLeft?: number;
+}): string {
+  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const header = "🚗 Eli Motors Ltd - MOT Reminder";
+  
+  const body = params.isExpired
+    ? `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expired on ${formattedDate}.`
+    : `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expires on ${formattedDate} (${params.daysLeft} days).`;
+  
+  const callToAction = `📅 Book your MOT test today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
+  
+  const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
+  
+  return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
+}
+
+/**
  * Send MOT reminder using WhatsApp template
  */
 export async function sendMOTReminderWithTemplate(params: {
@@ -198,6 +228,32 @@ export async function sendMOTReminderWithTemplate(params: {
     templateSid,
     templateVariables,
   });
+}
+
+/**
+ * Generate full Service reminder template content (for display/storage)
+ */
+export function generateFullServiceTemplateContent(params: {
+  customerName: string;
+  registration: string;
+  serviceDueDate: Date;
+  daysLeft: number;
+}): string {
+  const formattedDate = params.serviceDueDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const header = "🔧 Eli Motors Ltd - Service Reminder";
+  
+  const body = `Hi ${params.customerName},\n\nYour vehicle ${params.registration} is due for a service on ${formattedDate} (${params.daysLeft} days).`;
+  
+  const callToAction = `📅 Book your service today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
+  
+  const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
+  
+  return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
 }
 
 /**

@@ -905,3 +905,23 @@
 - [x] Test opted-out customers cannot receive messages
 - [x] All 66 tests passing
 - [x] Fixed sendWhatsAppTemplate test mock to include findCustomerByPhone
+
+## Fix WhatsApp Conversation Display
+- [x] Investigate why messages appear condensed in Conversations page
+- [x] Check if messageContent is being properly retrieved from database
+- [x] Verify message rendering in ChatHistory component
+- [x] Issue identified: WhatsApp templates include emojis, contact details, footer text
+- [x] Current storage only saves the body text variables, not the full template
+- [x] Need to store complete rendered template content in messageContent
+- [x] Check what Twilio sends vs what we're storing
+- [x] Created generateFullMOTTemplateContent function with full template
+- [x] Created generateFullServiceTemplateContent function with full template
+- [x] Updated test message sending to use full template content
+- [x] Updated reminder sending to use full template content
+- [x] Test sending a message and verify full content appears in database
+- [x] Verify emojis, contact details, and footer display correctly
+- [x] Confirmed full template content stored: header, body, call-to-action, footer
+- [x] All emojis preserved: 🚗, 📅, 🌐, 📍, ✨
+- [x] Contact details included: phone, website, location
+- [x] Opt-out message included
+- [ ] Write tests for template content generation

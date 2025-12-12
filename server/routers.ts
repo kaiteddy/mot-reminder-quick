@@ -370,14 +370,15 @@ export const appRouter = router({
             messageContent = input.customMessage;
           } else if (messageType === "Service") {
             // Send Service reminder template
-            const { sendServiceReminderWithTemplate } = await import("./smsService");
-            const formattedDate = expiryDate.toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "long",
-              year: "numeric",
-            });
+            const { sendServiceReminderWithTemplate, generateFullServiceTemplateContent } = await import("./smsService");
             
-            messageContent = `Hi ${customerName}, this is a reminder that the service for your vehicle ${registration} is due on ${formattedDate} (${daysUntil} days). Please contact us to book your service.`;
+            // Generate full template content with emojis and contact details
+            messageContent = generateFullServiceTemplateContent({
+              customerName,
+              registration,
+              serviceDueDate: expiryDate,
+              daysLeft: daysUntil,
+            });
             
             result = await sendServiceReminderWithTemplate({
               to: input.phoneNumber,
@@ -387,21 +388,21 @@ export const appRouter = router({
             });
           } else {
             // Send MOT reminder template (automatically selects expired or expiring template)
+            const { sendMOTReminderWithTemplate, generateFullMOTTemplateContent } = await import("./smsService");
             const now = new Date();
             now.setHours(0, 0, 0, 0);
             const expDate = new Date(expiryDate);
             expDate.setHours(0, 0, 0, 0);
             const isExpired = expDate < now;
             
-            const formattedDate = expiryDate.toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "long",
-              year: "numeric",
+            // Generate full template content with emojis and contact details
+            messageContent = generateFullMOTTemplateContent({
+              customerName,
+              registration,
+              motExpiryDate: expiryDate,
+              isExpired,
+              daysLeft: daysUntil,
             });
-            
-            messageContent = isExpired
-              ? `Hi ${customerName}, your vehicle ${registration} MOT expired on ${formattedDate}. Please contact us to book your MOT test.`
-              : `Hi ${customerName}, this is a reminder that the MOT for your vehicle ${registration} expires on ${formattedDate} (${daysUntil} days). Please contact us to book your MOT test.`;
             
             result = await sendMOTReminderWithTemplate({
               to: input.phoneNumber,
@@ -454,13 +455,9 @@ export const appRouter = router({
         
         if (reminder.type === "MOT") {
           // Use WhatsApp template for MOT reminders (no 24-hour window restriction)
+          const { generateFullMOTTemplateContent } = await import("./smsService");
           let motExpiryDate = new Date(reminder.dueDate);
           const daysLeft = Math.ceil((motExpiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-          const formattedDate = motExpiryDate.toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-          });
           
           // Check if MOT has expired
           const now = new Date();
@@ -469,10 +466,14 @@ export const appRouter = router({
           expDate.setHours(0, 0, 0, 0);
           isExpired = expDate < now;
           
-          // Construct the message content that matches the template
-          messageContent = isExpired
-            ? `Hi ${reminder.customerName || "Customer"}, your vehicle ${reminder.registration} MOT expired on ${formattedDate}. Please contact us to book your MOT test.`
-            : `Hi ${reminder.customerName || "Customer"}, this is a reminder that the MOT for your vehicle ${reminder.registration} expires on ${formattedDate} (${daysLeft} days). Please contact us to book your MOT test.`;
+          // Generate full template content with emojis and contact details
+          messageContent = generateFullMOTTemplateContent({
+            customerName: reminder.customerName || "Customer",
+            registration: reminder.registration,
+            motExpiryDate,
+            isExpired,
+            daysLeft,
+          });
           
           result = await sendMOTReminderWithTemplate({
             to: input.phoneNumber,
@@ -482,17 +483,17 @@ export const appRouter = router({
           });
         } else if (reminder.type === "Service") {
           // Use WhatsApp template for Service reminders
-          const { sendServiceReminderWithTemplate } = await import("./smsService");
+          const { sendServiceReminderWithTemplate, generateFullServiceTemplateContent } = await import("./smsService");
           const serviceDueDate = new Date(reminder.dueDate);
           const daysLeft = Math.ceil((serviceDueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-          const formattedDate = serviceDueDate.toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-          });
           
-          // Construct the message content that matches the template
-          messageContent = `Hi ${reminder.customerName || "Customer"}, this is a reminder that your vehicle ${reminder.registration} is due for a service on ${formattedDate} (${daysLeft} days). Please contact us to book your service.`;
+          // Generate full template content with emojis and contact details
+          messageContent = generateFullServiceTemplateContent({
+            customerName: reminder.customerName || "Customer",
+            registration: reminder.registration,
+            serviceDueDate,
+            daysLeft,
+          });
           
           result = await sendServiceReminderWithTemplate({
             to: input.phoneNumber,
