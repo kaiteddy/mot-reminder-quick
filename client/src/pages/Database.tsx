@@ -27,8 +27,11 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Send
+  Send,
+  Clock,
+  Eye
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -45,6 +48,8 @@ export default function Database() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [motStatusFilter, setMOTStatusFilter] = useState<MOTStatusFilter>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
+  const [isSendingBatch, setIsSendingBatch] = useState(false);
 
   const { data: vehicles, isLoading, refetch } = trpc.database.getAllVehiclesWithCustomers.useQuery();
   
@@ -104,6 +109,91 @@ export default function Database() {
     
     toast.info(`Starting bulk MOT check for ${vehicles.length} vehicles...`);
     bulkUpdateMutation.mutate({});
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const vehiclesWithPhone = filteredAndSortedVehicles
+        .filter(v => v.customerPhone)
+        .map(v => v.id);
+      setSelectedVehicleIds(new Set(vehiclesWithPhone));
+    } else {
+      setSelectedVehicleIds(new Set());
+    }
+  };
+
+  const handleSelectOne = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedVehicleIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedVehicleIds(newSelected);
+  };
+
+  const handleBatchSend = async () => {
+    const vehiclesToSend = filteredAndSortedVehicles.filter(v => selectedVehicleIds.has(v.id));
+    
+    if (vehiclesToSend.length === 0) {
+      toast.error("No vehicles selected");
+      return;
+    }
+
+    setIsSendingBatch(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const vehicle of vehiclesToSend) {
+      if (!vehicle.customerPhone) {
+        failCount++;
+        continue;
+      }
+
+      try {
+        const { status } = getMOTStatus(vehicle.motExpiryDate);
+        const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
+        
+        await sendReminderMutation.mutateAsync({
+          id: 0,
+          phoneNumber: vehicle.customerPhone,
+          messageType: reminderType,
+          customerName: vehicle.customerName || "Customer",
+          registration: vehicle.registration,
+          expiryDate: vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB") : "Unknown",
+        });
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setIsSendingBatch(false);
+    setSelectedVehicleIds(new Set());
+
+    if (successCount > 0) {
+      toast.success(`Sent ${successCount} reminder${successCount !== 1 ? 's' : ''}`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to send ${failCount} reminder${failCount !== 1 ? 's' : ''}`);
+    }
+  };
+
+  const getDeliveryStatusIcon = (vehicle: any) => {
+    if (!vehicle.deliveryStatus) return null;
+    
+    switch (vehicle.deliveryStatus) {
+      case "read":
+        return <span title="Read"><Eye className="w-4 h-4 text-blue-600" /></span>;
+      case "delivered":
+        return <span title="Delivered"><CheckCircle2 className="w-4 h-4 text-green-600" /></span>;
+      case "sent":
+        return <span title="Sent"><Clock className="w-4 h-4 text-yellow-600" /></span>;
+      case "failed":
+        return <span title="Failed"><XCircle className="w-4 h-4 text-red-600" /></span>;
+      default:
+        return <span title="Queued"><Clock className="w-4 h-4 text-gray-400" /></span>;
+    }
   };
 
   const getMOTStatus = (motExpiryDate: Date | null): { status: MOTStatusFilter; daysLeft: number | null } => {
@@ -327,6 +417,25 @@ export default function Database() {
               variant="outline"
               onComplete={refetch}
             />
+            {selectedVehicleIds.size > 0 && (
+              <Button
+                onClick={handleBatchSend}
+                disabled={isSendingBatch}
+                variant="default"
+              >
+                {isSendingBatch ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending {selectedVehicleIds.size}...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Send Selected ({selectedVehicleIds.size})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -525,6 +634,12 @@ export default function Database() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedVehicleIds.size > 0 && selectedVehicleIds.size === filteredAndSortedVehicles.filter(v => v.customerPhone).length}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead className="cursor-pointer w-[120px]" onClick={() => toggleSort("registration")}>
                       <div className="flex items-center gap-1">
                         Reg
@@ -564,6 +679,13 @@ export default function Database() {
                         status === "due" ? "bg-orange-50" :
                         ""
                       }>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedVehicleIds.has(vehicle.id)}
+                            onCheckedChange={(checked) => handleSelectOne(vehicle.id, checked as boolean)}
+                            disabled={!vehicle.customerPhone || isSendingBatch}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono font-semibold text-xs">
                           {vehicle.registration || "-"}
                         </TableCell>

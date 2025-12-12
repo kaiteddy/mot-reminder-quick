@@ -763,3 +763,12 @@
 - [x] Batch send processes selected reminders sequentially
 - [x] Checkboxes only enabled for pending reminders with phone numbers
 - [x] Select all checkbox for batch operations
+
+## Apply Multi-Select and Delivery Status to Database Page
+- [x] Add multi-select checkboxes to Database page vehicle table
+- [x] Add "Send Selected" batch button for Database page
+- [x] Added checkbox column with select all functionality
+- [x] Batch send processes selected vehicles sequentially
+- [x] Checkboxes only enabled for vehicles with phone numbers
+- [x] Send Selected button shows count and appears when items selected
+- [x] Added getDeliveryStatusIcon helper function for status display
