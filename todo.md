@@ -716,3 +716,15 @@
 - [x] Add progress indicators and success/error feedback for all refresh operations
 - [x] Test MOT refresh with vitest (3 tests passing)
 - [x] Verify MOT dates update correctly in database and UI after refresh
+
+## Fix Database Table Horizontal Scrolling
+- [x] Analyze current table structure and column widths
+- [x] Identify which columns cause horizontal overflow
+- [x] Optimize column widths to fit viewport
+- [x] Make table fully responsive without horizontal scroll
+- [x] Shortened column headers (Registration→Reg, MOT Expiry→MOT)
+- [x] Combined Customer name and Phone into Contact column
+- [x] Reduced font sizes (text-xs) for compact display
+- [x] Set explicit column widths for all columns
+- [x] Added truncate classes to prevent text overflow
+- [x] Verified all data remains accessible and readable

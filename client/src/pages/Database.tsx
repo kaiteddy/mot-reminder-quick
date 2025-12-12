@@ -516,7 +516,7 @@ export default function Database() {
 
         {/* Table */}
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
@@ -525,34 +525,34 @@ export default function Database() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("registration")}>
+                    <TableHead className="cursor-pointer w-[120px]" onClick={() => toggleSort("registration")}>
                       <div className="flex items-center gap-1">
-                        Registration
-                        <ArrowUpDown className="w-4 h-4" />
+                        Reg
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("customer")}>
+                    <TableHead className="cursor-pointer w-[150px]" onClick={() => toggleSort("customer")}>
                       <div className="flex items-center gap-1">
                         Customer
-                        <ArrowUpDown className="w-4 h-4" />
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("make")}>
+                    <TableHead className="w-[140px]">Contact</TableHead>
+                    <TableHead className="cursor-pointer w-[180px]" onClick={() => toggleSort("make")}>
                       <div className="flex items-center gap-1">
                         Vehicle
-                        <ArrowUpDown className="w-4 h-4" />
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort("motExpiry")}>
+                    <TableHead className="cursor-pointer w-[100px]" onClick={() => toggleSort("motExpiry")}>
                       <div className="flex items-center gap-1">
-                        MOT Expiry
-                        <ArrowUpDown className="w-4 h-4" />
+                        MOT
+                        <ArrowUpDown className="w-3 h-3" />
                       </div>
                     </TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last Sent</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[100px]">Last Sent</TableHead>
+                    <TableHead className="w-[90px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -564,20 +564,25 @@ export default function Database() {
                         status === "due" ? "bg-orange-50" :
                         ""
                       }>
-                        <TableCell className="font-mono font-semibold">
+                        <TableCell className="font-mono font-semibold text-xs">
                           {vehicle.registration || "-"}
                         </TableCell>
-                        <TableCell>{vehicle.customerName || "-"}</TableCell>
-                        <TableCell className="font-mono text-sm">{vehicle.customerPhone || "-"}</TableCell>
+                        <TableCell className="text-sm truncate max-w-[150px]">{vehicle.customerName || "-"}</TableCell>
+                        <TableCell>
+                          <div className="text-xs">
+                            <div className="font-medium text-slate-700 truncate">{vehicle.customerName || "Unknown"}</div>
+                            <div className="text-slate-500 font-mono">{vehicle.customerPhone || "-"}</div>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {vehicle.make || vehicle.model ? (
-                            <div>
-                              <div className="font-medium">{vehicle.make || "Unknown"}</div>
-                              <div className="text-sm text-slate-500">{vehicle.model || ""}</div>
+                            <div className="text-xs">
+                              <div className="font-medium truncate">{vehicle.make || "Unknown"}</div>
+                              <div className="text-slate-500 truncate">{vehicle.model || ""}</div>
                             </div>
                           ) : "-"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-xs">
                           {vehicle.motExpiryDate ? (
                             new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")
                           ) : (
@@ -587,21 +592,15 @@ export default function Database() {
                         <TableCell>
                           {getMOTStatusBadge(status, daysLeft)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-xs">
                           {vehicle.lastReminderSent ? (
-                            <div className="text-sm">
+                            <div>
                               <div className="font-medium text-slate-700">
                                 {new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}
                               </div>
-                              <div className="text-xs text-slate-500">
-                                {new Date(vehicle.lastReminderSent).toLocaleTimeString("en-GB", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 text-sm">Never</span>
+                            <span className="text-slate-400">Never</span>
                           )}
                         </TableCell>
                         <TableCell>
