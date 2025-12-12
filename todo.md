@@ -821,3 +821,13 @@
 - [x] Fixed: Added 500ms delay + forced refetch() instead of just invalidate()
 - [x] Applied fix to both single send and batch send
 - [x] Test that status now updates immediately in UI after clicking Send - awaiting user confirmation
+
+## Fix Database Page Send Status Not Showing
+- [x] User reports: Database page doesn't show message send status
+- [x] User reports: Already sent reminders still showing in Database page
+- [x] Confirmed Database page has same refetch timing issue as Home page
+- [x] Applied 500ms delay + await refetch() to single send operation
+- [x] Applied 500ms delay + await refetch() to batch send operation
+- [x] Database page already queries latest reminder logs via getAllVehiclesWithCustomers
+- [x] Delivery status icons already implemented in getDeliveryStatusIcon helper
+- [x] Test that Database page updates immediately after sending - all 63 tests passing

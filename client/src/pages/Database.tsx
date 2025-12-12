@@ -67,10 +67,12 @@ export default function Database() {
   });
 
   const sendReminderMutation = trpc.reminders.sendWhatsApp.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Reminder sent successfully!");
-      // Refresh vehicle data to show updated last sent date
-      refetch();
+      // Small delay to ensure database transaction commits
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Refresh vehicle data to show updated last sent date and delivery status
+      await refetch();
     },
     onError: (error) => {
       toast.error(`Failed to send reminder: ${error.message}`);
@@ -173,6 +175,10 @@ export default function Database() {
 
     if (successCount > 0) {
       toast.success(`Sent ${successCount} reminder${successCount !== 1 ? 's' : ''}`);
+      // Small delay to ensure all database transactions commit
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Refresh vehicle data to show updated status
+      await refetch();
     }
     if (failCount > 0) {
       toast.error(`Failed to send ${failCount} reminder${failCount !== 1 ? 's' : ''}`);
