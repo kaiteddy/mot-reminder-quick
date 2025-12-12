@@ -47,7 +47,7 @@ describe("MOT Refresh - bulkVerifyMOT", () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
-    // Use a test registration that might not exist
+    // Use a test registration that might not exist in DVLA
     const result = await caller.reminders.bulkVerifyMOT({
       registrations: ["TEST123"],
     });
@@ -57,6 +57,8 @@ describe("MOT Refresh - bulkVerifyMOT", () => {
     expect(result[0]).toHaveProperty("registration");
     expect(result[0]).toHaveProperty("success");
     expect(result[0]?.registration).toBe("TEST123");
+    // TEST123 won't be found in DVLA, so success should be false
+    expect(result[0]?.success).toBe(false);
   });
 
   it("should handle multiple registrations", async () => {

@@ -598,43 +598,44 @@ export const appRouter = router({
         registrations: z.array(z.string()),
       }))
       .mutation(async ({ input }) => {
-        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+        const { getVehicleDetails } = await import("./dvlaApi");
         const { updateVehicleMOTExpiryDate } = await import("./db");
         
         const results = [];
         
         for (const registration of input.registrations) {
           try {
-            const motHistory = await getMOTHistory(registration);
+            // Use DVLA API which provides MOT expiry date directly
+            const dvlaData = await getVehicleDetails(registration);
             
-            if (motHistory) {
-              const expiryDate = getLatestMOTExpiry(motHistory);
+            if (dvlaData && dvlaData.motExpiryDate) {
+              const expiryDate = new Date(dvlaData.motExpiryDate);
               
-              if (expiryDate) {
-                // Update vehicle MOT date in database
-                await updateVehicleMOTExpiryDate(registration, expiryDate);
-                
-                results.push({
-                  registration,
-                  success: true,
-                  motExpiryDate: expiryDate.toISOString(),
-                  make: motHistory.make,
-                  model: motHistory.model,
-                  verified: true,
-                });
-              } else {
-                results.push({
-                  registration,
-                  success: false,
-                  error: 'No valid MOT expiry date found',
-                  verified: false,
-                });
-              }
-            } else {
+              // Update vehicle MOT date in database
+              await updateVehicleMOTExpiryDate(registration, expiryDate);
+              
+              results.push({
+                registration,
+                success: true,
+                motExpiryDate: expiryDate.toISOString(),
+                make: dvlaData.make,
+                model: dvlaData.model,
+                verified: true,
+              });
+            } else if (dvlaData) {
+              // Vehicle found but no MOT data (might be exempt or too new)
               results.push({
                 registration,
                 success: false,
-                error: 'No MOT data found',
+                error: 'Vehicle found but no MOT expiry date available (may be exempt or too new)',
+                verified: false,
+              });
+            } else {
+              // Vehicle not found
+              results.push({
+                registration,
+                success: false,
+                error: 'Vehicle not found in DVLA database',
                 verified: false,
               });
             }

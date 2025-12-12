@@ -740,3 +740,12 @@
 - [x] Shows pending/processing/success/failed status for each vehicle
 - [x] Displays MOT expiry date for successful updates
 - [x] Integrated into Database page for both "Refresh Visible" and "Bulk MOT Check (All)" buttons
+
+## Fix MOT API Forbidden Error
+- [x] Check MOT API implementation in server/motApi.ts
+- [x] Identified issue: bulkVerifyMOT was using DVSA API (requires OAuth) instead of DVLA API
+- [x] DVLA_API_KEY is already configured and working
+- [x] Switched bulkVerifyMOT to use DVLA API (getVehicleDetails) which provides MOT expiry directly
+- [x] Updated error messages to be more specific (vehicle not found vs no MOT data)
+- [x] Updated tests to reflect DVLA API usage
+- [x] All tests passing (3/3)
