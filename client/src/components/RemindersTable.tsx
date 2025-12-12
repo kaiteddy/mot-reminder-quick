@@ -106,8 +106,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
       try {
         await sendWhatsApp.mutateAsync({
-          id: reminder.id,
+          id: 0, // Direct send (not from reminders table)
           phoneNumber: reminder.customerPhone,
+          messageType: reminder.type as "MOT" | "Service",
+          customerName: reminder.customerName ?? "Customer",
+          registration: reminder.registration,
+          expiryDate: new Date(reminder.dueDate).toLocaleDateString("en-GB"),
+          vehicleId: reminder.vehicleId ?? undefined,
+          customerId: reminder.customerId ?? undefined,
         });
         successCount++;
       } catch (error) {
@@ -513,8 +519,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                               return;
                             }
                             sendWhatsApp.mutate({
-                              id: reminder.id,
+                              id: 0, // Direct send (not from reminders table)
                               phoneNumber: reminder.customerPhone,
+                              messageType: reminder.type as "MOT" | "Service",
+                              customerName: reminder.customerName ?? "Customer",
+                              registration: reminder.registration,
+                              expiryDate: new Date(reminder.dueDate).toLocaleDateString("en-GB"),
+                              vehicleId: reminder.vehicleId ?? undefined,
+                              customerId: reminder.customerId ?? undefined,
                             });
                           }}
                           disabled={

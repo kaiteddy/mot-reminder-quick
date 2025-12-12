@@ -854,3 +854,14 @@
 - [x] Fixed TypeScript errors with null handling (customerId ?? undefined)
 - [x] Test that sends now create properly linked logs and status updates
 - [x] All 66 tests passing (added 3 new tests for Database send)
+
+## Fix "Reminder not found" Error on Home Page
+- [x] User reports: Error when clicking Send on Home page - "Reminder not found"
+- [x] Error occurs in sendWhatsApp mutation
+- [x] Root cause: RemindersTable was passing reminder.id but reminders don't exist in DB
+- [x] Home page uses auto-generated reminders (not from reminders table)
+- [x] Fixed RemindersTable single send to use id=0 with all required parameters
+- [x] Fixed RemindersTable batch send to use id=0 with all required parameters
+- [x] Added null handling for customerName, vehicleId, customerId
+- [x] Test that Home page send works without errors
+- [x] All 66 tests passing
