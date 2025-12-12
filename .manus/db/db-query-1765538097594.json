@@ -1,0 +1,175 @@
+{
+  "query": "SELECT \n  rl.id,\n  rl.customerId,\n  rl.vehicleId,\n  rl.messageType,\n  rl.status,\n  rl.sentAt,\n  v.registration,\n  c.name as customer_name,\n  c.phone\nFROM reminderLogs rl\nLEFT JOIN vehicles v ON rl.vehicleId = v.id\nLEFT JOIN customers c ON rl.customerId = c.id\nWHERE rl.sentAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)\nORDER BY rl.sentAt DESC\nLIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT \n  rl.id,\n  rl.customerId,\n  rl.vehicleId,\n  rl.messageType,\n  rl.status,\n  rl.sentAt,\n  v.registration,\n  c.name as customer_name,\n  c.phone\nFROM reminderLogs rl\nLEFT JOIN vehicles v ON rl.vehicleId = v.id\nLEFT JOIN customers c ON rl.customerId = c.id\nWHERE rl.sentAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)\nORDER BY rl.sentAt DESC\nLIMIT 20;",
+  "rows": [
+    {
+      "id": "180012",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 11:13:49",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "180003",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:49:20",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "180002",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:02:23",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "180001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:02:10",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "150001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "delivered",
+      "sentAt": "2025-12-11 16:35:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "120005",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "read",
+      "sentAt": "2025-12-11 12:42:21",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "120004",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "read",
+      "sentAt": "2025-12-11 12:37:02",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "120003",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "delivered",
+      "sentAt": "2025-12-11 12:36:19",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "120002",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "Service",
+      "status": "delivered",
+      "sentAt": "2025-12-11 12:27:50",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "120001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "delivered",
+      "sentAt": "2025-12-11 12:24:07",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "90003",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "failed",
+      "sentAt": "2025-12-11 11:37:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "90002",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "failed",
+      "sentAt": "2025-12-11 11:37:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "90004",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "failed",
+      "sentAt": "2025-12-11 11:37:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "90005",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "queued",
+      "sentAt": "2025-12-11 11:37:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    },
+    {
+      "id": "90001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "failed",
+      "sentAt": "2025-12-11 11:37:46",
+      "registration": "NULL",
+      "customer_name": "NULL",
+      "phone": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomerId\tvehicleId\tmessageType\tstatus\tsentAt\tregistration\tcustomer_name\tphone\n180012\tNULL\tNULL\tMOT\tsent\t2025-12-12 11:13:49\tNULL\tNULL\tNULL\n180003\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:49:20\tNULL\tNULL\tNULL\n180002\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:02:23\tNULL\tNULL\tNULL\n180001\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:02:10\tNULL\tNULL\tNULL\n150001\tNULL\tNULL\tMOT\tdelivered\t2025-12-11 16:35:46\tNULL\tNULL\tNULL\n120005\tNULL\tNULL\tMOT\tread\t2025-12-11 12:42:21\tNULL\tNULL\tNULL\n120004\tNULL\tNULL\tMOT\tread\t2025-12-11 12:37:02\tNULL\tNULL\tNULL\n120003\tNULL\tNULL\tMOT\tdelivered\t2025-12-11 12:36:19\tNULL\tNULL\tNULL\n120002\tNULL\tNULL\tService\tdelivered\t2025-12-11 12:27:50\tNULL\tNULL\tNULL\n120001\tNULL\tNULL\tMOT\tdelivered\t2025-12-11 12:24:07\tNULL\tNULL\tNULL\n90003\tNULL\tNULL\tMOT\tfailed\t2025-12-11 11:37:46\tNULL\tNULL\tNULL\n90002\tNULL\tNULL\tMOT\tfailed\t2025-12-11 11:37:46\tNULL\tNULL\tNULL\n90004\tNULL\tNULL\tMOT\tfailed\t2025-12-11 11:37:46\tNULL\tNULL\tNULL\n90005\tNULL\tNULL\tMOT\tqueued\t2025-12-11 11:37:46\tNULL\tNULL\tNULL\n90001\tNULL\tNULL\tMOT\tfailed\t2025-12-11 11:37:46\tNULL\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 119
+}

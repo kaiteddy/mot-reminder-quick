@@ -1,0 +1,55 @@
+{
+  "query": "SELECT \n  id,\n  customerId,\n  vehicleId,\n  messageType,\n  status,\n  sentAt,\n  recipient\nFROM reminderLogs\nWHERE sentAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)\nORDER BY sentAt DESC\nLIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT \n  id,\n  customerId,\n  vehicleId,\n  messageType,\n  status,\n  sentAt,\n  recipient\nFROM reminderLogs\nWHERE sentAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)\nORDER BY sentAt DESC\nLIMIT 5;",
+  "rows": [
+    {
+      "id": "180012",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 11:13:49",
+      "recipient": "+447454639087"
+    },
+    {
+      "id": "180003",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:49:20",
+      "recipient": "+447968758194"
+    },
+    {
+      "id": "180002",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:02:23",
+      "recipient": "+447956477569"
+    },
+    {
+      "id": "180001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "sent",
+      "sentAt": "2025-12-12 10:02:10",
+      "recipient": "+447989383610"
+    },
+    {
+      "id": "150001",
+      "customerId": "NULL",
+      "vehicleId": "NULL",
+      "messageType": "MOT",
+      "status": "delivered",
+      "sentAt": "2025-12-11 16:35:46",
+      "recipient": "+447909251145"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomerId\tvehicleId\tmessageType\tstatus\tsentAt\trecipient\n180012\tNULL\tNULL\tMOT\tsent\t2025-12-12 11:13:49\t+447454639087\n180003\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:49:20\t+447968758194\n180002\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:02:23\t+447956477569\n180001\tNULL\tNULL\tMOT\tsent\t2025-12-12 10:02:10\t+447989383610\n150001\tNULL\tNULL\tMOT\tdelivered\t2025-12-11 16:35:46\t+447909251145\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

@@ -53,10 +53,12 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
   });
 
   const sendWhatsApp = trpc.reminders.sendWhatsApp.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("WhatsApp message sent");
-      utils.reminders.list.invalidate();
-      utils.reminders.generateFromVehicles.invalidate();
+      // Small delay to ensure database transaction commits
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Force refetch to update UI immediately
+      await utils.reminders.generateFromVehicles.refetch();
     },
     onError: (error) => {
       toast.error(`Failed to send: ${error.message}`);
@@ -118,6 +120,10 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
     if (successCount > 0) {
       toast.success(`Sent ${successCount} message${successCount !== 1 ? 's' : ''}`);
+      // Small delay to ensure all database transactions commit
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Force refetch to update UI immediately
+      await utils.reminders.generateFromVehicles.refetch();
     }
     if (failCount > 0) {
       toast.error(`Failed to send ${failCount} message${failCount !== 1 ? 's' : ''}`);

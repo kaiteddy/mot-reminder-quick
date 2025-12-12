@@ -812,3 +812,12 @@
 - [x] Show delivery status icons (read, delivered, sent, failed)
 - [x] Add to navigation on Home page
 - [ ] Test with real customer messages and replies
+
+## Fix Send Button Not Updating Status
+- [x] User reports: clicking Send button doesn't update status or show sent date
+- [x] Verified sendWhatsApp mutation IS creating reminderLogs correctly
+- [x] Verified vehicleId is being passed correctly to createReminderLog
+- [x] Issue found: invalidate() was too fast, database transaction hadn't committed yet
+- [x] Fixed: Added 500ms delay + forced refetch() instead of just invalidate()
+- [x] Applied fix to both single send and batch send
+- [x] Test that status now updates immediately in UI after clicking Send - awaiting user confirmation
