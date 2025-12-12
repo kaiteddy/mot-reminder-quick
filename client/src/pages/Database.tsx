@@ -29,7 +29,9 @@ import {
   AlertTriangle,
   Send,
   Clock,
-  Eye
+  Eye,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
@@ -37,7 +39,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
 
-type SortField = "registration" | "customer" | "make" | "motExpiry";
+type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
 type DateRangeFilter = "all" | "expired-90" | "expired-60" | "expired-30" | "expired-7" | "expiring-7" | "expiring-14" | "expiring-30" | "expiring-60" | "expiring-90";
@@ -312,6 +314,11 @@ export default function Database() {
         case "motExpiry":
           aVal = a.motExpiryDate ? new Date(a.motExpiryDate).getTime() : 0;
           bVal = b.motExpiryDate ? new Date(b.motExpiryDate).getTime() : 0;
+          break;
+        case "lastSent":
+          // Handle null values - push never-sent to end
+          aVal = a.lastReminderSent ? new Date(a.lastReminderSent).getTime() : 0;
+          bVal = b.lastReminderSent ? new Date(b.lastReminderSent).getTime() : 0;
           break;
       }
       
@@ -672,7 +679,17 @@ export default function Database() {
                       </div>
                     </TableHead>
                     <TableHead className="w-[120px]">Status</TableHead>
-                    <TableHead className="w-[100px]">Last Sent</TableHead>
+                    <TableHead className="w-[100px]">
+                      <div 
+                        className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("lastSent")}
+                      >
+                        Last Sent
+                        {sortField === "lastSent" && (
+                          sortDirection === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                        )}
+                      </div>
+                    </TableHead>
                     <TableHead className="w-[90px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>

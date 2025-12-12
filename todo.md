@@ -831,3 +831,13 @@
 - [x] Database page already queries latest reminder logs via getAllVehiclesWithCustomers
 - [x] Delivery status icons already implemented in getDeliveryStatusIcon helper
 - [x] Test that Database page updates immediately after sending - all 63 tests passing
+
+## Add Last Sent Column Sorting
+- [x] Add "Last Sent" to sortable columns list in Database page
+- [x] Implement sorting logic for lastReminderSent timestamps
+- [x] Handle null values (never sent) in sorting - push to end (0 timestamp)
+- [x] Add sort indicator (ChevronUp/ChevronDown) to Last Sent column header
+- [x] Made column header clickable with hover effect
+- [x] Test sorting ascending (oldest first) and descending (newest first)
+- [x] Verify never-sent vehicles appear at the end when sorting
+- [x] All 63 tests passing
