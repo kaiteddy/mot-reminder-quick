@@ -57,6 +57,20 @@
       "when": 1765452711577,
       "tag": "0007_smooth_boomer",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1765548801088,
+      "tag": "0008_skinny_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1765548833441,
+      "tag": "0009_silky_joseph",
+      "breakpoints": true
     }
   ]
 }

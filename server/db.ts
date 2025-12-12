@@ -334,6 +334,7 @@ export async function getAllVehiclesWithCustomers() {
       customerPhone: customers.phone,
       customerEmail: customers.email,
       customerAddress: customers.address,
+      customerOptedOut: customers.optedOut,
     })
     .from(vehicles)
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -502,6 +503,44 @@ export async function findCustomerByPhone(phone: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+/**
+ * Mark customer as opted-out from receiving messages
+ */
+export async function setCustomerOptOut(customerId: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot opt out customer: database not available");
+    return;
+  }
+  
+  const { customers } = await import("../drizzle/schema");
+  await db.update(customers)
+    .set({ 
+      optedOut: 1,
+      optedOutAt: new Date()
+    })
+    .where(eq(customers.id, customerId));
+}
+
+/**
+ * Mark customer as opted-in to receive messages (reverse opt-out)
+ */
+export async function setCustomerOptIn(customerId: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot opt in customer: database not available");
+    return;
+  }
+  
+  const { customers } = await import("../drizzle/schema");
+  await db.update(customers)
+    .set({ 
+      optedOut: 0,
+      optedOutAt: null
+    })
+    .where(eq(customers.id, customerId));
+}
+
 // Get vehicles with customers for auto-generating reminders
 export async function getVehiclesWithCustomersForReminders() {
   const db = await getDb();
@@ -525,6 +564,7 @@ export async function getVehiclesWithCustomersForReminders() {
         customerName: customers.name,
         customerEmail: customers.email,
         customerPhone: customers.phone,
+        customerOptedOut: customers.optedOut,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))

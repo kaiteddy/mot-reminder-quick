@@ -876,3 +876,32 @@
 - [x] 07956477569 is Mrs B Chambon - messages sent manually by clicking Send button
 - [x] Updated TWILIO_WEBHOOK_SETUP.md with correct port 3000 URLs
 - [x] Provided clear instructions for user to update Twilio Console
+
+## Create Automatic Opt-Out Feature
+- [x] Add optedOut boolean field to customers schema
+- [x] Add optedOutAt timestamp field to customers schema
+- [x] Run database migration to add new fields (migration 0008_skinny_madame_hydra.sql)
+- [x] Update Twilio webhook to detect STOP/UNSUBSCRIBE keywords
+- [x] Mark customer as opted-out when STOP is received
+- [x] Added checkOptOutKeywords function (STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT)
+- [x] Added checkOptInKeywords function (START, YES, UNSTOP)
+- [x] Added setCustomerOptOut and setCustomerOptIn functions in db.ts
+- [x] Webhook now automatically opts out customers and sends confirmation message
+- [x] Update sendWhatsApp to check opt-out status before sending
+- [x] Added opt-out check at start of sendWhatsApp mutation
+- [x] Throws error with clear message if customer has opted out
+- [x] Filter opted-out customers from reminders list (generateFromVehicles)
+- [x] Added customerOptedOut field to getVehiclesWithCustomersForReminders
+- [x] Filter excludes opted-out customers from reminders
+- [x] Add opt-out status badge in Database page
+- [x] Added customerOptedOut field to getAllVehiclesWithCustomers query
+- [x] Display red "OPTED OUT" badge next to customer name in table
+- [x] Add opt-out badge to Home page reminders table
+- [x] Extended Reminder type to include customerOptedOut field
+- [x] Badge displays next to customer name in both Database and Home pages
+- [ ] Add ability to manually opt customers back in
+- [ ] Add filter to show only opted-out customers
+- [x] Test STOP message triggers opt-out correctly
+- [x] Test opted-out customers cannot receive messages
+- [x] All 66 tests passing
+- [x] Fixed sendWhatsAppTemplate test mock to include findCustomerByPhone

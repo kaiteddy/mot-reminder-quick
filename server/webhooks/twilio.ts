@@ -17,6 +17,30 @@ interface TwilioWebhookBody {
 }
 
 /**
+ * Check if message contains opt-out keywords
+ */
+function checkOptOutKeywords(messageBody: string): boolean {
+  if (!messageBody) return false;
+  
+  const normalizedBody = messageBody.trim().toUpperCase();
+  const optOutKeywords = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
+  
+  return optOutKeywords.includes(normalizedBody);
+}
+
+/**
+ * Check if message contains opt-in keywords
+ */
+function checkOptInKeywords(messageBody: string): boolean {
+  if (!messageBody) return false;
+  
+  const normalizedBody = messageBody.trim().toUpperCase();
+  const optInKeywords = ['START', 'YES', 'UNSTOP'];
+  
+  return optInKeywords.includes(normalizedBody);
+}
+
+/**
  * Test endpoint to verify webhook is accessible
  */
 export async function handleWebhookTest(req: Request, res: Response) {
@@ -46,6 +70,9 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
       status: body.MessageStatus || body.SmsStatus,
     });
 
+    // Check for opt-out keywords (STOP, UNSUBSCRIBE, etc.)
+    const isOptOut = checkOptOutKeywords(body.Body);
+    
     // Log the incoming message
     await logIncomingMessage({
       messageSid: body.MessageSid,
@@ -54,14 +81,22 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
       body: body.Body,
       status: body.MessageStatus || body.SmsStatus || "unknown",
       timestamp: new Date(),
+      isOptOut,
     });
 
     // Send TwiML response to acknowledge receipt
     res.set("Content-Type", "text/xml");
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+    if (isOptOut) {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>You have been unsubscribed from MOT reminders. Reply START to opt back in.</Message>
+</Response>`);
+    } else {
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>Thank you for your message. We'll get back to you soon.</Message>
 </Response>`);
+    }
   } catch (error) {
     console.error("[Twilio Webhook] Error:", error);
     res.status(500).send("Internal Server Error");
@@ -109,8 +144,9 @@ async function logIncomingMessage(data: {
   body: string;
   status?: string;
   timestamp: Date;
+  isOptOut?: boolean;
 }) {
-  const { createCustomerMessage, findCustomerByPhone } = await import("../db");
+  const { createCustomerMessage, findCustomerByPhone, setCustomerOptOut, setCustomerOptIn } = await import("../db");
 
   try {
     // Extract phone number from WhatsApp format (whatsapp:+1234567890)
@@ -123,6 +159,19 @@ async function logIncomingMessage(data: {
       const customer = await findCustomerByPhone(fromNumber);
       if (customer) {
         customerId = customer.id;
+        
+        // Handle opt-out
+        if (data.isOptOut) {
+          await setCustomerOptOut(customer.id);
+          console.log(`[Twilio Webhook] ✓ Customer ${customer.id} (${customer.name}) opted out`);
+        }
+        
+        // Handle opt-in (START keyword)
+        const isOptIn = checkOptInKeywords(data.body);
+        if (isOptIn) {
+          await setCustomerOptIn(customer.id);
+          console.log(`[Twilio Webhook] ✓ Customer ${customer.id} (${customer.name}) opted back in`);
+        }
       }
     } catch (error) {
       console.warn("[Twilio Webhook] Could not find customer:", error);

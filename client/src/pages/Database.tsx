@@ -719,7 +719,12 @@ export default function Database() {
                         <TableCell className="text-sm truncate max-w-[150px]">{vehicle.customerName || "-"}</TableCell>
                         <TableCell>
                           <div className="text-xs">
-                            <div className="font-medium text-slate-700 truncate">{vehicle.customerName || "Unknown"}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-700 truncate">{vehicle.customerName || "Unknown"}</span>
+                              {vehicle.customerOptedOut && (
+                                <Badge variant="destructive" className="text-xs px-1 py-0">OPTED OUT</Badge>
+                              )}
+                            </div>
                             <div className="text-slate-500 font-mono">{vehicle.customerPhone || "-"}</div>
                           </div>
                         </TableCell>

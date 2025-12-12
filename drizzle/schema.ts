@@ -37,6 +37,8 @@ export const customers = mysqlTable("customers", {
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
+  optedOut: int("optedOut").default(0).notNull(), // 0 = false, 1 = true
+  optedOutAt: timestamp("optedOutAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

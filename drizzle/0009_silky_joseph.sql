@@ -1,0 +1,1 @@
+ALTER TABLE `customers` MODIFY COLUMN `optedOut` int NOT NULL DEFAULT 0;

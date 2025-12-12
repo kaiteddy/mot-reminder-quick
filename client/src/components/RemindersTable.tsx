@@ -23,9 +23,13 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 
+// Extend Reminder type to include customerOptedOut from generateFromVehicles
+// Database stores optedOut as int (0 or 1), but we also accept boolean
+type ExtendedReminder = Reminder & { customerOptedOut?: boolean | number | null };
+
 interface RemindersTableProps {
-  reminders: Reminder[];
-  onEdit: (reminder: Reminder) => void;
+  reminders: ExtendedReminder[];
+  onEdit: (reminder: ExtendedReminder) => void;
 }
 
 type SortColumn = "type" | "dueDate" | "registration" | "customer" | "motExpiry" | "daysLeft" | "status";
@@ -438,7 +442,12 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                     <TableCell className="font-mono font-semibold text-sm">{reminder.registration}</TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        <div className="font-medium">{customerName}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{customerName}</span>
+                          {reminder.customerOptedOut && (
+                            <Badge variant="destructive" className="text-xs px-1 py-0">OPTED OUT</Badge>
+                          )}
+                        </div>
                         {reminder.customerPhone && (
                           <div className="text-xs text-muted-foreground font-mono">{reminder.customerPhone}</div>
                         )}

@@ -24,6 +24,7 @@ vi.mock("./db", () => ({
   getAllReminders: vi.fn().mockResolvedValue([]),
   updateReminder: vi.fn(),
   createReminderLog: vi.fn().mockResolvedValue({ insertId: 1 }),
+  findCustomerByPhone: vi.fn().mockResolvedValue(null), // No customer found by default
 }));
 
 function createTestContext(): { ctx: TrpcContext } {

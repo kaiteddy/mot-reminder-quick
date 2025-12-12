@@ -342,8 +342,14 @@ export const appRouter = router({
         customerId: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
+        const { getAllReminders, updateReminder, createReminderLog, findCustomerByPhone } = await import("./db");
         const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
+        
+        // Check if customer has opted out
+        const customer = await findCustomerByPhone(input.phoneNumber);
+        if (customer && customer.optedOut) {
+          throw new Error(`Customer ${customer.name} has opted out of messages. They can opt back in by replying START.`);
+        }
         
         // Handle test messages (id = 0)
         if (input.id === 0) {
@@ -579,8 +585,9 @@ export const appRouter = router({
       });
       
       // Generate reminders for vehicles with MOT expiry dates
+      // Exclude opted-out customers
       const generatedReminders = vehiclesWithCustomers
-        .filter(v => v.motExpiryDate)
+        .filter(v => v.motExpiryDate && !v.customerOptedOut)
         .map(v => {
           const motDate = new Date(v.motExpiryDate!);
           const today = new Date();
@@ -622,6 +629,7 @@ export const appRouter = router({
             customerName: v.customerName || null,
             customerEmail: v.customerEmail || null,
             customerPhone: v.customerPhone || null,
+            customerOptedOut: v.customerOptedOut || false,
             vehicleMake: v.make || null,
             vehicleModel: v.model || null,
             motExpiryDate: v.motExpiryDate,
