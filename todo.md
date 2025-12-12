@@ -728,3 +728,15 @@
 - [x] Set explicit column widths for all columns
 - [x] Added truncate classes to prevent text overflow
 - [x] Verified all data remains accessible and readable
+
+## Fix MOT Refresh Live Updates on Database Page
+- [x] Investigate why MOT refresh is failing on Database page
+- [x] Check if refetch() is being called correctly after refresh
+- [x] Add live progress tracking showing which vehicle is being processed
+- [x] Display real-time updates as each vehicle's MOT data is verified
+- [x] Show success/failure status for each individual vehicle
+- [x] Add visual feedback (progress dialog, vehicle count, current registration)
+- [x] Created MOTRefreshButtonLive component with modal progress display
+- [x] Shows pending/processing/success/failed status for each vehicle
+- [x] Displays MOT expiry date for successful updates
+- [x] Integrated into Database page for both "Refresh Visible" and "Bulk MOT Check (All)" buttons

@@ -29,7 +29,7 @@ import {
   AlertTriangle,
   Send
 } from "lucide-react";
-import { MOTRefreshButton } from "@/components/MOTRefreshButton";
+import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -315,13 +315,13 @@ export default function Database() {
                 </Link>
               </Button>
             )}
-            <MOTRefreshButton
+            <MOTRefreshButtonLive
               registrations={filteredAndSortedVehicles.map(v => v.registration).filter(Boolean)}
               label="Refresh Visible"
               variant="default"
               onComplete={refetch}
             />
-            <MOTRefreshButton
+            <MOTRefreshButtonLive
               registrations={vehicles?.map(v => v.registration).filter(Boolean) || []}
               label="Bulk MOT Check (All)"
               variant="outline"
