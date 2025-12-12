@@ -772,3 +772,11 @@
 - [x] Checkboxes only enabled for vehicles with phone numbers
 - [x] Send Selected button shows count and appears when items selected
 - [x] Added getDeliveryStatusIcon helper function for status display
+
+## Integrate Delivery Status Display in Database Table
+- [x] Update getAllVehiclesWithCustomers backend query to include latest reminder log status
+- [x] Join reminderLogs table to get delivery status (sent, delivered, read, failed)
+- [x] Include lastReminderSent date, deliveryStatus, deliveredAt, readAt in vehicle response
+- [x] Update Database page Last Sent column to display delivery status icons
+- [x] Show icon, date, and time together in Last Sent cell
+- [x] Icons show Read (Eye), Delivered (CheckCircle), Sent (Clock), Failed (XCircle)

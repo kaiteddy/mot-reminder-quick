@@ -716,9 +716,15 @@ export default function Database() {
                         </TableCell>
                         <TableCell className="text-xs">
                           {vehicle.lastReminderSent ? (
-                            <div>
-                              <div className="font-medium text-slate-700">
-                                {new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}
+                            <div className="flex items-center gap-2">
+                              {getDeliveryStatusIcon(vehicle)}
+                              <div>
+                                <div className="font-medium text-slate-700">
+                                  {new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  {new Date(vehicle.lastReminderSent).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' })}
+                                </div>
                               </div>
                             </div>
                           ) : (

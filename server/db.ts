@@ -339,26 +339,39 @@ export async function getAllVehiclesWithCustomers() {
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
     .orderBy(vehicles.registration);
   
-  // Get last reminder sent date for each vehicle
-  const lastReminderDates = await db
+  // Get last reminder log for each vehicle (including delivery status)
+  const { desc } = await import("drizzle-orm");
+  const latestLogs = await db
     .select({
       vehicleId: reminderLogs.vehicleId,
-      lastSentAt: max(reminderLogs.sentAt).as('lastSentAt'),
+      sentAt: reminderLogs.sentAt,
+      status: reminderLogs.status,
+      deliveredAt: reminderLogs.deliveredAt,
+      readAt: reminderLogs.readAt,
     })
     .from(reminderLogs)
     .where(sql`${reminderLogs.vehicleId} IS NOT NULL`)
-    .groupBy(reminderLogs.vehicleId);
+    .orderBy(desc(reminderLogs.sentAt));
   
-  // Create a map of vehicle ID to last sent date
-  const lastSentMap = new Map(
-    lastReminderDates.map(row => [row.vehicleId, row.lastSentAt])
-  );
+  // Create a map of vehicle ID to latest log (first occurrence per vehicle)
+  const logMap = new Map();
+  latestLogs.forEach(log => {
+    if (log.vehicleId && !logMap.has(log.vehicleId)) {
+      logMap.set(log.vehicleId, log);
+    }
+  });
   
   // Combine the data
-  return vehiclesWithCustomers.map(vehicle => ({
-    ...vehicle,
-    lastReminderSent: vehicle.id ? lastSentMap.get(vehicle.id) || null : null,
-  }));
+  return vehiclesWithCustomers.map(vehicle => {
+    const latestLog = vehicle.id ? logMap.get(vehicle.id) : null;
+    return {
+      ...vehicle,
+      lastReminderSent: latestLog?.sentAt || null,
+      deliveryStatus: latestLog?.status || null,
+      deliveredAt: latestLog?.deliveredAt || null,
+      readAt: latestLog?.readAt || null,
+    };
+  });
 }
 
 // Bulk update vehicle MOT data
