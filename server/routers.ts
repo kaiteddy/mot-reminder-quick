@@ -337,6 +337,9 @@ export const appRouter = router({
         expiryDate: z.string().optional(),
         daysUntil: z.number().optional(),
         messageType: z.enum(["MOT", "Service"]).optional(),
+        // IDs for linking logs to database records
+        vehicleId: z.number().optional(),
+        customerId: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { getAllReminders, updateReminder, createReminderLog } = await import("./db");
@@ -415,8 +418,8 @@ export const appRouter = router({
           
           await createReminderLog({
             reminderId: null,
-            customerId: null,
-            vehicleId: null,
+            customerId: input.customerId || null,
+            vehicleId: input.vehicleId || null,
             messageType,
             recipient: input.phoneNumber,
             messageSid: result.messageId || null,

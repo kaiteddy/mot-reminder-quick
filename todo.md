@@ -841,3 +841,16 @@
 - [x] Test sorting ascending (oldest first) and descending (newest first)
 - [x] Verify never-sent vehicles appear at the end when sorting
 - [x] All 63 tests passing
+
+## Fix Database Page Send Button Not Updating (User Report)
+- [x] User reports: Database page send buttons spin but status doesn't update
+- [x] User reports: Mrs B Chambon (MM08OZK) still appearing after sending reminder
+- [x] Found root cause: Database page sends with id=0 but didn't pass vehicleId/customerId
+- [x] Backend was creating logs with null vehicleId/customerId, so logs weren't linked
+- [x] Added vehicleId and customerId parameters to sendWhatsApp input schema
+- [x] Updated backend to use provided vehicleId/customerId in createReminderLog
+- [x] Updated Database page single send to pass vehicleId and customerId
+- [x] Updated Database page batch send to pass vehicleId and customerId
+- [x] Fixed TypeScript errors with null handling (customerId ?? undefined)
+- [x] Test that sends now create properly linked logs and status updates
+- [x] All 66 tests passing (added 3 new tests for Database send)

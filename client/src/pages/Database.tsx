@@ -102,6 +102,8 @@ export default function Database() {
       customerName: vehicle.customerName || "Customer",
       registration: vehicle.registration,
       expiryDate: vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB") : "Unknown",
+      vehicleId: vehicle.id, // Link to vehicle for status tracking
+      customerId: vehicle.customerId ?? undefined, // Link to customer for status tracking
     });
   };
 
@@ -165,6 +167,8 @@ export default function Database() {
           customerName: vehicle.customerName || "Customer",
           registration: vehicle.registration,
           expiryDate: vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB") : "Unknown",
+          vehicleId: vehicle.id, // Link to vehicle for status tracking
+          customerId: vehicle.customerId ?? undefined, // Link to customer for status tracking
         });
         successCount++;
       } catch (error) {
