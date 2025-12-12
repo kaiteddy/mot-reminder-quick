@@ -17,6 +17,19 @@ interface TwilioWebhookBody {
 }
 
 /**
+ * Test endpoint to verify webhook is accessible
+ */
+export async function handleWebhookTest(req: Request, res: Response) {
+  res.json({
+    status: "ok",
+    message: "Twilio webhook endpoint is active",
+    endpoint: req.path,
+    timestamp: new Date().toISOString(),
+    instructions: "This endpoint accepts POST requests from Twilio. Configure it in your Twilio Console."
+  });
+}
+
+/**
  * Handle incoming WhatsApp messages from Twilio
  * This endpoint should be configured in Twilio Console:
  * https://console.twilio.com/us1/develop/sms/senders/whatsapp-senders
@@ -67,14 +80,17 @@ export async function handleTwilioStatusCallback(req: Request, res: Response) {
       status: body.MessageStatus || body.SmsStatus,
       from: body.From,
       to: body.To,
+      fullBody: body,
     });
 
     // Update message status in database
-    await updateMessageStatus({
+    const updated = await updateMessageStatus({
       messageSid: body.MessageSid || body.SmsSid || "unknown",
       status: body.MessageStatus || body.SmsStatus || "unknown",
       timestamp: new Date(),
     });
+
+    console.log("[Twilio Status] Database update result:", updated);
 
     res.status(200).send("OK");
   } catch (error) {
@@ -140,27 +156,35 @@ async function updateMessageStatus(data: {
   messageSid: string;
   status?: string;
   timestamp: Date;
-}) {
+}): Promise<{ success: boolean; message: string }> {
   const { updateReminderLogStatus } = await import("../db");
 
   try {
-    // Update reminder log status
-    console.log("[Twilio Status] Status updated:", data);
+    console.log("[Twilio Status] Updating status:", data);
     
     // Possible statuses: queued, sending, sent, delivered, read, undelivered, failed
     if (data.status === "read") {
       await updateReminderLogStatus(data.messageSid, "read", data.timestamp);
-      console.log(`[Twilio Status] Message ${data.messageSid} read by recipient`);
+      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as READ`);
+      return { success: true, message: "Status updated to read" };
     } else if (data.status === "delivered") {
       await updateReminderLogStatus(data.messageSid, "delivered", data.timestamp);
-      console.log(`[Twilio Status] Message ${data.messageSid} delivered successfully`);
+      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as DELIVERED`);
+      return { success: true, message: "Status updated to delivered" };
     } else if (data.status === "failed" || data.status === "undelivered") {
       await updateReminderLogStatus(data.messageSid, "failed", data.timestamp, `Status: ${data.status}`);
-      console.log(`[Twilio Status] Message ${data.messageSid} failed: ${data.status}`);
+      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as FAILED: ${data.status}`);
+      return { success: true, message: `Status updated to failed: ${data.status}` };
     } else if (data.status === "sent") {
       await updateReminderLogStatus(data.messageSid, "sent", data.timestamp);
+      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as SENT`);
+      return { success: true, message: "Status updated to sent" };
+    } else {
+      console.log(`[Twilio Status] ⚠ Unknown status: ${data.status} for message ${data.messageSid}`);
+      return { success: false, message: `Unknown status: ${data.status}` };
     }
   } catch (error) {
-    console.error("[Twilio Status] Failed to update status:", error);
+    console.error("[Twilio Status] ✗ Failed to update status:", error);
+    return { success: false, message: `Error: ${error}` };
   }
 }

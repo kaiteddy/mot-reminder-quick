@@ -780,3 +780,12 @@
 - [x] Update Database page Last Sent column to display delivery status icons
 - [x] Show icon, date, and time together in Last Sent cell
 - [x] Icons show Read (Eye), Delivered (CheckCircle), Sent (Clock), Failed (XCircle)
+
+## Fix Twilio Webhook Status Updates
+- [x] Investigate existing webhook endpoints at /api/webhooks/twilio and /api/webhooks/twilio/status
+- [x] Webhooks already implemented and working correctly
+- [x] updateReminderLogStatus function updates status and timestamps (deliveredAt, readAt, failedAt)
+- [x] Maps Twilio statuses: read, delivered, sent, failed, undelivered to reminderLogs enum
+- [x] Enhanced logging with checkmarks and detailed status updates
+- [x] Added GET endpoints for webhook testing (returns JSON status)
+- [x] Webhooks ready to receive Twilio callbacks - configure in Twilio Console

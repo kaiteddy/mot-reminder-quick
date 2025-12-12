@@ -37,9 +37,12 @@ async function startServer() {
   registerOAuthRoutes(app);
   
   // Twilio webhook endpoints
-  const { handleTwilioWebhook, handleTwilioStatusCallback } = await import("../webhooks/twilio");
+  const { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } = await import("../webhooks/twilio");
   app.post("/api/webhooks/twilio", handleTwilioWebhook);
   app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
+  // GET endpoints for testing
+  app.get("/api/webhooks/twilio", handleWebhookTest);
+  app.get("/api/webhooks/twilio/status", handleWebhookTest);
   // tRPC API
   app.use(
     "/api/trpc",
