@@ -16,6 +16,7 @@ import LogsAndMessages from "./pages/LogsAndMessages";
 import PhoneCleanup from "./pages/PhoneCleanup";
 import ReminderArchive from "./pages/ReminderArchive";
 import FollowUpActions from "./pages/FollowUpActions";
+import Conversations from "./pages/Conversations";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/phone-cleanup" component={PhoneCleanup} />
       <Route path="/archive" component={ReminderArchive} />
       <Route path="/follow-up" component={FollowUpActions} />
+      <Route path="/conversations" component={Conversations} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

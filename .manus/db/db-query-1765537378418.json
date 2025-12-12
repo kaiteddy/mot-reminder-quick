@@ -1,0 +1,9 @@
+{
+  "query": "SELECT rl.*, v.registration, c.name as customer_name, c.phone\nFROM reminderLogs rl\nLEFT JOIN vehicles v ON rl.vehicleId = v.id\nLEFT JOIN customers c ON rl.customerId = c.id\nWHERE v.registration = 'MM08OZK' OR c.phone = '+447956477569'\nORDER BY rl.sentAt DESC\nLIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT rl.*, v.registration, c.name as customer_name, c.phone\nFROM reminderLogs rl\nLEFT JOIN vehicles v ON rl.vehicleId = v.id\nLEFT JOIN customers c ON rl.customerId = c.id\nWHERE v.registration = 'MM08OZK' OR c.phone = '+447956477569'\nORDER BY rl.sentAt DESC\nLIMIT 10;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 127
+}

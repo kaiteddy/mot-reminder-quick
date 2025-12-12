@@ -994,6 +994,68 @@ export const appRouter = router({
       return { success: true };
     }),
   }),
+
+  conversations: router({
+    // Get all conversation threads
+    getThreads: publicProcedure.query(async () => {
+      const { getConversationThreads } = await import("./conversations");
+      return getConversationThreads();
+    }),
+
+    // Get messages for a specific conversation
+    getMessages: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getConversationMessages } = await import("./conversations");
+        return getConversationMessages(input.customerId);
+      }),
+
+    // Mark conversation as read
+    markAsRead: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { markConversationAsRead } = await import("./conversations");
+        await markConversationAsRead(input.customerId);
+        return { success: true };
+      }),
+
+    // Send reply in conversation
+    sendReply: publicProcedure
+      .input(z.object({
+        customerId: z.number(),
+        phoneNumber: z.string(),
+        message: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const { sendSMS } = await import("./smsService");
+        const { createReminderLog } = await import("./db");
+        
+        const result = await sendSMS({
+          to: input.phoneNumber,
+          message: input.message,
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || "Failed to send message");
+        }
+        
+        // Log the sent message
+        await createReminderLog({
+          reminderId: null,
+          customerId: input.customerId,
+          vehicleId: null,
+          messageType: "freeform",
+          recipient: input.phoneNumber,
+          messageSid: result.messageId,
+          status: "sent",
+          templateUsed: "freeform",
+          messageContent: input.message,
+          sentAt: new Date(),
+        });
+        
+        return { success: true, messageId: result.messageId };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

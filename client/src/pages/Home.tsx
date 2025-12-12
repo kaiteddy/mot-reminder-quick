@@ -140,6 +140,13 @@ export default function Home() {
                 <UnreadMessageBadge />
               </Button>
             </Link>
+            <Link href="/conversations">
+              <Button variant="outline" size="lg" className="relative">
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Conversations
+                <UnreadMessageBadge />
+              </Button>
+            </Link>
             <Link href="/phone-cleanup">
               <Button variant="outline" size="lg">
                 <Wrench className="w-4 h-4 mr-2" />

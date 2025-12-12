@@ -789,3 +789,26 @@
 - [x] Enhanced logging with checkmarks and detailed status updates
 - [x] Added GET endpoints for webhook testing (returns JSON status)
 - [x] Webhooks ready to receive Twilio callbacks - configure in Twilio Console
+
+## Fix Sent Reminder Status Not Showing
+- [x] Investigate why sent reminders don't show status for MM08OZK (Mrs B Chambon)
+- [x] Found: No reminderLogs exist for this vehicle/customer
+- [x] Vehicle exists (ID: 2295, Customer ID: 1980)
+- [x] Conclusion: Reminder was never actually sent or failed silently before logging
+- [x] Solution: WhatsApp conversations page will show all actually sent messages
+
+## Create WhatsApp-Style Conversations Page
+- [x] Design conversation list layout (left sidebar with sent reminders as threads)
+- [x] Create backend endpoint to get all conversations (grouped by customer)
+- [x] Create backend endpoint to get message history for a conversation
+- [x] Build conversation list component showing customer name, vehicle, last message preview
+- [x] Build conversation detail view with message bubbles (sent reminders + customer replies)
+- [x] Style messages to look like WhatsApp (sent messages right/blue, received left/gray)
+- [x] Add reply functionality to send messages from conversation view
+- [x] Show unread message indicators on conversation threads
+- [x] Add search/filter for conversations
+- [x] Auto-scroll to bottom when new messages arrive
+- [x] Mark conversations as read when opened
+- [x] Show delivery status icons (read, delivered, sent, failed)
+- [x] Add to navigation on Home page
+- [ ] Test with real customer messages and replies

@@ -1,0 +1,13 @@
+{
+  "query": "SELECT v.*, c.name as customer_name, c.phone\nFROM vehicles v\nLEFT JOIN customers c ON v.customerId = c.id\nWHERE v.registration = 'MM08OZK';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT v.*, c.name as customer_name, c.phone\nFROM vehicles v\nLEFT JOIN customers c ON v.customerId = c.id\nWHERE v.registration = 'MM08OZK';",
+  "rows": [],
+  "messages": [
+    "2295\tMM08OZK\tNISSAN\tQashqai Tekna\t2025-12-10 00:00:00\tNULL\t1980\t2025-11-22 17:59:31\t2025-11-22 17:59:31\t907C54951A33CA4F8ED024E6FA7B2B0B\tBLACK\tPETROL\t2008-08-06 04:00:00\tSJNFBAJ10U1293713\t1997\t",
+    "Reminder Issued 04/10/2013 - MOT Due 31/10/2013",
+    "Reminder Issued 04/10/2013 - Service Due 30/10/2013\tMrs B Chambon\t+447956477569"
+  ],
+  "stdout": "id\tregistration\tmake\tmodel\tmotExpiryDate\tlastChecked\tcustomerId\tcreatedAt\tupdatedAt\texternalId\tcolour\tfuelType\tdateOfRegistration\tvin\tengineCC\tnotes\tcustomer_name\tphone\n2295\tMM08OZK\tNISSAN\tQashqai Tekna\t2025-12-10 00:00:00\tNULL\t1980\t2025-11-22 17:59:31\t2025-11-22 17:59:31\t907C54951A33CA4F8ED024E6FA7B2B0B\tBLACK\tPETROL\t2008-08-06 04:00:00\tSJNFBAJ10U1293713\t1997\t\u000bReminder Issued 04/10/2013 - MOT Due 31/10/2013\u000bReminder Issued 04/10/2013 - Service Due 30/10/2013\tMrs B Chambon\t+447956477569\n",
+  "stderr": "",
+  "execution_time_ms": 66
+}
