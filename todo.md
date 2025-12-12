@@ -865,3 +865,14 @@
 - [x] Added null handling for customerName, vehicleId, customerId
 - [x] Test that Home page send works without errors
 - [x] All 66 tests passing
+
+## Fix Webhook Port Mismatch and Test Message Issues
+- [x] User reports: Not seeing status updates or customer responses
+- [x] User reports: System keeps sending test messages to 07956477569
+- [x] Root cause: Twilio webhook errors - 502 Bad Gateway using port 3001 instead of 3000
+- [x] Webhook URL in Twilio: https://3001-i2zd500ij6k7nduqkedn4-9eb00ff7.manusvm.computer/api/webhooks/twilio/status
+- [x] Correct URL should be: https://3000-ii1710lkmx9houx1sir69-8c75b868.manusvm.computer/api/webhooks/twilio/status
+- [x] Checked for hardcoded test phone number 07956477569 - only in test files, not production
+- [x] 07956477569 is Mrs B Chambon - messages sent manually by clicking Send button
+- [x] Updated TWILIO_WEBHOOK_SETUP.md with correct port 3000 URLs
+- [x] Provided clear instructions for user to update Twilio Console

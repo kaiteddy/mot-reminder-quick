@@ -18,11 +18,13 @@ This endpoint receives delivery status updates (sent, delivered, failed, etc.) f
 
 ## Configuration Steps
 
-### Step 1: Get Your Production URL
+### Step 1: Get Your Current Server URL
 
-After deploying your app, you'll have a production URL. For example:
-- Development: `https://3001-i2zd500ij6k7nduqkedn4-9eb00ff7.manusvm.computer`
-- Production: `https://your-app.vercel.app` or your custom domain
+**IMPORTANT**: Your server is running on **port 3000**, not 3001.
+
+Current server URL: `https://3000-ii1710lkmx9houx1sir69-8c75b868.manusvm.computer`
+
+⚠️ **Common Mistake**: Using port 3001 will cause 502 Bad Gateway errors!
 
 ### Step 2: Configure WhatsApp Sender in Twilio Console
 
@@ -32,7 +34,13 @@ After deploying your app, you'll have a production URL. For example:
 
 3. Under **"Webhook for incoming messages"**, set:
    ```
-   https://your-domain.com/api/webhooks/twilio
+   https://3000-ii1710lkmx9houx1sir69-8c75b868.manusvm.computer/api/webhooks/twilio
+   ```
+   Method: `POST`
+
+4. Under **"Status callback URL"**, set:
+   ```
+   https://3000-ii1710lkmx9houx1sir69-8c75b868.manusvm.computer/api/webhooks/twilio/status
    ```
    Method: `POST`
 
