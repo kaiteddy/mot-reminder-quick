@@ -1,0 +1,45 @@
+{
+  "query": "SELECT messageSid, status, sentAt, deliveredAt, readAt FROM reminderLogs ORDER BY sentAt DESC LIMIT 5",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user E3X1o2YRTeoc6Uy.b2280e0d2acf --database CfLpVpWrxXxSPd5gXqPACt --execute SELECT messageSid, status, sentAt, deliveredAt, readAt FROM reminderLogs ORDER BY sentAt DESC LIMIT 5",
+  "rows": [
+    {
+      "messageSid": "MM1ae39a2765b5ffd2b33bdd63d89d62e2",
+      "status": "sent",
+      "sentAt": "2025-12-12 17:49:56",
+      "deliveredAt": "2025-12-12 17:49:59",
+      "readAt": "NULL"
+    },
+    {
+      "messageSid": "MMf919a0592e0d084add24bdb5960d19a0",
+      "status": "sent",
+      "sentAt": "2025-12-12 17:45:30",
+      "deliveredAt": "NULL",
+      "readAt": "NULL"
+    },
+    {
+      "messageSid": "MM8c6945d3fd253183316e505c3a83858b",
+      "status": "sent",
+      "sentAt": "2025-12-12 15:37:04",
+      "deliveredAt": "NULL",
+      "readAt": "NULL"
+    },
+    {
+      "messageSid": "MMa31c3f047d9245a4e55c4c099b072f55",
+      "status": "sent",
+      "sentAt": "2025-12-12 15:13:52",
+      "deliveredAt": "NULL",
+      "readAt": "NULL"
+    },
+    {
+      "messageSid": "MMd0f69158d4ea813136f40c80148d7f62",
+      "status": "sent",
+      "sentAt": "2025-12-12 15:01:56",
+      "deliveredAt": "NULL",
+      "readAt": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "messageSid\tstatus\tsentAt\tdeliveredAt\treadAt\nMM1ae39a2765b5ffd2b33bdd63d89d62e2\tsent\t2025-12-12 17:49:56\t2025-12-12 17:49:59\tNULL\nMMf919a0592e0d084add24bdb5960d19a0\tsent\t2025-12-12 17:45:30\tNULL\tNULL\nMM8c6945d3fd253183316e505c3a83858b\tsent\t2025-12-12 15:37:04\tNULL\tNULL\nMMa31c3f047d9245a4e55c4c099b072f55\tsent\t2025-12-12 15:13:52\tNULL\tNULL\nMMd0f69158d4ea813136f40c80148d7f62\tsent\t2025-12-12 15:01:56\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 101
+}

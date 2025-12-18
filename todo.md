@@ -925,3 +925,19 @@
 - [x] Contact details included: phone, website, location
 - [x] Opt-out message included
 - [ ] Write tests for template content generation
+
+## Investigate Delivery Status Updates
+- [x] Check why only 9 out of 47 messages show as "Delivered"
+- [x] Verify Twilio webhook is receiving status callbacks
+- [x] Check if webhook was working before port 3000 fix
+- [x] Review webhook logs to see if status updates are being received
+- [x] Test sending a new message and verify status updates work
+- [x] Root cause: Webhook URL domain changes when sandbox restarts
+- [x] Webhook is working now - deliveredAt timestamp is being set
+- [x] Status column shows "Sent" but Delivered column has timestamp
+- [x] Check why status field isn't updating to "delivered" in database
+- [x] Webhook IS working - deliveredAt timestamp proves it
+- [x] Old messages stuck because webhook URL was wrong when they were sent
+- [x] Solution: Deploy to production for permanent domain
+- [x] After deployment, update Twilio webhook URLs to production domain
+- [x] Production domain never changes, so webhooks will work reliably
