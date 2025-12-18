@@ -109,8 +109,8 @@ The webhook handler can then verify the signature using Twilio's validation libr
 
 ## Current Configuration
 
-**Twilio Account SID:** AC1572c0e5e4b55bb7440c3d9da482fd36  
-**Twilio WhatsApp Number:** +15558340240  
+**Twilio Account SID:** [Your Twilio Account SID]  
+**Twilio WhatsApp Number:** [Your Twilio WhatsApp Number]  
 **Webhook Endpoints:**
 - Incoming: `/api/webhooks/twilio`
 - Status: `/api/webhooks/twilio/status`
