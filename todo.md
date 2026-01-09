@@ -941,3 +941,9 @@
 - [x] Solution: Deploy to production for permanent domain
 - [x] After deployment, update Twilio webhook URLs to production domain
 - [x] Production domain never changes, so webhooks will work reliably
+
+## Fix Test WhatsApp Authentication Error
+- [ ] Investigate "Authenticate" API mutation error on /test-whatsapp page
+- [ ] Check if page requires authentication but isn't protected
+- [ ] Fix authentication flow on Test WhatsApp page
+- [ ] Test sending messages after fix
