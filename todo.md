@@ -947,3 +947,13 @@
 - [ ] Check if page requires authentication but isn't protected
 - [ ] Fix authentication flow on Test WhatsApp page
 - [ ] Test sending messages after fix
+
+## Fix tRPC API Returning HTML Error
+- [x] Investigate "Unexpected token '<', '<!doctype'..." error on homepage
+- [x] Check UnreadMessageBadge component causing error
+- [x] Verify tRPC endpoints are returning JSON not HTML
+- [x] Check server logs for API errors
+- [x] Fix API endpoint configuration
+- [x] Root cause: Port forwarding issue in sandbox
+- [x] Solution: Restart server to re-establish port exposure
+- [x] Verified: API now returns JSON correctly
