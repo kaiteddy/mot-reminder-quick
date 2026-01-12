@@ -19,19 +19,41 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
+import { APP_LOGO, APP_TITLE, getLoginRoute } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Archive, AlertCircle, MessageSquare, Database as DatabaseIcon, Upload, Car, UserCheck } from "lucide-react";
+import {
+  LayoutDashboard,
+  LogOut,
+  PanelLeft,
+  Users,
+  Archive,
+  AlertCircle,
+  MessageSquare,
+  Database as DatabaseIcon,
+  Upload,
+  Car,
+  UserCheck,
+  Search,
+  FileText,
+  Settings,
+  ShieldCheck,
+  Smartphone
+} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
+  { icon: ShieldCheck, label: "System Status", path: "/system-status" },
+  { icon: Search, label: "MOT Check", path: "/mot-check" },
   { icon: AlertCircle, label: "Follow-up Actions", path: "/follow-up" },
   { icon: Archive, label: "Reminder Archive", path: "/archive" },
-  { icon: MessageSquare, label: "Logs & Messages", path: "/logs" },
+  { icon: MessageSquare, label: "Conversations", path: "/conversations" },
+  { icon: FileText, label: "Logs & Messages", path: "/logs" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: Upload, label: "Import Data", path: "/import" },
@@ -63,38 +85,11 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <div className="relative group">
-              <div className="relative">
-                <img
-                  src={APP_LOGO}
-                  alt={APP_TITLE}
-                  className="h-20 w-20 rounded-xl object-cover shadow"
-                />
-              </div>
-            </div>
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight">{APP_TITLE}</h1>
-              <p className="text-sm text-muted-foreground">
-                Please sign in to continue
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
-        </div>
-      </div>
-    );
+    // Redirect to login if not authenticated
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    return null;
   }
 
   return (
@@ -112,39 +107,26 @@ export default function DashboardLayout({
   );
 }
 
-type DashboardLayoutContentProps = {
-  children: React.ReactNode;
-  setSidebarWidth: (width: number) => void;
-};
-
 function DashboardLayoutContent({
   children,
   setSidebarWidth,
-}: DashboardLayoutContentProps) {
-  const { user, logout } = useAuth();
-  const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
+}: {
+  children: React.ReactNode;
+  setSidebarWidth: (width: number) => void;
+}) {
+  const [location] = useLocation();
+  const { isMobile, state: sidebarState } = useSidebar();
+  const isCollapsed = sidebarState === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
-  const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
-  }, [isCollapsed]);
+  const activeMenuItem = menuItems.find((item: any) => item.path === location) || menuItems[0];
+  const isMobileView = useIsMobile();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
+      const newWidth = Math.min(Math.max(e.clientX, MIN_WIDTH), MAX_WIDTH);
+      setSidebarWidth(newWidth);
     };
 
     const handleMouseUp = () => {
@@ -152,148 +134,169 @@ function DashboardLayoutContent({
     };
 
     if (isResizing) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
     }
 
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizing, setSidebarWidth]);
 
   return (
-    <>
-      <div className="relative" ref={sidebarRef}>
-        <Sidebar
-          collapsible="icon"
-          className="border-r-0"
-          disableTransition={isResizing}
-        >
-          <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
-              {isCollapsed ? (
-                <div className="relative h-8 w-8 shrink-0 group">
-                  <img
-                    src={APP_LOGO}
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-border"
-                    alt="Logo"
-                  />
-                  <button
-                    onClick={toggleSidebar}
-                    className="absolute inset-0 flex items-center justify-center bg-accent rounded-md ring-1 ring-border opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <PanelLeft className="h-4 w-4 text-foreground" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={APP_LOGO}
-                      className="h-8 w-8 rounded-md object-cover ring-1 ring-border shrink-0"
-                      alt="Logo"
-                    />
-                    <span className="font-semibold tracking-tight truncate">
-                      {APP_TITLE}
-                    </span>
-                  </div>
-                  <button
-                    onClick={toggleSidebar}
-                    className="ml-auto h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                  >
-                    <PanelLeft className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </>
-              )}
+    <div className="flex min-h-screen w-full bg-background overflow-hidden">
+      <Sidebar collapsible="icon" className="border-r border-border/50 shadow-sm transition-all duration-300">
+        <SidebarHeader className="h-16 flex items-center px-4 border-b border-border/40 mb-2">
+          {isCollapsed ? (
+            <div className="flex items-center justify-center w-full">
+              <img
+                src={APP_LOGO}
+                alt={APP_TITLE}
+                className="h-8 w-8 rounded-lg object-cover shadow-sm"
+              />
             </div>
-          </SidebarHeader>
+          ) : (
+            <div className="flex items-center gap-3 w-full animate-in fade-in slide-in-from-left-4 duration-300">
+              <img
+                src={APP_LOGO}
+                alt={APP_TITLE}
+                className="h-10 w-10 rounded-xl object-cover shadow-md"
+              />
+              <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
+                {APP_TITLE}
+              </span>
+            </div>
+          )}
+        </SidebarHeader>
 
-          <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
+        <SidebarContent className="px-2">
+          <SidebarMenu>
+            {menuItems.map((item: any) => {
+              const isActive = location === item.path;
+              return (
+                <SidebarMenuItem key={item.path} className="mb-1">
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive}
+                    tooltip={item.label}
+                    className={`
+                      transition-all hover:scale-[1.02] active:scale-95
+                      ${isActive ? 'bg-primary/10 text-primary font-semibold shadow-sm' : 'hover:bg-accent/50'}
+                    `}
+                  >
+                    <a
+                      href={item.path}
+                      className="flex items-center gap-3 px-3 py-2 w-full"
                     >
-                      <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
-                      />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarContent>
+                      <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <span className={`${isCollapsed ? 'hidden' : 'block'} transition-opacity`}>{item.label}</span>
+                      {item.path === "/conversations" && !isCollapsed && (
+                        <div className="ml-auto">
+                          <UnreadMessageBadge />
+                        </div>
+                      )}
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarContent>
 
-          <SidebarFooter className="p-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    <AvatarFallback className="text-xs font-medium">
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">
-                      {user?.name || "-"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">
-                      {user?.email || "-"}
-                    </p>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={logout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-        <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => {
-            if (isCollapsed) return;
-            setIsResizing(true);
-          }}
-          style={{ zIndex: 50 }}
-        />
-      </div>
-
-      <SidebarInset>
-        {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? APP_TITLE}
+        <SidebarFooter className="p-4 border-t border-border/40 bg-accent/5 mt-auto">
+          {!isCollapsed && (
+            <div className="mb-4">
+              <div className="flex items-center gap-3 p-3 bg-white/50 dark:bg-slate-800/50 rounded-xl border border-border/40 shadow-sm">
+                <Avatar className="h-10 w-10 border-2 border-primary/20 shadow-sm">
+                  <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold uppercase">
+                    US
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col min-w-0 pr-2">
+                  <span className="text-sm font-bold truncate">User Account</span>
+                  <span className="text-[10px] text-muted-foreground truncate uppercase tracking-widest font-semibold flex items-center gap-1">
+                    <UserCheck className="h-2 w-2" /> Verified
                   </span>
                 </div>
               </div>
             </div>
+          )}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    className={`
+                      w-full transition-all active:scale-95
+                      ${isCollapsed ? 'justify-center p-0' : 'justify-start gap-3 p-3'}
+                      hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 group
+                    `}
+                  >
+                    <LogOut className={`h-5 w-5 shrink-0 text-muted-foreground group-hover:text-red-500`} />
+                    <span className={`${isCollapsed ? 'hidden' : 'block'}`}>Sign Out</span>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 p-1">
+                  <DropdownMenuItem
+                    className="flex items-center gap-2 p-3 text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer rounded-lg"
+                    onClick={async () => {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                      window.location.reload();
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="font-semibold">Confirm Sign Out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+
+      {!isMobileView && (
+        <div
+          onMouseDown={() => setIsResizing(true)}
+          className={`
+            w-1 cursor-col-resize hover:bg-primary/30 transition-colors
+            ${isResizing ? "bg-primary/50" : "bg-transparent"}
+          `}
+        />
+      )}
+
+      <SidebarInset className="flex flex-col flex-1 overflow-hidden relative">
+        <header className="h-16 flex items-center justify-between px-6 bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
+            <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
+            <div className="flex flex-col">
+              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight">
+                Current View
+              </span>
+              <h2 className="text-sm font-bold text-foreground">
+                {activeMenuItem.label}
+              </h2>
+            </div>
           </div>
-        )}
-        <main className="flex-1 p-4">{children}</main>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden md:flex flex-col items-end">
+              <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
+              <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
+            </div>
+            <Avatar className="h-9 w-9 border-2 border-accent transition-transform hover:scale-105 cursor-pointer">
+              <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">AD</AvatarFallback>
+            </Avatar>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 lg:p-10 scroll-smooth">
+          <div className="max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {children}
+          </div>
+        </main>
       </SidebarInset>
-    </>
+    </div>
   );
 }

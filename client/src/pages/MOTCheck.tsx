@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Car, 
-  Calendar, 
-  Loader2, 
-  Search, 
-  AlertTriangle, 
-  CheckCircle2, 
+import {
+  Car,
+  Calendar,
+  Loader2,
+  Search,
+  AlertTriangle,
+  CheckCircle2,
   XCircle,
   Gauge,
   Droplet,
@@ -21,6 +21,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
+import DashboardLayout from "@/components/DashboardLayout";
 
 interface MOTTest {
   completedDate: string;
@@ -105,8 +106,8 @@ export default function MOTCheck() {
   const daysUntilExpiry = vehicleData?.motExpiryDate ? getDaysUntilExpiry(vehicleData.motExpiryDate) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <DashboardLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -192,8 +193,8 @@ export default function MOTCheck() {
                       motInfo.isExpired
                         ? "border-red-500 bg-red-50"
                         : motInfo.daysUntilExpiry <= 30
-                        ? "border-orange-500 bg-orange-50"
-                        : "border-green-500 bg-green-50"
+                          ? "border-orange-500 bg-orange-50"
+                          : "border-green-500 bg-green-50"
                     }>
                       <Calendar className="h-4 w-4" />
                       <AlertDescription>
@@ -204,8 +205,8 @@ export default function MOTCheck() {
                           motInfo.isExpired
                             ? "text-red-700 font-medium"
                             : motInfo.daysUntilExpiry <= 30
-                            ? "text-orange-700 font-medium"
-                            : "text-green-700 font-medium"
+                              ? "text-orange-700 font-medium"
+                              : "text-green-700 font-medium"
                         }>
                           {formatDaysUntilExpiry(motInfo.daysUntilExpiry)}
                         </div>
@@ -336,7 +337,7 @@ export default function MOTCheck() {
           </Card>
         )}
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
@@ -402,13 +403,12 @@ function MOTTestCard({ test }: { test: MOTTest }) {
             {test.defects.map((defect, idx) => (
               <div
                 key={idx}
-                className={`text-sm p-2 rounded ${
-                  defect.dangerous
-                    ? "bg-red-50 text-red-900 border border-red-200"
-                    : defect.type === "FAIL"
+                className={`text-sm p-2 rounded ${defect.dangerous
+                  ? "bg-red-50 text-red-900 border border-red-200"
+                  : defect.type === "FAIL"
                     ? "bg-orange-50 text-orange-900 border border-orange-200"
                     : "bg-slate-50 text-slate-700"
-                }`}
+                  }`}
               >
                 <span className="font-medium text-xs uppercase mr-2">
                   {defect.dangerous ? "DANGEROUS" : defect.type}

@@ -71,7 +71,7 @@ async function getAccessToken(config: MOTApiConfig): Promise<string> {
   }
 
   const data: AccessTokenResponse = await response.json();
-  
+
   // Cache token (expires in seconds, convert to milliseconds and subtract 60s buffer)
   cachedToken = {
     token: data.access_token,
@@ -123,13 +123,13 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
     }
 
     const data: any[] = await response.json();
-    
+
     if (!data || data.length === 0) {
       return null;
     }
-    
+
     const vehicle = data[0];
-    
+
     // Transform MOT tests to include defects
     if (vehicle.motTests) {
       vehicle.motTests = vehicle.motTests.map((test: any) => ({
@@ -146,7 +146,7 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
         })) || [],
       }));
     }
-    
+
     return vehicle as MOTHistory;
   } catch (error) {
     console.error("Error fetching MOT history:", error);
@@ -157,6 +157,28 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
 /**
  * Get the latest MOT expiry date from MOT history
  */
+// Helper to safely parse dates from API which might be in "YYYY.MM.DD" or "DD.MM.YYYY" format
+function parseDate(dateStr: string): Date {
+  if (!dateStr) return new Date();
+
+  // Clean string
+  const clean = dateStr.trim();
+
+  // Check for DD.MM.YYYY format (common in UK APIs)
+  // Regex: 2 digits, dot, 2 digits, dot, 4 digits
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(clean)) {
+    const [day, month, year] = clean.split(".");
+    // Construct ISO string: YYYY-MM-DD
+    return new Date(`${year}-${month}-${day}T00:00:00Z`);
+  }
+
+  // Fallback for YYYY.MM.DD or ISO
+  // Fix "YYYY.MM.DD" format to "YYYY-MM-DD"
+  // And ensure " " (space) before time becomes "T" for strict ISO parsing
+  const normalized = clean.replace(/\./g, "-").replace(" ", "T");
+  return new Date(normalized);
+}
+
 export function getLatestMOTExpiry(motHistory: MOTHistory): Date | null {
   if (!motHistory.motTests || motHistory.motTests.length === 0) {
     return null;
@@ -165,10 +187,14 @@ export function getLatestMOTExpiry(motHistory: MOTHistory): Date | null {
   // Find the most recent PASS test with an expiry date
   const passedTests = motHistory.motTests
     .filter(test => test.testResult === "PASSED" && test.expiryDate)
-    .sort((a, b) => new Date(b.completedDate).getTime() - new Date(a.completedDate).getTime());
+    .sort((a, b) => {
+      const dateA = parseDate(a.completedDate).getTime();
+      const dateB = parseDate(b.completedDate).getTime();
+      return dateB - dateA;
+    });
 
   if (passedTests.length > 0 && passedTests[0]?.expiryDate) {
-    return new Date(passedTests[0].expiryDate);
+    return parseDate(passedTests[0].expiryDate);
   }
 
   return null;

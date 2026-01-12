@@ -7,6 +7,7 @@ import { Users, Search, Mail, Phone, MapPin } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,8 +24,8 @@ export default function Customers() {
   }) || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container py-8 space-y-6">
+    <DashboardLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -33,9 +34,6 @@ export default function Customers() {
               Manage your customer database
             </p>
           </div>
-          <Link href="/">
-            <Button variant="outline">Back to Home</Button>
-          </Link>
         </div>
 
         {/* Search */}
@@ -158,6 +156,6 @@ export default function Customers() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

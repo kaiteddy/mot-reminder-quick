@@ -17,15 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle2, Clock, XCircle as XCircleIcon, Eye } from "lucide-react";
+import { Send, Trash2, Loader2, Pencil, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle2, Clock, XCircle as XCircleIcon, Eye } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
+import { BookMOTDialog } from "./BookMOTDialog";
 
 // Extend Reminder type to include customerOptedOut from generateFromVehicles
 // Database stores optedOut as int (0 or 1), but we also accept boolean
-type ExtendedReminder = Reminder & { customerOptedOut?: boolean | number | null };
+type ExtendedReminder = Reminder & {
+  customerOptedOut?: boolean | number | null;
+  dateOfRegistration?: Date | string | null;
+};
 
 interface RemindersTableProps {
   reminders: ExtendedReminder[];
@@ -43,13 +47,16 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
 
+  // Book MOT State
+  const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
+  const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry?: Date | string } | null>(null);
+
   const utils = trpc.useUtils();
 
   const deleteReminder = trpc.reminders.delete.useMutation({
     onSuccess: () => {
       toast.success("Reminder deleted");
       utils.reminders.list.invalidate();
-      utils.reminders.generateFromVehicles.invalidate();
     },
     onError: (error) => {
       toast.error(`Failed to delete: ${error.message}`);
@@ -62,12 +69,22 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
       // Small delay to ensure database transaction commits
       await new Promise(resolve => setTimeout(resolve, 500));
       // Force refetch to update UI immediately
-      await utils.reminders.generateFromVehicles.refetch();
+      await utils.reminders.list.refetch();
     },
     onError: (error) => {
       toast.error(`Failed to send: ${error.message}`);
     },
   });
+
+  const handleBookMOTClick = (reminder: ExtendedReminder) => {
+    if (!reminder.vehicleId) return;
+    setSelectedVehicleForMOT({
+      id: reminder.vehicleId,
+      registration: reminder.registration,
+      currentExpiry: reminder.motExpiryDate || undefined
+    });
+    setIsBookMOTOpen(true);
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -92,7 +109,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
   const handleBatchSend = async () => {
     const remindersToSend = sortedReminders.filter(r => selectedIds.has(r.id));
-    
+
     if (remindersToSend.length === 0) {
       toast.error("No reminders selected");
       return;
@@ -133,7 +150,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
       // Small delay to ensure all database transactions commit
       await new Promise(resolve => setTimeout(resolve, 500));
       // Force refetch to update UI immediately
-      await utils.reminders.generateFromVehicles.refetch();
+      await utils.reminders.list.refetch();
     }
     if (failCount > 0) {
       toast.error(`Failed to send ${failCount} message${failCount !== 1 ? 's' : ''}`);
@@ -142,7 +159,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
   const getDeliveryStatusIcon = (reminder: any) => {
     if (!reminder.deliveryStatus) return null;
-    
+
     switch (reminder.deliveryStatus) {
       case "read":
         return <span title="Read"><Eye className="w-4 h-4 text-blue-600" /></span>;
@@ -189,11 +206,11 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
   // Filter reminders
   let filteredReminders = reminders;
-  
+
   if (typeFilter !== "all") {
     filteredReminders = filteredReminders.filter(r => r.type.toLowerCase() === typeFilter);
   }
-  
+
   if (statusFilter !== "all") {
     filteredReminders = filteredReminders.filter(r => r.status === statusFilter);
   }
@@ -225,10 +242,10 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
         bValue = b.motExpiryDate ? new Date(b.motExpiryDate).getTime() : 0;
         break;
       case "daysLeft":
-        const aDays = a.motExpiryDate 
+        const aDays = a.motExpiryDate
           ? Math.ceil((new Date(a.motExpiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
           : 999999;
-        const bDays = b.motExpiryDate 
+        const bDays = b.motExpiryDate
           ? Math.ceil((new Date(b.motExpiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
           : 999999;
         aValue = aDays;
@@ -410,14 +427,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
               {sortedReminders.map((reminder) => {
                 const customerName = reminder.customerName || "Unknown Customer";
                 const hasMultipleServices = (customerReminderCounts.get(customerName) || 0) > 1;
-                
+
                 return (
                   <TableRow key={reminder.id} className={hasMultipleServices ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.has(reminder.id)}
                         onCheckedChange={(checked) => handleSelectOne(reminder.id, checked as boolean)}
-                        disabled={reminder.status !== "pending" || !reminder.customerPhone || isSendingBatch}
+                        disabled={reminder.status !== "pending" || !reminder.customerPhone || isSendingBatch || !!reminder.customerOptedOut}
                       />
                     </TableCell>
                     <TableCell>
@@ -439,7 +456,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                         return typeof motInfo === 'string' ? motInfo : motInfo.date;
                       })()}
                     </TableCell>
-                    <TableCell className="font-mono font-semibold text-sm">{reminder.registration}</TableCell>
+                    <TableCell className="font-mono font-semibold text-sm">
+                      {reminder.registration}
+                      {reminder.dateOfRegistration && (
+                        <span className="ml-2 text-xs text-muted-foreground font-normal">
+                          ({new Date(reminder.dateOfRegistration).getFullYear()})
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="text-sm">
                         <div className="flex items-center gap-2">
@@ -480,7 +504,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                         <>
                           {Math.ceil(
                             (new Date(reminder.motExpiryDate).getTime() - Date.now()) /
-                              (1000 * 60 * 60 * 24)
+                            (1000 * 60 * 60 * 24)
                           )}{" "}
                           days
                         </>
@@ -495,8 +519,8 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                             reminder.status === "sent"
                               ? "default"
                               : reminder.status === "archived"
-                              ? "secondary"
-                              : "outline"
+                                ? "secondary"
+                                : "outline"
                           }
                         >
                           {reminder.status}
@@ -522,6 +546,14 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => handleBookMOTClick(reminder)}
+                          title="Book and Update MOT"
+                        >
+                          <CalendarDays className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             if (!reminder.customerPhone) {
                               toast.error("No phone number available");
@@ -541,7 +573,8 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                           disabled={
                             !reminder.customerPhone ||
                             deleteReminder.isPending ||
-                            sendWhatsApp.isPending
+                            sendWhatsApp.isPending ||
+                            !!reminder.customerOptedOut
                           }
                         >
                           {sendWhatsApp.isPending ? (
@@ -574,6 +607,16 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
             </TableBody>
           </Table>
         </div>
+      )}
+      {/* Book MOT Dialog */}
+      {selectedVehicleForMOT && (
+        <BookMOTDialog
+          open={isBookMOTOpen}
+          onOpenChange={setIsBookMOTOpen}
+          vehicleId={selectedVehicleForMOT.id}
+          registration={selectedVehicleForMOT.registration}
+          currentExpiryDate={selectedVehicleForMOT.currentExpiry}
+        />
       )}
     </div>
   );

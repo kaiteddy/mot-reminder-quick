@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -41,7 +41,10 @@ export const customers = mysqlTable("customers", {
   optedOutAt: timestamp("optedOutAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  phoneIdx: index("customers_phone_idx").on(table.phone),
+  emailIdx: index("customers_email_idx").on(table.email),
+}));
 
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;
@@ -66,7 +69,10 @@ export const vehicles = mysqlTable("vehicles", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  customerIdIdx: index("vehicles_customer_id_idx").on(table.customerId),
+  motExpiryDateIdx: index("vehicles_mot_expiry_date_idx").on(table.motExpiryDate),
+}));
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type InsertVehicle = typeof vehicles.$inferInsert;
@@ -97,7 +103,10 @@ export const reminders = mysqlTable("reminders", {
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  dueDateIdx: index("reminders_due_date_idx").on(table.dueDate),
+  statusIdx: index("reminders_status_idx").on(table.status),
+}));
 
 export type Reminder = typeof reminders.$inferSelect;
 export type InsertReminder = typeof reminders.$inferInsert;
@@ -123,7 +132,10 @@ export const reminderLogs = mysqlTable("reminderLogs", {
   readAt: timestamp("readAt"),
   failedAt: timestamp("failedAt"),
   errorMessage: text("errorMessage"),
-});
+}, (table) => ({
+  vehicleIdIdx: index("reminder_logs_vehicle_id_idx").on(table.vehicleId),
+  sentAtIdx: index("reminder_logs_sent_at_idx").on(table.sentAt),
+}));
 
 export type ReminderLog = typeof reminderLogs.$inferSelect;
 export type InsertReminderLog = typeof reminderLogs.$inferInsert;
@@ -142,7 +154,10 @@ export const customerMessages = mysqlTable("customerMessages", {
   receivedAt: timestamp("receivedAt").defaultNow().notNull(),
   read: int("read").default(0).notNull(), // 0 = unread, 1 = read
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  customerIdIdx: index("customer_messages_customer_id_idx").on(table.customerId),
+  receivedAtIdx: index("customer_messages_received_at_idx").on(table.receivedAt),
+}));
 
 export type CustomerMessage = typeof customerMessages.$inferSelect;
 export type InsertCustomerMessage = typeof customerMessages.$inferInsert;

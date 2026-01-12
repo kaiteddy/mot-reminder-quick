@@ -12,6 +12,7 @@ import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
@@ -20,28 +21,29 @@ export default function Home() {
 
 
   const utils = trpc.useUtils();
-  
+
   // Auto-update follow-up flags on mount and every 5 minutes
   const updateFollowUpMutation = trpc.reminders.updateFollowUpFlags.useMutation();
-  
+
   useEffect(() => {
     // Update on mount
     updateFollowUpMutation.mutate();
-    
+
     // Update every 5 minutes
     const interval = setInterval(() => {
       updateFollowUpMutation.mutate();
     }, 5 * 60 * 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
-  
+
   // Use auto-generated reminders from vehicles instead of manual reminders
-  const { data: reminders, isLoading, error: remindersError } = trpc.reminders.generateFromVehicles.useQuery(undefined, {
+  // This ensures we always have up-to-date data based on vehicle MOT dates
+  const { data: reminders, isLoading, error: remindersError } = trpc.reminders.list.useQuery(undefined, {
     retry: 2,
     retryDelay: 1000,
   });
-  
+
   // Show error toast if query fails
   useEffect(() => {
     if (remindersError) {
@@ -66,7 +68,7 @@ export default function Home() {
 
   const handleImageUpload = async (file: File) => {
     setIsProcessing(true);
-    
+
     // Convert file to base64
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -86,8 +88,8 @@ export default function Home() {
   const allReminders = reminders || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container py-8 space-y-8">
+    <DashboardLayout>
+      <div className="space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -97,62 +99,6 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href="/database">
-              <Button variant="outline" size="lg">
-                <Database className="w-4 h-4 mr-2" />
-                Database
-              </Button>
-            </Link>
-            <Link href="/customers">
-              <Button variant="outline" size="lg">
-                <Users className="w-4 h-4 mr-2" />
-                Customers
-              </Button>
-            </Link>
-            <Link href="/vehicles">
-              <Button variant="outline" size="lg">
-                <Car className="w-4 h-4 mr-2" />
-                Vehicles
-              </Button>
-            </Link>
-            <Link href="/mot-check">
-              <Button variant="outline" size="lg">
-                <Search className="w-4 h-4 mr-2" />
-                MOT Check
-              </Button>
-            </Link>
-            <Link href="/import">
-              <Button variant="outline" size="lg">
-                <Upload className="w-4 h-4 mr-2" />
-                Import from GA4
-              </Button>
-            </Link>
-            <Link href="/test-whatsapp">
-              <Button variant="outline" size="lg">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Test WhatsApp
-              </Button>
-            </Link>
-            <Link href="/logs">
-              <Button variant="outline" size="lg" className="relative">
-                <FileText className="w-4 h-4 mr-2" />
-                Logs & Messages
-                <UnreadMessageBadge />
-              </Button>
-            </Link>
-            <Link href="/conversations">
-              <Button variant="outline" size="lg" className="relative">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Conversations
-                <UnreadMessageBadge />
-              </Button>
-            </Link>
-            <Link href="/phone-cleanup">
-              <Button variant="outline" size="lg">
-                <Wrench className="w-4 h-4 mr-2" />
-                Phone Cleanup
-              </Button>
-            </Link>
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">
               <Plus className="w-4 h-4 mr-2" />
               Upload Screenshot
@@ -242,6 +188,6 @@ export default function Home() {
           />
         )}
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

@@ -21,10 +21,10 @@ interface TwilioWebhookBody {
  */
 function checkOptOutKeywords(messageBody: string): boolean {
   if (!messageBody) return false;
-  
+
   const normalizedBody = messageBody.trim().toUpperCase();
   const optOutKeywords = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
-  
+
   return optOutKeywords.includes(normalizedBody);
 }
 
@@ -33,10 +33,10 @@ function checkOptOutKeywords(messageBody: string): boolean {
  */
 function checkOptInKeywords(messageBody: string): boolean {
   if (!messageBody) return false;
-  
+
   const normalizedBody = messageBody.trim().toUpperCase();
   const optInKeywords = ['START', 'YES', 'UNSTOP'];
-  
+
   return optInKeywords.includes(normalizedBody);
 }
 
@@ -72,7 +72,7 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
 
     // Check for opt-out keywords (STOP, UNSUBSCRIBE, etc.)
     const isOptOut = checkOptOutKeywords(body.Body);
-    
+
     // Log the incoming message
     await logIncomingMessage({
       messageSid: body.MessageSid,
@@ -146,37 +146,51 @@ async function logIncomingMessage(data: {
   timestamp: Date;
   isOptOut?: boolean;
 }) {
-  const { createCustomerMessage, findCustomerByPhone, setCustomerOptOut, setCustomerOptIn } = await import("../db");
+  const { createCustomerMessage, findCustomerByPhone, setCustomerOptOut, setCustomerOptIn, createCustomer } = await import("../db");
 
   try {
     // Extract phone number from WhatsApp format (whatsapp:+1234567890)
     const fromNumber = data.from.replace('whatsapp:', '');
     const toNumber = data.to.replace('whatsapp:', '');
-    
+
     // Try to find customer by phone number
     let customerId = null;
     try {
       const customer = await findCustomerByPhone(fromNumber);
       if (customer) {
         customerId = customer.id;
-        
+
         // Handle opt-out
         if (data.isOptOut) {
           await setCustomerOptOut(customer.id);
           console.log(`[Twilio Webhook] ✓ Customer ${customer.id} (${customer.name}) opted out`);
         }
-        
+
         // Handle opt-in (START keyword)
         const isOptIn = checkOptInKeywords(data.body);
         if (isOptIn) {
           await setCustomerOptIn(customer.id);
           console.log(`[Twilio Webhook] ✓ Customer ${customer.id} (${customer.name}) opted back in`);
         }
+      } else {
+        // Customer not found, create new one
+        console.log(`[Twilio Webhook] Creating new customer for unknown number: ${fromNumber}`);
+        try {
+          const newCustomerId = await createCustomer({
+            name: `New Lead (${fromNumber})`,
+            phone: fromNumber,
+            optedOut: 0,
+          });
+          customerId = newCustomerId;
+          console.log(`[Twilio Webhook] ✓ Created new customer ID: ${customerId}`);
+        } catch (createError) {
+          console.error("[Twilio Webhook] Failed to create new customer:", createError);
+        }
       }
     } catch (error) {
-      console.warn("[Twilio Webhook] Could not find customer:", error);
+      console.warn("[Twilio Webhook] Error looking up/creating customer:", error);
     }
-    
+
     // Store the message
     await createCustomerMessage({
       messageSid: data.messageSid,
@@ -187,7 +201,7 @@ async function logIncomingMessage(data: {
       receivedAt: data.timestamp,
       read: 0,
     });
-    
+
     console.log("[Twilio Webhook] Message stored:", {
       messageSid: data.messageSid,
       from: fromNumber,
@@ -210,7 +224,7 @@ async function updateMessageStatus(data: {
 
   try {
     console.log("[Twilio Status] Updating status:", data);
-    
+
     // Possible statuses: queued, sending, sent, delivered, read, undelivered, failed
     if (data.status === "read") {
       await updateReminderLogStatus(data.messageSid, "read", data.timestamp);

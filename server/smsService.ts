@@ -7,6 +7,7 @@ interface SMSConfig {
   accountSid: string;
   authToken: string;
   whatsappNumber: string;
+  messagingServiceSid?: string;
 }
 
 interface SendSMSParams {
@@ -31,6 +32,7 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     accountSid: process.env.TWILIO_ACCOUNT_SID || "",
     authToken: process.env.TWILIO_AUTH_TOKEN || "",
     whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER || "",
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
   };
 
   // Check if Twilio is configured
@@ -43,17 +45,20 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
 
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`;
-    
+
     // Format recipient number for WhatsApp if not already formatted
     const toNumber = params.to.startsWith('whatsapp:') ? params.to : `whatsapp:${params.to}`;
-    
+
     // Ensure From number also has whatsapp: prefix
-    const fromNumber = config.whatsappNumber.startsWith('whatsapp:') 
-      ? config.whatsappNumber 
+    const fromNumber = config.whatsappNumber.startsWith('whatsapp:')
+      ? config.whatsappNumber
       : `whatsapp:${config.whatsappNumber}`;
-    
+
+    // Use Messaging Service SID if available
+    const messagingServiceSid = config.messagingServiceSid;
+
     let formData: URLSearchParams;
-    
+
     if (params.useTemplate && params.templateSid) {
       // Use WhatsApp Message Template (no 24-hour window restriction)
       formData = new URLSearchParams({
@@ -61,7 +66,7 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
         From: fromNumber,
         ContentSid: params.templateSid,
       });
-      
+
       // Add template variables
       if (params.templateVariables) {
         const contentVars = JSON.stringify(params.templateVariables);
@@ -78,6 +83,13 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
       });
     }
 
+    // Add MessagingServiceSid if available (overrides From)
+    if (messagingServiceSid) {
+      formData.append('MessagingServiceSid', messagingServiceSid);
+      // When using MessagingServiceSid, 'From' is optional but good to keep as fallback
+      console.log('[SMS Service] Using MessagingServiceSid:', messagingServiceSid);
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -90,9 +102,11 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[SMS Service] Twilio API Error:', JSON.stringify(errorData, null, 2));
+      const sidHint = config.accountSid ? `${config.accountSid.substring(0, 6)}...` : "missing";
+      const tokenHint = config.authToken ? `${config.authToken.substring(0, 3)}...` : "missing";
       return {
         success: false,
-        error: errorData.message || `Twilio API error: ${response.statusText}`,
+        error: `Twilio Error: ${errorData.message || response.statusText} (SID: ${sidHint}, Token: ${tokenHint})`,
       };
     }
 
@@ -168,15 +182,15 @@ export function generateFullMOTTemplateContent(params: {
   });
 
   const header = "🚗 Eli Motors Ltd - MOT Reminder";
-  
+
   const body = params.isExpired
     ? `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expired on ${formattedDate}.`
     : `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expires on ${formattedDate} (${params.daysLeft} days).`;
-  
+
   const callToAction = `📅 Book your MOT test today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
-  
+
   const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
-  
+
   return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
 }
 
@@ -191,24 +205,24 @@ export async function sendMOTReminderWithTemplate(params: {
 }): Promise<SendSMSResult> {
   const now = new Date();
   now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
-  
+
   const expiryDate = new Date(params.motExpiryDate);
   expiryDate.setHours(0, 0, 0, 0);
-  
+
   const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   const isExpired = expiryDate < now;
-  
+
   const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
   });
-  
+
   // Choose template based on whether MOT has expired
-  const templateSid = isExpired 
+  const templateSid = isExpired
     ? 'HX0a553ba697cdc3acce4a935f5d462ada' // copy_motreminder (expired)
     : 'HX127c47f8a63b992d86b43943394a1740'; // motreminder (expiring)
-  
+
   // For expired MOTs, we only need 3 variables (name, registration, date)
   // For expiring MOTs, we need 4 variables (name, registration, date, days)
   const templateVariables: Record<string, string> = isExpired ? {
@@ -221,7 +235,7 @@ export async function sendMOTReminderWithTemplate(params: {
     '3': formattedDate,
     '4': daysLeft.toString(),
   };
-  
+
   return sendSMS({
     to: params.to,
     useTemplate: true,
@@ -246,13 +260,13 @@ export function generateFullServiceTemplateContent(params: {
   });
 
   const header = "🔧 Eli Motors Ltd - Service Reminder";
-  
+
   const body = `Hi ${params.customerName},\n\nYour vehicle ${params.registration} is due for a service on ${formattedDate} (${params.daysLeft} days).`;
-  
+
   const callToAction = `📅 Book your service today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
-  
+
   const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
-  
+
   return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
 }
 
@@ -266,13 +280,13 @@ export async function sendServiceReminderWithTemplate(params: {
   serviceDueDate: Date;
 }): Promise<SendSMSResult> {
   const daysLeft = Math.ceil((params.serviceDueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  
+
   const formattedDate = params.serviceDueDate.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
   });
-  
+
   return sendSMS({
     to: params.to,
     useTemplate: true,

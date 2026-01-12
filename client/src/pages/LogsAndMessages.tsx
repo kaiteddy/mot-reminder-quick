@@ -13,13 +13,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatHistory } from "@/components/ChatHistory";
 import { MessageDetailDialog } from "@/components/MessageDetailDialog";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function LogsAndMessages() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
-  
+
   // Auto-refresh logs every 10 seconds to show updated delivery status
   const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery(undefined, {
     refetchInterval: 10000,
@@ -27,16 +28,16 @@ export default function LogsAndMessages() {
   const { data: messages, isLoading: messagesLoading } = trpc.messages.list.useQuery(undefined, {
     refetchInterval: 10000,
   });
-  
+
   // Get unique phone numbers from messages to fetch customer data
   const uniquePhoneNumbers = Array.from(new Set(messages?.map(m => m.fromNumber) || []));
-  
+
   // Fetch customer and vehicle info for all phone numbers in a single query
   const { data: customersData } = trpc.customers.getByPhones.useQuery(
     { phones: uniquePhoneNumbers },
     { enabled: uniquePhoneNumbers.length > 0 }
   );
-  
+
   // Create a map of phone number to customer/vehicle data
   const customerDataMap = new Map();
   customersData?.forEach((data) => {
@@ -128,12 +129,12 @@ export default function LogsAndMessages() {
     if (statusFilter !== "all" && log.status !== statusFilter) {
       return false;
     }
-    
+
     // Type filter
     if (typeFilter !== "all" && log.messageType !== typeFilter) {
       return false;
     }
-    
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -143,7 +144,7 @@ export default function LogsAndMessages() {
         log.recipient?.toLowerCase().includes(query)
       );
     }
-    
+
     return true;
   });
 
@@ -159,7 +160,7 @@ export default function LogsAndMessages() {
   // Export to CSV
   const exportToCSV = () => {
     if (!filteredLogs || filteredLogs.length === 0) return;
-    
+
     const headers = ['Sent At', 'Customer', 'Vehicle', 'Type', 'Phone', 'Status', 'Delivered At', 'Read At', 'Error'];
     const rows = filteredLogs.map(log => [
       new Date(log.sentAt).toLocaleString('en-GB'),
@@ -172,7 +173,7 @@ export default function LogsAndMessages() {
       log.readAt ? new Date(log.readAt).toLocaleString('en-GB') : '',
       log.errorMessage || '',
     ]);
-    
+
     const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -197,7 +198,7 @@ export default function LogsAndMessages() {
     const phoneNumber = message.fromNumber;
     const existing = conversationMap.get(phoneNumber);
     const timestamp = new Date(message.receivedAt);
-    
+
     if (!existing) {
       conversationMap.set(phoneNumber, {
         phoneNumber,
@@ -229,27 +230,12 @@ export default function LogsAndMessages() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">{APP_TITLE}</h1>
-              <p className="text-muted-foreground">Reminder Logs & Customer Messages</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link href="/">Home</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/database">Database</Link>
-              </Button>
-            </div>
-          </div>
+    <DashboardLayout>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold">Logs & Messages</h1>
+          <p className="text-muted-foreground">Track sent reminders and customer responses</p>
         </div>
-      </header>
-
-      <main className="container mx-auto py-8 space-y-8">
         {/* Statistics Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card>
@@ -312,7 +298,7 @@ export default function LogsAndMessages() {
                 Export CSV
               </Button>
             </div>
-            
+
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-3 mt-4">
               <div className="relative flex-1">
@@ -379,8 +365,8 @@ export default function LogsAndMessages() {
                   </TableHeader>
                   <TableBody>
                     {filteredLogs.map((log) => (
-                      <TableRow 
-                        key={log.id} 
+                      <TableRow
+                        key={log.id}
                         className={`cursor-pointer hover:bg-slate-50 transition-colors ${log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''}`}
                         onClick={() => setSelectedLog(log)}
                       >
@@ -443,7 +429,7 @@ export default function LogsAndMessages() {
                 </Table>
               </div>
             )}
-            
+
             {filteredLogs && filteredLogs.length > 0 && (
               <div className="mt-4 text-sm text-muted-foreground text-center">
                 Showing {filteredLogs.length} of {logs?.length || 0} reminders
@@ -567,7 +553,7 @@ export default function LogsAndMessages() {
             )}
           </CardContent>
         </Card>
-      </main>
+      </div>
 
       {/* Message Detail Dialog */}
       {selectedLog && (
@@ -577,6 +563,6 @@ export default function LogsAndMessages() {
           log={selectedLog}
         />
       )}
-    </div>
+    </DashboardLayout>
   );
 }

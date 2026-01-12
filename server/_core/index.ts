@@ -3,10 +3,10 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { registerAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { serveStatic, setupVite } from "./vite";
+import { serveStatic } from "./serve-static";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -27,15 +27,17 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+export const app = express();
+export const server = createServer(app);
+
 async function startServer() {
-  const app = express();
-  const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
-  
+  // Auth routes (login/logout)
+  registerAuthRoutes(app);
+
   // Twilio webhook endpoints
   const { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } = await import("../webhooks/twilio");
   app.post("/api/webhooks/twilio", handleTwilioWebhook);
@@ -53,6 +55,8 @@ async function startServer() {
   );
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
+    // Dynamic import to avoid bundling Vite in production
+    const { setupVite } = await import("./vite-dev");
     await setupVite(app, server);
   } else {
     serveStatic(app);
@@ -70,4 +74,34 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// Only start the server if this file is run directly
+// Only start the server if this file is run directly
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('index.ts')) {
+  startServer().catch(console.error);
+} else {
+  // Initialize routes even if not starting server (for Vercel)
+  // Use top-level await to ensure routes are registered before export is used
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // Auth routes (login/logout)
+  registerAuthRoutes(app);
+
+  try {
+    const { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } = await import("../webhooks/twilio");
+    app.post("/api/webhooks/twilio", handleTwilioWebhook);
+    app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
+    app.get("/api/webhooks/twilio", handleWebhookTest);
+    app.get("/api/webhooks/twilio/status", handleWebhookTest);
+  } catch (e) {
+    console.warn("Failed to register Twilio webhooks", e);
+  }
+
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
+}

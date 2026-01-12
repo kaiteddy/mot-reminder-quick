@@ -8,6 +8,7 @@ import { Car, Search } from "lucide-react";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Vehicles() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,8 +38,8 @@ export default function Vehicles() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container py-8 space-y-6">
+    <DashboardLayout>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -47,9 +48,6 @@ export default function Vehicles() {
               Manage your vehicle database
             </p>
           </div>
-          <Link href="/">
-            <Button variant="outline">Back to Home</Button>
-          </Link>
         </div>
 
         {/* Search */}
@@ -104,7 +102,7 @@ export default function Vehicles() {
                   <TableBody>
                     {filteredVehicles.map((vehicle) => {
                       const daysUntilMOT = getDaysUntilMOT(vehicle.motExpiryDate);
-                      
+
                       return (
                         <TableRow key={vehicle.id}>
                           <TableCell className="font-mono font-bold">
@@ -150,10 +148,10 @@ export default function Vehicles() {
                                       daysUntilMOT < 0
                                         ? "bg-red-50 text-red-700 border-red-200"
                                         : daysUntilMOT <= 30
-                                        ? "bg-orange-50 text-orange-700 border-orange-200"
-                                        : daysUntilMOT <= 60
-                                        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                        : "bg-green-50 text-green-700 border-green-200"
+                                          ? "bg-orange-50 text-orange-700 border-orange-200"
+                                          : daysUntilMOT <= 60
+                                            ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                            : "bg-green-50 text-green-700 border-green-200"
                                     }
                                   >
                                     {daysUntilMOT < 0
@@ -203,6 +201,6 @@ export default function Vehicles() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

@@ -17,11 +17,15 @@ import PhoneCleanup from "./pages/PhoneCleanup";
 import ReminderArchive from "./pages/ReminderArchive";
 import FollowUpActions from "./pages/FollowUpActions";
 import Conversations from "./pages/Conversations";
+import SystemStatus from "./pages/SystemStatus";
+
+import Login from "./pages/Login";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
+      <Route path="/login" component={Login} />
       <Route path={"/"} component={Home} />
       <Route path="/mot-check" component={MOTCheck} />
       <Route path="/import" component={Import} />
@@ -35,6 +39,7 @@ function Router() {
       <Route path="/archive" component={ReminderArchive} />
       <Route path="/follow-up" component={FollowUpActions} />
       <Route path="/conversations" component={Conversations} />
+      <Route path="/system-status" component={SystemStatus} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
@@ -52,7 +57,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider
         defaultTheme="light"
-        // switchable
+      // switchable
       >
         <TooltipProvider>
           <Toaster />

@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { APP_TITLE } from "@/const";
 import { Link } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 
 type ImportStep = "customers" | "vehicles" | "reminders" | "complete";
 
@@ -27,7 +28,7 @@ export default function Import() {
   const [remindersFile, setRemindersFile] = useState<File | null>(null);
   const [templatesFile, setTemplatesFile] = useState<File | null>(null);
   const [enrichWithDVLA, setEnrichWithDVLA] = useState(false);
-  
+
   const [customersResult, setCustomersResult] = useState<ImportResult | null>(null);
   const [vehiclesResult, setVehiclesResult] = useState<ImportResult | null>(null);
   const [remindersResult, setRemindersResult] = useState<ImportResult | null>(null);
@@ -131,19 +132,14 @@ export default function Import() {
   const isImporting = !!(currentStep && currentStep !== "complete");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container py-8 space-y-8 max-w-4xl">
+    <DashboardLayout>
+      <div className="space-y-8 max-w-4xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">Import from Garage Assistant 4</h1>
-            <p className="text-muted-foreground mt-2">
-              Import your existing customers, vehicles, and reminders
-            </p>
-          </div>
-          <Link href="/">
-            <Button variant="outline">Back to Home</Button>
-          </Link>
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight">Import from Garage Assistant 4</h1>
+          <p className="text-muted-foreground mt-2">
+            Import your existing customers, vehicles, and reminders
+          </p>
         </div>
 
         {/* Current Statistics */}
@@ -190,7 +186,7 @@ export default function Import() {
               onChange={(file) => handleFileChange("customers", file)}
               disabled={isImporting}
             />
-            
+
             <FileUploadInput
               label="Vehicles.csv"
               required
@@ -198,7 +194,7 @@ export default function Import() {
               onChange={(file) => handleFileChange("vehicles", file)}
               disabled={isImporting}
             />
-            
+
             <FileUploadInput
               label="Reminders.csv"
               required
@@ -206,7 +202,7 @@ export default function Import() {
               onChange={(file) => handleFileChange("reminders", file)}
               disabled={isImporting}
             />
-            
+
             <FileUploadInput
               label="Reminder_Templates.csv"
               required
@@ -221,8 +217,8 @@ export default function Import() {
                 id="enrichDVLA"
                 checked={enrichWithDVLA}
                 onChange={(e) => setEnrichWithDVLA(e.target.checked)}
-              disabled={isImporting || false}
-              className="w-4 h-4"
+                disabled={isImporting || false}
+                className="w-4 h-4"
               />
               <label htmlFor="enrichDVLA" className="text-sm">
                 Enrich vehicles with DVLA data (MOT expiry, tax status) - slower but more accurate
@@ -246,7 +242,7 @@ export default function Import() {
                 result={customersResult}
                 isLoading={importCustomersMutation.isPending}
               />
-              
+
               <ImportStepIndicator
                 step="vehicles"
                 label="Importing Vehicles"
@@ -255,7 +251,7 @@ export default function Import() {
                 result={vehiclesResult}
                 isLoading={importVehiclesMutation.isPending}
               />
-              
+
               <ImportStepIndicator
                 step="reminders"
                 label="Importing Reminders"
@@ -307,7 +303,7 @@ export default function Import() {
           )}
         </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
@@ -380,7 +376,7 @@ function ImportStepIndicator({
             {label}
           </span>
         </div>
-        
+
         {result && (
           <div className="flex gap-2">
             <Badge variant="outline" className="bg-green-50">
@@ -404,7 +400,7 @@ function ImportStepIndicator({
           </div>
         )}
       </div>
-      
+
       {result && result.errors.length > 0 && (
         <div className="ml-7 text-xs text-red-600 space-y-1">
           {result.errors.slice(0, 3).map((error, i) => (
