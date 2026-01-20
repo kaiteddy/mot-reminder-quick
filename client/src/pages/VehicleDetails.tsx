@@ -20,13 +20,17 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { useParams } from "wouter";
+import { useParams, useRoute } from "wouter";
 
 export default function VehicleDetails() {
     const params = useParams<{ registration: string }>();
-    console.log("VehicleDetails: params received", params);
-    const registration = params.registration ? decodeURIComponent(params.registration) : "";
-    console.log("VehicleDetails: registration decided", registration);
+    const [match, routeParams] = useRoute("/v/:registration");
+    const [matchAlt, routeParamsAlt] = useRoute("/vehicles/:registration");
+
+    const regParam = params.registration || routeParams?.registration || routeParamsAlt?.registration;
+    const registration = regParam ? decodeURIComponent(regParam) : "";
+
+    console.log("VehicleDetails debug:", { params, routeParams, routeParamsAlt, registration });
 
     const { data, isLoading } = trpc.vehicles.getByRegistration.useQuery(
         { registration: registration || "" },
