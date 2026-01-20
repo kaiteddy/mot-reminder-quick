@@ -24,7 +24,9 @@ import { useParams } from "wouter";
 
 export default function VehicleDetails() {
     const params = useParams<{ registration: string }>();
+    console.log("VehicleDetails: params received", params);
     const registration = params.registration ? decodeURIComponent(params.registration) : "";
+    console.log("VehicleDetails: registration decided", registration);
 
     const { data, isLoading } = trpc.vehicles.getByRegistration.useQuery(
         { registration: registration || "" },
