@@ -58,6 +58,8 @@ export const vehicles = mysqlTable("vehicles", {
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
   motExpiryDate: timestamp("motExpiryDate"),
+  taxStatus: varchar("taxStatus", { length: 20 }), // Taxed, Untaxed, SORN
+  taxDueDate: timestamp("taxDueDate"),
   lastChecked: timestamp("lastChecked"),
   customerId: int("customerId"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID

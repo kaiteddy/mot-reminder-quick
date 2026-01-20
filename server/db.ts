@@ -288,6 +288,14 @@ export async function createCustomer(data: InsertCustomer) {
   return result.insertId;
 }
 
+export async function updateCustomer(id: number, data: Partial<InsertCustomer>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { customers } = await import("../drizzle/schema");
+  await db.update(customers).set(data).where(eq(customers.id, id));
+}
+
 export async function getCustomerByExternalId(externalId: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -514,6 +522,8 @@ export async function getVehiclesWithCustomersForReminders() {
         customerEmail: customers.email,
         customerPhone: customers.phone,
         customerOptedOut: customers.optedOut,
+        taxStatus: vehicles.taxStatus,
+        taxDueDate: vehicles.taxDueDate,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -564,6 +574,8 @@ export async function getAllVehiclesWithCustomers() {
         customerEmail: customers.email,
         customerPhone: customers.phone,
         customerOptedOut: customers.optedOut,
+        taxStatus: vehicles.taxStatus,
+        taxDueDate: vehicles.taxDueDate,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -735,3 +747,59 @@ export async function updateReminderLogStatus(messageSid: string, status: string
     .where(eq(reminderLogs.messageSid, messageSid));
 }
 
+export async function bulkUpdateVehicleMOT(updates: Array<{
+  id: number;
+  motExpiryDate: Date | null;
+  make?: string;
+  model?: string;
+  colour?: string;
+  fuelType?: string;
+  taxStatus?: string;
+  taxDueDate?: Date | null;
+}>) {
+  const db = await getDb();
+  if (!db) return;
+
+  const { vehicles } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  for (const update of updates) {
+    const updateData: any = {
+      motExpiryDate: update.motExpiryDate,
+      taxStatus: update.taxStatus,
+      taxDueDate: update.taxDueDate,
+    };
+    if (update.make) updateData.make = update.make;
+    if (update.model) updateData.model = update.model;
+    if (update.colour) updateData.colour = update.colour;
+    if (update.fuelType) updateData.fuelType = update.fuelType;
+
+    await db.update(vehicles)
+      .set(updateData)
+      .where(eq(vehicles.id, update.id));
+  }
+}
+
+
+// Add these to server/db.ts
+
+export async function updateVehicle(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { vehicles } = await import("../drizzle/schema");
+  await db.update(vehicles).set(data).where(eq(vehicles.id, id));
+}
+
+export async function findVehicleByRegistration(registration: string) {
+  return getVehicleByRegistration(registration);
+}
+
+export async function findCustomerByName(name: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const { customers } = await import("../drizzle/schema");
+  const result = await db.select().from(customers).where(eq(customers.name, name)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}

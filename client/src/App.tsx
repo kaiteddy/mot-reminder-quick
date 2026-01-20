@@ -8,7 +8,10 @@ import Home from "./pages/Home";
 import MOTCheck from "./pages/MOTCheck";
 import Import from "./pages/Import";
 import Customers from "./pages/Customers";
+import CustomerDetails from "./pages/CustomerDetails";
+import Analytics from "./pages/Analytics";
 import Vehicles from "./pages/Vehicles";
+import VehicleDetails from "./pages/VehicleDetails";
 import Database from "./pages/Database";
 import DiagnoseMOT from "./pages/DiagnoseMOT";
 import TestWhatsApp from "./pages/TestWhatsApp";
@@ -19,6 +22,7 @@ import FollowUpActions from "./pages/FollowUpActions";
 import Conversations from "./pages/Conversations";
 import SystemStatus from "./pages/SystemStatus";
 
+import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
 
 function Router() {
@@ -30,7 +34,10 @@ function Router() {
       <Route path="/mot-check" component={MOTCheck} />
       <Route path="/import" component={Import} />
       <Route path="/customers" component={Customers} />
+      <Route path="/customers/:id" component={CustomerDetails} />
+      <Route path="/analytics" component={Analytics} />
       <Route path="/vehicles" component={Vehicles} />
+      <Route path="/vehicles/:registration" component={VehicleDetails} />
       <Route path="/database" component={Database} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path="/test-whatsapp" component={TestWhatsApp} />
@@ -39,6 +46,7 @@ function Router() {
       <Route path="/archive" component={ReminderArchive} />
       <Route path="/follow-up" component={FollowUpActions} />
       <Route path="/conversations" component={Conversations} />
+      <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

@@ -3,7 +3,7 @@ import iconv from 'iconv-lite';
 import { cleanPhoneField } from '../utils/phoneUtils';
 
 export interface GA4Customer {
-  _ID: string;
+  _ID?: string;
   nameTitle?: string;
   nameForename?: string;
   nameSurname?: string;
@@ -17,6 +17,10 @@ export interface GA4Customer {
   addressPostCode?: string;
   addressCounty?: string;
   Notes?: string;
+  // Alternate headers for different export formats
+  Forename?: string;
+  Surname?: string;
+  Telephone?: string;
 }
 
 export interface GA4Vehicle {
@@ -32,6 +36,25 @@ export interface GA4Vehicle {
   EngineCC?: string;
   Notes?: string;
   Notes_Reminders?: string;
+  MOTExpiry?: string;
+  // Joined Customer Fields (from Enhanced Exports)
+  Forename?: string;
+  Surname?: string;
+  Mobile?: string;
+  Email?: string;
+  "ID Vehicle"?: string;
+  "ID Customer"?: string;
+  "Engine CC"?: string;
+  "VIN "?: string;
+  "Owner Forename"?: string;
+  "Owner Surname"?: string;
+  "Owner Mobile"?: string;
+  "Owner Email"?: string;
+  "Owner Telephone"?: string;
+  "Owner Postcode"?: string;
+  "Date of Manufacture"?: string;
+  Telephone?: string;
+  PostCode?: string;
 }
 
 export interface GA4Reminder {
@@ -58,10 +81,10 @@ export interface GA4ReminderTemplate {
 export function parseCSV<T>(csvData: Buffer | string): T[] {
   try {
     // Convert from ISO-8859-1 to UTF-8 if needed
-    const utf8Data = Buffer.isBuffer(csvData) 
+    const utf8Data = Buffer.isBuffer(csvData)
       ? iconv.decode(csvData, 'ISO-8859-1')
       : csvData;
-    
+
     const records = parse(utf8Data, {
       columns: true,
       skip_empty_lines: true,
@@ -69,7 +92,7 @@ export function parseCSV<T>(csvData: Buffer | string): T[] {
       relax_quotes: true,
       relax_column_count: true,
     });
-    
+
     return records as T[];
   } catch (error: any) {
     throw new Error(`CSV parsing error: ${error.message}`);
@@ -82,7 +105,7 @@ export function parseCSV<T>(csvData: Buffer | string): T[] {
 export function mapReminderType(templateId: string, templates: GA4ReminderTemplate[]): "MOT" | "Service" | "Cambelt" | "Other" {
   const template = templates.find(t => t._ID === templateId);
   const type = template?.Type?.toUpperCase() || "OTHER";
-  
+
   if (type === "MOT") return "MOT";
   if (type === "SERVICE") return "Service";
   if (type === "CAMBELT") return "Cambelt";
@@ -94,32 +117,32 @@ export function mapReminderType(templateId: string, templates: GA4ReminderTempla
  */
 export function parseGA4Date(dateStr: string): Date | null {
   if (!dateStr || dateStr.trim() === '') return null;
-  
+
   // Handle DD/MM/YYYY format
   const parts = dateStr.trim().split('/');
   if (parts.length === 3) {
     const day = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
     const year = parseInt(parts[2], 10);
-    
+
     // Validate date components
     if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
     if (day < 1 || day > 31) return null;
     if (month < 0 || month > 11) return null;
     if (year < 1900 || year > 2100) return null;
-    
+
     // Create date and validate it's valid
     const date = new Date(year, month, day);
     if (isNaN(date.getTime())) return null;
-    
+
     // Check if the date components match (handles invalid dates like Feb 31)
     if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
       return null;
     }
-    
+
     return date;
   }
-  
+
   return null;
 }
 
@@ -127,9 +150,9 @@ export function parseGA4Date(dateStr: string): Date | null {
  * Determine if reminder was actioned (sent)
  */
 export function isReminderActioned(reminder: GA4Reminder): boolean {
-  return reminder.actioned_Email === "1" || 
-         reminder.actioned_Print === "1" || 
-         reminder.actioned_SMS === "1";
+  return reminder.actioned_Email === "1" ||
+    reminder.actioned_Print === "1" ||
+    reminder.actioned_SMS === "1";
 }
 
 /**
@@ -154,14 +177,14 @@ export function getReminderActionedInfo(reminder: GA4Reminder): { date: Date | n
 export function buildCustomerName(customer: GA4Customer): string {
   const parts = [
     customer.nameTitle,
-    customer.nameForename,
-    customer.nameSurname,
+    customer.nameForename || customer.Forename,
+    customer.nameSurname || customer.Surname,
   ].filter(Boolean);
-  
+
   if (parts.length > 0) {
     return parts.join(' ');
   }
-  
+
   return customer.nameCompany || 'Unknown Customer';
 }
 
@@ -175,7 +198,7 @@ export function buildAddress(customer: GA4Customer): string {
     customer.addressTown,
     customer.addressCounty,
   ].filter(Boolean);
-  
+
   return parts.join(', ');
 }
 
@@ -189,13 +212,14 @@ export function getPhoneNumber(customer: GA4Customer): string | null {
     const { phone } = cleanPhoneField(customer.contactMobile);
     if (phone) return phone;
   }
-  
-  // Fall back to landline
-  if (customer.contactTelephone) {
-    const { phone } = cleanPhoneField(customer.contactTelephone);
+
+  // Fall back to landline (or alternate Telephone header)
+  const landline = customer.contactTelephone || customer.Telephone;
+  if (landline) {
+    const { phone } = cleanPhoneField(landline);
     if (phone) return phone;
   }
-  
+
   return null;
 }
 
@@ -207,18 +231,18 @@ export function getCustomerEmail(customer: GA4Customer): string | null {
   if (customer.contactEmail && customer.contactEmail.includes('@')) {
     return customer.contactEmail;
   }
-  
+
   // Check if email is mixed in mobile field
   if (customer.contactMobile) {
     const { email } = cleanPhoneField(customer.contactMobile);
     if (email) return email;
   }
-  
-  // Check if email is mixed in telephone field
-  if (customer.contactTelephone) {
-    const { email } = cleanPhoneField(customer.contactTelephone);
+
+  const landline = customer.contactTelephone || customer.Telephone;
+  if (landline) {
+    const { email } = cleanPhoneField(landline);
     if (email) return email;
   }
-  
+
   return null;
 }

@@ -57,14 +57,17 @@ import { CalendarDays } from "lucide-react";
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
-type DateRangeFilter = "all" | "expired-90" | "expired-60" | "expired-30" | "expired-7" | "expiring-7" | "expiring-14" | "expiring-30" | "expiring-60" | "expiring-90";
+type TaxStatusFilter = "all" | "taxed" | "untaxed" | "sorn";
+type DateRangeFilter = "all" | "expired-all" | "expired-90" | "expired-60" | "expired-30" | "expired-7" | "expiring-7" | "expiring-14" | "expiring-30" | "expiring-60" | "expiring-90";
 
 export default function Database() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("registration");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [motStatusFilter, setMOTStatusFilter] = useState<MOTStatusFilter>("all");
+  const [taxStatusFilter, setTaxStatusFilter] = useState<TaxStatusFilter>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
+  const [showDeadVehicles, setShowDeadVehicles] = useState(false);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -117,6 +120,36 @@ export default function Database() {
       toast.error(`Failed to send reminder: ${error.message}`);
     },
   });
+
+  const handleBatchRefresh = async () => {
+    const isFullRefresh = selectedVehicleIds.size === 0;
+
+    // Get visible vehicles if implicit selection
+    const visibleVehicles = filteredAndSortedVehicles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    // Calculate which IDs to send
+    const idsToSend = isFullRefresh
+      ? visibleVehicles.map(v => v.id)
+      : Array.from(selectedVehicleIds);
+
+    if (idsToSend.length === 0) return;
+
+    // For implicitly selected view refresh, show confirmation
+    if (isFullRefresh) {
+      if (!confirm(`Refresh MOT & Tax for the ${idsToSend.length} visible vehicles?`)) {
+        return;
+      }
+    }
+
+    try {
+      await bulkUpdateMutation.mutateAsync({
+        vehicleIds: idsToSend,
+      });
+      setSelectedVehicleIds(new Set());
+    } catch (error) {
+      console.error("Batch refresh failed:", error);
+    }
+  };
 
   const confirmSend = () => {
     if (!pendingVehicle) return;
@@ -356,17 +389,54 @@ export default function Database() {
     if (!vehicles) return [];
 
     let filtered = vehicles.filter(vehicle => {
+      // Filter: Dead Vehicles (Hide by default if unchecked)
+      if (!showDeadVehicles) {
+        if (vehicle.motExpiryDate) {
+          const expiry = new Date(vehicle.motExpiryDate);
+          const today = new Date();
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+          const diffTime = expiry.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          // Using 300 days (approx 10 months) to catch vehicles approaching the 1-year mark
+          // or where the user perception of "one year" is looser.
+          if (diffDays < -300) {
+            // MOT Expired > 10 months
+            // Dead if Tax is NOT 'Taxed' (i.e. Untaxed, SORN, or Unknown)
+            // This is safer than checking tax dates which might be < 1 year but irrelevant if SORN.
+            const isTaxed = vehicle.taxStatus?.toLowerCase() === 'taxed';
+
+            if (!isTaxed) {
+              return false;
+            }
+          }
+        }
+      }
+
+      const termLower = searchTerm.toLowerCase();
+      const termNormalized = termLower.replace(/\s+/g, '');
+
       const matchesSearch =
-        vehicle.registration?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vehicle.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vehicle.make?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vehicle.model?.toLowerCase().includes(searchTerm.toLowerCase());
+        (vehicle.registration?.toLowerCase().replace(/\s+/g, '') || "").includes(termNormalized) ||
+        vehicle.customerName?.toLowerCase().includes(termLower) ||
+        vehicle.make?.toLowerCase().includes(termLower) ||
+        vehicle.model?.toLowerCase().includes(termLower);
 
       if (!matchesSearch) return false;
 
       if (motStatusFilter !== "all") {
         const { status } = getMOTStatus(vehicle.motExpiryDate);
         if (status !== motStatusFilter) return false;
+      }
+
+      // Tax Filter
+      if (taxStatusFilter !== "all") {
+        const currentStatus = vehicle.taxStatus?.toLowerCase() || "untaxed"; // Default to untaxed if unknown
+        if (taxStatusFilter === "taxed" && currentStatus !== "taxed") return false;
+        if (taxStatusFilter === "untaxed" && currentStatus !== "untaxed") return false;
+        if (taxStatusFilter === "sorn" && currentStatus !== "sorn") return false;
       }
 
       // Date range filter
@@ -386,6 +456,9 @@ export default function Database() {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         switch (dateRangeFilter) {
+          case "expired-all":
+            if (diffDays >= 0) return false;
+            break;
           case "expired-90":
             if (diffDays >= 0 || diffDays < -90) return false;
             break;
@@ -505,13 +578,22 @@ export default function Database() {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         if (status === "expired") {
-          // Only count as "Expired" (actionable) if NOT sent recently
-          if (!sentRecently) {
-            expired++;
-            if (diffDays >= -90) expired90++;
-            if (diffDays >= -60) expired60++;
-            if (diffDays >= -30) expired30++;
-            if (diffDays >= -7) expired7++;
+          // Check for Dead Vehicle logic
+          const isTaxed = vehicle.taxStatus?.toLowerCase() === 'taxed';
+          // Dead if MOT expired > 1 year AND (Tax != Taxed) matched the filter logic
+          // Note: diffDays is negative for expired.
+          if (diffDays < -300 && !isTaxed) {
+            // It is dead. Do not count as "Actionable Expired" unless we want a separate "Dead" stat.
+            // For now, simpler to just exclude it from "Expired" so the count matches the simplified view.
+          } else {
+            // Only count as "Expired" (actionable) if NOT sent recently
+            if (!sentRecently) {
+              expired++;
+              if (diffDays >= -90) expired90++;
+              if (diffDays >= -60) expired60++;
+              if (diffDays >= -30) expired30++;
+              if (diffDays >= -7) expired7++;
+            }
           }
         } else if (status === "due") {
           // Only count as "Due" if NOT sent recently
@@ -651,12 +733,12 @@ export default function Database() {
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Expired</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <Button
-                    variant={dateRangeFilter === "expired-90" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-90" ? "all" : "expired-90")}
+                    variant={dateRangeFilter === "expired-all" ? "default" : "outline"}
+                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-all" ? "all" : "expired-all")}
                     className="justify-between"
                   >
-                    <span>Last 90 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expired90}</Badge>
+                    <span>All Expired</span>
+                    <Badge variant="secondary" className="ml-2">{stats.expired}</Badge>
                   </Button>
                   <Button
                     variant={dateRangeFilter === "expired-60" ? "default" : "outline"}
@@ -772,11 +854,61 @@ export default function Database() {
                   <SelectItem value="valid">Valid (&gt;30d)</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Select value={taxStatusFilter} onValueChange={(value) => setTaxStatusFilter(value as TaxStatusFilter)}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Tax Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tax Status</SelectItem>
+                  <SelectItem value="taxed">Taxed</SelectItem>
+                  <SelectItem value="untaxed">Untaxed</SelectItem>
+                  <SelectItem value="sorn">SORN</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            <div className="flex items-center space-x-2 mt-4">
+              <Checkbox
+                id="show-dead"
+                checked={showDeadVehicles}
+                onCheckedChange={(checked) => setShowDeadVehicles(checked as boolean)}
+              />
+              <label
+                htmlFor="show-dead"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Show Dead Vehicles (Expired &gt; 1yr & Untaxed)
+              </label>
+            </div>
+
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-slate-600">
                 Showing {filteredAndSortedVehicles.length} of {stats.total} vehicles
               </div>
+            </div>
+
+            <div className="flex gap-2 items-center">
+              <Button
+                onClick={handleBatchRefresh}
+                disabled={bulkUpdateMutation.isPending || isSendingBatch}
+                variant={selectedVehicleIds.size === 0 ? "outline" : "secondary"}
+                size="sm"
+                className="animate-in fade-in"
+              >
+                {bulkUpdateMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {selectedVehicleIds.size === 0 ? "Refreshing View..." : "Refreshing..."}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {selectedVehicleIds.size === 0 ? "Refresh View" : "Refresh Selected"}
+                  </>
+                )}
+              </Button>
+
               {selectedVehicleIds.size > 0 && (
                 <Button
                   onClick={handleBatchSend}
@@ -797,28 +929,28 @@ export default function Database() {
                   )}
                 </Button>
               )}
-              {selectedVehicleIds.size > 0 && (
-                <Button
-                  onClick={handleBatchDelete}
-                  disabled={deleteVehicleMutation.isPending}
-                  size="sm"
-                  variant="destructive"
-                  className="ml-2 animate-in fade-in slide-in-from-bottom-2"
-                >
-                  {deleteVehicleMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete Selected ({selectedVehicleIds.size})
-                    </>
-                  )}
-                </Button>
-              )}
             </div>
+            {selectedVehicleIds.size > 0 && (
+              <Button
+                onClick={handleBatchDelete}
+                disabled={deleteVehicleMutation.isPending}
+                size="sm"
+                variant="destructive"
+                className="ml-2 animate-in fade-in slide-in-from-bottom-2"
+              >
+                {deleteVehicleMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Selected ({selectedVehicleIds.size})
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -865,6 +997,7 @@ export default function Database() {
                       </div>
                     </TableHead>
                     <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[100px]">Tax</TableHead>
                     <TableHead className="w-[100px]">
                       <div
                         className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
@@ -898,24 +1031,39 @@ export default function Database() {
                             />
                           </TableCell>
                           <TableCell className="font-mono font-semibold text-xs">
-                            {vehicle.registration || "-"}
+                            {vehicle.customerId ? (
+                              <Link href={`/customers/${vehicle.customerId}`}>
+                                <span className="cursor-pointer hover:underline text-blue-600">
+                                  {vehicle.registration || "-"}
+                                </span>
+                              </Link>
+                            ) : (
+                              <span>{vehicle.registration || "-"}</span>
+                            )}
                             {vehicle.dateOfRegistration && (
                               <span className="ml-2 text-[10px] text-slate-400 font-normal">
                                 ({new Date(vehicle.dateOfRegistration).getFullYear()})
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm truncate max-w-[150px]">{vehicle.customerName || "-"}</TableCell>
                           <TableCell>
                             <div className="text-xs">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-slate-700 truncate">{vehicle.customerName || "Unknown"}</span>
-                                {vehicle.customerOptedOut && (
+                                {vehicle.customerId ? (
+                                  <Link href={`/customers/${vehicle.customerId}`}>
+                                    <span className="font-medium text-blue-600 truncate max-w-[140px] cursor-pointer hover:underline" title={vehicle.customerName || ""}>{vehicle.customerName || "Unknown"}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="font-medium text-slate-700 truncate max-w-[140px]" title={vehicle.customerName || ""}>{vehicle.customerName || "Unknown"}</span>
+                                )}
+                                {!!vehicle.customerOptedOut && (
                                   <Badge variant="destructive" className="text-xs px-1 py-0">OPTED OUT</Badge>
                                 )}
                               </div>
-                              <div className="text-slate-500 font-mono">{vehicle.customerPhone || "-"}</div>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-xs text-slate-500 font-mono">{vehicle.customerPhone || "-"}</div>
                           </TableCell>
                           <TableCell>
                             {vehicle.make || vehicle.model ? (
@@ -934,6 +1082,31 @@ export default function Database() {
                           </TableCell>
                           <TableCell>
                             {getMOTStatusBadge(status, daysLeft)}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {vehicle.taxStatus ? (
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge
+                                  variant={
+                                    vehicle.taxStatus === 'Taxed' ? 'outline' :
+                                      vehicle.taxStatus === 'SORN' ? 'secondary' :
+                                        'destructive'
+                                  }
+                                  className={
+                                    vehicle.taxStatus === 'Taxed' ? "text-green-600 border-green-200 bg-green-50" : ""
+                                  }
+                                >
+                                  {vehicle.taxStatus}
+                                </Badge>
+                                {vehicle.taxDueDate && (
+                                  <span className="text-[10px] text-slate-500">
+                                    Expires: {new Date(vehicle.taxDueDate).toLocaleDateString("en-GB")}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs">
                             {vehicle.lastReminderSent ? (

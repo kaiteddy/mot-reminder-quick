@@ -2,6 +2,8 @@
  * SMS Service using Twilio
  * Sends SMS reminders to customers
  */
+import { normalizePhoneNumber } from "./utils/phoneUtils";
+
 
 interface SMSConfig {
   accountSid: string;
@@ -46,8 +48,11 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${config.accountSid}/Messages.json`;
 
+    // Normalize phone number
+    const normalizedTo = normalizePhoneNumber(params.to).normalized || params.to;
+
     // Format recipient number for WhatsApp if not already formatted
-    const toNumber = params.to.startsWith('whatsapp:') ? params.to : `whatsapp:${params.to}`;
+    const toNumber = normalizedTo.startsWith('whatsapp:') ? normalizedTo : `whatsapp:${normalizedTo}`;
 
     // Ensure From number also has whatsapp: prefix
     const fromNumber = config.whatsappNumber.startsWith('whatsapp:')

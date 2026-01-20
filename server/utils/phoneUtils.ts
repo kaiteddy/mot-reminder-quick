@@ -26,22 +26,22 @@ export function extractEmailFromPhone(input: string): EmailExtractionResult {
   }
 
   const trimmed = input.trim();
-  
+
   // Check if it contains an email pattern
   const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
   const emailMatch = trimmed.match(emailRegex);
-  
+
   if (emailMatch) {
     const email = emailMatch[1];
     // Remove the email and any separators, leaving just the phone
     let phone = trimmed.replace(email, '').replace(/^[\/\-\s]+|[\/\-\s]+$/g, '').trim();
-    
+
     return {
       email,
       phone: phone || null,
     };
   }
-  
+
   return { phone: trimmed, email: null };
 }
 
@@ -51,7 +51,7 @@ export function extractEmailFromPhone(input: string): EmailExtractionResult {
  */
 export function normalizePhoneNumber(input: string | null | undefined): PhoneValidationResult {
   const issues: string[] = [];
-  
+
   if (!input || typeof input !== 'string') {
     return {
       isValid: false,
@@ -63,7 +63,7 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
   }
 
   const original = input.trim();
-  
+
   // Check for obviously invalid entries
   if (original === '0' || original === '00' || original.length < 5) {
     return {
@@ -74,22 +74,40 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
       issues: ['Too short or placeholder value'],
     };
   }
-  
+
   // Check if it starts with invalid characters
   if (original.startsWith('/') || original.startsWith('-')) {
     issues.push('Starts with invalid character');
   }
-  
-  // Remove all spaces, dashes, parentheses, and slashes
-  let cleaned = original.replace(/[\s\-\(\)\/]/g, '');
-  
+
+  // Strict cleaning: Remove EVERYTHING that is not a digit or a plus sign
+  // But we want to preserve the structure if checking validity, so...
+  // Actually, the previous regex was: /[\s\-\(\)\/]/g
+  // We need to also remove letters.
+  let cleaned = original.replace(/[^0-9+]/g, '');
+
+  // If there are multiple plus signs, or plus in the middle, it's invalid
+  if (cleaned.indexOf('+', 1) !== -1) {
+    issues.push('Invalid + placement');
+    return {
+      isValid: false,
+      normalized: null,
+      type: 'invalid',
+      original,
+      issues
+    };
+  }
+
   // Handle international format with +
   if (cleaned.startsWith('+')) {
     // Already in international format
     if (cleaned.startsWith('+44')) {
       // UK number
       const withoutPrefix = cleaned.substring(3);
-      if (withoutPrefix.length >= 10) {
+      // UK numbers (without +44) are typically 10 digits. Allow 9-11 range for flexibility.
+      // 020 1234 5678 (10 digits)
+      // 077 1234 5678 (10 digits)
+      if (withoutPrefix.length >= 9 && withoutPrefix.length <= 11) {
         return {
           isValid: true,
           normalized: cleaned,
@@ -98,7 +116,7 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
           issues,
         };
       } else {
-        issues.push('UK number too short after +44 prefix');
+        issues.push(`UK number length invalid (found ${withoutPrefix.length}, expected 9-11)`);
         return {
           isValid: false,
           normalized: null,
@@ -109,7 +127,9 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
       }
     } else {
       // Other international number
-      if (cleaned.length >= 10) {
+      // E.164 max length is 15 digits (including country code)
+      // We allow up to 16 just in case, but strictly less than 20 for DB safety
+      if (cleaned.length >= 10 && cleaned.length <= 16) {
         return {
           isValid: true,
           normalized: cleaned,
@@ -118,7 +138,7 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
           issues,
         };
       } else {
-        issues.push('International number too short');
+        issues.push('International number length invalid (expected 10-16)');
         return {
           isValid: false,
           normalized: null,
@@ -129,22 +149,22 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
       }
     }
   }
-  
+
   // Handle 00 prefix (international format without +)
   if (cleaned.startsWith('00')) {
     const withPlus = '+' + cleaned.substring(2);
     return normalizePhoneNumber(withPlus);
   }
-  
+
   // Handle UK numbers starting with 0
   if (cleaned.startsWith('0')) {
     // Remove leading 0 and add +44
     const withoutZero = cleaned.substring(1);
-    
-    if (withoutZero.length >= 10) {
+
+    if (withoutZero.length >= 9 && withoutZero.length <= 11) {
       const normalized = '+44' + withoutZero;
       const isMobile = withoutZero.startsWith('7');
-      
+
       return {
         isValid: true,
         normalized,
@@ -153,7 +173,7 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
         issues,
       };
     } else {
-      issues.push('UK number too short');
+      issues.push(`UK number length invalid (found ${withoutZero.length}, expected 9-11)`);
       return {
         isValid: false,
         normalized: null,
@@ -163,13 +183,13 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
       };
     }
   }
-  
+
   // Handle numbers that might be missing the leading 0
   // UK mobile numbers typically start with 7, landlines with 1, 2, 3, etc.
   if (cleaned.length >= 10 && /^[1-9]/.test(cleaned)) {
     const normalized = '+44' + cleaned;
     const isMobile = cleaned.startsWith('7');
-    
+
     return {
       isValid: true,
       normalized,
@@ -178,7 +198,7 @@ export function normalizePhoneNumber(input: string | null | undefined): PhoneVal
       issues: [...issues, 'Missing leading 0, assumed UK number'],
     };
   }
-  
+
   // If we get here, it's invalid
   issues.push('Unrecognized format');
   return {
@@ -212,13 +232,13 @@ export function cleanPhoneField(input: string | null | undefined): {
       },
     };
   }
-  
+
   // First, extract any email
   const { phone: phoneOnly, email } = extractEmailFromPhone(input);
-  
+
   // Then normalize the phone number
   const validation = normalizePhoneNumber(phoneOnly);
-  
+
   return {
     phone: validation.normalized,
     email,

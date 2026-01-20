@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 interface MOTRefreshButtonProps {
-  registrations: string[];
+  vehicleIds: number[];
   label?: string;
   onComplete?: () => void;
   variant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
@@ -14,38 +14,44 @@ interface MOTRefreshButtonProps {
 }
 
 export function MOTRefreshButton({
-  registrations,
-  label = "Refresh MOT Data",
+  vehicleIds,
+  label = "Refresh MOT & Tax",
   onComplete,
   variant = "outline",
   size = "default",
   disabled = false,
 }: MOTRefreshButtonProps) {
   const [progress, setProgress] = useState(0);
-  
-  const verifyMutation = trpc.reminders.bulkVerifyMOT.useMutation({
-    onSuccess: (results) => {
-      const successful = results.filter(r => r.success).length;
-      const failed = results.filter(r => !r.success).length;
-      
-      if (successful > 0) {
-        toast.success(`MOT data refreshed for ${successful} vehicle${successful !== 1 ? 's' : ''}`);
+
+  const updateMutation = trpc.database.bulkUpdateMOT.useMutation({
+    onSuccess: (result) => {
+      // Result contains stats: { success: boolean, updated: number, failed: number, ... }
+      // We can iterate or just show simple stats.
+      // Based on routers.ts, database.bulkUpdateMOT returns: { success: boolean, updated: number, failed: number, skipped: number, errors: string[] }
+
+      const { updated, failed, skipped } = result;
+
+      if (updated > 0) {
+        toast.success(`Refreshed ${updated} vehicle${updated !== 1 ? 's' : ''}`);
+      }
+      if (skipped > 0) {
+        toast.info(`Skipped ${skipped} (up to date or invalid)`);
       }
       if (failed > 0) {
         toast.error(`Failed to refresh ${failed} vehicle${failed !== 1 ? 's' : ''}`);
       }
-      
+
       setProgress(0);
       onComplete?.();
     },
-    onError: (error) => {
-      toast.error(`MOT refresh failed: ${error.message}`);
+    onError: (error: any) => {
+      toast.error(`Refresh failed: ${error.message}`);
       setProgress(0);
     },
   });
 
   const handleRefresh = () => {
-    if (registrations.length === 0) {
+    if (vehicleIds.length === 0) {
       toast.error("No vehicles to refresh");
       return;
     }
@@ -62,13 +68,13 @@ export function MOTRefreshButton({
       });
     }, 200);
 
-    toast.info(`Refreshing MOT data for ${registrations.length} vehicle${registrations.length !== 1 ? 's' : ''}...`);
-    
-    verifyMutation.mutate({ registrations });
+    toast.info(`Refreshing data for ${vehicleIds.length} vehicle${vehicleIds.length !== 1 ? 's' : ''}...`);
+
+    updateMutation.mutate({ vehicleIds });
   };
 
-  const isLoading = verifyMutation.isPending;
-  const count = registrations.length;
+  const isLoading = updateMutation.isPending;
+  const count = vehicleIds.length;
 
   return (
     <Button

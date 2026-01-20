@@ -29,6 +29,7 @@ import { BookMOTDialog } from "./BookMOTDialog";
 type ExtendedReminder = Reminder & {
   customerOptedOut?: boolean | number | null;
   dateOfRegistration?: Date | string | null;
+  lastSentAt?: Date | string | null;
 };
 
 interface RemindersTableProps {
@@ -46,6 +47,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   // Book MOT State
   const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
@@ -155,6 +157,36 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
     if (failCount > 0) {
       toast.error(`Failed to send ${failCount} message${failCount !== 1 ? 's' : ''}`);
     }
+  };
+
+  const handleBatchDelete = async () => {
+    const remindersToDelete = sortedReminders.filter(r => selectedIds.has(r.id));
+
+    if (remindersToDelete.length === 0) {
+      toast.error("No reminders selected");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${remindersToDelete.length} reminders?`)) {
+      return;
+    }
+
+    setIsDeletingBatch(true);
+    let count = 0;
+    for (const reminder of remindersToDelete) {
+      try {
+        await deleteReminder.mutateAsync({ id: reminder.id });
+        count++;
+      } catch (e) {
+        console.error("Failed to delete reminder", reminder.id, e);
+      }
+    }
+
+    setIsDeletingBatch(false);
+    toast.success(`Deleted ${count} reminders`);
+    setSelectedIds(new Set());
+    // Invalidate list to refresh
+    utils.reminders.list.invalidate();
   };
 
   const getDeliveryStatusIcon = (reminder: any) => {
@@ -301,23 +333,38 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
 
         <div className="flex items-center gap-4 ml-auto">
           {selectedIds.size > 0 && (
-            <Button
-              onClick={handleBatchSend}
-              disabled={isSendingBatch}
-              size="sm"
-            >
-              {isSendingBatch ? (
-                <>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleBatchSend}
+                disabled={isSendingBatch || isDeletingBatch}
+                size="sm"
+              >
+                {isSendingBatch ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending {selectedIds.size}...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Send ({selectedIds.size})
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleBatchDelete}
+                disabled={isSendingBatch || isDeletingBatch}
+                variant="destructive"
+                size="sm"
+              >
+                {isDeletingBatch ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Sending {selectedIds.size}...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Selected ({selectedIds.size})
-                </>
-              )}
-            </Button>
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-2" />
+                )}
+                Delete ({selectedIds.size})
+              </Button>
+            </div>
           )}
           <div className="text-sm text-muted-foreground">
             Showing {sortedReminders.length} of {reminders.length} reminders
@@ -385,7 +432,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                     {getSortIcon("customer")}
                   </Button>
                 </TableHead>
-                <TableHead>Contact</TableHead>
+
                 <TableHead>Vehicle</TableHead>
                 <TableHead>
                   <Button
@@ -405,7 +452,7 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                     className="h-8 px-2 font-semibold"
                     onClick={() => handleSort("daysLeft")}
                   >
-                    Days Left
+                    MOT Due In
                     {getSortIcon("daysLeft")}
                   </Button>
                 </TableHead>
@@ -427,6 +474,11 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
               {sortedReminders.map((reminder) => {
                 const customerName = reminder.customerName || "Unknown Customer";
                 const hasMultipleServices = (customerReminderCounts.get(customerName) || 0) > 1;
+
+                // Check if Due Date is overdue (and pending)
+                const dueInfo = formatMOTDate(reminder.dueDate);
+                const isOverdue = typeof dueInfo !== 'string' && dueInfo.isExpired && reminder.status === 'pending';
+                const dueDisplay = typeof dueInfo === 'string' ? dueInfo : dueInfo.date;
 
                 return (
                   <TableRow key={reminder.id} className={hasMultipleServices ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
@@ -451,10 +503,10 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {(() => {
-                        const motInfo = formatMOTDate(reminder.dueDate);
-                        return typeof motInfo === 'string' ? motInfo : motInfo.date;
-                      })()}
+                      <div className={isOverdue ? "text-red-600 font-bold" : ""}>
+                        {dueDisplay}
+                        {isOverdue && <div className="text-[10px] uppercase">Overdue</div>}
+                      </div>
                     </TableCell>
                     <TableCell className="font-mono font-semibold text-sm">
                       {reminder.registration}
@@ -513,24 +565,31 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            reminder.status === "sent"
-                              ? "default"
-                              : reminder.status === "archived"
-                                ? "secondary"
-                                : "outline"
-                          }
-                        >
-                          {reminder.status}
-                        </Badge>
-                        {reminder.status === "sent" && getDeliveryStatusIcon(reminder)}
-                        {reminder.sentAt && (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={
+                              reminder.status === "sent"
+                                ? "default"
+                                : reminder.status === "archived"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {reminder.status}
+                          </Badge>
+                          {reminder.status === "sent" && getDeliveryStatusIcon(reminder)}
+                        </div>
+
+                        {(reminder.sentAt) ? (
                           <span className="text-xs text-muted-foreground">
                             {new Date(reminder.sentAt).toLocaleDateString('en-GB')}
                           </span>
-                        )}
+                        ) : reminder.lastSentAt ? (
+                          <span className="text-xs text-muted-foreground">
+                            Last: {new Date(reminder.lastSentAt).toLocaleDateString('en-GB')}
+                          </span>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>

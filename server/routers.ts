@@ -5,12 +5,14 @@ import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { importRouter } from "./routers/import";
 import { diagnosticsRouter } from "./routers/diagnostics";
+import { analyticsRouter } from "./routers/analytics";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   import: importRouter,
   diagnostics: diagnosticsRouter,
+  analytics: analyticsRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -53,6 +55,25 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const { getCustomersWithVehiclesByPhones } = await import("./db");
         return getCustomersWithVehiclesByPhones(input.phones);
+      }),
+
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        postcode: z.string().optional(),
+        address: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { updateCustomer } = await import("./db");
+        // Filter out undefined/null values naturally, though partial handles undefined mostly
+        // Zod optional() allows undefined.
+        const { id, ...data } = input;
+        await updateCustomer(id, data);
+        return { success: true };
       }),
   }),
 
@@ -154,7 +175,29 @@ export const appRouter = router({
       });
 
       return vehiclesWithCustomers
-        .filter(v => v.motExpiryDate && !v.customerOptedOut)
+        .filter(v => {
+          if (!v.motExpiryDate || v.customerOptedOut) return false;
+
+          // Check for dead vehicles (No MOT & No Tax for > 12 months)
+          const today = new Date();
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+          const motDate = new Date(v.motExpiryDate);
+          const isMotLongExpired = motDate < oneYearAgo;
+
+          let isTaxLongExpired = false;
+          if (v.taxDueDate) {
+            const taxDate = new Date(v.taxDueDate);
+            isTaxLongExpired = taxDate < oneYearAgo;
+          }
+
+          if (isMotLongExpired && isTaxLongExpired) {
+            return false;
+          }
+
+          return true;
+        })
         .map(v => {
           const motDate = new Date(v.motExpiryDate!);
           const today = new Date();
@@ -207,14 +250,10 @@ export const appRouter = router({
             }
           }
 
-          // Override with manual states if present (e.g. manually cleared follow up)
           if (manualState?.customerResponded) {
             customerResponded = 1;
             needsFollowUp = 0;
           }
-          // Only allow manual needsFollowUp override if we didn't already flag it, or maybe strictly respect DB?
-          // Let's strictly respect DB if it says "needsFollowUp=0" but we calculated 1? 
-          // No, usually DB is older. Let's say if DB explicitely says Responded, we honor it.
 
           return {
             id: v.vehicleId,
@@ -224,12 +263,13 @@ export const appRouter = router({
             customerName: v.customerName || null,
             customerEmail: v.customerEmail || null,
             customerPhone: v.customerPhone || null,
-            customerOptedOut: v.customerOptedOut || false,
+            customerOptedOut: !!v.customerOptedOut,
             vehicleMake: v.make || null,
             vehicleModel: v.model || null,
             motExpiryDate: v.motExpiryDate,
             status,
             sentAt,
+            lastSentAt: latestLog ? new Date(latestLog.sentAt) : null,
             sentMethod,
             deliveryStatus,
             deliveredAt: latestLog?.deliveredAt || null,
@@ -246,6 +286,399 @@ export const appRouter = router({
           };
         });
     }),
+
+    checkStatusBatch: publicProcedure
+      .input(z.object({ registrations: z.array(z.string()) }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const { vehicles, reminderLogs } = await import("../drizzle/schema");
+        const { inArray, desc, eq } = await import("drizzle-orm");
+
+        // Normalize inputs
+        const normalized = input.registrations.map(r => r.toUpperCase().replace(/\s/g, ''));
+        const result: Record<string, any> = {};
+
+        if (normalized.length === 0) return result;
+
+        // 1. Find vehicles
+        const foundVehicles = await db
+          .select({
+            id: vehicles.id,
+            registration: vehicles.registration,
+            make: vehicles.make,
+            model: vehicles.model,
+          })
+          .from(vehicles)
+          .where(inArray(vehicles.registration, normalized));
+
+        const vehicleMap = new Map();
+        const vehicleIds: number[] = [];
+        foundVehicles.forEach(v => {
+          vehicleMap.set(v.registration, v);
+          vehicleIds.push(v.id);
+        });
+
+        // 2. Find latest logs
+        let latestLogMap = new Map();
+
+        if (vehicleIds.length > 0) {
+          const logs = await db
+            .select({
+              vehicleId: reminderLogs.vehicleId,
+              sentAt: reminderLogs.sentAt,
+              status: reminderLogs.status
+            })
+            .from(reminderLogs)
+            .where(inArray(reminderLogs.vehicleId, vehicleIds))
+            .orderBy(desc(reminderLogs.sentAt));
+
+          logs.forEach(log => {
+            if (!latestLogMap.has(log.vehicleId) && log.vehicleId) {
+              latestLogMap.set(log.vehicleId, log);
+            }
+          });
+        }
+
+        // 3. Construct result
+        for (const reg of normalized) {
+          const v = vehicleMap.get(reg);
+          if (!v) {
+            result[reg] = { found: false };
+            continue;
+          }
+
+          const log = latestLogMap.get(v.id);
+          result[reg] = {
+            found: true,
+            vehicle: v,
+            lastSent: log ? log.sentAt : null,
+            status: log ? log.status : null
+          };
+        }
+
+        return result;
+      }),
+
+    scanFromImage: publicProcedure
+      .input(z.object({ imageData: z.string() }))
+      .mutation(async ({ input }) => {
+        const { invokeLLM } = await import("./_core/llm");
+        const { getDb } = await import("./db");
+        // Import DVLA API for live checks
+        const { getVehicleDetails } = await import("./dvlaApi");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        const { reminderLogs, vehicles } = await import("../drizzle/schema");
+        const { inArray, desc, eq } = await import("drizzle-orm");
+
+        // Extract reminders from image using LLM vision
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: "You are a data extraction assistant. Extract all vehicle rows from the provided screenshot table. Look for 'Reg' or 'Registration' columns. Return a JSON array of items. Important: Extract the row even if the MOT Date is 'No data' or missing. Default type to 'MOT' if unsure. Treat 'Reg' column values like '01D68212' as valid registrations.",
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Extract all reminders from this screenshot. Return only valid JSON array.",
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: input.imageData,
+                  },
+                },
+              ],
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "reminders",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  reminders: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", enum: ["MOT", "Service", "Cambelt", "Other"] },
+                        dueDate: { type: "string" },
+                        registration: { type: "string" },
+                        customerName: { type: "string" },
+                        customerEmail: { type: "string" },
+                        customerPhone: { type: "string" },
+                        vehicleMake: { type: "string" },
+                        vehicleModel: { type: "string" },
+                      },
+                      required: ["registration"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["reminders"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) throw new Error("No response from LLM");
+
+        const parsed = JSON.parse(content as string);
+        const extracted = parsed.reminders || [];
+
+        // Normalize registrations
+        const normalizedInfo = extracted.map((r: any) => ({
+          ...r,
+          normalizedReg: r.registration.toUpperCase().replace(/\s/g, '')
+        }));
+
+        const regs = normalizedInfo.map((r: any) => r.normalizedReg);
+
+        // Batch check status
+        const vehicleMap = new Map();
+        const vehicleIds: number[] = [];
+
+        if (regs.length > 0) {
+          const found = await db.select({
+            id: vehicles.id,
+            registration: vehicles.registration,
+            customerId: vehicles.customerId
+          }).from(vehicles).where(inArray(vehicles.registration, regs));
+
+          // Fetch customer details for matched vehicles
+          const customerIds = found.filter(v => v.customerId).map(v => v.customerId) as number[];
+          const customerMap = new Map();
+
+          if (customerIds.length > 0) {
+            const { customers } = await import("../drizzle/schema");
+            const linkedCustomers = await db.select().from(customers).where(inArray(customers.id, customerIds));
+            linkedCustomers.forEach(c => customerMap.set(c.id, c));
+          }
+
+          found.forEach(v => {
+            const customer = v.customerId ? customerMap.get(v.customerId) : null;
+            vehicleMap.set(v.registration, {
+              ...v,
+              customer // Attach full customer object to vehicle
+            });
+            vehicleIds.push(v.id);
+          });
+        }
+
+        const logMap = new Map();
+        if (vehicleIds.length > 0) {
+          const logs = await db.select({
+            vehicleId: reminderLogs.vehicleId,
+            sentAt: reminderLogs.sentAt,
+            status: reminderLogs.status
+          }).from(reminderLogs)
+            .where(inArray(reminderLogs.vehicleId, vehicleIds))
+            .orderBy(desc(reminderLogs.sentAt));
+
+          logs.forEach(log => {
+            if (log.vehicleId && !logMap.has(log.vehicleId)) {
+              logMap.set(log.vehicleId, log);
+            }
+          });
+        }
+
+        // Process results and perform live check if not sent
+        const results = await Promise.all(normalizedInfo.map(async (item: any) => {
+          const v = vehicleMap.get(item.normalizedReg);
+          const log = v ? logMap.get(v.id) : null;
+          const isSent = !!log;
+
+          // Prefer DB customer name if linked, otherwise use extracted name from image
+          const finalCustomerName = v?.customer?.name || item.customerName;
+          const finalCustomerPhone = v?.customer?.phone || item.customerPhone;
+
+          let motExpiryDate = null;
+          let taxDueDate = null;
+          let taxStatus = null;
+          let make = item.vehicleMake;
+          let model = item.vehicleModel;
+
+          // If not sent, fetch live MOT/Tax data
+          if (!isSent) {
+            try {
+              const dvlaData = await getVehicleDetails(item.normalizedReg);
+              if (dvlaData) {
+                motExpiryDate = dvlaData.motExpiryDate;
+                taxDueDate = dvlaData.taxDueDate;
+                taxStatus = dvlaData.taxStatus;
+                make = dvlaData.make || make;
+                model = dvlaData.model || model;
+              }
+            } catch (err) {
+              console.error(`Failed to fetch DVLA details for ${item.normalizedReg}`, err);
+            }
+          }
+
+          return {
+            ...item,
+            customerName: finalCustomerName, // Override with DB name if found
+            customerPhone: finalCustomerPhone, // Override with DB phone if found
+            vehicleMake: make,
+            vehicleModel: model,
+            existsInDb: !!v,
+            lastSent: log ? log.sentAt : null,
+            lastStatus: log ? log.status : null,
+            liveMotExpiryDate: motExpiryDate,
+            liveTaxDueDate: taxDueDate,
+            liveTaxStatus: taxStatus
+          };
+        }));
+
+
+        return results;
+      }),
+
+    createManualReminder: publicProcedure
+      .input(z.object({
+        registration: z.string(),
+        dueDate: z.string(),
+        type: z.enum(["MOT", "Service", "Cambelt", "Other"]),
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const {
+          createReminder,
+          getVehicleByRegistration,
+          createVehicle,
+          updateVehicle,
+          findCustomerBySmartMatch,
+          createCustomer
+        } = await import("./db");
+        // Import DVLA API
+        const { getVehicleDetails } = await import("./dvlaApi");
+
+        const reg = input.registration.toUpperCase().replace(/\s/g, '');
+
+        // 1. Fetch live vehicle data
+        let vehicleMake = null;
+        let vehicleModel = null;
+        let motExpiryDate = null;
+        let vehicleData: any = null;
+
+        try {
+          vehicleData = await getVehicleDetails(reg);
+          if (vehicleData) {
+            vehicleMake = vehicleData.make;
+            vehicleModel = vehicleData.model;
+            if (vehicleData.motExpiryDate) {
+              motExpiryDate = new Date(vehicleData.motExpiryDate);
+            }
+          }
+        } catch (e) {
+          console.error("Manual Reminder: Failed to fetch DVLA data", e);
+        }
+
+        // 2. Find or Create Customer
+        let customerId: number | null = null;
+        let customerName = input.customerName || "Unknown";
+
+        // Only try to find/create if we have at least a name or phone
+        if (input.customerName || input.customerPhone) {
+          const existingCustomer = await findCustomerBySmartMatch(
+            input.customerPhone || null,
+            null,
+            input.customerName || null
+          );
+
+          if (existingCustomer) {
+            customerId = existingCustomer.id;
+            customerName = existingCustomer.name;
+          } else {
+            customerId = await createCustomer({
+              name: input.customerName || "Unknown Customer",
+              phone: input.customerPhone || null,
+              email: null,
+              notes: "Created via GA4 Scanner"
+            });
+          }
+        }
+
+        // 3. Find or Create Vehicle & Link
+        let vehicleId: number | null = null;
+        const existingVehicle = await getVehicleByRegistration(reg);
+
+        if (existingVehicle) {
+          vehicleId = existingVehicle.id;
+          // Update with latest DVLA data and link to customer if not already linked
+          const updates: any = {};
+          if (motExpiryDate) updates.motExpiryDate = motExpiryDate;
+          if (vehicleMake) updates.make = vehicleMake;
+          if (vehicleModel) updates.model = vehicleModel;
+          if (vehicleData?.taxStatus) updates.taxStatus = vehicleData.taxStatus;
+          if (vehicleData?.taxDueDate) updates.taxDueDate = new Date(vehicleData.taxDueDate);
+
+          // Only update customer if we found one and vehicle isn't linked,
+          // OR if we want to override? Let's say we only link if currently unlinked to be safe.
+          if (customerId && !existingVehicle.customerId) {
+            updates.customerId = customerId;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await updateVehicle(vehicleId, updates);
+          }
+        } else {
+          // Create new vehicle
+          const result = await createVehicle({
+            registration: reg,
+            make: vehicleMake,
+            model: vehicleModel,
+            motExpiryDate: motExpiryDate,
+            customerId: customerId, // Link immediately
+            taxStatus: vehicleData?.taxStatus,
+            taxDueDate: vehicleData?.taxDueDate ? new Date(vehicleData.taxDueDate) : null
+          });
+          // Result from insert is [ResultSetHeader] in mysql2, usually insertId is available
+          // Drizzle insert returns result array? No, mysql2 returns ResultHeader.
+          // My db function returns `result` directly.
+          // Let's assume standard mysql2/drizzle return.
+          // Safest to just fetch it back or check result type.
+          // Drizzle MySQL insert returns [OkPacket].
+          vehicleId = (result as any).insertId;
+        }
+
+        // 4. Create the reminder (Linked)
+        const reminderResult = await createReminder({
+          type: input.type,
+          dueDate: new Date(input.dueDate),
+          registration: reg,
+          customerName: customerName,
+          customerEmail: null,
+          customerPhone: input.customerPhone || null,
+          vehicleMake,
+          vehicleModel,
+          motExpiryDate,
+          status: "pending",
+          vehicleId: vehicleId || undefined,
+          customerId: customerId || undefined
+        });
+
+        // @ts-ignore
+        const newReminderId = reminderResult.insertId || reminderResult?.[0]?.insertId;
+
+        return {
+          success: true,
+          reminderId: newReminderId,
+          customerPhone: input.customerPhone || null,
+          customerName: customerName
+        };
+      }),
 
     processImage: publicProcedure
       .input(z.object({ imageData: z.string() }))
@@ -1062,6 +1495,14 @@ export const appRouter = router({
                 update.fuelType = dvlaData.fuelType;
               }
 
+              // Always update tax info if available
+              if (dvlaData.taxStatus) {
+                update.taxStatus = dvlaData.taxStatus;
+              }
+              if (dvlaData.taxDueDate) {
+                update.taxDueDate = new Date(dvlaData.taxDueDate);
+              }
+
               updates.push(update);
               updated++;
               console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${dvlaData.motExpiryDate}`);
@@ -1071,7 +1512,7 @@ export const appRouter = router({
             }
 
             // Add small delay to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 50));
           } catch (error: any) {
             failed++;
             errors.push(`${vehicle.registration}: ${error.message}`);
@@ -1334,6 +1775,26 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { sendSMS } = await import("./smsService");
         const { createReminderLog } = await import("./db");
+        const { getDb } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+
+        // Find the vehicle for this customer (use latest)
+        const db = await getDb();
+        let vehicleId: number | null = null;
+
+        if (db) {
+          const results = await db
+            .select({ id: vehicles.id })
+            .from(vehicles)
+            .where(eq(vehicles.customerId, input.customerId))
+            .orderBy(desc(vehicles.id))
+            .limit(1);
+
+          if (results.length > 0) {
+            vehicleId = results[0].id;
+          }
+        }
 
         const result = await sendSMS({
           to: input.phoneNumber,
@@ -1348,7 +1809,7 @@ export const appRouter = router({
         await createReminderLog({
           reminderId: null,
           customerId: input.customerId,
-          vehicleId: null,
+          vehicleId: vehicleId,
           messageType: "Other",
           recipient: input.phoneNumber,
           messageSid: result.messageId,

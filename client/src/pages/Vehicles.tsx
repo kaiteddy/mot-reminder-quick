@@ -64,8 +64,8 @@ export default function Vehicles() {
                 </CardDescription>
               </div>
               <MOTRefreshButton
-                registrations={filteredVehicles.map(v => v.registration).filter(Boolean)}
-                label="Refresh MOT"
+                vehicleIds={filteredVehicles.map(v => v.id)}
+                label="Refresh MOT & Tax"
                 variant="outline"
                 size="sm"
                 onComplete={refetch}

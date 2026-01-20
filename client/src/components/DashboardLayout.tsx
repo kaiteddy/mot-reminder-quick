@@ -37,7 +37,9 @@ import {
   FileText,
   Settings,
   ShieldCheck,
-  Smartphone
+  Smartphone,
+  BarChart,
+  ScanLine
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -50,6 +52,7 @@ const menuItems = [
   { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
   { icon: ShieldCheck, label: "System Status", path: "/system-status" },
   { icon: Search, label: "MOT Check", path: "/mot-check" },
+  { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
   { icon: AlertCircle, label: "Follow-up Actions", path: "/follow-up" },
   { icon: Archive, label: "Reminder Archive", path: "/archive" },
   { icon: MessageSquare, label: "Conversations", path: "/conversations" },

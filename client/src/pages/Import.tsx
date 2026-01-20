@@ -38,7 +38,13 @@ export default function Import() {
   const importCustomersMutation = trpc.import.importCustomers.useMutation({
     onSuccess: (result) => {
       setCustomersResult(result);
-      setCurrentStep("vehicles");
+      if (vehiclesFile) {
+        setCurrentStep("vehicles");
+      } else if (remindersFile && templatesFile) {
+        setCurrentStep("reminders");
+      } else {
+        setCurrentStep("complete");
+      }
       refetchStats();
       toast.success(`Imported ${result.imported} customers`);
     },
@@ -51,7 +57,11 @@ export default function Import() {
   const importVehiclesMutation = trpc.import.importVehicles.useMutation({
     onSuccess: (result) => {
       setVehiclesResult(result);
-      setCurrentStep("reminders");
+      if (remindersFile && templatesFile) {
+        setCurrentStep("reminders");
+      } else {
+        setCurrentStep("complete");
+      }
       refetchStats();
       toast.success(`Imported ${result.imported} vehicles`);
     },
@@ -101,15 +111,22 @@ export default function Import() {
   };
 
   const handleStartImport = async () => {
-    if (!customersFile || !vehiclesFile || !remindersFile || !templatesFile) {
-      toast.error("Please select all required CSV files");
-      return;
+    // Determine start step
+    if (customersFile) {
+      setCurrentStep("customers");
+      const customersData = await fileToBase64(customersFile);
+      importCustomersMutation.mutate({ csvData: customersData });
+    } else if (vehiclesFile) {
+      // Skip straight to vehicles
+      setCurrentStep("vehicles");
+      // The useEffect/condition below will pick this up, OR we can manually trigger
+      // But purely setting state might be cleaner if we use useEffect, but here we use conditional rendering logic
+      // Actually, relying on the 'if (currentStep === "vehicles" ...)' block below is better
+    } else if (remindersFile && templatesFile) {
+      setCurrentStep("reminders");
+    } else {
+      toast.error("Please select at least one file to import");
     }
-
-    // Start with customers
-    setCurrentStep("customers");
-    const customersData = await fileToBase64(customersFile);
-    importCustomersMutation.mutate({ csvData: customersData });
   };
 
   // Auto-progress through steps
@@ -128,7 +145,7 @@ export default function Import() {
     });
   }
 
-  const canStartImport = customersFile && vehiclesFile && remindersFile && templatesFile && !currentStep;
+  const canStartImport = (!!customersFile || !!vehiclesFile || (!!remindersFile && !!templatesFile)) && !currentStep;
   const isImporting = !!(currentStep && currentStep !== "complete");
 
   return (
@@ -181,7 +198,6 @@ export default function Import() {
           <CardContent className="space-y-4">
             <FileUploadInput
               label="Customers.csv"
-              required
               file={customersFile}
               onChange={(file) => handleFileChange("customers", file)}
               disabled={isImporting}
@@ -189,7 +205,6 @@ export default function Import() {
 
             <FileUploadInput
               label="Vehicles.csv"
-              required
               file={vehiclesFile}
               onChange={(file) => handleFileChange("vehicles", file)}
               disabled={isImporting}
@@ -197,7 +212,6 @@ export default function Import() {
 
             <FileUploadInput
               label="Reminders.csv"
-              required
               file={remindersFile}
               onChange={(file) => handleFileChange("reminders", file)}
               disabled={isImporting}
@@ -205,7 +219,6 @@ export default function Import() {
 
             <FileUploadInput
               label="Reminder_Templates.csv"
-              required
               file={templatesFile}
               onChange={(file) => handleFileChange("templates", file)}
               disabled={isImporting}

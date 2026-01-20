@@ -157,8 +157,9 @@ export default function Conversations() {
                           )}
                         </div>
                         {thread.vehicleRegistration && (
-                          <div className="text-xs text-slate-600 font-mono">
+                          <div className="text-xs text-slate-600 font-mono truncate max-w-[180px]">
                             {thread.vehicleRegistration}
+                            {thread.vehicleMake && <span className="font-sans text-slate-500 ml-1">• {thread.vehicleMake} {thread.vehicleModel}</span>}
                           </div>
                         )}
                       </div>
@@ -192,7 +193,14 @@ export default function Conversations() {
                     {selectedThread.vehicleRegistration && (
                       <>
                         <span>•</span>
-                        <span className="font-mono">{selectedThread.vehicleRegistration}</span>
+                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                          {selectedThread.vehicleRegistration}
+                        </span>
+                        {selectedThread.vehicleMake && (
+                          <span className="text-slate-500">
+                            {selectedThread.vehicleMake} {selectedThread.vehicleModel}
+                          </span>
+                        )}
                       </>
                     )}
                   </div>

@@ -122,7 +122,7 @@ export default function Home() {
                 ⚠️ Reminders Due Now ({dueNow.length})
               </CardTitle>
               <CardDescription>
-                These reminders are due within the next 7 days
+                These reminders are overdue or due within the next 7 days
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -145,8 +145,8 @@ export default function Home() {
                 </CardDescription>
               </div>
               <MOTRefreshButton
-                registrations={Array.from(new Set(allReminders.map(r => r.registration).filter(Boolean)))}
-                label="Refresh MOT"
+                vehicleIds={Array.from(new Set(allReminders.map((r: Reminder) => r.vehicleId).filter((id): id is number => id !== null)))}
+                label="Refresh MOT & Tax"
                 variant="outline"
                 size="sm"
                 onComplete={() => utils.reminders.generateFromVehicles.invalidate()}

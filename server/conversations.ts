@@ -10,6 +10,8 @@ export interface ConversationThread {
   customerName: string;
   customerPhone: string;
   vehicleRegistration: string | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
   lastMessageAt: Date;
   lastMessagePreview: string;
   unreadCount: number;
@@ -40,7 +42,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
   // Get all customers who have either:
   // 1. Been sent a reminder (in reminderLogs)
   // 2. Sent us a message (in customerMessages)
-  
+
   // First, get customers from reminder logs
   const sentReminders = await db
     .select({
@@ -48,6 +50,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
       customerName: customers.name,
       customerPhone: customers.phone,
       vehicleRegistration: vehicles.registration,
+      vehicleMake: vehicles.make,
+      vehicleModel: vehicles.model,
       lastMessageAt: reminderLogs.sentAt,
       lastMessagePreview: reminderLogs.messageContent,
       deliveryStatus: reminderLogs.status,
@@ -77,32 +81,66 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
     .where(isNotNull(customerMessages.customerId))
     .orderBy(desc(customerMessages.receivedAt));
 
+  // Fetch all vehicles to map to customers (optimization: could be joined but this is simpler for now)
+  const allVehicles = await db
+    .select({
+      customerId: vehicles.customerId,
+      registration: vehicles.registration,
+      make: vehicles.make,
+      model: vehicles.model,
+    })
+    .from(vehicles)
+    .where(isNotNull(vehicles.customerId));
+
+  const vehicleMap = new Map<number, { registration: string, make: string | null, model: string | null }>();
+  allVehicles.forEach(v => {
+    if (v.customerId) {
+      // Just take the first one found for now, or could prioritize
+      if (!vehicleMap.has(v.customerId)) {
+        vehicleMap.set(v.customerId, {
+          registration: v.registration,
+          make: v.make,
+          model: v.model
+        });
+      }
+    }
+  });
+
   // Merge and group by customer
   const conversationMap = new Map<number, ConversationThread>();
 
   // Process sent reminders
   sentReminders.forEach(log => {
     if (!log.customerId) return;
-    
+
     const existing = conversationMap.get(log.customerId);
     if (!existing || (log.lastMessageAt && log.lastMessageAt > existing.lastMessageAt)) {
       conversationMap.set(log.customerId, {
         customerId: log.customerId,
         customerName: log.customerName || "Unknown",
         customerPhone: log.customerPhone || "",
-        vehicleRegistration: log.vehicleRegistration,
+        vehicleRegistration: log.vehicleRegistration || vehicleMap.get(log.customerId)?.registration || null,
+        vehicleMake: log.vehicleMake || vehicleMap.get(log.customerId)?.make || null,
+        vehicleModel: log.vehicleModel || vehicleMap.get(log.customerId)?.model || null,
         lastMessageAt: log.lastMessageAt || new Date(),
         lastMessagePreview: (log.lastMessagePreview || "").substring(0, 100),
         unreadCount: 0, // Will be calculated from received messages
         deliveryStatus: log.deliveryStatus,
       });
+    } else if (existing) {
+      // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
+      if (!existing.vehicleRegistration && log.vehicleRegistration) {
+        existing.vehicleRegistration = log.vehicleRegistration;
+        existing.vehicleMake = log.vehicleMake;
+        existing.vehicleModel = log.vehicleModel;
+      }
     }
   });
 
   // Process received messages
   receivedMessages.forEach(msg => {
     if (!msg.customerId) return;
-    
+
     const existing = conversationMap.get(msg.customerId);
     if (existing) {
       // Update if this message is newer
@@ -120,7 +158,9 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         customerId: msg.customerId,
         customerName: msg.customerName || "Unknown",
         customerPhone: msg.customerPhone || "",
-        vehicleRegistration: null,
+        vehicleRegistration: vehicleMap.get(msg.customerId)?.registration || null,
+        vehicleMake: vehicleMap.get(msg.customerId)?.make || null,
+        vehicleModel: vehicleMap.get(msg.customerId)?.model || null,
         lastMessageAt: msg.lastMessageAt,
         lastMessagePreview: (msg.lastMessagePreview || "").substring(0, 100),
         unreadCount: msg.read === 0 ? 1 : 0,
