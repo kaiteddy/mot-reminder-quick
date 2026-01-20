@@ -37,7 +37,7 @@ function Router() {
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/vehicles" component={Vehicles} />
-      <Route path="/vehicles/:registration" component={VehicleDetails} />
+      <Route path="/vehicle-info/:registration" component={VehicleDetails} />
       <Route path="/database" component={Database} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path="/test-whatsapp" component={TestWhatsApp} />

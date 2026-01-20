@@ -165,7 +165,7 @@ export default function Vehicles() {
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Link href={`/vehicles/${vehicle.registration}`}>
+                            <Link href={`/vehicle-info/${encodeURIComponent(vehicle.registration || "")}`}>
                               <Button variant="ghost" size="sm">
                                 View Details
                               </Button>

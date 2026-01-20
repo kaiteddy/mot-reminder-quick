@@ -21,9 +21,11 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+import { useParams } from "wouter";
+
 export default function VehicleDetails() {
-    const [, params] = useRoute("/vehicles/:registration");
-    const registration = params?.registration;
+    const params = useParams<{ registration: string }>();
+    const registration = params.registration ? decodeURIComponent(params.registration) : "";
 
     const { data, isLoading } = trpc.vehicles.getByRegistration.useQuery(
         { registration: registration || "" },
