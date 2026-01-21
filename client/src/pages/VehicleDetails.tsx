@@ -8,29 +8,21 @@ import {
     Calendar,
     History,
     ArrowLeft,
-    CheckCircle2,
     AlertCircle,
     ShieldCheck,
     Fuel,
-    Fingerprint,
-    Wrench
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useParams } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { useParams, useRoute } from "wouter";
-
 export default function VehicleDetails() {
+    // We try to get the registration from the URL parameter "registration"
     const params = useParams<{ registration: string }>();
-    const [match, routeParams] = useRoute("/v/:registration");
-    const [matchAlt, routeParamsAlt] = useRoute("/vehicles/:registration");
+    const registration = params.registration ? decodeURIComponent(params.registration) : "";
 
-    const regParam = params.registration || routeParams?.registration || routeParamsAlt?.registration;
-    const registration = regParam ? decodeURIComponent(regParam) : "";
-
-    console.log("VehicleDetails debug:", { params, routeParams, routeParamsAlt, registration });
+    console.log("VehicleDetails: registration detected from URL:", registration);
 
     const { data, isLoading } = trpc.vehicles.getByRegistration.useQuery(
         { registration: registration || "" },
@@ -62,14 +54,19 @@ export default function VehicleDetails() {
                     <Car className="w-12 h-12 mx-auto mb-4 opacity-50 text-destructive" />
                     <h2 className="text-2xl font-bold">Vehicle Not Found</h2>
                     <p className="text-muted-foreground mt-2">
-                        We couldn't find a vehicle with registration <strong>{registration}</strong>
+                        We couldn't find a vehicle with registration <strong>{registration || "Unknown"}</strong>
                     </p>
-                    <Link href="/vehicles">
-                        <Button variant="outline" className="mt-6">
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Back to Vehicles
-                        </Button>
-                    </Link>
+                    <div className="mt-8 flex justify-center gap-4">
+                        <Link href="/vehicles">
+                            <Button variant="outline">
+                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                Back to Vehicles
+                            </Button>
+                        </Link>
+                        <Link href="/">
+                            <Button variant="ghost">Home</Button>
+                        </Link>
+                    </div>
                 </div>
             </DashboardLayout>
         );
@@ -111,7 +108,7 @@ export default function VehicleDetails() {
                         <Link href={`/mot-check?reg=${vehicle.registration}`}>
                             <Button variant="outline">
                                 <ShieldCheck className="w-4 h-4 mr-2" />
-                                Live TV Check
+                                Live DVSA Check
                             </Button>
                         </Link>
                     </div>
@@ -127,7 +124,7 @@ export default function VehicleDetails() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Make</p>
                                     <p className="font-semibold">{vehicle.make || "Unknown"}</p>
@@ -158,12 +155,12 @@ export default function VehicleDetails() {
                                     <p className="font-semibold">{formatDate(vehicle.taxDueDate)}</p>
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Registration Date</p>
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">Reg Date</p>
                                     <p className="font-semibold">{formatDate(vehicle.dateOfRegistration)}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">VIN</p>
-                                    <p className="font-mono text-xs">{vehicle.vin || "-"}</p>
+                                    <p className="font-mono text-[10px] break-all">{vehicle.vin || "-"}</p>
                                 </div>
                             </div>
                         </CardContent>
@@ -174,7 +171,7 @@ export default function VehicleDetails() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <User className="w-5 h-5" />
-                                Assigned Customer
+                                Customer
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -197,18 +194,18 @@ export default function VehicleDetails() {
                                     {customer.email && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm">{customer.email}</p>
+                                            <p className="text-sm truncate">{customer.email}</p>
                                         </div>
                                     )}
                                     {customer.optedOut && (
                                         <Badge variant="destructive" className="w-full justify-center">
                                             <AlertCircle className="w-3 h-3 mr-2" />
-                                            Opted Out of Notifications
+                                            Opted Out
                                         </Badge>
                                     )}
                                 </div>
                             ) : (
-                                <div className="text-center py-6 text-muted-foreground italic">
+                                <div className="text-center py-6 text-muted-foreground italic text-sm">
                                     No customer assigned
                                 </div>
                             )}
@@ -220,11 +217,8 @@ export default function VehicleDetails() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Calendar className="w-5 h-5" />
-                                Reminder History
+                                communication History
                             </CardTitle>
-                            <CardDescription>
-                                History of all MOT and service reminders sent for this vehicle
-                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             {reminders.length > 0 ? (
@@ -267,7 +261,7 @@ export default function VehicleDetails() {
                             ) : (
                                 <div className="text-center py-12 text-muted-foreground">
                                     <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p>No reminder history found for this vehicle</p>
+                                    <p>No communication history found</p>
                                 </div>
                             )}
                         </CardContent>

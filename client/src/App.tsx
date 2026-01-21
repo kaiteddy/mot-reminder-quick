@@ -26,18 +26,24 @@ import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path="/login" component={Login} />
-      <Route path={"/"} component={Home} />
-      <Route path="/mot-check" component={MOTCheck} />
-      <Route path="/import" component={Import} />
-      <Route path="/customers" component={Customers} />
-      <Route path="/customers/:id" component={CustomerDetails} />
-      <Route path="/analytics" component={Analytics} />
+      {/* 
+          IMPORTANT: Specific routes with parameters MUST come before general list routes 
+          e.g. /vehicles/:registration MUST come before /vehicles
+      */}
       <Route path="/v/:registration" component={VehicleDetails} />
       <Route path="/vehicles/:registration" component={VehicleDetails} />
+
+      <Route path="/login" component={Login} />
+      <Route path="/" component={Home} />
+      <Route path="/mot-check" component={MOTCheck} />
+      <Route path="/import" component={Import} />
+
+      <Route path="/customers/:id" component={CustomerDetails} />
+      <Route path="/customers" component={Customers} />
+
+      <Route path="/analytics" component={Analytics} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/database" component={Database} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
@@ -49,25 +55,18 @@ function Router() {
       <Route path="/conversations" component={Conversations} />
       <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/system-status" component={SystemStatus} />
-      <Route path={"/404"} component={NotFound} />
+
+      <Route path="/404" component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-      // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />
