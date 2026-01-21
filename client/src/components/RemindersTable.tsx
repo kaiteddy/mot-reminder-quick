@@ -20,6 +20,7 @@ import {
 import { Send, Trash2, Loader2, Pencil, CalendarDays, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, CheckCircle2, Clock, XCircle as XCircleIcon, Eye } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { BookMOTDialog } from "./BookMOTDialog";
@@ -508,8 +509,10 @@ export function RemindersTable({ reminders, onEdit }: RemindersTableProps) {
                         {isOverdue && <div className="text-[10px] uppercase">Overdue</div>}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono font-semibold text-sm">
-                      {reminder.registration}
+                    <TableCell className="font-mono font-semibold text-sm hover:underline cursor-pointer text-primary">
+                      <Link href={`/view-vehicle/${encodeURIComponent(reminder.registration || "")}`}>
+                        {reminder.registration}
+                      </Link>
                       {reminder.dateOfRegistration && (
                         <span className="ml-2 text-xs text-muted-foreground font-normal">
                           ({new Date(reminder.dateOfRegistration).getFullYear()})

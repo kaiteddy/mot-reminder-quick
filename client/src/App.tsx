@@ -21,7 +21,6 @@ import ReminderArchive from "./pages/ReminderArchive";
 import FollowUpActions from "./pages/FollowUpActions";
 import Conversations from "./pages/Conversations";
 import SystemStatus from "./pages/SystemStatus";
-
 import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
 
@@ -29,23 +28,23 @@ function Router() {
   return (
     <Switch>
       {/* 
-          IMPORTANT: Specific routes with parameters MUST come before general list routes 
-          e.g. /vehicles/:registration MUST come before /vehicles
+        CRITICAL: The most specific routes (with parameters) MUST come first.
+        We use a very distinct prefix /view-vehicle/ to avoid any clashing with /vehicles.
       */}
+      <Route path="/view-vehicle/:registration" component={VehicleDetails} />
       <Route path="/v/:registration" component={VehicleDetails} />
-      <Route path="/vehicles/:registration" component={VehicleDetails} />
 
       <Route path="/login" component={Login} />
       <Route path="/" component={Home} />
-      <Route path="/mot-check" component={MOTCheck} />
-      <Route path="/import" component={Import} />
-
+      <Route path="/vehicles" component={Vehicles} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/customers" component={Customers} />
 
+      {/* Other routes */}
       <Route path="/analytics" component={Analytics} />
-      <Route path="/vehicles" component={Vehicles} />
       <Route path="/database" component={Database} />
+      <Route path="/import" component={Import} />
+      <Route path="/mot-check" component={MOTCheck} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path="/test-whatsapp" component={TestWhatsApp} />
       <Route path="/logs" component={LogsAndMessages} />
@@ -56,8 +55,7 @@ function Router() {
       <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/system-status" component={SystemStatus} />
 
-      <Route path="/404" component={NotFound} />
-      {/* Final fallback route */}
+      {/* 404 Fallback */}
       <Route component={NotFound} />
     </Switch>
   );

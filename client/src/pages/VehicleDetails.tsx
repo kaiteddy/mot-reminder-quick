@@ -20,8 +20,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export default function VehicleDetails() {
     // We try to get the registration from the URL parameter "registration"
     const params = useParams<{ registration: string }>();
+    console.log("VehicleDetails: params received:", params);
     const registration = params.registration ? decodeURIComponent(params.registration) : "";
-
     console.log("VehicleDetails: registration detected from URL:", registration);
 
     const { data, isLoading } = trpc.vehicles.getByRegistration.useQuery(
