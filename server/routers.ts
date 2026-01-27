@@ -7,6 +7,9 @@ import { importRouter } from "./routers/import";
 import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
 
+import { desc, eq, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
+import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
+
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
@@ -112,8 +115,7 @@ export const appRouter = router({
       }
 
       // Get latest reminder logs for each vehicle to track send status
-      const { reminderLogs, customerMessages, reminders } = await import("../drizzle/schema");
-      const { desc, eq, and, sql } = await import("drizzle-orm");
+
 
       // Get manual flags from reminders table (needsFollowUp, customerResponded overrides)
       // This allows manually clearing flags even if logic says otherwise
@@ -294,8 +296,7 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        const { vehicles, reminderLogs } = await import("../drizzle/schema");
-        const { inArray, desc, eq } = await import("drizzle-orm");
+
 
         // Normalize inputs
         const normalized = input.registrations.map(r => r.toUpperCase().replace(/\s/g, ''));
@@ -371,8 +372,7 @@ export const appRouter = router({
         const { getVehicleDetails } = await import("./dvlaApi");
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-        const { reminderLogs, vehicles } = await import("../drizzle/schema");
-        const { inArray, desc, eq } = await import("drizzle-orm");
+
 
         // Extract reminders from image using LLM vision
         const response = await invokeLLM({
@@ -461,7 +461,7 @@ export const appRouter = router({
           const customerMap = new Map();
 
           if (customerIds.length > 0) {
-            const { customers } = await import("../drizzle/schema");
+
             const linkedCustomers = await db.select().from(customers).where(inArray(customers.id, customerIds));
             linkedCustomers.forEach(c => customerMap.set(c.id, c));
           }
@@ -654,19 +654,20 @@ export const appRouter = router({
         }
 
         // 4. Create the reminder (Linked)
+        // Ensure all fields are at least null to avoid 'undefined' shifting issues in Drizzle
         const reminderResult = await createReminder({
           type: input.type,
           dueDate: new Date(input.dueDate),
           registration: reg,
-          customerName: customerName,
+          customerName: customerName ?? null,
           customerEmail: null,
-          customerPhone: input.customerPhone || null,
-          vehicleMake,
-          vehicleModel,
-          motExpiryDate,
+          customerPhone: input.customerPhone ?? null,
+          vehicleMake: vehicleMake ?? null,
+          vehicleModel: vehicleModel ?? null,
+          motExpiryDate: motExpiryDate ?? null,
           status: "pending",
-          vehicleId: vehicleId || undefined,
-          customerId: customerId || undefined
+          vehicleId: vehicleId ?? null,
+          customerId: customerId ?? null
         });
 
         // @ts-ignore
@@ -776,12 +777,12 @@ export const appRouter = router({
               type: reminder.type as "MOT" | "Service" | "Cambelt" | "Other",
               dueDate: new Date(reminder.dueDate),
               registration: reminder.registration,
-              customerName: reminder.customerName || null,
-              customerEmail: reminder.customerEmail || null,
-              customerPhone: reminder.customerPhone || null,
-              vehicleMake: vehicleMake || null,
-              vehicleModel: vehicleModel || null,
-              motExpiryDate,
+              customerName: reminder.customerName ?? null,
+              customerEmail: reminder.customerEmail ?? null,
+              customerPhone: reminder.customerPhone ?? null,
+              vehicleMake: vehicleMake ?? null,
+              vehicleModel: vehicleModel ?? null,
+              motExpiryDate: motExpiryDate ?? null,
               status: "pending",
             });
             savedCount++;
@@ -1173,8 +1174,7 @@ export const appRouter = router({
       }
 
       // Get latest reminder logs for each vehicle to track send status
-      const { reminderLogs, customerMessages } = await import("../drizzle/schema");
-      const { desc, eq, and, sql, gt } = await import("drizzle-orm");
+
 
       // Get latest log for each vehicle
       const latestLogs = await db
@@ -1415,8 +1415,7 @@ export const appRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
 
-      const { reminders } = await import("../drizzle/schema");
-      const { eq, and, lt } = await import("drizzle-orm");
+
 
       // Update needsFollowUp flag for reminders sent more than 7 days ago with no response
       const sevenDaysAgo = new Date();
@@ -1446,17 +1445,40 @@ export const appRouter = router({
 
     bulkUpdateMOT: publicProcedure
       .input(z.object({
-        vehicleIds: z.array(z.number()).optional(), // If empty, update all
+        vehicleIds: z.array(z.number()).optional(), // If empty, use limit
+        limit: z.number().optional(), // Number of vehicles to update if no IDs provided
       }))
       .mutation(async ({ input }) => {
-        const { getAllVehicles, bulkUpdateVehicleMOT } = await import("./db");
+        const { getDb, getAllVehicles, bulkUpdateVehicleMOT } = await import("./db");
         const { getVehicleDetails } = await import("./dvlaApi");
+        const { vehicles } = await import("../drizzle/schema");
+        const { asc, sql, or } = await import("drizzle-orm");
 
-        // Get vehicles to update
-        const allVehicles = await getAllVehicles();
-        const vehiclesToUpdate = input.vehicleIds && input.vehicleIds.length > 0
-          ? allVehicles.filter(v => input.vehicleIds!.includes(v.id))
-          : allVehicles;
+        let vehiclesToUpdate: any[] = [];
+
+        if (input.vehicleIds && input.vehicleIds.length > 0) {
+          const allVehicles = await getAllVehicles();
+          vehiclesToUpdate = allVehicles.filter(v => input.vehicleIds!.includes(v.id));
+        } else if (input.limit) {
+          const db = await getDb();
+          if (!db) throw new Error("Database not available");
+
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          // Fetch vehicles that haven't been checked in 30 days, or ever
+          vehiclesToUpdate = await db.select()
+            .from(vehicles)
+            .where(or(
+              sql`${vehicles.lastChecked} < ${thirtyDaysAgo}`,
+              sql`${vehicles.lastChecked} IS NULL`
+            ))
+            .orderBy(asc(sql`COALESCE(${vehicles.lastChecked}, '1970-01-01')`))
+            .limit(input.limit);
+        } else {
+          // Default to all if nothing provided (current behavior)
+          vehiclesToUpdate = await getAllVehicles();
+        }
 
         let updated = 0;
         let failed = 0;
@@ -1479,6 +1501,7 @@ export const appRouter = router({
               const update: any = {
                 id: vehicle.id,
                 motExpiryDate: new Date(dvlaData.motExpiryDate),
+                lastChecked: new Date(),
               };
 
               // Update other fields if they're better
@@ -1538,77 +1561,95 @@ export const appRouter = router({
 
     // Diagnostic endpoint to investigate vehicles without MOT data
     diagnoseNoMOT: publicProcedure.query(async () => {
-      const { getAllVehicles } = await import("./db");
-      const { getVehicleDetails } = await import("./dvlaApi");
+      const { getDb } = await import("./db");
+      const { vehicles } = await import("../drizzle/schema");
+      const { isNull, sql } = await import("drizzle-orm");
 
-      const allVehicles = await getAllVehicles();
-      const vehiclesWithoutMOT = allVehicles.filter(v => !v.motExpiryDate);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
 
-      console.log(`[DIAGNOSE] Found ${vehiclesWithoutMOT.length} vehicles without MOT data`);
+      const allNoMOT = await db.select({
+        id: vehicles.id,
+        registration: vehicles.registration,
+        make: vehicles.make,
+        model: vehicles.model,
+        lastChecked: vehicles.lastChecked,
+      }).from(vehicles).where(isNull(vehicles.motExpiryDate));
 
-      const diagnostics = [];
+      const ukPatterns = [
+        /^[A-Z]{2}\d{2}[A-Z]{3}$/, // Current (AB12CDE)
+        /^[A-Z]\d{1,3}[A-Z]{3}$/, // Prefix (A123BCD)
+        /^[A-Z]{3}\d{1,3}[A-Z]$/, // Suffix (ABC123D)
+        /^[A-Z]{1,3}\d{1,4}$/, // Dateless (ABC1234)
+        /^\d{1,4}[A-Z]{1,3}$/, // Dateless (1234ABC)
+      ];
 
-      for (const vehicle of vehiclesWithoutMOT.slice(0, 20)) { // Test first 20
-        const diagnosis: any = {
-          id: vehicle.id,
-          registration: vehicle.registration,
-          make: vehicle.make,
-          model: vehicle.model,
-          issues: [],
-        };
+      const irishPattern = /^(\d{2,3})[A-Z]{1,2}(\d+)$/;
+      const newCodes = [22, 72, 23, 73, 24, 74, 25, 75];
 
-        // Check if registration exists
-        if (!vehicle.registration) {
-          diagnosis.issues.push("No registration number");
-          diagnostics.push(diagnosis);
+      const categories = {
+        validUKNeverChecked: [] as any[],
+        validUKCheckedNoData: [] as any[],
+        tooNew: [] as any[],
+        irish: [] as any[],
+        invalidFormat: [] as any[],
+        missing: [] as any[],
+      };
+
+      for (const v of allNoMOT) {
+        if (!v.registration) {
+          categories.missing.push({ ...v, issues: ["Missing registration"] });
           continue;
         }
 
-        // Check registration format
-        const cleanReg = vehicle.registration.replace(/\s+/g, "").toUpperCase();
-        const patterns = [
-          /^[A-Z]{2}\d{2}[A-Z]{3}$/, // Current (AB12CDE)
-          /^[A-Z]\d{1,3}[A-Z]{3}$/, // Prefix (A123BCD)
-          /^[A-Z]{3}\d{1,3}[A-Z]$/, // Suffix (ABC123D)
-          /^[A-Z]{1,3}\d{1,4}$/, // Dateless (ABC1234)
-        ];
+        const cleanReg = v.registration.replace(/\s+/g, "").toUpperCase();
 
-        const isValidFormat = patterns.some(pattern => pattern.test(cleanReg));
-        if (!isValidFormat) {
-          diagnosis.issues.push(`Invalid UK registration format: ${cleanReg}`);
+        // 1. Check for "Too New"
+        const newMatch = cleanReg.match(/^[A-Z]{2}(\d{2})[A-Z]{3}$/);
+        if (newMatch && newCodes.includes(parseInt(newMatch[1]))) {
+          categories.tooNew.push({ ...v, issues: ["Too new for MOT (< 3 years)"] });
+          continue;
         }
 
-        // Try DVLA API
-        try {
-          const dvlaData = await getVehicleDetails(vehicle.registration);
-          if (!dvlaData) {
-            diagnosis.issues.push("DVLA API returned no data (404 or vehicle not found)");
-          } else if (!dvlaData.motExpiryDate) {
-            diagnosis.issues.push("DVLA API returned data but no MOT expiry date (vehicle may be exempt or too new)");
-            diagnosis.dvlaData = {
-              make: dvlaData.make,
-              model: dvlaData.model,
-              yearOfManufacture: dvlaData.yearOfManufacture,
-              taxStatus: dvlaData.taxStatus,
-            };
+        // 2. Check for Irish
+        if (irishPattern.test(cleanReg)) {
+          categories.irish.push({ ...v, issues: ["Irish registration (not supported by UK DVLA Enquiry API)"] });
+          continue;
+        }
+
+        // 3. Check for UK Format
+        const isValidUK = ukPatterns.some(p => p.test(cleanReg));
+        if (isValidUK) {
+          if (v.lastChecked) {
+            categories.validUKCheckedNoData.push({ ...v, issues: ["Checked but no MOT data found (likely scrapped)"] });
           } else {
-            diagnosis.issues.push("DVLA API has MOT data - needs database update");
-            diagnosis.motExpiryDate = dvlaData.motExpiryDate;
+            categories.validUKNeverChecked.push({ ...v, issues: ["Valid format but never checked"] });
           }
-        } catch (error: any) {
-          diagnosis.issues.push(`DVLA API error: ${error.message}`);
+          continue;
         }
 
-        diagnostics.push(diagnosis);
-
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // 4. Invalid
+        categories.invalidFormat.push({ ...v, issues: [`Invalid UK format: ${cleanReg}`] });
       }
 
+      // Return summary and samples for each
       return {
-        total: vehiclesWithoutMOT.length,
-        tested: diagnostics.length,
-        diagnostics,
+        total: allNoMOT.length,
+        summary: {
+          validUKNeverChecked: categories.validUKNeverChecked.length,
+          validUKCheckedNoData: categories.validUKCheckedNoData.length,
+          tooNew: categories.tooNew.length,
+          irish: categories.irish.length,
+          invalidFormat: categories.invalidFormat.length,
+          missing: categories.missing.length,
+        },
+        // Provide samples for the UI to display
+        diagnostics: [
+          ...categories.invalidFormat.slice(0, 5),
+          ...categories.irish.slice(0, 5),
+          ...categories.tooNew.slice(0, 5),
+          ...categories.validUKNeverChecked.slice(0, 5),
+        ],
       };
     }),
 
@@ -1776,8 +1817,7 @@ export const appRouter = router({
         const { sendSMS } = await import("./smsService");
         const { createReminderLog } = await import("./db");
         const { getDb } = await import("./db");
-        const { vehicles } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
+
 
         // Find the vehicle for this customer (use latest)
         const db = await getDb();

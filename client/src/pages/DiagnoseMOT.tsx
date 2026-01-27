@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -9,9 +9,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  AlertTriangle, 
-  Loader2, 
+import {
+  AlertTriangle,
+  Loader2,
   Search,
   CheckCircle2,
   XCircle
@@ -38,7 +38,7 @@ export default function DiagnoseMOT() {
             <Button variant="outline" asChild>
               <Link href="/database">← Back to Database</Link>
             </Button>
-            <Button 
+            <Button
               onClick={() => refetch()}
               disabled={isLoading}
               className="gap-2"
@@ -60,24 +60,42 @@ export default function DiagnoseMOT() {
 
         {/* Summary */}
         {data && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <Card>
-              <CardHeader className="pb-3">
-                <CardDescription>Total Without MOT</CardDescription>
-                <CardTitle className="text-3xl">{data.total}</CardTitle>
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs">Total Missing MOT</CardDescription>
+                <CardTitle className="text-2xl">{data.total}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border-orange-200 bg-orange-50">
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs text-orange-700">Valid UK (Never Checked)</CardDescription>
+                <CardTitle className="text-2xl text-orange-900">{data.summary.validUKNeverChecked}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card className="border-red-200 bg-red-50">
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs text-red-700">Invalid Formats</CardDescription>
+                <CardTitle className="text-2xl text-red-900">{data.summary.invalidFormat}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
-              <CardHeader className="pb-3">
-                <CardDescription>Tested</CardDescription>
-                <CardTitle className="text-3xl">{data.tested}</CardTitle>
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs">Checked (No Data)</CardDescription>
+                <CardTitle className="text-2xl">{data.summary.validUKCheckedNoData}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
-              <CardHeader className="pb-3">
-                <CardDescription>Status</CardDescription>
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs">Too New / Irish</CardDescription>
+                <CardTitle className="text-2xl">{data.summary.tooNew + data.summary.irish}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="p-4">
+                <CardDescription className="text-xs">Status</CardDescription>
                 <CardTitle className="text-lg">
-                  {isLoading ? "Running..." : "Complete"}
+                  {isLoading ? "Refreshing..." : "Complete"}
                 </CardTitle>
               </CardHeader>
             </Card>
@@ -152,7 +170,7 @@ export default function DiagnoseMOT() {
                           )}
                           {diag.dvlaData && (
                             <div className="text-xs text-slate-500 mt-1">
-                              DVLA: {diag.dvlaData.make} {diag.dvlaData.model} 
+                              DVLA: {diag.dvlaData.make} {diag.dvlaData.model}
                               {diag.dvlaData.yearOfManufacture && ` (${diag.dvlaData.yearOfManufacture})`}
                             </div>
                           )}
@@ -187,28 +205,35 @@ export default function DiagnoseMOT() {
             </CardHeader>
             <CardContent className="text-blue-800">
               <ul className="list-disc list-inside space-y-2">
-                {data.diagnostics.some((d: any) => d.issues.some((i: string) => i.includes("needs database update"))) && (
+                {data.summary.validUKNeverChecked > 0 && (
                   <li>
-                    <strong>Run Bulk MOT Check:</strong> Some vehicles have MOT data available in DVLA API but not in database. 
-                    Go to <Link href="/database" className="underline">Database Overview</Link> and click "Bulk MOT Check" to update.
+                    <strong>Run Bulk MOT Check (Highly Recommended):</strong> You have {data.summary.validUKNeverChecked} vehicles with valid UK registration formats that haven't been checked yet.
+                    This will likely find MOT dates for many of them. Use the "Bulk MOT Check" button on the <Link href="/database" className="underline">Database page</Link>.
                   </li>
                 )}
-                {data.diagnostics.some((d: any) => d.issues.some((i: string) => i.includes("Invalid"))) && (
+                {data.summary.invalidFormat > 0 && (
                   <li>
-                    <strong>Fix Invalid Registrations:</strong> Some vehicles have invalid UK registration formats. 
-                    Check and correct these in the <Link href="/vehicles" className="underline">Vehicles page</Link>.
+                    <strong>Clean Up Invalid Formats:</strong> {data.summary.invalidFormat} vehicles have registrations like "SAAB" or "MICRA".
+                    These are likely data import errors. You can safely delete these vehicles if they have no reminder history,
+                    or correct them in the <Link href="/vehicles" className="underline">Vehicles page</Link>.
                   </li>
                 )}
-                {data.diagnostics.some((d: any) => d.issues.some((i: string) => i.includes("No registration"))) && (
+                {data.summary.validUKCheckedNoData > 0 && (
                   <li>
-                    <strong>Add Missing Registrations:</strong> Some vehicles don't have registration numbers. 
-                    Update them in the <Link href="/vehicles" className="underline">Vehicles page</Link>.
+                    <strong>Scrapped Vehicles:</strong> {data.summary.validUKCheckedNoData} vehicles were checked but not found in the DVLA database.
+                    These are likely scrapped or very old historical records. You may want to archive or remove them.
                   </li>
                 )}
-                {data.diagnostics.some((d: any) => d.issues.some((i: string) => i.includes("exempt or too new"))) && (
+                {data.summary.irish > 0 && (
                   <li>
-                    <strong>MOT Exempt Vehicles:</strong> Some vehicles may be exempt from MOT (e.g., vehicles under 3 years old, 
-                    historic vehicles over 40 years old, or certain vehicle types).
+                    <strong>Irish Vehicles:</strong> {data.summary.irish} vehicles have Irish registration formats.
+                    The UK DVLA Enquiry API does not support these. You must provide their MOT dates manually.
+                  </li>
+                )}
+                {data.summary.tooNew > 0 && (
+                  <li>
+                    <strong>New Vehicles:</strong> {data.summary.tooNew} vehicles are less than 3 years old (2022+ plates).
+                    They won't appear in MOT searches until their 3rd anniversary.
                   </li>
                 )}
               </ul>

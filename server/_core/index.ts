@@ -7,6 +7,7 @@ import { registerAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./serve-static";
+import { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } from "../webhooks/twilio";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -39,7 +40,7 @@ async function startServer() {
   registerAuthRoutes(app);
 
   // Twilio webhook endpoints
-  const { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } = await import("../webhooks/twilio");
+
   app.post("/api/webhooks/twilio", handleTwilioWebhook);
   app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
   // GET endpoints for testing
@@ -88,7 +89,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   registerAuthRoutes(app);
 
   try {
-    const { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } = await import("../webhooks/twilio");
+
     app.post("/api/webhooks/twilio", handleTwilioWebhook);
     app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
     app.get("/api/webhooks/twilio", handleWebhookTest);

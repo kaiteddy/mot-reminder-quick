@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { APP_TITLE, getLoginUrl } from "@/const";
+import { APP_TITLE, getLoginRoute } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { AlertCircle, CheckCircle2, Check, CheckCheck, Clock, Loader2, MessageSquare, Send, XCircle, Search, Filter, Download } from "lucide-react";
 import { Link } from "wouter";
@@ -71,7 +71,7 @@ export default function LogsAndMessages() {
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full">
-              <a href={getLoginUrl()}>Log In</a>
+              <a href={getLoginRoute()}>Log In</a>
             </Button>
           </CardContent>
         </Card>

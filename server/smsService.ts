@@ -31,11 +31,13 @@ interface SendSMSResult {
  */
 export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
   const config: SMSConfig = {
-    accountSid: process.env.TWILIO_ACCOUNT_SID || "",
-    authToken: process.env.TWILIO_AUTH_TOKEN || "",
-    whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER || "",
-    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+    accountSid: (process.env.TWILIO_ACCOUNT_SID || "").trim(),
+    authToken: (process.env.TWILIO_AUTH_TOKEN || "").trim(),
+    whatsappNumber: (process.env.TWILIO_WHATSAPP_NUMBER || "").trim(),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim(),
   };
+
+  console.log(`[SMS Service] Sending message to ${params.to} using SID: ${config.accountSid.substring(0, 6)}...`);
 
   // Check if Twilio is configured
   if (!config.accountSid || !config.authToken || !config.whatsappNumber) {

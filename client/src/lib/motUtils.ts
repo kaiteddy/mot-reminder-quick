@@ -12,13 +12,25 @@ export interface MOTDateInfo {
 export function formatMOTDate(motExpiry: string | Date | null): MOTDateInfo | string {
   if (!motExpiry) return "No MOT Data";
 
-  const motDate = new Date(motExpiry);
+  // Handle common MySQL date string format "YYYY-MM-DD HH:MM:SS" by replacing space with T
+  let dateToParse = motExpiry;
+  if (typeof motExpiry === 'string' && motExpiry.includes(' ') && !motExpiry.includes('T')) {
+    dateToParse = motExpiry.replace(' ', 'T');
+  }
+
+  const motDate = new Date(dateToParse);
+
+  if (isNaN(motDate.getTime())) {
+    console.warn(`[MOT-Utils] Invalid date received: ${motExpiry}`);
+    return "No MOT Data";
+  }
+
   const today = new Date();
-  
+
   // Reset time to midnight for accurate day calculation
   motDate.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
-  
+
   const isExpired = motDate < today;
   const daysUntilExpiry = Math.ceil((motDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 

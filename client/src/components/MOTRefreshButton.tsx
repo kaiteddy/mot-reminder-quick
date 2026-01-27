@@ -5,7 +5,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 interface MOTRefreshButtonProps {
-  vehicleIds: number[];
+  vehicleIds?: number[];
+  limit?: number;
   label?: string;
   onComplete?: () => void;
   variant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
@@ -15,6 +16,7 @@ interface MOTRefreshButtonProps {
 
 export function MOTRefreshButton({
   vehicleIds,
+  limit,
   label = "Refresh MOT & Tax",
   onComplete,
   variant = "outline",
@@ -51,7 +53,7 @@ export function MOTRefreshButton({
   });
 
   const handleRefresh = () => {
-    if (vehicleIds.length === 0) {
+    if (!limit && (!vehicleIds || vehicleIds.length === 0)) {
       toast.error("No vehicles to refresh");
       return;
     }
@@ -68,13 +70,14 @@ export function MOTRefreshButton({
       });
     }, 200);
 
-    toast.info(`Refreshing data for ${vehicleIds.length} vehicle${vehicleIds.length !== 1 ? 's' : ''}...`);
+    const targetCount = limit || vehicleIds?.length || 0;
+    toast.info(`Refreshing data for ${targetCount} vehicle${targetCount !== 1 ? 's' : ''}...`);
 
-    updateMutation.mutate({ vehicleIds });
+    updateMutation.mutate({ vehicleIds, limit });
   };
 
   const isLoading = updateMutation.isPending;
-  const count = vehicleIds.length;
+  const count = limit || vehicleIds?.length || 0;
 
   return (
     <Button

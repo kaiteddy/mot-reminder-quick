@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { APP_TITLE, getLoginUrl } from "@/const";
+import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { AlertCircle, CheckCircle2, Loader2, Phone, Trash2, Wrench } from "lucide-react";
 import { Link } from "wouter";
@@ -25,7 +25,7 @@ export default function PhoneCleanup() {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
-      
+
       setCleanupResults(data);
       setShowResults(true);
       setIsProcessing(false);
@@ -38,7 +38,7 @@ export default function PhoneCleanup() {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
-      
+
       setIsProcessing(false);
       setProgress({ current: 0, total: 0, name: '' });
       toast.error(`Cleanup failed: ${error.message}`);
@@ -48,32 +48,32 @@ export default function PhoneCleanup() {
   const runCleanup = (dryRun: boolean) => {
     setShowResults(false);
     setIsProcessing(true);
-    
+
     // Clear any existing interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
-    
+
     // Simulate progress for better UX (actual processing happens on server)
     const estimatedTotal = 6000; // Approximate customer count
     const estimatedDuration = estimatedTotal * 0.05; // 50ms per record
     const updateInterval = 100; // Update every 100ms
     const steps = estimatedDuration / updateInterval;
     let currentStep = 0;
-    
+
     progressIntervalRef.current = setInterval(() => {
       currentStep++;
       const progressPercent = Math.min((currentStep / steps) * 100, 95); // Cap at 95% until complete
       const currentRecord = Math.floor((progressPercent / 100) * estimatedTotal);
-      setProgress({ 
-        current: currentRecord, 
-        total: estimatedTotal, 
-        name: 'Processing...' 
+      setProgress({
+        current: currentRecord,
+        total: estimatedTotal,
+        name: 'Processing...'
       });
-      
+
       // Don't clear the interval here - let onSuccess/onError handle it
     }, updateInterval);
-    
+
     cleanupMutation.mutate({ dryRun });
   };
 
@@ -99,7 +99,7 @@ export default function PhoneCleanup() {
           <Phone className="h-4 w-4" />
           <AlertTitle>Phone Number Cleanup Tool</AlertTitle>
           <AlertDescription>
-            This tool normalizes phone numbers to +44 format, extracts emails from phone fields, 
+            This tool normalizes phone numbers to +44 format, extracts emails from phone fields,
             and removes invalid entries. Run a dry run first to preview changes before applying them.
           </AlertDescription>
         </Alert>
@@ -140,7 +140,7 @@ export default function PhoneCleanup() {
                 Apply Cleanup
               </Button>
             </div>
-            
+
             {isProcessing && progress.total > 0 && (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">

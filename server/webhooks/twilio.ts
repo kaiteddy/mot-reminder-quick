@@ -4,6 +4,14 @@
  */
 
 import type { Request, Response } from "express";
+import {
+  createCustomerMessage,
+  findCustomerByPhone,
+  setCustomerOptOut,
+  setCustomerOptIn,
+  createCustomer,
+  updateReminderLogStatus
+} from "../db";
 
 interface TwilioWebhookBody {
   MessageSid: string;
@@ -146,7 +154,7 @@ async function logIncomingMessage(data: {
   timestamp: Date;
   isOptOut?: boolean;
 }) {
-  const { createCustomerMessage, findCustomerByPhone, setCustomerOptOut, setCustomerOptIn, createCustomer } = await import("../db");
+
 
   try {
     // Extract phone number from WhatsApp format (whatsapp:+1234567890)
@@ -220,7 +228,7 @@ async function updateMessageStatus(data: {
   status?: string;
   timestamp: Date;
 }): Promise<{ success: boolean; message: string }> {
-  const { updateReminderLogStatus } = await import("../db");
+
 
   try {
     console.log("[Twilio Status] Updating status:", data);

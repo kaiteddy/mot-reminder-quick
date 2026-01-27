@@ -16,6 +16,22 @@ import {
   getCustomerEmail,
 } from "../services/csv-import";
 import { cleanPhoneField } from "../utils/phoneUtils";
+import {
+  createCustomer,
+  findCustomerBySmartMatch,
+  updateCustomer,
+  getCustomerByExternalId,
+  createVehicle,
+  findVehicleByRegistration,
+  updateVehicle,
+  findCustomerByName,
+  createReminder,
+  getVehicleByExternalId,
+  getAllCustomers,
+  getAllVehicles,
+  getAllReminders
+} from "../db";
+import { getVehicleDetails } from "../dvlaApi";
 
 export const importRouter = router({
   /**
@@ -26,12 +42,7 @@ export const importRouter = router({
       csvData: z.string().min(1), // Base64 encoded CSV data (data URL format)
     }))
     .mutation(async ({ input }) => {
-      const {
-        createCustomer,
-        findCustomerBySmartMatch,
-        updateCustomer,
-        getCustomerByExternalId
-      } = await import("../db");
+
 
       // Decode base64 and parse CSV
       // Handle both data URL format (data:text/csv;base64,xxx) and raw base64
@@ -158,15 +169,7 @@ export const importRouter = router({
       enrichWithDVLA: z.boolean().default(false),
     }))
     .mutation(async ({ input }) => {
-      const {
-        createVehicle,
-        findVehicleByRegistration,
-        updateVehicle,
-        getCustomerByExternalId,
-        findCustomerByName,
-        findCustomerBySmartMatch,
-      } = await import("../db");
-      const { getVehicleDetails } = await import("../dvlaApi");
+
 
       // Decode base64 and parse CSV
       // Handle both data URL format (data:text/csv;base64,xxx) and raw base64
@@ -374,7 +377,7 @@ export const importRouter = router({
       templatesCSV: z.string().min(1),
     }))
     .mutation(async ({ input }) => {
-      const { createReminder, getVehicleByExternalId } = await import("../db");
+
 
       // Parse both CSVs
       // Handle both data URL format and raw base64
@@ -455,7 +458,7 @@ export const importRouter = router({
    * Get import statistics
    */
   getImportStats: publicProcedure.query(async () => {
-    const { getAllCustomers, getAllVehicles, getAllReminders } = await import("../db");
+
 
     const customers = await getAllCustomers();
     const vehicles = await getAllVehicles();

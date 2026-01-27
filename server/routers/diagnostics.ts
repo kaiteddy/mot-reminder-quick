@@ -2,6 +2,11 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { sdk } from "../_core/sdk";
 import { ENV } from "../_core/env";
+import { getDb } from "../db";
+import { sql } from "drizzle-orm";
+import { vehicles, customers } from "../../drizzle/schema";
+import { getVehicleDetails } from "../dvlaApi";
+import { getMOTHistory } from "../motApi";
 
 export const diagnosticsRouter = router({
   checkCredentials: publicProcedure.query(async () => {
@@ -60,7 +65,7 @@ export const diagnosticsRouter = router({
 
     // 2. DVLA API Diagnostic
     try {
-      const { getVehicleDetails } = await import("../dvlaApi");
+
       // Try a common mock or simple registration to verify API Key
       const dvlaData = await getVehicleDetails("TEST123").catch(() => null);
 
@@ -114,17 +119,15 @@ export const diagnosticsRouter = router({
 
     // 4. Database Diagnostic
     try {
-      const { getDb } = await import("../db");
       const db = await getDb();
 
       if (db) {
         // Try a simple query to verify connection
         // We use a raw query because we just want to check connectivity
-        const { sql } = await import("drizzle-orm");
         await db.execute(sql`SELECT 1`);
 
         // Get counts to debug empty view
-        const { vehicles, customers } = await import("../drizzle/schema");
+
         const [vehicleCount] = await db.select({ count: sql<number>`count(*)` }).from(vehicles);
         const [customerCount] = await db.select({ count: sql<number>`count(*)` }).from(customers);
 
@@ -158,7 +161,7 @@ export const diagnosticsRouter = router({
     .input(z.object({ registration: z.string().min(1) }))
     .mutation(async ({ input }) => { // Changed to mutation to allow triggering on demand
       try {
-        const { getMOTHistory } = await import("../motApi");
+
         const history = await getMOTHistory(input.registration);
 
         if (!history) {

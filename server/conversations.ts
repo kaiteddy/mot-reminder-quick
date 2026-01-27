@@ -4,6 +4,8 @@
  */
 
 import { getDb } from "./db";
+import { reminderLogs, customerMessages, customers, vehicles } from "../drizzle/schema";
+import { sql, desc, eq, or, and, isNotNull } from "drizzle-orm";
 
 export interface ConversationThread {
   customerId: number;
@@ -36,8 +38,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
   const db = await getDb();
   if (!db) return [];
 
-  const { reminderLogs, customerMessages, customers, vehicles } = await import("../drizzle/schema");
-  const { sql, desc, eq, or, and, isNotNull } = await import("drizzle-orm");
+
 
   // Get all customers who have either:
   // 1. Been sent a reminder (in reminderLogs)
@@ -169,9 +170,18 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
     }
   });
 
-  // Convert to array and sort by last message time
+  // Convert to array and sort by:
+  // 1. Unread status (unread first)
+  // 2. Last message time (descending)
   return Array.from(conversationMap.values())
-    .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+    .sort((a, b) => {
+      // First sort by unread count (any unread comes before no unread)
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
+
+      // Then sort by time
+      return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
+    });
 }
 
 /**
@@ -181,8 +191,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
   const db = await getDb();
   if (!db) return [];
 
-  const { reminderLogs, customerMessages, vehicles } = await import("../drizzle/schema");
-  const { eq, or, desc } = await import("drizzle-orm");
+
 
   // Get sent reminders
   const sentLogs = await db
@@ -246,8 +255,7 @@ export async function markConversationAsRead(customerId: number): Promise<void> 
   const db = await getDb();
   if (!db) return;
 
-  const { customerMessages } = await import("../drizzle/schema");
-  const { eq } = await import("drizzle-orm");
+
 
   await db
     .update(customerMessages)
