@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { Reminder } from "../../../drizzle/schema";
 import { ImageUpload } from "@/components/ImageUpload";
-import { UnifiedVehicleTable } from "@/components/UnifiedVehicleTable";
+import { RemindersTable } from "@/components/RemindersTable";
 import { EditReminderDialog } from "@/components/EditReminderDialog";
 import { UnreadMessageBadge } from "@/components/UnreadMessageBadge";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
@@ -12,7 +12,6 @@ import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
-import { Input } from "@/components/ui/input";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Home() {
@@ -53,7 +52,7 @@ export default function Home() {
     }
   }, [remindersError]);
   const processImage = trpc.reminders.processImage.useMutation({
-    onSuccess: (data: { count: number; total: any; errors: string[] }) => {
+    onSuccess: (data) => {
       toast.success(`Extracted ${data.count} reminders`);
       utils.reminders.list.invalidate();
       setShowUpload(false);
@@ -88,41 +87,11 @@ export default function Home() {
 
   const allReminders = reminders || [];
 
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const filteredReminders = allReminders.filter((r: Reminder) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      (r.registration?.toLowerCase().includes(search) ?? false) ||
-      (r.customerName?.toLowerCase().includes(search) ?? false) ||
-      (r.vehicleMake?.toLowerCase().includes(search) ?? false) ||
-      (r.vehicleModel?.toLowerCase().includes(search) ?? false)
-    );
-  });
-
-  const dueNowFiltered = dueNow.filter((r: Reminder) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      (r.registration?.toLowerCase().includes(search) ?? false) ||
-      (r.customerName?.toLowerCase().includes(search) ?? false)
-    );
-  });
-
-  const visibleVehicleIds = Array.from(new Set(filteredReminders.map((r: Reminder) => r.vehicleId).filter((id): id is number => id !== null)));
-
-  const needsCheckCount = allReminders.filter((r: any) => {
-    if (!r.lastChecked) return true;
-    const lastChecked = new Date(r.lastChecked);
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return lastChecked < thirtyDaysAgo;
-  }).length;
-
   return (
     <DashboardLayout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold tracking-tight">{APP_TITLE}</h1>
             <p className="text-muted-foreground mt-2">
@@ -130,58 +99,10 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <MOTRefreshButton
-              vehicleIds={visibleVehicleIds}
-              label="Refresh Visible MOT & Tax"
-              variant="outline"
-              size="lg"
-              onComplete={() => utils.reminders.list.invalidate()}
-            />
             <Button onClick={() => setShowUpload(!showUpload)} size="lg">
               <Plus className="w-4 h-4 mr-2" />
               Upload Screenshot
             </Button>
-          </div>
-        </div>
-
-        {/* Global Search & Batch Actions */}
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-grow">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by registration, customer, make or model..."
-              value={searchTerm}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-              className="pl-9 h-12 text-lg"
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border">
-            <div className="flex flex-col px-2">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground whitespace-nowrap">Ready to Refresh</span>
-              <span className="text-sm font-semibold text-primary">{needsCheckCount} vehicles</span>
-            </div>
-            <div className="h-8 w-[1px] bg-border mx-1" />
-            <MOTRefreshButton
-              limit={100}
-              label="100"
-              variant="secondary"
-              size="sm"
-              onComplete={() => utils.reminders.list.invalidate()}
-            />
-            <MOTRefreshButton
-              limit={200}
-              label="200"
-              variant="secondary"
-              size="sm"
-              onComplete={() => utils.reminders.list.invalidate()}
-            />
-            <MOTRefreshButton
-              limit={300}
-              label="300"
-              variant="secondary"
-              size="sm"
-              onComplete={() => utils.reminders.list.invalidate()}
-            />
           </div>
         </div>
 
@@ -194,21 +115,20 @@ export default function Home() {
         )}
 
         {/* Due Now Section */}
-        {dueNowFiltered.length > 0 && (
+        {dueNow.length > 0 && (
           <Card className="border-orange-200 bg-orange-50/50">
             <CardHeader>
               <CardTitle className="text-orange-900">
-                ⚠️ Reminders Due Now ({dueNowFiltered.length})
+                ⚠️ Reminders Due Now ({dueNow.length})
               </CardTitle>
               <CardDescription>
                 These reminders are overdue or due within the next 7 days
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UnifiedVehicleTable
-                data={dueNowFiltered as any}
-                onEdit={(reminder) => setEditingReminder(reminder as any)}
-                refetch={() => utils.reminders.list.invalidate()}
+              <RemindersTable
+                reminders={dueNow}
+                onEdit={(reminder) => setEditingReminder(reminder)}
               />
             </CardContent>
           </Card>
@@ -221,9 +141,16 @@ export default function Home() {
               <div>
                 <CardTitle>All Reminders</CardTitle>
                 <CardDescription>
-                  {filteredReminders.length} total reminders {searchTerm && `matching "${searchTerm}"`}
+                  {allReminders.length} total reminders
                 </CardDescription>
               </div>
+              <MOTRefreshButton
+                vehicleIds={Array.from(new Set(allReminders.map((r: Reminder) => r.vehicleId).filter((id): id is number => id !== null)))}
+                label="Refresh MOT & Tax"
+                variant="outline"
+                size="sm"
+                onComplete={() => utils.reminders.generateFromVehicles.invalidate()}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -231,21 +158,18 @@ export default function Home() {
               <div className="text-center py-8 text-muted-foreground">
                 Loading reminders...
               </div>
-            ) : filteredReminders.length > 0 ? (
-              <UnifiedVehicleTable
-                data={filteredReminders as any}
-                onEdit={(reminder) => setEditingReminder(reminder as any)}
-                refetch={() => utils.reminders.list.invalidate()}
+            ) : allReminders.length > 0 ? (
+              <RemindersTable
+                reminders={allReminders}
+                onEdit={(reminder) => setEditingReminder(reminder)}
               />
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>{searchTerm ? "No reminders match your search" : "No reminders yet"}</p>
-                {!searchTerm && (
-                  <p className="text-sm mt-2">
-                    Upload a screenshot to get started
-                  </p>
-                )}
+                <p>No reminders yet</p>
+                <p className="text-sm mt-2">
+                  Upload a screenshot to get started
+                </p>
               </div>
             )}
           </CardContent>
