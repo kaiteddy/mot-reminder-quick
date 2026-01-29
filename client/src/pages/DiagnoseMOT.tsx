@@ -18,9 +18,73 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
+import { Trash2, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 export default function DiagnoseMOT() {
+  const [isProcessing, setIsProcessing] = useState(false);
   const { data, isLoading, refetch } = trpc.database.diagnoseNoMOT.useQuery();
+
+  const utils = trpc.useUtils();
+
+  const bulkDelete = trpc.database.deleteCategorizedVehicles.useMutation({
+    onSuccess: (res) => {
+      toast.success("Cleanup Complete", {
+        description: `Deleted ${res.deletedCount} vehicles. Skipped ${res.skippedCount} with reminder history.`,
+      });
+      refetch();
+    },
+    onError: (err) => {
+      toast.error("Cleanup Failed", {
+        description: err.message,
+      });
+    }
+  });
+
+  const bulkVerify = trpc.database.bulkUpdateMOT.useMutation({
+    onSuccess: (res) => {
+      toast.success("Bulk Verify Complete", {
+        description: `Updated ${res.updated} vehicles, ${res.failed} failed, ${res.skipped} skipped.`,
+      });
+      refetch();
+    },
+    onError: (err) => {
+      toast.error("Bulk Verify Failed", {
+        description: err.message,
+      });
+    },
+    onSettled: () => setIsProcessing(false),
+  });
+
+  const handleBulkDelete = async (category: 'invalid' | 'missing' | 'scrapped') => {
+    if (!data?.categoryIds[category]?.length) return;
+
+    bulkDelete.mutate({
+      vehicleIds: data.categoryIds[category],
+      skipIfHistoryExists: true,
+    });
+  };
+
+  const handleBulkVerify = async () => {
+    if (!data?.categoryIds.neverChecked?.length) return;
+
+    setIsProcessing(true);
+    bulkVerify.mutate({
+      vehicleIds: data.categoryIds.neverChecked,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
@@ -58,47 +122,117 @@ export default function DiagnoseMOT() {
           </div>
         </div>
 
-        {/* Summary */}
+        {/* Summary & Bulk Actions */}
         {data && (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <Card>
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs">Total Missing MOT</CardDescription>
-                <CardTitle className="text-2xl">{data.total}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="border-orange-200 bg-orange-50">
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs text-orange-700">Valid UK (Never Checked)</CardDescription>
-                <CardTitle className="text-2xl text-orange-900">{data.summary.validUKNeverChecked}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="border-red-200 bg-red-50">
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs text-red-700">Invalid Formats</CardDescription>
-                <CardTitle className="text-2xl text-red-900">{data.summary.invalidFormat}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs">Checked (No Data)</CardDescription>
-                <CardTitle className="text-2xl">{data.summary.validUKCheckedNoData}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs">Too New / Irish</CardDescription>
-                <CardTitle className="text-2xl">{data.summary.tooNew + data.summary.irish}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="p-4">
-                <CardDescription className="text-xs">Status</CardDescription>
-                <CardTitle className="text-lg">
-                  {isLoading ? "Refreshing..." : "Complete"}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <Card>
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs">Total Missing MOT</CardDescription>
+                  <CardTitle className="text-2xl">{data.total}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="border-orange-200 bg-orange-50">
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs text-orange-700">Valid UK (Never Checked)</CardDescription>
+                  <CardTitle className="text-2xl text-orange-900">{data.summary.validUKNeverChecked}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="border-red-200 bg-red-50">
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs text-red-700">Invalid Formats</CardDescription>
+                  <CardTitle className="text-2xl text-red-900">{data.summary.invalidFormat}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs">Checked (No Data)</CardDescription>
+                  <CardTitle className="text-2xl">{data.summary.validUKCheckedNoData}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs">Too New / Irish</CardDescription>
+                  <CardTitle className="text-2xl">{data.summary.tooNew + data.summary.irish}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs">Status</CardDescription>
+                  <CardTitle className="text-lg">
+                    {isLoading || isProcessing ? "Working..." : "Complete"}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={!data?.categoryIds.invalid.length || bulkDelete.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Clean Up Invalid ({data?.summary.invalidFormat})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will delete all vehicles with invalid registration formats.
+                      Vehicles with existing reminder logs or history will be automatically skipped for safety.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleBulkDelete('invalid')}>
+                      Delete Invalid
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={!data?.categoryIds.scrapped.length || bulkDelete.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Archive Scrapped ({data?.summary.validUKCheckedNoData})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Archive Scrapped Vehicles?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will delete vehicles that have been checked but not found in the DVLA database.
+                      Safety check: vehicles with reminder history will be skipped.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleBulkDelete('scrapped')}>
+                      Delete Scrapped
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <Button
+                variant="secondary"
+                className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+                onClick={handleBulkVerify}
+                disabled={!data?.categoryIds.neverChecked.length || isProcessing}
+              >
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Verify Never Checked ({data?.summary.validUKNeverChecked})
+              </Button>
+            </div>
           </div>
         )}
 

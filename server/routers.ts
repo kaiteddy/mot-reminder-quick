@@ -1643,6 +1643,13 @@ export const appRouter = router({
           invalidFormat: categories.invalidFormat.length,
           missing: categories.missing.length,
         },
+        // Provide category IDs for bulk actions
+        categoryIds: {
+          invalid: categories.invalidFormat.map(v => v.id),
+          missing: categories.missing.map(v => v.id),
+          scrapped: categories.validUKCheckedNoData.map(v => v.id),
+          neverChecked: categories.validUKNeverChecked.map(v => v.id),
+        },
         // Provide samples for the UI to display
         diagnostics: [
           ...categories.invalidFormat.slice(0, 5),
@@ -1652,6 +1659,33 @@ export const appRouter = router({
         ],
       };
     }),
+
+    // Bulk delete vehicles based on diagnostic categories
+    deleteCategorizedVehicles: publicProcedure
+      .input(z.object({
+        vehicleIds: z.array(z.number()),
+        skipIfHistoryExists: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        const { deleteVehiclesByIds, getVehiclesWithReminderHistory } = await import("./db");
+
+        let idsToDelete = input.vehicleIds;
+
+        if (input.skipIfHistoryExists) {
+          const idsWithHistory = await getVehiclesWithReminderHistory(input.vehicleIds);
+          idsToDelete = input.vehicleIds.filter(id => !idsWithHistory.includes(id));
+        }
+
+        if (idsToDelete.length > 0) {
+          await deleteVehiclesByIds(idsToDelete);
+        }
+
+        return {
+          success: true,
+          deletedCount: idsToDelete.length,
+          skippedCount: input.vehicleIds.length - idsToDelete.length,
+        };
+      }),
 
     delete: publicProcedure
       .input(z.object({

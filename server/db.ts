@@ -500,6 +500,26 @@ export async function deleteVehicle(vehicleId: number) {
   await db.delete(vehicles).where(eq(vehicles.id, vehicleId));
 }
 
+export async function deleteVehiclesByIds(vehicleIds: number[]) {
+  const db = await getDb();
+  if (!db || vehicleIds.length === 0) return;
+  await db.delete(reminders).where(inArray(reminders.vehicleId, vehicleIds));
+  await db.delete(vehicles).where(inArray(vehicles.id, vehicleIds));
+}
+
+export async function getVehiclesWithReminderHistory(vehicleIds: number[]) {
+  const db = await getDb();
+  if (!db || vehicleIds.length === 0) return [];
+
+  const results = await db
+    .select({ vehicleId: reminderLogs.vehicleId })
+    .from(reminderLogs)
+    .where(inArray(reminderLogs.vehicleId, vehicleIds))
+    .groupBy(reminderLogs.vehicleId);
+
+  return results.map(r => r.vehicleId).filter((id): id is number => id !== null);
+}
+
 export async function getCustomerWithVehiclesByPhone(phone: string) {
   const db = await getDb();
   if (!db) return null;

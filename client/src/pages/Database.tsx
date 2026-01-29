@@ -51,8 +51,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ComprehensiveVehicleTable } from "@/components/ComprehensiveVehicleTable";
 import { BookMOTDialog } from "@/components/BookMOTDialog";
-import { CalendarDays } from "lucide-react";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
@@ -957,217 +957,19 @@ export default function Database() {
         {/* Table */}
         <Card>
           <CardContent className="p-0 overflow-x-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedVehicleIds.size > 0 && selectedVehicleIds.size === filteredAndSortedVehicles.filter(v => v.customerPhone).length}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                    <TableHead className="cursor-pointer w-[120px]" onClick={() => toggleSort("registration")}>
-                      <div className="flex items-center gap-1">
-                        Reg
-                        <ArrowUpDown className="w-3 h-3" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer w-[150px]" onClick={() => toggleSort("customer")}>
-                      <div className="flex items-center gap-1">
-                        Customer
-                        <ArrowUpDown className="w-3 h-3" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[140px]">Contact</TableHead>
-                    <TableHead className="cursor-pointer w-[180px]" onClick={() => toggleSort("make")}>
-                      <div className="flex items-center gap-1">
-                        Vehicle
-                        <ArrowUpDown className="w-3 h-3" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer w-[100px]" onClick={() => toggleSort("motExpiry")}>
-                      <div className="flex items-center gap-1">
-                        MOT
-                        <ArrowUpDown className="w-3 h-3" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[120px]">Status</TableHead>
-                    <TableHead className="w-[100px]">Tax</TableHead>
-                    <TableHead className="w-[100px]">
-                      <div
-                        className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
-                        onClick={() => toggleSort("lastSent")}
-                      >
-                        Last Sent
-                        {sortField === "lastSent" && (
-                          sortDirection === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                        )}
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[90px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredAndSortedVehicles
-                    .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-                    .map((vehicle) => {
-                      const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
-                      return (
-                        <TableRow key={vehicle.id} className={
-                          status === "expired" ? "bg-red-50" :
-                            status === "due" ? "bg-orange-50" :
-                              ""
-                        }>
-                          <TableCell>
-                            <Checkbox
-                              checked={selectedVehicleIds.has(vehicle.id)}
-                              onCheckedChange={(checked) => handleSelectOne(vehicle.id, checked as boolean)}
-                              disabled={!vehicle.customerPhone || isSendingBatch}
-                            />
-                          </TableCell>
-                          <TableCell className="font-mono font-semibold text-xs">
-                            {vehicle.customerId ? (
-                              <Link href={`/customers/${vehicle.customerId}`}>
-                                <span className="cursor-pointer hover:underline text-blue-600">
-                                  {vehicle.registration || "-"}
-                                </span>
-                              </Link>
-                            ) : (
-                              <span>{vehicle.registration || "-"}</span>
-                            )}
-                            {vehicle.dateOfRegistration && (
-                              <span className="ml-2 text-[10px] text-slate-400 font-normal">
-                                ({new Date(vehicle.dateOfRegistration).getFullYear()})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-xs">
-                              <div className="flex items-center gap-2">
-                                {vehicle.customerId ? (
-                                  <Link href={`/customers/${vehicle.customerId}`}>
-                                    <span className="font-medium text-blue-600 truncate max-w-[140px] cursor-pointer hover:underline" title={vehicle.customerName || ""}>{vehicle.customerName || "Unknown"}</span>
-                                  </Link>
-                                ) : (
-                                  <span className="font-medium text-slate-700 truncate max-w-[140px]" title={vehicle.customerName || ""}>{vehicle.customerName || "Unknown"}</span>
-                                )}
-                                {!!vehicle.customerOptedOut && (
-                                  <Badge variant="destructive" className="text-xs px-1 py-0">OPTED OUT</Badge>
-                                )}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-xs text-slate-500 font-mono">{vehicle.customerPhone || "-"}</div>
-                          </TableCell>
-                          <TableCell>
-                            {vehicle.make || vehicle.model ? (
-                              <div className="text-xs">
-                                <div className="font-medium truncate">{vehicle.make || "Unknown"}</div>
-                                <div className="text-slate-500 truncate">{vehicle.model || ""}</div>
-                              </div>
-                            ) : "-"}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {vehicle.motExpiryDate ? (
-                              new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")
-                            ) : (
-                              <span className="text-slate-400">No data</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {getMOTStatusBadge(status, daysLeft)}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {vehicle.taxStatus ? (
-                              <div className="flex flex-col gap-1 items-start">
-                                <Badge
-                                  variant={
-                                    vehicle.taxStatus === 'Taxed' ? 'outline' :
-                                      vehicle.taxStatus === 'SORN' ? 'secondary' :
-                                        'destructive'
-                                  }
-                                  className={
-                                    vehicle.taxStatus === 'Taxed' ? "text-green-600 border-green-200 bg-green-50" : ""
-                                  }
-                                >
-                                  {vehicle.taxStatus}
-                                </Badge>
-                                {vehicle.taxDueDate && (
-                                  <span className="text-[10px] text-slate-500">
-                                    Expires: {new Date(vehicle.taxDueDate).toLocaleDateString("en-GB")}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {vehicle.lastReminderSent ? (
-                              <div className="flex flex-col gap-1">
-                                <span className="font-medium text-slate-700">
-                                  {new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  {getDeliveryStatusIcon((vehicle as any).lastReminderStatus)}
-                                  <span className="text-[10px] text-slate-400 capitalize">{(vehicle as any).lastReminderStatus || 'queued'}</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">Never</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleSendReminder(vehicle)}
-                                disabled={sendReminderMutation.isPending || !vehicle.customerPhone}
-                                title="Send Reminder"
-                              >
-                                {sendReminderMutation.isPending && pendingVehicle?.id === vehicle.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Send className="w-4 h-4" />
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleBookMOTClick(vehicle)}
-                                title="Book MOT (Update Expiry)"
-                              >
-                                <CalendarDays className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDelete(vehicle.id)}
-                                disabled={deleteVehicleMutation.isPending}
-                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                                title="Delete Vehicle"
-                              >
-                                {deleteVehicleMutation.isPending ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            )}
+            <ComprehensiveVehicleTable
+              vehicles={filteredAndSortedVehicles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)}
+              isLoading={isLoading}
+              selectedVehicleIds={selectedVehicleIds}
+              onSelectAll={handleSelectAll}
+              onSelectOne={handleSelectOne}
+              onSendReminder={handleSendReminder}
+              onBookMOT={handleBookMOTClick}
+              onDelete={handleDelete}
+              isSendingBatch={isSendingBatch}
+              isDeletingBatch={deleteVehicleMutation.isPending}
+              pendingVehicleId={pendingVehicle?.id}
+            />
           </CardContent>
 
           {/* Pagination Controls */}
