@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index, decimal, datetime } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -32,8 +32,8 @@ export const customers = mysqlTable("customers", {
   id: int("id").autoincrement().primaryKey(),
   name: text("name").notNull(),
   email: varchar("email", { length: 320 }),
-  phone: varchar("phone", { length: 20 }),
-  externalId: varchar("externalId", { length: 255 }), // GA4 _ID
+  phone: varchar("phone", { length: 100 }),
+  externalId: varchar("externalId", { length: 255 }).unique(), // GA4 _ID
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
@@ -65,7 +65,7 @@ export const vehicles = mysqlTable("vehicles", {
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
   fuelType: varchar("fuelType", { length: 50 }),
-  dateOfRegistration: timestamp("dateOfRegistration"),
+  dateOfRegistration: datetime("dateOfRegistration"),
   vin: varchar("vin", { length: 50 }),
   engineCC: int("engineCC"),
   notes: text("notes"),
@@ -163,3 +163,50 @@ export const customerMessages = mysqlTable("customerMessages", {
 
 export type CustomerMessage = typeof customerMessages.$inferSelect;
 export type InsertCustomerMessage = typeof customerMessages.$inferInsert;
+
+
+/**
+ * Service History table - stores document headers (invoices/estimates)
+ */
+export const serviceHistory = mysqlTable("serviceHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  externalId: varchar("externalId", { length: 255 }).notNull().unique(), // GA4 Document _ID
+  customerId: int("customerId"),
+  vehicleId: int("vehicleId"),
+  docType: varchar("docType", { length: 20 }), // SI, ES, etc.
+  docNo: varchar("docNo", { length: 50 }),
+  dateCreated: datetime("dateCreated"),
+  dateIssued: datetime("dateIssued"),
+  datePaid: datetime("datePaid"),
+  totalNet: decimal("totalNet", { precision: 10, scale: 2 }),
+  totalTax: decimal("totalTax", { precision: 10, scale: 2 }),
+  totalGross: decimal("totalGross", { precision: 10, scale: 2 }),
+  mileage: int("mileage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
+  customerIdIdx: index("service_history_customer_id_idx").on(table.customerId),
+}));
+
+export type ServiceHistory = typeof serviceHistory.$inferSelect;
+export type InsertServiceHistory = typeof serviceHistory.$inferInsert;
+
+/**
+ * Service Line Items table - stores detail lines for documents
+ */
+export const serviceLineItems = mysqlTable("serviceLineItems", {
+  id: int("id").autoincrement().primaryKey(),
+  externalId: varchar("externalId", { length: 255 }).notNull().unique(), // GA4 LineItem _ID
+  documentId: int("documentId").notNull(),
+  description: text("description"),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }),
+  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }),
+  subNet: decimal("subNet", { precision: 10, scale: 2 }),
+  itemType: varchar("itemType", { length: 50 }), // Labour, Part, etc.
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  documentIdIdx: index("service_line_items_document_id_idx").on(table.documentId),
+}));
+
+export type ServiceLineItem = typeof serviceLineItems.$inferSelect;
+export type InsertServiceLineItem = typeof serviceLineItems.$inferInsert;

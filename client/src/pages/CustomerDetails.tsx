@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -17,10 +17,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { ServiceHistory } from "@/components/ServiceHistory";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Assuming Label exists, else simple label tag
 import { toast } from "sonner";
-import { Pencil } from "lucide-react";
 
 export default function CustomerDetails() {
     const [match, params] = useRoute("/customers/:id");
@@ -41,6 +40,10 @@ export default function CustomerDetails() {
         postcode: "",
         notes: ""
     });
+
+    // History State
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [selectedVehicleForHistory, setSelectedVehicleForHistory] = useState<{ id: number, registration: string } | null>(null);
 
     const updateCustomerMutation = trpc.customers.update.useMutation({
         onSuccess: () => {
@@ -130,99 +133,12 @@ export default function CustomerDetails() {
                     </Button>
                 </div>
 
-                {/* Edit Dialog */}
-                <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Edit Customer Details</DialogTitle>
-                            <DialogDescription>
-                                Update contact information for {customer.name}.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="name" className="text-right text-sm font-medium">
-                                    Name
-                                </label>
-                                <Input
-                                    id="name"
-                                    value={editForm.name}
-                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="phone" className="text-right text-sm font-medium">
-                                    Phone
-                                </label>
-                                <Input
-                                    id="phone"
-                                    value={editForm.phone}
-                                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="email" className="text-right text-sm font-medium">
-                                    Email
-                                </label>
-                                <Input
-                                    id="email"
-                                    value={editForm.email}
-                                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="address" className="text-right text-sm font-medium">
-                                    Address
-                                </label>
-                                <Input
-                                    id="address"
-                                    value={editForm.address}
-                                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="postcode" className="text-right text-sm font-medium">
-                                    Postcode
-                                </label>
-                                <Input
-                                    id="postcode"
-                                    value={editForm.postcode}
-                                    onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <label htmlFor="notes" className="text-right text-sm font-medium">
-                                    Notes
-                                </label>
-                                <Input
-                                    id="notes" // Using simple input for notes for now, could act as textarea
-                                    value={editForm.notes}
-                                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSave} disabled={updateCustomerMutation.isPending}>
-                                {updateCustomerMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                Save Changes
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
+                {/* Info Cards Grid */}
                 <div className="grid gap-6 md:grid-cols-3">
-                    {/* Customer Info */}
                     <Card className="md:col-span-1 h-fit">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <User className="w-5 h-5 text-blue-500" />
                                 Contact Details
                             </CardTitle>
                         </CardHeader>
@@ -238,7 +154,7 @@ export default function CustomerDetails() {
                             {customer.phone && (
                                 <div className="flex items-center gap-2 text-sm">
                                     <Phone className="w-4 h-4 text-muted-foreground" />
-                                    <a href={`tel:${customer.phone}`} className="hover:underline">
+                                    <a href={`tel:${customer.phone}`} className="hover:underline font-mono">
                                         {customer.phone}
                                     </a>
                                 </div>
@@ -248,26 +164,25 @@ export default function CustomerDetails() {
                                     <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                                     <div>
                                         {customer.address && <div>{customer.address}</div>}
-                                        {customer.postcode && <div className="font-medium">{customer.postcode}</div>}
+                                        {customer.postcode && <div className="font-medium text-blue-700">{customer.postcode}</div>}
                                     </div>
                                 </div>
                             )}
                             {customer.notes && (
                                 <div className="border-t pt-4 mt-4">
-                                    <p className="text-sm text-muted-foreground font-medium mb-1">Notes</p>
-                                    <p className="text-sm whitespace-pre-wrap">{customer.notes}</p>
+                                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">Internal Notes</p>
+                                    <p className="text-sm bg-yellow-50 p-3 rounded-md border border-yellow-100 whitespace-pre-wrap">{customer.notes}</p>
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
                     <div className="md:col-span-2 space-y-6">
-                        {/* Vehicles */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Car className="w-5 h-5" />
-                                    Vehicles ({vehicles.length})
+                                <CardTitle className="flex items-center gap-2 text-lg">
+                                    <Car className="w-5 h-5 text-blue-500" />
+                                    Linked Vehicles ({vehicles.length})
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
@@ -276,9 +191,10 @@ export default function CustomerDetails() {
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead>Registration</TableHead>
-                                                <TableHead>Make/Model</TableHead>
+                                                <TableHead>Vehicle Info</TableHead>
                                                 <TableHead>MOT Expiry</TableHead>
                                                 <TableHead>Status</TableHead>
+                                                <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -287,11 +203,12 @@ export default function CustomerDetails() {
                                                 const isExpired = expiry && expiry < new Date();
                                                 return (
                                                     <TableRow key={v.id}>
-                                                        <TableCell className="font-medium">{v.registration}</TableCell>
+                                                        <TableCell className="font-mono font-bold text-lg">{v.registration}</TableCell>
                                                         <TableCell>
-                                                            {v.make} {v.model}
+                                                            <div className="text-sm font-medium">{v.make || "Unknown"}</div>
+                                                            <div className="text-xs text-muted-foreground">{v.model || ""}</div>
                                                         </TableCell>
-                                                        <TableCell>
+                                                        <TableCell className="text-sm">
                                                             {expiry ? format(expiry, "dd/MM/yyyy") : "-"}
                                                         </TableCell>
                                                         <TableCell>
@@ -303,27 +220,37 @@ export default function CustomerDetails() {
                                                                 <Badge variant="secondary">Unknown</Badge>
                                                             )}
                                                         </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setSelectedVehicleForHistory({ id: v.id, registration: v.registration });
+                                                                    setHistoryOpen(true);
+                                                                }}
+                                                            >
+                                                                <History className="w-4 h-4 mr-2" />
+                                                                History
+                                                            </Button>
+                                                        </TableCell>
                                                     </TableRow>
                                                 );
                                             })}
                                         </TableBody>
                                     </Table>
                                 ) : (
-                                    <p className="text-muted-foreground text-sm">No vehicles linked to this customer.</p>
+                                    <p className="text-muted-foreground text-sm py-4 text-center">No vehicles linked to this customer.</p>
                                 )}
                             </CardContent>
                         </Card>
 
-                        {/* Reminders / History */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <History className="w-5 h-5" />
-                                    Reminder History
+                                <CardTitle className="flex items-center gap-2 text-lg">
+                                    <Send className="w-5 h-5 text-blue-500" />
+                                    Reminder Log
                                 </CardTitle>
-                                <CardDescription>
-                                    Reminders sent to this customer
-                                </CardDescription>
+                                <CardDescription>Message history for this customer</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {reminders && reminders.length > 0 ? (
@@ -339,16 +266,15 @@ export default function CustomerDetails() {
                                         <TableBody>
                                             {reminders.map((r: any) => (
                                                 <TableRow key={r.id}>
-                                                    <TableCell>
+                                                    <TableCell className="text-sm whitespace-nowrap">
                                                         {format(new Date(r.sentAt), "dd/MM/yyyy HH:mm")}
                                                     </TableCell>
-                                                    <TableCell>
-                                                        {/* We might need vehicle reg here if available in reminder/log object, or link by ID */}
-                                                        {r.vehicleId ? `Vehicle #${r.vehicleId}` : "-"}
+                                                    <TableCell className="text-sm">
+                                                        {r.registration || `Vehicle #${r.vehicleId}`}
                                                     </TableCell>
-                                                    <TableCell>Recall/MOT</TableCell>
+                                                    <TableCell className="text-sm">WhatsApp</TableCell>
                                                     <TableCell>
-                                                        <Badge variant="outline" className="capitalize">
+                                                        <Badge variant="outline" className="capitalize text-[10px]">
                                                             {r.status}
                                                         </Badge>
                                                     </TableCell>
@@ -357,13 +283,86 @@ export default function CustomerDetails() {
                                         </TableBody>
                                     </Table>
                                 ) : (
-                                    <p className="text-muted-foreground text-sm">No reminders sent yet.</p>
+                                    <p className="text-muted-foreground text-sm py-4 text-center">No messages sent yet.</p>
                                 )}
                             </CardContent>
                         </Card>
                     </div>
                 </div>
             </div>
+
+            {/* Service History Dialog */}
+            <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+                    </DialogHeader>
+                    {selectedVehicleForHistory && (
+                        <ServiceHistory vehicleId={selectedVehicleForHistory.id} />
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Customer Dialog */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Customer Details</DialogTitle>
+                        <DialogDescription>Update info for {customer.name}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Name</label>
+                            <Input
+                                value={editForm.name}
+                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Phone</label>
+                            <Input
+                                value={editForm.phone}
+                                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Email</label>
+                            <Input
+                                value={editForm.email}
+                                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Address</label>
+                            <Input
+                                value={editForm.address}
+                                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Postcode</label>
+                            <Input
+                                value={editForm.postcode}
+                                onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Notes</label>
+                            <Input
+                                value={editForm.notes}
+                                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSave} disabled={updateCustomerMutation.isPending}>
+                            {updateCustomerMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }

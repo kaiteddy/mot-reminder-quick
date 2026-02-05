@@ -41,6 +41,7 @@ import { ComprehensiveVehicleTable } from "@/components/ComprehensiveVehicleTabl
 import { BookMOTDialog } from "@/components/BookMOTDialog";
 import { APP_TITLE } from "@/const";
 import { ImageUpload } from "@/components/ImageUpload";
+import { ServiceHistory } from "@/components/ServiceHistory";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
@@ -54,10 +55,16 @@ export default function Home() {
   const [taxStatusFilter, setTaxStatusFilter] = useState<TaxStatusFilter>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
   const [showDeadVehicles, setShowDeadVehicles] = useState(false);
+  const [hideMissingPhone, setHideMissingPhone] = useState(true);
+  const [hideSorn, setHideSorn] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // History State
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedVehicleForHistory, setSelectedVehicleForHistory] = useState<{ id: number, registration: string } | null>(null);
 
   // Preview State
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -277,6 +284,17 @@ export default function Home() {
           if (diffDays < -300 && vehicle.taxStatus?.toLowerCase() !== 'taxed') return false;
         }
       }
+
+      // Filter: Hide vehicles without phone numbers
+      if (hideMissingPhone && (!vehicle.customerPhone || vehicle.customerPhone === '-')) {
+        return false;
+      }
+
+      // Filter: Hide SORN vehicles
+      if (hideSorn && vehicle.taxStatus?.toLowerCase() === 'sorn') {
+        return false;
+      }
+
       const termLower = searchTerm.toLowerCase();
       const matchesSearch = (vehicle.registration?.toLowerCase() || "").includes(termLower.replace(/\s+/g, '')) ||
         (vehicle.customerName?.toLowerCase() || "").includes(termLower) ||
@@ -376,6 +394,50 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex flex-wrap gap-4 mt-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-dead-home"
+                  checked={showDeadVehicles}
+                  onCheckedChange={(checked) => setShowDeadVehicles(checked as boolean)}
+                />
+                <label
+                  htmlFor="show-dead-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Show Dead Vehicles
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="hide-no-phone-home"
+                  checked={hideMissingPhone}
+                  onCheckedChange={(checked) => setHideMissingPhone(checked as boolean)}
+                />
+                <label
+                  htmlFor="hide-no-phone-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Hide Missing Phone Numbers
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="hide-sorn-home"
+                  checked={hideSorn}
+                  onCheckedChange={(checked) => setHideSorn(checked as boolean)}
+                />
+                <label
+                  htmlFor="hide-sorn-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Hide SORN Vehicles
+                </label>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -390,9 +452,12 @@ export default function Home() {
               onSendReminder={handleSendReminder}
               onBookMOT={handleBookMOTClick}
               onDelete={handleDelete}
-              isSendingBatch={isSendingBatch}
               isDeletingBatch={deleteVehicleMutation.isPending}
               pendingVehicleId={pendingVehicle?.id}
+              onViewHistory={(vehicle) => {
+                setSelectedVehicleForHistory({ id: vehicle.id, registration: vehicle.registration });
+                setHistoryOpen(true);
+              }}
             />
           </CardContent>
         </Card>
@@ -410,8 +475,21 @@ export default function Home() {
         </Dialog>
 
         {selectedVehicleForMOT && (
-          <BookMOTDialog open={isBookMOTOpen} onOpenChange={setIsBookMOTOpen} vehicleId={selectedVehicleForMOT.id} registration={selectedVehicleForMOT.registration} currentExpiryDate={selectedVehicleForMOT.currentExpiry} onSuccess={() => refetch()} />
+          <BookMOTDialog open={isBookMOTOpen} onOpenChange={setIsBookMOTOpen} vehicleId={selectedVehicleForMOT.id} registration={selectedVehicleForMOT.registration} currentExpiryDate={selectedVehicleForMOT.currentExpiry} onSuccess={() => refetch()}
+          />
         )}
+
+        {/* Service History Dialog */}
+        <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+            </DialogHeader>
+            {selectedVehicleForHistory && (
+              <ServiceHistory vehicleId={selectedVehicleForHistory.id} />
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

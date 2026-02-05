@@ -45,6 +45,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea"; // Assuming we want to show it in a readonly textarea or just a div
 import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
@@ -53,6 +63,13 @@ import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ComprehensiveVehicleTable } from "@/components/ComprehensiveVehicleTable";
 import { BookMOTDialog } from "@/components/BookMOTDialog";
+import { ServiceHistory } from "@/components/ServiceHistory";
+import {
+  Dialog as UI_Dialog,
+  DialogContent as UI_DialogContent,
+  DialogHeader as UI_DialogHeader,
+  DialogTitle as UI_DialogTitle
+} from "@/components/ui/dialog";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
@@ -68,6 +85,8 @@ export default function Database() {
   const [taxStatusFilter, setTaxStatusFilter] = useState<TaxStatusFilter>("all");
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
   const [showDeadVehicles, setShowDeadVehicles] = useState(false);
+  const [hideMissingPhone, setHideMissingPhone] = useState(true);
+  const [hideSorn, setHideSorn] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -81,6 +100,25 @@ export default function Database() {
   // Book MOT State
   const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
   const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry?: Date | string } | null>(null);
+
+  // Delete Confirmation State
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"single" | "batch">("single");
+  const [vehicleIdToDelete, setVehicleIdToDelete] = useState<number | null>(null);
+
+  // Service History State
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedVehicleForHistory, setSelectedVehicleForHistory] = useState<{ id: number, registration: string } | null>(null);
+
+  // Generic Confirmation State
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    actionLabel?: string;
+    actionVariant?: "default" | "destructive";
+  } | null>(null);
 
   const { data: vehicles, isLoading, refetch } = trpc.database.getAllVehiclesWithCustomers.useQuery();
 
@@ -136,9 +174,24 @@ export default function Database() {
 
     // For implicitly selected view refresh, show confirmation
     if (isFullRefresh) {
-      if (!confirm(`Refresh MOT & Tax for the ${idsToSend.length} visible vehicles?`)) {
-        return;
-      }
+      setConfirmConfig({
+        title: "Refresh MOT & Tax?",
+        description: `Refresh MOT & Tax for the ${idsToSend.length} visible vehicles? This will perform lookups for all ${idsToSend.length} vehicles.`,
+        onConfirm: async () => {
+          try {
+            await bulkUpdateMutation.mutateAsync({
+              vehicleIds: idsToSend,
+            });
+            setSelectedVehicleIds(new Set());
+          } catch (error) {
+            console.error("Batch refresh failed:", error);
+          }
+        },
+        actionLabel: "Refresh",
+        actionVariant: "default"
+      });
+      setConfirmOpen(true);
+      return;
     }
 
     try {
@@ -190,9 +243,15 @@ export default function Database() {
 
     // Warn if sending too early (e.g. > 60 days)
     if (status === "valid" && daysLeft && daysLeft > 60) {
-      if (!window.confirm(`⚠️ Warning: This vehicle's MOT is not due for ${daysLeft} days.\n\nThe "MOT Reminder" message will ask the customer to "Book your MOT test today".\n\nAre you sure you want to send this message now?`)) {
-        return;
-      }
+      setConfirmConfig({
+        title: "Send Reminder Early?",
+        description: `⚠️ Warning: This vehicle's MOT is not due for ${daysLeft} days. The "MOT Reminder" message will ask the customer to "Book your MOT test today". Are you sure you want to send this message now?`,
+        onConfirm: () => confirmSend(),
+        actionLabel: "Send Anyway",
+        actionVariant: "default"
+      });
+      setConfirmOpen(true);
+      return;
     }
 
     // Request preview first
@@ -306,34 +365,34 @@ export default function Database() {
 
   const deleteVehicleMutation = trpc.database.delete.useMutation();
 
-  const handleDelete = async (vehicleId: number) => {
-    if (!window.confirm("Are you sure you want to delete this vehicle? This will also remove all associated reminders.")) {
-      return;
-    }
-
-    try {
-      await deleteVehicleMutation.mutateAsync({ vehicleIds: [vehicleId] });
-      toast.success("Vehicle deleted");
-      await refetch();
-    } catch (error) {
-      toast.error("Failed to delete vehicle");
-    }
+  const handleDelete = (vehicleId: number) => {
+    setVehicleIdToDelete(vehicleId);
+    setDeleteMode("single");
+    setDeleteConfirmOpen(true);
   };
 
-  const handleBatchDelete = async () => {
+  const handleBatchDelete = () => {
     if (selectedVehicleIds.size === 0) return;
+    setDeleteMode("batch");
+    setDeleteConfirmOpen(true);
+  };
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedVehicleIds.size} vehicles? This action cannot be undone.`)) {
-      return;
-    }
-
+  const confirmDelete = async () => {
     try {
-      await deleteVehicleMutation.mutateAsync({ vehicleIds: Array.from(selectedVehicleIds) });
-      toast.success(`Deleted ${selectedVehicleIds.size} vehicles`);
-      setSelectedVehicleIds(new Set());
+      if (deleteMode === "single" && vehicleIdToDelete) {
+        await deleteVehicleMutation.mutateAsync({ vehicleIds: [vehicleIdToDelete] });
+        toast.success("Vehicle deleted");
+      } else if (deleteMode === "batch") {
+        await deleteVehicleMutation.mutateAsync({ vehicleIds: Array.from(selectedVehicleIds) });
+        toast.success(`Deleted ${selectedVehicleIds.size} vehicles`);
+        setSelectedVehicleIds(new Set());
+      }
       await refetch();
     } catch (error) {
-      toast.error("Failed to delete vehicles");
+      toast.error("Failed to delete");
+    } finally {
+      setDeleteConfirmOpen(false);
+      setVehicleIdToDelete(null);
     }
   };
 
@@ -413,6 +472,16 @@ export default function Database() {
             }
           }
         }
+      }
+
+      // Filter: Hide vehicles without phone numbers
+      if (hideMissingPhone && (!vehicle.customerPhone || vehicle.customerPhone === '-')) {
+        return false;
+      }
+
+      // Filter: Hide SORN vehicles
+      if (hideSorn && vehicle.taxStatus?.toLowerCase() === 'sorn') {
+        return false;
       }
 
       const termLower = searchTerm.toLowerCase();
@@ -622,6 +691,11 @@ export default function Database() {
     };
   }, [vehicles]);
 
+  const missingPhoneCount = useMemo(() => {
+    if (!vehicles) return 0;
+    return vehicles.filter(v => !v.customerPhone || v.customerPhone === '-').length;
+  }, [vehicles]);
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -635,6 +709,16 @@ export default function Database() {
             <p className="text-slate-600 mt-1">Complete view of all vehicles, customers, and MOT status</p>
           </div>
           <div className="flex gap-2">
+            {missingPhoneCount > 0 && (
+              <Button variant="outline" asChild className="border-red-200 text-red-600 hover:bg-red-50">
+                <Link href="/diagnose-mot">
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Clean up {missingPhoneCount} Missing Contact
+                  </span>
+                </Link>
+              </Button>
+            )}
             {stats.noData > 0 && (
               <Button variant="outline" asChild>
                 <Link href="/diagnose-mot">
@@ -678,7 +762,7 @@ export default function Database() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <Card>
             <CardHeader className="pb-3">
               <CardDescription>Total Vehicles</CardDescription>
@@ -716,6 +800,12 @@ export default function Database() {
             <CardHeader className="pb-3">
               <CardDescription>No MOT Data</CardDescription>
               <CardTitle className="text-3xl text-slate-600">{stats.noData}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="border-red-100 bg-red-50/30">
+            <CardHeader className="pb-3">
+              <CardDescription>Missing Phone</CardDescription>
+              <CardTitle className="text-3xl text-red-500">{missingPhoneCount}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -882,6 +972,34 @@ export default function Database() {
               </label>
             </div>
 
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox
+                id="hide-no-phone"
+                checked={hideMissingPhone}
+                onCheckedChange={(checked) => setHideMissingPhone(checked as boolean)}
+              />
+              <label
+                htmlFor="hide-no-phone"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Hide Vehicles without Phone Number
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox
+                id="hide-sorn"
+                checked={hideSorn}
+                onCheckedChange={(checked) => setHideSorn(checked as boolean)}
+              />
+              <label
+                htmlFor="hide-sorn"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Hide SORN Vehicles
+              </label>
+            </div>
+
             <div className="flex items-center justify-between mt-4">
               <div className="text-sm text-slate-600">
                 Showing {filteredAndSortedVehicles.length} of {stats.total} vehicles
@@ -969,6 +1087,10 @@ export default function Database() {
               isSendingBatch={isSendingBatch}
               isDeletingBatch={deleteVehicleMutation.isPending}
               pendingVehicleId={pendingVehicle?.id}
+              onViewHistory={(vehicle) => {
+                setSelectedVehicleForHistory({ id: vehicle.id, registration: vehicle.registration });
+                setHistoryOpen(true);
+              }}
             />
           </CardContent>
 
@@ -1063,7 +1185,69 @@ export default function Database() {
             onSuccess={() => refetch()}
           />
         )}
+
+        <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {deleteMode === "single" ? "Delete Vehicle" : `Delete ${selectedVehicleIds.size} Vehicles`}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteMode === "single"
+                  ? "Are you sure you want to delete this vehicle? This will also remove all associated reminders. This action cannot be undone."
+                  : `Are you sure you want to delete ${selectedVehicleIds.size} vehicles? This action cannot be undone.`
+                }
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  confirmDelete();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteVehicleMutation.isPending ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{confirmConfig?.title}</AlertDialogTitle>
+              <AlertDialogDescription>{confirmConfig?.description}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  confirmConfig?.onConfirm();
+                  setConfirmOpen(false);
+                }}
+                className={confirmConfig?.actionVariant === "destructive" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              >
+                {confirmConfig?.actionLabel || "Confirm"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Service History Dialog */}
+        <UI_Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+          <UI_DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <UI_DialogHeader>
+              <UI_DialogTitle>Service History: {selectedVehicleForHistory?.registration}</UI_DialogTitle>
+            </UI_DialogHeader>
+            {selectedVehicleForHistory && (
+              <ServiceHistory vehicleId={selectedVehicleForHistory.id} />
+            )}
+          </UI_DialogContent>
+        </UI_Dialog>
       </div>
-    </DashboardLayout >
+    </DashboardLayout>
   );
 }

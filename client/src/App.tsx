@@ -6,7 +6,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import MOTCheck from "./pages/MOTCheck";
-import Import from "./pages/Import";
 import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
 import Analytics from "./pages/Analytics";
@@ -23,6 +22,7 @@ import Conversations from "./pages/Conversations";
 import SystemStatus from "./pages/SystemStatus";
 import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
+import ReminderFollowUp from "./pages/ReminderFollowUp";
 
 function Router() {
   return (
@@ -43,7 +43,6 @@ function Router() {
       {/* Other routes */}
       <Route path="/analytics" component={Analytics} />
       <Route path="/database" component={Database} />
-      <Route path="/import" component={Import} />
       <Route path="/mot-check" component={MOTCheck} />
       <Route path="/diagnose-mot" component={DiagnoseMOT} />
       <Route path="/test-whatsapp" component={TestWhatsApp} />
@@ -51,6 +50,7 @@ function Router() {
       <Route path="/phone-cleanup" component={PhoneCleanup} />
       <Route path="/archive" component={ReminderArchive} />
       <Route path="/follow-up" component={FollowUpActions} />
+      <Route path="/reminders-sent" component={ReminderFollowUp} />
       <Route path="/conversations" component={Conversations} />
       <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/system-status" component={SystemStatus} />

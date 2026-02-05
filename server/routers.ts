@@ -3,7 +3,6 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { importRouter } from "./routers/import";
 import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
 
@@ -13,7 +12,6 @@ import { reminders, reminderLogs, customerMessages, vehicles, customers } from "
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
-  import: importRouter,
   diagnostics: diagnosticsRouter,
   analytics: analyticsRouter,
   auth: router({
@@ -326,21 +324,25 @@ export const appRouter = router({
         let latestLogMap = new Map();
 
         if (vehicleIds.length > 0) {
-          const logs = await db
-            .select({
-              vehicleId: reminderLogs.vehicleId,
-              sentAt: reminderLogs.sentAt,
-              status: reminderLogs.status
-            })
-            .from(reminderLogs)
-            .where(inArray(reminderLogs.vehicleId, vehicleIds))
-            .orderBy(desc(reminderLogs.sentAt));
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < vehicleIds.length; i += BATCH_SIZE) {
+            const batch = vehicleIds.slice(i, i + BATCH_SIZE);
+            const logs = await db
+              .select({
+                vehicleId: reminderLogs.vehicleId,
+                sentAt: reminderLogs.sentAt,
+                status: reminderLogs.status
+              })
+              .from(reminderLogs)
+              .where(inArray(reminderLogs.vehicleId, batch))
+              .orderBy(desc(reminderLogs.sentAt));
 
-          logs.forEach(log => {
-            if (!latestLogMap.has(log.vehicleId) && log.vehicleId) {
-              latestLogMap.set(log.vehicleId, log);
-            }
-          });
+            logs.forEach(log => {
+              if (!latestLogMap.has(log.vehicleId) && log.vehicleId) {
+                latestLogMap.set(log.vehicleId, log);
+              }
+            });
+          }
         }
 
         // 3. Construct result
@@ -450,20 +452,29 @@ export const appRouter = router({
         const vehicleIds: number[] = [];
 
         if (regs.length > 0) {
-          const found = await db.select({
-            id: vehicles.id,
-            registration: vehicles.registration,
-            customerId: vehicles.customerId
-          }).from(vehicles).where(inArray(vehicles.registration, regs));
+          const BATCH_SIZE = 500;
+          const found: any[] = [];
+
+          for (let i = 0; i < regs.length; i += BATCH_SIZE) {
+            const batch = regs.slice(i, i + BATCH_SIZE);
+            const results = await db.select({
+              id: vehicles.id,
+              registration: vehicles.registration,
+              customerId: vehicles.customerId
+            }).from(vehicles).where(inArray(vehicles.registration, batch));
+            found.push(...results);
+          }
 
           // Fetch customer details for matched vehicles
           const customerIds = found.filter(v => v.customerId).map(v => v.customerId) as number[];
           const customerMap = new Map();
 
           if (customerIds.length > 0) {
-
-            const linkedCustomers = await db.select().from(customers).where(inArray(customers.id, customerIds));
-            linkedCustomers.forEach(c => customerMap.set(c.id, c));
+            for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+              const batch = customerIds.slice(i, i + BATCH_SIZE);
+              const linkedCustomers = await db.select().from(customers).where(inArray(customers.id, batch));
+              linkedCustomers.forEach(c => customerMap.set(c.id, c));
+            }
           }
 
           found.forEach(v => {
@@ -478,23 +489,27 @@ export const appRouter = router({
 
         const logMap = new Map();
         if (vehicleIds.length > 0) {
-          const logs = await db.select({
-            vehicleId: reminderLogs.vehicleId,
-            sentAt: reminderLogs.sentAt,
-            status: reminderLogs.status
-          }).from(reminderLogs)
-            .where(inArray(reminderLogs.vehicleId, vehicleIds))
-            .orderBy(desc(reminderLogs.sentAt));
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < vehicleIds.length; i += BATCH_SIZE) {
+            const batch = vehicleIds.slice(i, i + BATCH_SIZE);
+            const logs = await db.select({
+              vehicleId: reminderLogs.vehicleId,
+              sentAt: reminderLogs.sentAt,
+              status: reminderLogs.status
+            }).from(reminderLogs)
+              .where(inArray(reminderLogs.vehicleId, batch))
+              .orderBy(desc(reminderLogs.sentAt));
 
-          logs.forEach(log => {
-            if (log.vehicleId && !logMap.has(log.vehicleId)) {
-              logMap.set(log.vehicleId, log);
-            }
-          });
+            logs.forEach(log => {
+              if (log.vehicleId && !logMap.has(log.vehicleId)) {
+                logMap.set(log.vehicleId, log);
+              }
+            });
+          }
         }
 
         // Process results and perform live check if not sent
-        const results = await Promise.all(normalizedInfo.map(async (item: any) => {
+        const results = await Promise.all(normalizedInfo.map(async (item: any, i: number) => {
           const v = vehicleMap.get(item.normalizedReg);
           const log = v ? logMap.get(v.id) : null;
           const isSent = !!log;
@@ -509,20 +524,21 @@ export const appRouter = router({
           let make = item.vehicleMake;
           let model = item.vehicleModel;
 
-          // If not sent, fetch live MOT/Tax data
-          if (!isSent) {
-            try {
-              const dvlaData = await getVehicleDetails(item.normalizedReg);
-              if (dvlaData) {
-                motExpiryDate = dvlaData.motExpiryDate;
-                taxDueDate = dvlaData.taxDueDate;
-                taxStatus = dvlaData.taxStatus;
-                make = dvlaData.make || make;
-                model = dvlaData.model || model;
-              }
-            } catch (err) {
-              console.error(`Failed to fetch DVLA details for ${item.normalizedReg}`, err);
+          // Always fetch live MOT/Tax data to ensure accuracy, but sequentially with a small delay to avoid rate limiting
+          try {
+            // Add a small staggered delay based on index to reduce concurrent load even before sequential processing
+            await new Promise(resolve => setTimeout(resolve, i * 50));
+
+            const dvlaData = await getVehicleDetails(item.normalizedReg);
+            if (dvlaData) {
+              motExpiryDate = dvlaData.motExpiryDate;
+              taxDueDate = dvlaData.taxDueDate;
+              taxStatus = dvlaData.taxStatus;
+              make = dvlaData.make || make;
+              model = dvlaData.model || model;
             }
+          } catch (err) {
+            console.error(`Failed to fetch DVLA details for ${item.normalizedReg}`, err);
           }
 
           return {
@@ -1457,8 +1473,9 @@ export const appRouter = router({
         let vehiclesToUpdate: any[] = [];
 
         if (input.vehicleIds && input.vehicleIds.length > 0) {
+          const idSet = new Set(input.vehicleIds);
           const allVehicles = await getAllVehicles();
-          vehiclesToUpdate = allVehicles.filter(v => input.vehicleIds!.includes(v.id));
+          vehiclesToUpdate = allVehicles.filter(v => idSet.has(v.id));
         } else if (input.limit) {
           const db = await getDb();
           if (!db) throw new Error("Database not available");
@@ -1530,8 +1547,13 @@ export const appRouter = router({
               updated++;
               console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${dvlaData.motExpiryDate}`);
             } else {
+              // Even if no MOT data, update lastChecked so we don't keep checking it as "Never Checked"
+              updates.push({
+                id: vehicle.id,
+                lastChecked: new Date(),
+              } as any);
               skipped++;
-              console.log(`[BULK-MOT] No MOT data for ${vehicle.registration}`);
+              console.log(`[BULK-MOT] No MOT data for ${vehicle.registration}, updated lastChecked`);
             }
 
             // Add small delay to avoid rate limiting
@@ -1574,7 +1596,11 @@ export const appRouter = router({
         make: vehicles.make,
         model: vehicles.model,
         lastChecked: vehicles.lastChecked,
-      }).from(vehicles).where(isNull(vehicles.motExpiryDate));
+        customerPhone: customers.phone,
+      })
+        .from(vehicles)
+        .leftJoin(customers, eq(vehicles.customerId, customers.id))
+        .where(isNull(vehicles.motExpiryDate));
 
       const ukPatterns = [
         /^[A-Z]{2}\d{2}[A-Z]{3}$/, // Current (AB12CDE)
@@ -1594,6 +1620,7 @@ export const appRouter = router({
         irish: [] as any[],
         invalidFormat: [] as any[],
         missing: [] as any[],
+        missingPhone: [] as any[],
       };
 
       for (const v of allNoMOT) {
@@ -1602,18 +1629,29 @@ export const appRouter = router({
           continue;
         }
 
+        const diagVehicle = {
+          ...v,
+          issues: [] as string[]
+        };
+
+        if (!v.customerPhone || v.customerPhone === '-') {
+          diagVehicle.issues.push("Missing mobile number");
+        }
+
         const cleanReg = v.registration.replace(/\s+/g, "").toUpperCase();
 
         // 1. Check for "Too New"
         const newMatch = cleanReg.match(/^[A-Z]{2}(\d{2})[A-Z]{3}$/);
         if (newMatch && newCodes.includes(parseInt(newMatch[1]))) {
-          categories.tooNew.push({ ...v, issues: ["Too new for MOT (< 3 years)"] });
+          diagVehicle.issues.push("Too new for MOT (< 3 years)");
+          categories.tooNew.push(diagVehicle);
           continue;
         }
 
         // 2. Check for Irish
         if (irishPattern.test(cleanReg)) {
-          categories.irish.push({ ...v, issues: ["Irish registration (not supported by UK DVLA Enquiry API)"] });
+          diagVehicle.issues.push("Irish registration (not supported by UK DVLA Enquiry API)");
+          categories.irish.push(diagVehicle);
           continue;
         }
 
@@ -1621,15 +1659,18 @@ export const appRouter = router({
         const isValidUK = ukPatterns.some(p => p.test(cleanReg));
         if (isValidUK) {
           if (v.lastChecked) {
-            categories.validUKCheckedNoData.push({ ...v, issues: ["Checked but no MOT data found (likely scrapped)"] });
+            diagVehicle.issues.push("Checked but no MOT data found (likely scrapped)");
+            categories.validUKCheckedNoData.push(diagVehicle);
           } else {
-            categories.validUKNeverChecked.push({ ...v, issues: ["Valid format but never checked"] });
+            diagVehicle.issues.push("Valid format but never checked");
+            categories.validUKNeverChecked.push(diagVehicle);
           }
           continue;
         }
 
         // 4. Invalid
-        categories.invalidFormat.push({ ...v, issues: [`Invalid UK format: ${cleanReg}`] });
+        diagVehicle.issues.push(`Invalid UK format: ${cleanReg}`);
+        categories.invalidFormat.push(diagVehicle);
       }
 
       // Return summary and samples for each
@@ -1642,6 +1683,7 @@ export const appRouter = router({
           irish: categories.irish.length,
           invalidFormat: categories.invalidFormat.length,
           missing: categories.missing.length,
+          missingPhone: allNoMOT.filter(v => !v.customerPhone || v.customerPhone === '-').length,
         },
         // Provide category IDs for bulk actions
         categoryIds: {
@@ -1649,6 +1691,7 @@ export const appRouter = router({
           missing: categories.missing.map(v => v.id),
           scrapped: categories.validUKCheckedNoData.map(v => v.id),
           neverChecked: categories.validUKNeverChecked.map(v => v.id),
+          missingPhone: allNoMOT.filter(v => !v.customerPhone || v.customerPhone === '-').map(v => v.id),
         },
         // Provide samples for the UI to display
         diagnostics: [
@@ -1894,6 +1937,22 @@ export const appRouter = router({
         });
 
         return { success: true, messageId: result.messageId };
+      }),
+  }),
+
+  serviceHistory: router({
+    getByVehicleId: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .query(async ({ input }) => {
+        const { getServiceHistoryByVehicleId } = await import("./db");
+        return getServiceHistoryByVehicleId(input.vehicleId);
+      }),
+
+    getLineItems: publicProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        const { getServiceLineItemsByDocumentId } = await import("./db");
+        return getServiceLineItemsByDocumentId(input.documentId);
       }),
   }),
 });

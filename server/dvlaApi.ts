@@ -35,7 +35,7 @@ interface DVLAVehicle {
  */
 function isValidUKRegistration(registration: string): boolean {
   const cleanReg = registration.replace(/\s+/g, "").toUpperCase();
-  
+
   // UK registration patterns:
   // Current format: AB12 CDE (2 letters, 2 numbers, 3 letters)
   // Prefix format: A123 BCD (1 letter, 1-3 numbers, 3 letters)
@@ -45,8 +45,9 @@ function isValidUKRegistration(registration: string): boolean {
     /^[A-Z]\d{1,3}[A-Z]{3}$/, // Prefix (A123BCD)
     /^[A-Z]{3}\d{1,3}[A-Z]$/, // Suffix (ABC123D)
     /^[A-Z]{1,3}\d{1,4}$/, // Dateless (ABC1234)
+    /^\d{1,4}[A-Z]{1,3}$/, // Dateless Reversed (1234ABC)
   ];
-  
+
   return patterns.some(pattern => pattern.test(cleanReg));
 }
 
@@ -60,7 +61,7 @@ export async function getVehicleDetails(registration: string): Promise<DVLAVehic
 
   // Clean registration (remove spaces, convert to uppercase)
   const cleanReg = registration.replace(/\s+/g, "").toUpperCase();
-  
+
   // Validate registration format
   if (!isValidUKRegistration(cleanReg)) {
     console.log(`[DVLA] Invalid UK registration format: ${cleanReg}`);
@@ -96,7 +97,7 @@ export async function getVehicleDetails(registration: string): Promise<DVLAVehic
         console.warn(`[DVLA] Rate limit exceeded`);
         return null;
       }
-      
+
       console.error(`[DVLA] API error ${response.status}: ${response.statusText}`);
       return null; // Graceful degradation
     }

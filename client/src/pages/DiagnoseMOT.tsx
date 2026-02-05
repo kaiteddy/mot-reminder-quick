@@ -156,6 +156,12 @@ export default function DiagnoseMOT() {
                   <CardTitle className="text-2xl">{data.summary.tooNew + data.summary.irish}</CardTitle>
                 </CardHeader>
               </Card>
+              <Card className="border-red-200 bg-red-50">
+                <CardHeader className="p-4">
+                  <CardDescription className="text-xs text-red-700">Missing Mobile</CardDescription>
+                  <CardTitle className="text-2xl text-red-900">{data.summary.missingPhone}</CardTitle>
+                </CardHeader>
+              </Card>
               <Card>
                 <CardHeader className="p-4">
                   <CardDescription className="text-xs">Status</CardDescription>
@@ -232,6 +238,34 @@ export default function DiagnoseMOT() {
                 {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Verify Never Checked ({data?.summary.validUKNeverChecked})
               </Button>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={!data?.categoryIds.missingPhone?.length || bulkDelete.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Clean Up No Phone ({data?.summary.missingPhone})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete vehicles without phone numbers?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will delete {data?.summary.missingPhone} vehicles that have no mobile numbers (only for those already missing MOT data).
+                      Safety check: vehicles with reminder history will be skipped.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleBulkDelete('missingPhone' as any)}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         )}
@@ -375,6 +409,6 @@ export default function DiagnoseMOT() {
           </Card>
         )}
       </div>
-    </div>
+    </div >
   );
 }

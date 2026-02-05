@@ -22,7 +22,8 @@ import {
     CheckCircle2,
     Clock,
     XCircle,
-    AlertTriangle
+    AlertTriangle,
+    History
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -57,6 +58,7 @@ interface ComprehensiveVehicleTableProps {
     isDeletingBatch?: boolean;
     pendingVehicleId?: number | null;
     deletePendingId?: number | null;
+    onViewHistory: (vehicle: Vehicle) => void;
 }
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent" | "daysLeft";
@@ -75,6 +77,7 @@ export function ComprehensiveVehicleTable({
     isDeletingBatch = false,
     pendingVehicleId = null,
     deletePendingId = null,
+    onViewHistory,
 }: ComprehensiveVehicleTableProps) {
     const [sortField, setSortField] = useState<SortField>("registration");
     const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -325,6 +328,16 @@ export function ComprehensiveVehicleTable({
                                                         <Send className="h-4 w-4" />
                                                     </span>
                                                 )}
+                                            </Button>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                onClick={() => onViewHistory(vehicle)}
+                                            >
+                                                <span title="View Service History">
+                                                    <History className="h-4 w-4" />
+                                                </span>
                                             </Button>
                                             <Button
                                                 size="icon"

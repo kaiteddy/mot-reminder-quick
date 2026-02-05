@@ -3,7 +3,8 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
   InsertUser, users, InsertReminder, InsertCustomer, InsertReminderLog,
-  reminders, reminderLogs, customers, customerMessages, vehicles
+  reminders, reminderLogs, customers, customerMessages, vehicles,
+  serviceHistory, serviceLineItems
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -147,6 +148,7 @@ export async function getAllReminderLogs() {
   return db
     .select({
       id: reminderLogs.id,
+      vehicleId: reminderLogs.vehicleId,
       sentAt: reminderLogs.sentAt,
       messageType: reminderLogs.messageType,
       status: reminderLogs.status,
@@ -155,10 +157,15 @@ export async function getAllReminderLogs() {
       customerName: customers.name,
       vehicleRegistration: vehicles.registration,
       registration: reminderLogs.registration,
+      dueDate: reminderLogs.dueDate,
       deliveredAt: reminderLogs.deliveredAt,
       readAt: reminderLogs.readAt,
       errorMessage: reminderLogs.errorMessage,
       error: reminderLogs.errorMessage,
+      currentMOTExpiry: vehicles.motExpiryDate,
+      vehicleMake: vehicles.make,
+      vehicleModel: vehicles.model,
+      taxStatus: vehicles.taxStatus,
     })
     .from(reminderLogs)
     .leftJoin(customers, eq(reminderLogs.customerId, customers.id))
@@ -503,21 +510,36 @@ export async function deleteVehicle(vehicleId: number) {
 export async function deleteVehiclesByIds(vehicleIds: number[]) {
   const db = await getDb();
   if (!db || vehicleIds.length === 0) return;
-  await db.delete(reminders).where(inArray(reminders.vehicleId, vehicleIds));
-  await db.delete(vehicles).where(inArray(vehicles.id, vehicleIds));
+
+  const BATCH_SIZE = 500;
+  for (let i = 0; i < vehicleIds.length; i += BATCH_SIZE) {
+    const batch = vehicleIds.slice(i, i + BATCH_SIZE);
+    await db.delete(reminders).where(inArray(reminders.vehicleId, batch));
+    await db.delete(vehicles).where(inArray(vehicles.id, batch));
+  }
 }
 
 export async function getVehiclesWithReminderHistory(vehicleIds: number[]) {
   const db = await getDb();
   if (!db || vehicleIds.length === 0) return [];
 
-  const results = await db
-    .select({ vehicleId: reminderLogs.vehicleId })
-    .from(reminderLogs)
-    .where(inArray(reminderLogs.vehicleId, vehicleIds))
-    .groupBy(reminderLogs.vehicleId);
+  const BATCH_SIZE = 500;
+  const idsWithHistory = new Set<number>();
 
-  return results.map(r => r.vehicleId).filter((id): id is number => id !== null);
+  for (let i = 0; i < vehicleIds.length; i += BATCH_SIZE) {
+    const batch = vehicleIds.slice(i, i + BATCH_SIZE);
+    const results = await db
+      .select({ vehicleId: reminderLogs.vehicleId })
+      .from(reminderLogs)
+      .where(inArray(reminderLogs.vehicleId, batch))
+      .groupBy(reminderLogs.vehicleId);
+
+    results.forEach(r => {
+      if (r.vehicleId !== null) idsWithHistory.add(r.vehicleId);
+    });
+  }
+
+  return Array.from(idsWithHistory);
 }
 
 export async function getCustomerWithVehiclesByPhone(phone: string) {
@@ -576,7 +598,7 @@ export async function updateReminderLogStatus(messageSid: string, status: string
 
 export async function bulkUpdateVehicleMOT(updates: Array<{
   id: number;
-  motExpiryDate: Date | null;
+  motExpiryDate?: Date | null;
   make?: string;
   model?: string;
   colour?: string;
@@ -589,18 +611,19 @@ export async function bulkUpdateVehicleMOT(updates: Array<{
   if (!db) return;
 
   for (const update of updates) {
-    const updateData: any = {
-      motExpiryDate: update.motExpiryDate,
-      taxStatus: update.taxStatus,
-      taxDueDate: update.taxDueDate,
-      lastChecked: update.lastChecked,
-    };
+    const updateData: any = {};
+    if (Object.prototype.hasOwnProperty.call(update, 'motExpiryDate')) updateData.motExpiryDate = update.motExpiryDate;
+    if (Object.prototype.hasOwnProperty.call(update, 'taxStatus')) updateData.taxStatus = update.taxStatus;
+    if (Object.prototype.hasOwnProperty.call(update, 'taxDueDate')) updateData.taxDueDate = update.taxDueDate;
+    if (Object.prototype.hasOwnProperty.call(update, 'lastChecked')) updateData.lastChecked = update.lastChecked;
     if (update.make) updateData.make = update.make;
     if (update.model) updateData.model = update.model;
     if (update.colour) updateData.colour = update.colour;
     if (update.fuelType) updateData.fuelType = update.fuelType;
 
-    await db.update(vehicles).set(updateData).where(eq(vehicles.id, update.id));
+    if (Object.keys(updateData).length > 0) {
+      await db.update(vehicles).set(updateData).where(eq(vehicles.id, update.id));
+    }
   }
 }
 
@@ -618,5 +641,39 @@ export async function findCustomerByName(name: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(customers).where(eq(customers.name, name)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getServiceHistoryByVehicleId(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(serviceHistory)
+    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .orderBy(desc(serviceHistory.dateCreated));
+}
+
+export async function getServiceHistoryByCustomerId(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(serviceHistory)
+    .where(eq(serviceHistory.customerId, customerId))
+    .orderBy(desc(serviceHistory.dateCreated));
+}
+
+export async function getServiceLineItemsByDocumentId(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(serviceLineItems)
+    .where(eq(serviceLineItems.documentId, documentId))
+    .orderBy(serviceLineItems.id);
+}
+
+export async function getServiceDocumentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(serviceHistory).where(eq(serviceHistory.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `customers` ADD CONSTRAINT `customers_externalId_unique` UNIQUE(`externalId`);
