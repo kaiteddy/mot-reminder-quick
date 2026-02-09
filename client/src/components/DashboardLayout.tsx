@@ -55,9 +55,11 @@ const menuItems = [
   { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
   { icon: MessageSquare, label: "Conversations", path: "/conversations" },
   { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
+  { icon: FileText, label: "Generate Doc", path: "/generate-document" },
   { icon: FileText, label: "Logs & Messages", path: "/logs" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
+  { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
   { icon: DatabaseIcon, label: "Database", path: "/database" },
 ];
 

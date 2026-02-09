@@ -23,6 +23,7 @@ import {
     ShieldAlert
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { Link } from "wouter";
 import { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ChatHistory } from "@/components/ChatHistory";
@@ -288,11 +289,19 @@ export default function ReminderFollowUp() {
                                                         {sentDate.toLocaleDateString("en-GB")}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="font-mono font-bold">{log.registration}</div>
+                                                        <Link href={`/v/${log.registration}`}>
+                                                            <div className="font-mono font-bold cursor-pointer hover:underline text-blue-600">{log.registration}</div>
+                                                        </Link>
                                                         <div className="text-[10px] text-muted-foreground uppercase">{log.vehicleMake} {log.vehicleModel}</div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="font-medium">{log.customerName || "Unknown"}</div>
+                                                        {log.customerId ? (
+                                                            <Link href={`/customers/${log.customerId}`}>
+                                                                <div className="font-medium cursor-pointer hover:underline text-blue-600">{log.customerName || "Unknown"}</div>
+                                                            </Link>
+                                                        ) : (
+                                                            <div className="font-medium">{log.customerName || "Unknown"}</div>
+                                                        )}
                                                         <div className="text-xs text-muted-foreground">{log.recipient}</div>
                                                     </TableCell>
                                                     <TableCell className="text-sm text-slate-500">

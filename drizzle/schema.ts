@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index, decimal, datetime } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index, decimal, datetime, json } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -68,7 +68,11 @@ export const vehicles = mysqlTable("vehicles", {
   dateOfRegistration: datetime("dateOfRegistration"),
   vin: varchar("vin", { length: 50 }),
   engineCC: int("engineCC"),
+  engineNo: varchar("engineNo", { length: 50 }),
+  engineCode: varchar("engineCode", { length: 50 }),
   notes: text("notes"),
+  comprehensiveTechnicalData: json("comprehensiveTechnicalData"),
+  swsLastUpdated: timestamp("swsLastUpdated"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -182,6 +186,7 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   totalTax: decimal("totalTax", { precision: 10, scale: 2 }),
   totalGross: decimal("totalGross", { precision: 10, scale: 2 }),
   mileage: int("mileage"),
+  description: text("description"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),

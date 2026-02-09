@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, isNotNull } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, isNotNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -149,6 +149,7 @@ export async function getAllReminderLogs() {
     .select({
       id: reminderLogs.id,
       vehicleId: reminderLogs.vehicleId,
+      customerId: reminderLogs.customerId,
       sentAt: reminderLogs.sentAt,
       messageType: reminderLogs.messageType,
       status: reminderLogs.status,
@@ -325,6 +326,16 @@ export async function getVehicleByRegistration(registration: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function searchVehiclesByRegistration(query: string, limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  const normalized = query.replace(/\s/g, "").toUpperCase();
+  return db.select()
+    .from(vehicles)
+    .where(like(vehicles.registration, `${normalized}%`))
+    .limit(limit);
+}
+
 export async function findCustomerBySmartMatch(phone: string | null, email: string | null, name: string | null) {
   const db = await getDb();
   if (!db) return undefined;
@@ -443,6 +454,12 @@ export async function getAllVehiclesWithCustomers() {
         customerOptedOut: customers.optedOut,
         taxStatus: vehicles.taxStatus,
         taxDueDate: vehicles.taxDueDate,
+        vin: vehicles.vin,
+        engineCC: vehicles.engineCC,
+        engineNo: vehicles.engineNo,
+        engineCode: vehicles.engineCode,
+        colour: vehicles.colour,
+        fuelType: vehicles.fuelType,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -633,6 +650,28 @@ export async function updateVehicle(id: number, data: any) {
   await db.update(vehicles).set(data).where(eq(vehicles.id, id));
 }
 
+export async function saveTechnicalData(registration: string, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(vehicles)
+    .set({
+      comprehensiveTechnicalData: data,
+      swsLastUpdated: new Date()
+    })
+    .where(eq(vehicles.registration, registration));
+}
+
+export async function getLatestVehicleMileage(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ mileage: serviceHistory.mileage })
+    .from(serviceHistory)
+    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(1);
+  return result.length > 0 ? result[0].mileage : 0;
+}
+
 export async function findVehicleByRegistration(registration: string) {
   return getVehicleByRegistration(registration);
 }
@@ -647,18 +686,58 @@ export async function findCustomerByName(name: string) {
 export async function getServiceHistoryByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select()
+
+  // We join with line items to get a main description and a fallback total
+  return db.select({
+    id: serviceHistory.id,
+    externalId: serviceHistory.externalId,
+    customerId: serviceHistory.customerId,
+    vehicleId: serviceHistory.vehicleId,
+    docType: serviceHistory.docType,
+    docNo: serviceHistory.docNo,
+    dateCreated: serviceHistory.dateCreated,
+    dateIssued: serviceHistory.dateIssued,
+    datePaid: serviceHistory.datePaid,
+    totalNet: serviceHistory.totalNet,
+    totalTax: serviceHistory.totalTax,
+    totalGross: sql<string>`COALESCE(NULLIF(CAST(${serviceHistory.totalGross} AS DECIMAL(10,2)), 0), SUM(${serviceLineItems.subNet}))`,
+    mileage: serviceHistory.mileage,
+    createdAt: serviceHistory.createdAt,
+    description: serviceHistory.description,
+    mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
+  })
     .from(serviceHistory)
+    .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
     .where(eq(serviceHistory.vehicleId, vehicleId))
+    .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
 }
 
 export async function getServiceHistoryByCustomerId(customerId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select()
+  return db.select({
+    id: serviceHistory.id,
+    externalId: serviceHistory.externalId,
+    customerId: serviceHistory.customerId,
+    vehicleId: serviceHistory.vehicleId,
+    docType: serviceHistory.docType,
+    docNo: serviceHistory.docNo,
+    dateCreated: serviceHistory.dateCreated,
+    dateIssued: serviceHistory.dateIssued,
+    datePaid: serviceHistory.datePaid,
+    totalNet: serviceHistory.totalNet,
+    totalTax: serviceHistory.totalTax,
+    totalGross: sql<string>`COALESCE(NULLIF(CAST(${serviceHistory.totalGross} AS DECIMAL(10,2)), 0), SUM(${serviceLineItems.subNet}))`,
+    mileage: serviceHistory.mileage,
+    createdAt: serviceHistory.createdAt,
+    description: serviceHistory.description,
+    mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
+  })
     .from(serviceHistory)
+    .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
     .where(eq(serviceHistory.customerId, customerId))
+    .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
 }
 
@@ -674,6 +753,34 @@ export async function getServiceLineItemsByDocumentId(documentId: number) {
 export async function getServiceDocumentById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(serviceHistory).where(eq(serviceHistory.id, id)).limit(1);
+  const result = await db.select().from(serviceHistory).where(eq(serviceHistory.id, id));
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createServiceDocument(doc: any, items: any[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { nanoid } = await import("nanoid");
+
+  return await db.transaction(async (tx) => {
+    const docToInsert = {
+      ...doc,
+      externalId: doc.externalId || `NEW-${nanoid()}`,
+    };
+
+    const [result] = await tx.insert(serviceHistory).values(docToInsert);
+    const documentId = result.insertId;
+
+    if (items.length > 0) {
+      const itemsToInsert = items.map(item => ({
+        ...item,
+        documentId,
+        externalId: item.externalId || `ITEM-${nanoid()}`,
+      }));
+      await tx.insert(serviceLineItems).values(itemsToInsert);
+    }
+
+    return { id: documentId };
+  });
 }

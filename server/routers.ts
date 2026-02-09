@@ -34,14 +34,27 @@ export const appRouter = router({
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const { getCustomerById, getVehiclesByCustomerId, getRemindersByCustomerId } = await import("./db");
+        const { getCustomerById, getVehiclesByCustomerId, getRemindersByCustomerId, getServiceHistoryByCustomerId } = await import("./db");
         const customer = await getCustomerById(input.id);
         if (!customer) return null;
 
         const vehicles = await getVehiclesByCustomerId(input.id);
         const reminders = await getRemindersByCustomerId(input.id);
+        const history = await getServiceHistoryByCustomerId(input.id);
 
-        return { customer, vehicles, reminders };
+        const totalJobs = history.length;
+        const totalSpent = history.reduce((acc, h) => acc + (Number(h.totalGross) || 0), 0);
+
+        return {
+          customer,
+          vehicles,
+          reminders,
+          stats: {
+            totalJobs,
+            totalSpent
+          },
+          history // Include history so we can show it as a list
+        };
       }),
 
     getByPhone: publicProcedure
@@ -87,7 +100,7 @@ export const appRouter = router({
     getByRegistration: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
-        const { getVehicleByRegistration, getCustomerById, getRemindersByVehicleId } = await import("./db");
+        const { getVehicleByRegistration, getCustomerById, getRemindersByVehicleId, getLatestVehicleMileage } = await import("./db");
         const vehicle = await getVehicleByRegistration(input.registration);
         if (!vehicle) return null;
 
@@ -97,8 +110,83 @@ export const appRouter = router({
         }
 
         const reminders = await getRemindersByVehicleId(vehicle.id);
+        const latestMileage = await getLatestVehicleMileage(vehicle.id);
+        const { getServiceHistoryByVehicleId } = await import("./db");
+        const history = await getServiceHistoryByVehicleId(vehicle.id);
 
-        return { vehicle, customer, reminders };
+        return {
+          vehicle,
+          customer,
+          reminders,
+          latestMileage,
+          history,
+          stats: {
+            totalJobs: history.length,
+            lastVisit: history.length > 0 ? history[0].dateCreated : null
+          }
+        };
+      }),
+    search: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchVehiclesByRegistration } = await import("./db");
+        return searchVehiclesByRegistration(input.query);
+      }),
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb, getCustomerById, getRemindersByVehicleId, getLatestVehicleMileage, getServiceHistoryByVehicleId } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+
+        const vehicleResult = await db.select().from(vehicles).where(eq(vehicles.id, input.id)).limit(1);
+        const vehicle = vehicleResult[0];
+        if (!vehicle) return null;
+
+        let customer = null;
+        if (vehicle.customerId) {
+          customer = await getCustomerById(vehicle.customerId);
+        }
+
+        const reminders = await getRemindersByVehicleId(vehicle.id);
+        const latestMileage = await getLatestVehicleMileage(vehicle.id);
+        const history = await getServiceHistoryByVehicleId(vehicle.id);
+
+        return {
+          vehicle,
+          customer,
+          reminders,
+          latestMileage,
+          history,
+          stats: {
+            totalJobs: history.length,
+            lastVisit: history.length > 0 ? history[0].dateCreated : null
+          }
+        };
+      }),
+    listByCustomer: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getVehiclesByCustomerId } = await import("./db");
+        return getVehiclesByCustomerId(input.customerId);
+      }),
+
+    fetchTechnicalData: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { fetchRichVehicleData } = await import("./sws");
+        const { saveTechnicalData } = await import("./db");
+
+        try {
+          const data = await fetchRichVehicleData(input.registration);
+          await saveTechnicalData(input.registration, data);
+          return { success: true, data };
+        } catch (error) {
+          console.error("Technical data fetch failed:", error);
+          throw new Error("Failed to fetch technical data");
+        }
       }),
   }),
 
@@ -1953,6 +2041,16 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const { getServiceLineItemsByDocumentId } = await import("./db");
         return getServiceLineItemsByDocumentId(input.documentId);
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        doc: z.any(),
+        items: z.array(z.any()),
+      }))
+      .mutation(async ({ input }) => {
+        const { createServiceDocument } = await import("./db");
+        return createServiceDocument(input.doc, input.items);
       }),
   }),
 });

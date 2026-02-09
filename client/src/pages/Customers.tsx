@@ -78,7 +78,11 @@ export default function Customers() {
                     {filteredCustomers.map((customer) => (
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">
-                          {customer.name}
+                          <Link href={`/customers/${customer.id}`}>
+                            <span className="cursor-pointer hover:underline text-blue-600">
+                              {customer.name}
+                            </span>
+                          </Link>
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1 text-sm">

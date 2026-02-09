@@ -4,14 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Car, Search } from "lucide-react";
+import { Car, Search, Fuel } from "lucide-react";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { trpc } from "@/lib/trpc";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Vehicles() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [, setLocation] = useLocation();
   const { data: vehicles, isLoading, refetch } = trpc.vehicles.list.useQuery();
 
   const filteredVehicles = vehicles?.filter((vehicle) => {
@@ -104,33 +105,41 @@ export default function Vehicles() {
                       const daysUntilMOT = getDaysUntilMOT(vehicle.motExpiryDate);
 
                       return (
-                        <TableRow key={vehicle.id}>
-                          <TableCell className="font-mono font-bold">
-                            {vehicle.registration}
+                        <TableRow
+                          key={vehicle.id}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                          onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(vehicle.registration || "")}`)}
+                        >
+                          <TableCell>
+                            <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm group-hover:scale-105 transition-transform">
+                              {vehicle.registration}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div>
-                              <div className="font-medium">
+                              <div className="font-bold text-base">
                                 {vehicle.make || "Unknown"} {vehicle.model || ""}
                               </div>
                               {vehicle.colour && (
-                                <div className="text-sm text-muted-foreground">
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <div className="w-2 h-2 rounded-full border border-border" style={{ backgroundColor: vehicle.colour.toLowerCase() }} />
                                   {vehicle.colour}
                                 </div>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="text-sm space-y-1">
+                            <div className="text-xs space-y-1">
                               {vehicle.fuelType && (
-                                <div className="text-muted-foreground">
+                                <div className="text-muted-foreground flex items-center gap-1">
+                                  <Fuel className="w-3 h-3" />
                                   {vehicle.fuelType}
                                   {vehicle.engineCC && ` • ${vehicle.engineCC}cc`}
                                 </div>
                               )}
                               {vehicle.vin && (
-                                <div className="text-xs text-muted-foreground font-mono">
-                                  VIN: {vehicle.vin}
+                                <div className="text-[10px] text-muted-foreground font-mono opacity-60">
+                                  {vehicle.vin}
                                 </div>
                               )}
                             </div>
@@ -138,7 +147,7 @@ export default function Vehicles() {
                           <TableCell>
                             {vehicle.motExpiryDate ? (
                               <div className="space-y-1">
-                                <div className="text-sm">
+                                <div className="text-sm font-medium">
                                   {formatDate(vehicle.motExpiryDate)}
                                 </div>
                                 {daysUntilMOT !== null && (
@@ -146,12 +155,12 @@ export default function Vehicles() {
                                     variant="outline"
                                     className={
                                       daysUntilMOT < 0
-                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        ? "bg-red-50 text-red-700 border-red-200 shadow-sm"
                                         : daysUntilMOT <= 30
-                                          ? "bg-orange-50 text-orange-700 border-orange-200"
+                                          ? "bg-orange-50 text-orange-700 border-orange-200 shadow-sm"
                                           : daysUntilMOT <= 60
-                                            ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                            : "bg-green-50 text-green-700 border-green-200"
+                                            ? "bg-yellow-50 text-yellow-700 border-yellow-200 shadow-sm"
+                                            : "bg-green-50 text-green-700 border-green-200 shadow-sm"
                                     }
                                   >
                                     {daysUntilMOT < 0
@@ -161,15 +170,17 @@ export default function Vehicles() {
                                 )}
                               </div>
                             ) : (
-                              <span className="text-muted-foreground">-</span>
+                              <span className="text-muted-foreground text-sm">No MOT Data</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration || "")}`}>
-                              <Button variant="ghost" size="sm">
-                                View Details
-                              </Button>
-                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              View Details
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );

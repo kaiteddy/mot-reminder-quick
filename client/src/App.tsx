@@ -23,6 +23,8 @@ import SystemStatus from "./pages/SystemStatus";
 import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
 import ReminderFollowUp from "./pages/ReminderFollowUp";
+import DocumentGenerator from "./pages/DocumentGenerator";
+import TechnicalHub from "./pages/TechnicalHub";
 
 function Router() {
   return (
@@ -53,6 +55,8 @@ function Router() {
       <Route path="/reminders-sent" component={ReminderFollowUp} />
       <Route path="/conversations" component={Conversations} />
       <Route path="/ga4-scan" component={GA4Scanner} />
+      <Route path="/generate-document" component={DocumentGenerator} />
+      <Route path="/technical-hub" component={TechnicalHub} />
       <Route path="/system-status" component={SystemStatus} />
 
       {/* 404 Fallback */}

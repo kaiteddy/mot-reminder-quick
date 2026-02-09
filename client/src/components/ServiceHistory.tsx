@@ -48,17 +48,22 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>No.</TableHead>
-                        <TableHead>Mileage</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
+                        <TableHead className="w-[100px]">Date</TableHead>
+                        <TableHead className="w-[80px]">Type</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="w-[120px]">No.</TableHead>
+                        <TableHead className="w-[100px]">Mileage</TableHead>
+                        <TableHead className="text-right w-[100px]">Total</TableHead>
+                        <TableHead className="text-right w-[80px]">Action</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {history.map((doc) => (
-                        <TableRow key={doc.id}>
+                        <TableRow
+                            key={doc.id}
+                            className="cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => setSelectedDoc(doc.id)}
+                        >
                             <TableCell>
                                 {doc.dateCreated ? format(new Date(doc.dateCreated), "dd/MM/yyyy") : "-"}
                             </TableCell>
@@ -68,16 +73,24 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     {doc.docType === 'SI' ? 'Invoice' : 'Estimate'}
                                 </span>
                             </TableCell>
-                            <TableCell>{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
+                            <TableCell className="min-w-[200px] max-w-[500px]">
+                                <div className="break-words">
+                                    {doc.mainDescription || "No details available"}
+                                </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs font-mono">{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
                             <TableCell>{doc.mileage ? doc.mileage.toLocaleString() : "-"}</TableCell>
                             <TableCell className="text-right font-medium">
                                 £{Number(doc.totalGross).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                                 <Button
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    onClick={() => setSelectedDoc(doc.id)}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedDoc(doc.id);
+                                    }}
                                 >
                                     <FileText className="h-4 w-4 mr-2" />
                                     View
@@ -89,7 +102,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
             </Table>
 
             <Dialog open={selectedDoc !== null} onOpenChange={(open) => !open && setSelectedDoc(null)}>
-                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Document Details</DialogTitle>
                     </DialogHeader>
@@ -127,42 +140,111 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
                 </div>
             </div>
 
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                        <TableHead className="text-right">Price</TableHead>
-                        <TableHead className="text-right">Subtotal</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {items?.map((item) => (
-                        <TableRow key={item.id}>
-                            <TableCell className="font-medium">{item.description}</TableCell>
-                            <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
-                            <TableCell className="text-right">£{Number(item.unitPrice).toFixed(2)}</TableCell>
-                            <TableCell className="text-right">£{Number(item.subNet).toFixed(2)}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
+            {doc?.description && (
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <h4 className="text-xs font-bold uppercase text-slate-500 mb-2">Job Description</h4>
+                    <pre className="text-sm font-sans whitespace-pre-wrap text-slate-700 leading-relaxed">
+                        {doc.description}
+                    </pre>
+                </div>
+            )}
+
+            <div className="space-y-4">
+                {items?.filter(i => i.itemType === 'Labour').length ? (
+                    <div>
+                        <h4 className="text-xs font-bold uppercase text-blue-600 mb-2">Labour</h4>
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-slate-50">
+                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right w-20">Qty</TableHead>
+                                    <TableHead className="text-right w-24">Price</TableHead>
+                                    <TableHead className="text-right w-24">Subtotal</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {items.filter(i => i.itemType === 'Labour').map((item) => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium text-slate-700">{item.description}</TableCell>
+                                        <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">£{Number(item.unitPrice).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right font-semibold">£{Number(item.subNet).toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : null}
+
+                {items?.filter(i => i.itemType === 'Part').length ? (
+                    <div>
+                        <h4 className="text-xs font-bold uppercase text-orange-600 mb-2">Parts</h4>
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-slate-50">
+                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right w-20">Qty</TableHead>
+                                    <TableHead className="text-right w-24">Price</TableHead>
+                                    <TableHead className="text-right w-24">Subtotal</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {items.filter(i => i.itemType === 'Part').map((item) => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium text-slate-700">{item.description}</TableCell>
+                                        <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">£{Number(item.unitPrice).toFixed(2)}</TableCell>
+                                        <TableCell className="text-right font-semibold">£{Number(item.subNet).toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : null}
+
+                {items?.filter(i => i.itemType !== 'Labour' && i.itemType !== 'Part').length ? (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Description</TableHead>
+                                <TableHead className="text-right">Qty</TableHead>
+                                <TableHead className="text-right">Price</TableHead>
+                                <TableHead className="text-right">Subtotal</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {items.filter(i => i.itemType !== 'Labour' && i.itemType !== 'Part').map((item) => (
+                                <tr key={item.id} className="border-b">
+                                    <td className="p-2 font-medium">{item.description}</td>
+                                    <td className="p-2 text-right">{Number(item.quantity).toFixed(2)}</td>
+                                    <td className="p-2 text-right">£{Number(item.unitPrice).toFixed(2)}</td>
+                                    <td className="p-2 text-right">£{Number(item.subNet).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </TableBody>
+                    </Table>
+                ) : null}
+            </div>
 
             <div className="space-y-2 text-right pt-4 border-t">
-                <div className="flex justify-end gap-12 text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-medium w-24">£{Number(doc?.totalNet).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-end gap-12 text-sm">
-                    <span className="text-muted-foreground">VAT</span>
-                    <span className="font-medium w-24">£{Number(doc?.totalTax).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-end gap-12 text-lg font-bold">
-                    <span>Total</span>
-                    <span className="w-24 border-t-2 border-double pt-1">
-                        £{Number(doc?.totalGross).toFixed(2)}
-                    </span>
-                </div>
+                {items && items.length > 0 && (
+                    <>
+                        <div className="flex justify-end gap-12 text-sm">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-medium w-24">£{Number(doc?.totalNet || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-end gap-12 text-sm">
+                            <span className="text-muted-foreground">VAT</span>
+                            <span className="font-medium w-24">£{Number(doc?.totalTax || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-end gap-12 text-lg font-bold">
+                            <span>Total</span>
+                            <span className="w-24 border-t-2 border-double pt-1">
+                                £{(Number(doc?.totalGross) > 0 ? Number(doc.totalGross) : items.reduce((sum, i) => sum + Number(i.subNet), 0)).toFixed(2)}
+                            </span>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

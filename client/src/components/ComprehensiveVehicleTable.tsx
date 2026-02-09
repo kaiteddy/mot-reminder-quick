@@ -229,15 +229,11 @@ export function ComprehensiveVehicleTable({
                                         />
                                     </TableCell>
                                     <TableCell className="font-mono font-bold whitespace-nowrap">
-                                        {vehicle.customerId ? (
-                                            <Link href={`/customers/${vehicle.customerId}`}>
-                                                <span className="cursor-pointer hover:underline text-blue-600">
-                                                    {vehicle.registration}
-                                                </span>
-                                            </Link>
-                                        ) : (
-                                            vehicle.registration
-                                        )}
+                                        <Link href={`/v/${vehicle.registration}`}>
+                                            <span className="cursor-pointer hover:underline text-blue-600">
+                                                {vehicle.registration}
+                                            </span>
+                                        </Link>
                                         {vehicle.dateOfRegistration && (
                                             <span className="ml-2 text-[10px] text-slate-400 font-normal">
                                                 ({new Date(vehicle.dateOfRegistration).getFullYear()})

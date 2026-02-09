@@ -1,0 +1,80 @@
+Testing SWS for S31STK...
+Response text length: 3639
+Full Data: {
+  "0": {
+    "TechnicalData": {
+      "capacity": 1997,
+      "engineCode": "R20A9",
+      "fuelType": "PETROL",
+      "fullName": "HONDA CR-V (RM, RE) 2.0 16V i-VTEC",
+      "id": 201000046,
+      "level": 3,
+      "madeFrom": "2013-01",
+      "madeUntil": "2017-12",
+      "modelPictureMimeDataName": "https://www.haynespro-assets.com/workshop/images/319004892.svgz",
+      "name": "2.0 16V i-VTEC",
+      "order": 0,
+      "output": 114,
+      "remark": null,
+      "status": null,
+      "subjects": {
+        "item": [
+          "ADJUSTMENTS",
+          "MAINTENANCE",
+          "LUBRICANTS",
+          "DRAWINGS",
+          "EOBD_LOCATIONS",
+          "FUSE_LOCATIONS",
+          "ENGINE_LOCATIONS",
+          "STORIES",
+          "WARNING_LIGHTS",
+          "REPAIR_TIMES",
+          "TIMING_REPAIR_MANUALS",
+          "VESA_ENGINE",
+          "VESA_ABS",
+          "SHOW_VESA",
+          "TSB",
+          "CASES",
+          "RECALLS"
+        ]
+      },
+      "subjectsByGroup": {
+        "mapItems": {
+          "item": [
+            {
+              "key": "ENGINE",
+              "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES,TSB"
+            },
+            {
+              "key": "TRANSMISSION",
+              "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES,TSB"
+            },
+            {
+              "key": "STEERING",
+              "value": "ADJUSTMENTS,STORIES,DRAWINGS,REPAIR_TIMES"
+            },
+            {
+              "key": "BRAKES",
+              "value": "ADJUSTMENTS,LUBRICANTS,DRAWINGS,REPAIR_TIMES"
+            },
+            {
+              "key": "EXTERIOR",
+              "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES"
+            },
+            {
+              "key": "ELECTRONICS",
+              "value": "STORIES,WARNING_LIGHTS,FUSE_LOCATIONS,VESA_ENGINE,VESA_ABS,SHOW_VESA,TSB,CASES"
+            },
+            {
+              "key": "QUICKGUIDES",
+              "value": "ADJUSTMENTS,LUBRICANTS,STORIES,WARNING_LIGHTS,DRAWINGS,REPAIR_TIMES,TSB,CASES"
+            }
+          ]
+        }
+      },
+      "superCarTypeId": 201000003
+    }
+  },
+  "sessionToken": "e02b09a9-b764-4e8a-a2e4-14d6b9312099",
+  "requestKey": "phapXc4wDTX+4DBXbX0QlzNVLjqRa+FlHT1aBPs31GJykoDC+cKZQaLaxIYw25a1oUVUn18cgi+ITkONWCnHyEPunxKrkaLJDcvDyXvHuoitKqMz8H3Gzhe/w3ziLX9YwpHtk9Ix4PZyJUQJo1oYaAaiNAvg7/4TE7VugdOEviI=M/CNTTglbHcLEwx370L3rFqOeVgBO3Bwd3gb7GzlYF5DCUvKMqrnKfLG43c8Y7CRrJOugz4NCxNB20z2oPUKwgpt4aV+r92lg3C3tOR9N3ofoYANZ5043Gk442JPbU2A+SAXpsTyyG2tNPgV5sYiGhIPPz7/NxDbQRho622btwo=U2iv84KCZWw7aHoE7ibMwyLxOGr8FHBinDkybN8oW8Q30P6HziD3f7nEZfQAcIiY/lv1DsSophsSLaa237hsgkGO9vKDV5gRA+7Ne23dNvGSjWBLqyagxjjozyLuzDoT3tGug9pyNW7603Sv2QI87CtIOE2H8N2SQ1Qrbexivk0=xmD+kP8GxIcFXTIx9L2FqTs+26asZv4knggJ8guq818pZWOZegUsk1wocIf39oTBMVEX8uL92u1sK/21HyGnOD/6XbmdzgjCKEyF8dJYAxbQ2VBEHfVHg7FRfPoXMmRCko3vJfAZJS0gh1MWS7AvqCU6o0MQgVXHYY99qk98x5c=Pei8GDGcVQD8gIBOt2EzsNQuxARnnEyllsTnL3eIHVFgE+7rDYrYOfMiV9IKHqwGiSJlUb5vzEGOHPx4okfLB8en6B2eaF2j7AzYgTwzZvC4GWgovHhihVHfAWWKdPX99GByKy3oiePVH+fwGA0UOkckMQs5rsIzHSE28YvduxM=uchEN0OQxUcjo8iny2h3ShV53St07VJX74nqxrDut9KDmcDEmq5EmrgL1ivcEaTk3TDqgGebPIaskjbcXdcCJ3NTIB1PN6nb+7enhEOWBc+KJLcGnIZzpCcxKfFriIkuX5RG6O5s4vurrQlw6zwglPR6R87QmEKn4o2kxawmVOk=jS0gZA38IdCROHFdvKzAhoSF7L/dFLIu2ph2G9doBDl1udhY+fDJpCPejSiIQfhG55e2BzgCi80LiIL+ppBGAeZI0sdHTq0M+Wv+fuhpBscBkittBqouKJqqGBnxQP4pvDVMWARdDojlfzr+jGXlOuiJOcRbH3sMWh7p3sUZr50=vGaJCWx1r13VlGynIAXhbEm2CqTalxJfakTBQdaeX4fmLaad9ZL4JNnu3bxGt3y3AJySj9Ld+c3j7fSn60II9QSK3zpoUsGnZhxG4U5EzVXEOHieWeIEpRp2q6WMKcpfkxsDAvehwczX1KmL0CTusw4btmDlUcshBroIRP1oCMk=/mCrurilyQJrW79bU14+F96eUJzw+5HN/jrCheqiK/ZTfHJgBDUUzLfqRYUScX7bP5lvA9fKf3AduXK8Uc4LEELtO8Qw1byXAJWvBNkSHA5wkfdMYtunRtANp6oARe75XPBsJG/SKWFJRBZgfDddnumr507ohbMqoMukYUUDzA0=vm0bcz/Yf2D5JlCIHFHj8bTYHZZN5uJ0g7Odj1fQRjlLzBKTVgXdEeiPwe6Q5N1DBE3pL5bAhdmgQ8rzBoHL059zzfPAMyPbJFk3SzIM0M3r+IW1H0mM1skKAmFN1OXoDfw9SQAN28Nh4aFN1xcntZDsLziKZv3Z8BwipdiPd5A=DXjJ/MRzNKFXDgfc+9u/rNYJGgDecRrseb4IUqfr3/91yEKKN7/at++9xzR5lu9zPoVQfzgUu8lcnWo3NCq8Z4YXeVxEa2MbJcAGt7FKthoTlAmGuMEGJWtnQNtOYUA70rQ2si9NQASfcLFlKBpAZfj8twDNCVu6UA3U5AQlUZk=gmJbBLxMsYOGkTHMQ0PDre70dHH9so4HVg5gfM9EC5VlVjdVbPV3lDsHLE7iuprNvPqlnGmRCx9sdciDe0dbMCAKw0m35+BAddAjaxBFzziT2UO+88KTlY2IHex+YNZFOAzpRNkQTh++ScRmxtyT2KUchLVBmnC5xXlUlIm6Ct0=CXlbmzPYNg38Aq0p9sGUbC0+JTGcs12pKky0W5tFptZFgAN7oXjHMxD7mdG+H2KLcfzugrI6Ez08P6A9NB+uCV0ZQTudTXwlbpnsjdnk+vM2HEIX0oKWOOm1dl8lf4NRok7cPf6G/KmDH8KA4hnDqFLlMUc8/nQ0dGLx+n7tG5A="
+}

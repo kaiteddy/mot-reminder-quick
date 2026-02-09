@@ -113,6 +113,20 @@
       "when": 1770285891651,
       "tag": "0015_lazy_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1770291369705,
+      "tag": "0016_easy_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1770293530696,
+      "tag": "0017_breezy_night_nurse",
+      "breakpoints": true
     }
   ]
 }
