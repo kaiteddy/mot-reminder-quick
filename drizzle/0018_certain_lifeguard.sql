@@ -1,0 +1,1 @@
+ALTER TABLE `serviceHistory` ADD `description` text;
