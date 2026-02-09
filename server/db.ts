@@ -23,8 +23,11 @@ export async function getDb() {
       } else {
         _db = drizzle(process.env.DATABASE_URL);
       }
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+    } catch (error: any) {
+      const maskedUrl = process.env.DATABASE_URL ?
+        process.env.DATABASE_URL.substring(0, 15) + "..." + process.env.DATABASE_URL.substring(process.env.DATABASE_URL.length - 10) :
+        "NOT SET";
+      console.error(`[Database] Failed to connect to ${maskedUrl}:`, error.message);
       _db = null;
     }
   }
