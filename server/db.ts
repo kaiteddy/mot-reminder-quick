@@ -930,17 +930,31 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  // Use absolute path to bypass any shell PATH issues
-  console.log(`[PDF] Executing /usr/bin/python3 for ${outputFile}`);
-  const result = spawnSync('/usr/bin/python3', [scriptPath], {
+  // Determine the best python command to use
+  let pythonCmd = '/usr/bin/python3';
+  let useShell = false;
+
+  console.log(`[PDF] Executing PDF generation for ${outputFile}`);
+
+  let result = spawnSync(pythonCmd, [scriptPath], {
     input: inputJson,
     encoding: 'utf-8',
-    shell: false
+    shell: useShell
   });
 
+  // Fallback if absolute path fails with ENOENT
+  if (result.error && (result.error as any).code === 'ENOENT') {
+    console.warn(`[PDF] ${pythonCmd} not found, falling back to 'python3' with shell:true`);
+    result = spawnSync('python3', [scriptPath], {
+      input: inputJson,
+      encoding: 'utf-8',
+      shell: true
+    });
+  }
+
   if (result.error) {
-    console.error("[PDF] Spawn error:", result.error);
-    throw new Error(`Script execution failed: ${result.error.message}`);
+    console.error("[PDF] Fatal execution error:", result.error);
+    throw new Error(`PDF script execution failed: ${result.error.message}`);
   }
 
   if (result.stderr) {
