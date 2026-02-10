@@ -2,6 +2,7 @@ import { eq, or, inArray, and, sql, desc, isNotNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import os from "os";
+import fs from "fs";
 import path from "path";
 import {
   InsertUser, users, InsertReminder, InsertCustomer, InsertReminderLog,
@@ -888,12 +889,17 @@ export async function getRichPDF(documentId: number) {
     outputFile
   });
 
-  console.log(`[PDF] Executing /usr/bin/python3 for ${outputFile}`);
-  const result = spawnSync('/usr/bin/python3', [
-    path.join(process.cwd(), 'scripts/generate_pdf.py')
-  ], {
+  const scriptPath = path.join(process.cwd(), 'scripts/generate_pdf.py');
+  if (!fs.existsSync(scriptPath)) {
+    console.error(`[PDF] Script not found at: ${scriptPath}`);
+    throw new Error(`PDF script not found at ${scriptPath}`);
+  }
+
+  console.log(`[PDF] Executing python3 for ${outputFile} using script at ${scriptPath}`);
+  const result = spawnSync('python3', [scriptPath], {
     input: inputJson,
-    encoding: 'utf-8'
+    encoding: 'utf-8',
+    shell: true
   });
 
   if (result.error) {
