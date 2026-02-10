@@ -746,6 +746,37 @@ export default function DocumentGenerator() {
                         </tbody>
                     </table>
 
+                    {/* 3.5 Technical Intelligence Reference (Internal/Print) */}
+                    {(selectedVehicle as any)?.comprehensiveTechnicalData && (
+                        <div style={{ marginBottom: '16px', padding: '10px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '4px' }}>
+                            <div style={{ fontSize: '10px', fontWeight: '900', color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                                Technical Reference (Source: UKVD/SWS)
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+                                <div>
+                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Engine Oil Spec</div>
+                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                        {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.specification || 'Refer to Manual'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Oil Capacity</div>
+                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                        {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.capacity || 'N/A'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Aircon System</div>
+                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                        {(selectedVehicle as any).comprehensiveTechnicalData.aircon
+                                            ? `${(selectedVehicle as any).comprehensiveTechnicalData.aircon.type} (${(selectedVehicle as any).comprehensiveTechnicalData.aircon.quantity})`
+                                            : 'N/A'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* 4. Job Description */}
                     <div className="job-desc-section">
                         <h3>Job Description</h3>
