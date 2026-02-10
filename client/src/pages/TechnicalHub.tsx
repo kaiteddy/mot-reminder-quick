@@ -17,6 +17,7 @@ import {
     Activity,
     FileCode,
     ChevronRight,
+    ArrowLeft,
     ShieldCheck,
     Gauge
 } from "lucide-react";
@@ -28,7 +29,42 @@ import { cn } from "@/lib/utils";
 export default function TechnicalHub() {
     const [registration, setRegistration] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [repairHistory, setRepairHistory] = useState<{ id: string; text: string; data?: any }[]>([]);
+    const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
+
     const utils = trpc.useUtils();
+    const getRepairNodes = trpc.vehicles.getRepairTimesByCategory.useMutation();
+
+    const handleCategoryClick = async (node: any, reg: string, repid: string) => {
+        if (!node.hasChildren && !node.id) return;
+
+        setLoadingNodeId(node.id);
+        try {
+            const res = await getRepairNodes.mutateAsync({
+                registration: reg,
+                repid: repid.toString(),
+                nodeId: node.id
+            });
+
+            if (res.success && res.data) {
+                setRepairHistory(prev => [...prev, { id: node.id, text: node.text, data: res.data }]);
+            } else {
+                toast.error("Could not load sub-categories");
+            }
+        } catch (e) {
+            toast.error("Connection error loading technical data");
+        } finally {
+            setLoadingNodeId(null);
+        }
+    };
+
+    const goBack = () => {
+        setRepairHistory(prev => prev.slice(0, -1));
+    };
+
+    const currentRepairData = repairHistory.length > 0
+        ? repairHistory[repairHistory.length - 1].data
+        : null;
 
     const { data: result, isLoading: isQueryLoading } = trpc.vehicles.getByRegistration.useQuery(
         { registration: searchQuery },
@@ -57,6 +93,7 @@ export default function TechnicalHub() {
             toast.error("Please enter a valid registration");
             return;
         }
+        setRepairHistory([]); // Clear drill-down history
         setSearchQuery(registration.toUpperCase().replace(/\s/g, ""));
     };
 
@@ -270,13 +307,44 @@ export default function TechnicalHub() {
                                             </CardHeader>
                                             <CardContent className="p-6">
                                                 <div className="space-y-6">
+                                                    {/* Breadcrumbs / Back button */}
+                                                    {repairHistory.length > 0 && (
+                                                        <div className="flex items-center gap-2 mb-4">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 px-2 text-indigo-600 hover:bg-indigo-50"
+                                                                onClick={goBack}
+                                                            >
+                                                                <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                                                                Back
+                                                            </Button>
+                                                            <div className="flex items-center text-[10px] uppercase font-black text-slate-400">
+                                                                <ChevronRight className="w-3 h-3" />
+                                                                <span className="ml-1 text-slate-600 truncate max-w-[200px]">
+                                                                    {repairHistory[repairHistory.length - 1].text}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     {/* Categories Tree */}
                                                     <div className="flex flex-wrap gap-2">
-                                                        {techData.repairTimes.tree?.length > 0 ? (
-                                                            techData.repairTimes.tree.map((node: any) => (
-                                                                <div key={node.id} className="bg-white px-3 py-1 rounded-full text-[10px] font-bold text-slate-600 uppercase border border-slate-200 shadow-sm">
+                                                        {(currentRepairData?.tree || techData.repairTimes.tree)?.length > 0 ? (
+                                                            (currentRepairData?.tree || techData.repairTimes.tree).map((node: any) => (
+                                                                <button
+                                                                    key={node.id}
+                                                                    disabled={loadingNodeId !== null}
+                                                                    onClick={() => handleCategoryClick(node, techData.vrm, techData.repairTimes.repairedTypeId)}
+                                                                    className={cn(
+                                                                        "group flex items-center gap-2 bg-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase border border-slate-200 shadow-sm transition-all text-left",
+                                                                        loadingNodeId === node.id ? "opacity-50 ring-2 ring-indigo-500" : "hover:border-indigo-500 hover:text-indigo-600 hover:shadow-md active:scale-95"
+                                                                    )}
+                                                                >
+                                                                    {loadingNodeId === node.id && <Loader2 className="w-3 h-3 animate-spin" />}
                                                                     {node.text}
-                                                                </div>
+                                                                    {node.hasChildren && <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                                                                </button>
                                                             ))
                                                         ) : (
                                                             <div className="text-center w-full py-4 text-xs italic text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
@@ -287,28 +355,32 @@ export default function TechnicalHub() {
 
                                                     {/* Specific Times (Details) */}
                                                     <div className="grid grid-cols-1 gap-3">
-                                                        {Array.isArray(techData.repairTimes.details) ? techData.repairTimes.details.map((detail: any, i: number) => {
-                                                            const item = detail.TechnicalData;
-                                                            if (!item?.descriptions?.item) return null;
-                                                            return (
-                                                                <div key={i} className="flex justify-between items-center bg-indigo-50/20 p-4 rounded-xl border border-indigo-100/50 hover:bg-white hover:shadow-md transition-all group">
-                                                                    <div className="space-y-0.5">
-                                                                        <p className="font-black uppercase text-[10px] text-indigo-600 tracking-wider opacity-60">{item.ids?.item}</p>
-                                                                        <p className="font-bold text-slate-900 group-hover:text-indigo-900">{item.descriptions?.item}</p>
-                                                                    </div>
-                                                                    <div className="text-right">
-                                                                        <div className="text-2xl font-black text-indigo-600 flex items-baseline gap-1">
-                                                                            {item.totalTime}
-                                                                            <span className="text-[10px] uppercase text-indigo-400">Min</span>
+                                                        {Array.isArray(currentRepairData?.details || techData.repairTimes.details) && (currentRepairData?.details || techData.repairTimes.details).length > 0 ? (
+                                                            (currentRepairData?.details || techData.repairTimes.details).map((detail: any, i: number) => {
+                                                                const item = detail.TechnicalData;
+                                                                if (!item?.descriptions?.item) return null;
+                                                                return (
+                                                                    <div key={i} className="flex justify-between items-center bg-indigo-50/20 p-4 rounded-xl border border-indigo-100/50 hover:bg-white hover:shadow-md transition-all group">
+                                                                        <div className="space-y-0.5">
+                                                                            <p className="font-black uppercase text-[10px] text-indigo-600 tracking-wider opacity-60">{item.ids?.item}</p>
+                                                                            <p className="font-bold text-slate-900 group-hover:text-indigo-900">{item.descriptions?.item}</p>
                                                                         </div>
-                                                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Allowance</p>
+                                                                        <div className="text-right">
+                                                                            <div className="text-2xl font-black text-indigo-600 flex items-baseline gap-1">
+                                                                                {item.totalTime}
+                                                                                <span className="text-[10px] uppercase text-indigo-400">Min</span>
+                                                                            </div>
+                                                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Allowance</p>
+                                                                        </div>
                                                                     </div>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            !currentRepairData?.tree && (
+                                                                <div className="text-center py-4 text-xs italic text-muted-foreground bg-indigo-50/10 rounded-lg">
+                                                                    Deeper labor data available in technical sub-menus
                                                                 </div>
-                                                            );
-                                                        }) : (
-                                                            <div className="text-center py-4 text-xs italic text-muted-foreground bg-indigo-50/10 rounded-lg">
-                                                                Deeper labor data available in technical sub-menus
-                                                            </div>
+                                                            )
                                                         )}
                                                     </div>
                                                 </div>

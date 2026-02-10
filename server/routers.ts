@@ -207,6 +207,23 @@ export const appRouter = router({
           throw new Error("Failed to fetch technical data");
         }
       }),
+
+    getRepairTimesByCategory: publicProcedure
+      .input(z.object({
+        registration: z.string(),
+        repid: z.string(),
+        nodeId: z.string()
+      }))
+      .mutation(async ({ input }) => {
+        const { fetchRepairNodes } = await import("./sws");
+        try {
+          const data = await fetchRepairNodes(input.registration, input.repid, input.nodeId);
+          return { success: true, data };
+        } catch (error) {
+          console.error("Failed to fetch repair nodes:", error);
+          throw new Error("Failed to fetch repair categories");
+        }
+      }),
   }),
 
   reminders: router({

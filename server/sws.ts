@@ -350,3 +350,60 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
 
     return result;
 }
+
+export async function fetchRepairNodes(vrm: string, repid: string, nodeId: string) {
+    const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
+    const commonHeaders = {
+        'User-Agent': 'Mozilla/5.0',
+        'Authorization': SWS_CONFIG.authHeader
+    };
+
+    const body = new URLSearchParams({
+        APIKey: SWS_CONFIG.apiKey,
+        ACTION: 'REPAIR_CATEGORIES',
+        VRM: cleanVRM,
+        REPID: repid,
+        NODEID: nodeId
+    });
+
+    try {
+        const res = await fetch(SWS_CONFIG.lookupUrl, {
+            method: 'POST',
+            headers: commonHeaders,
+            body: body
+        });
+        const text = await res.text();
+        if (!res.ok || text.trim() === "" || text === "[]") return { tree: [], details: [] };
+
+        const data = JSON.parse(text);
+        const dataObj = Array.isArray(data) ? (data[0] || {}) : data;
+        const extNode = dataObj?.TechnicalData?.ExtRepairtimeNode;
+
+        let rawNodes: any[] = [];
+        if (Array.isArray(extNode)) {
+            rawNodes = extNode;
+        } else {
+            const nodeItem = extNode?.nodes?.item || extNode?.nodes;
+            rawNodes = Array.isArray(nodeItem) ? nodeItem : (nodeItem ? [nodeItem] : []);
+        }
+
+        const tree = rawNodes.filter(n => n.hasSubnodes).map(n => ({
+            id: n.id,
+            text: n.description,
+            hasChildren: true
+        }));
+
+        const details = rawNodes.filter(n => !n.hasSubnodes).map(n => ({
+            TechnicalData: {
+                ids: { item: n.awNumber },
+                descriptions: { item: n.description },
+                totalTime: n.value
+            }
+        }));
+
+        return { tree, details };
+    } catch (e) {
+        console.error("[SWS] Error fetching repair nodes:", e);
+        return { tree: [], details: [] };
+    }
+}
