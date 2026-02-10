@@ -11,25 +11,27 @@ import { ENV } from './_core/env';
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  if (!_db && ENV.databaseUrl) {
     try {
-      if (process.env.DATABASE_URL.includes('tidbcloud.com')) {
+      if (ENV.databaseUrl.includes('tidbcloud.com')) {
         const pool = mysql.createPool({
-          uri: process.env.DATABASE_URL,
+          uri: ENV.databaseUrl,
           ssl: { rejectUnauthorized: true },
         });
         // @ts-ignore
         _db = drizzle(pool);
       } else {
-        _db = drizzle(process.env.DATABASE_URL);
+        _db = drizzle(ENV.databaseUrl);
       }
     } catch (error: any) {
-      const maskedUrl = process.env.DATABASE_URL ?
-        process.env.DATABASE_URL.substring(0, 15) + "..." + process.env.DATABASE_URL.substring(process.env.DATABASE_URL.length - 10) :
+      const maskedUrl = ENV.databaseUrl ?
+        ENV.databaseUrl.substring(0, 15) + "..." + ENV.databaseUrl.substring(ENV.databaseUrl.length - 10) :
         "NOT SET";
       console.error(`[Database] Failed to connect to ${maskedUrl}:`, error.message);
       _db = null;
     }
+  } else if (!_db && !ENV.databaseUrl) {
+    console.warn("[Database] DATABASE_URL is not set in environment variables");
   }
   return _db;
 }

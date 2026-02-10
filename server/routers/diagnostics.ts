@@ -121,13 +121,19 @@ export const diagnosticsRouter = router({
     try {
       const db = await getDb();
 
-      if (db) {
+      if (!ENV.databaseUrl) {
+        results.push({
+          service: "Database",
+          status: "Error",
+          message: "DATABASE_URL environment variable is missing or empty.",
+          code: "MISSING_ENV_URL"
+        });
+      } else if (db) {
         // Try a simple query to verify connection
         // We use a raw query because we just want to check connectivity
         await db.execute(sql`SELECT 1`);
 
         // Get counts to debug empty view
-
         const [vehicleCount] = await db.select({ count: sql<number>`count(*)` }).from(vehicles);
         const [customerCount] = await db.select({ count: sql<number>`count(*)` }).from(customers);
 
@@ -141,8 +147,8 @@ export const diagnosticsRouter = router({
         results.push({
           service: "Database",
           status: "Error",
-          message: "Database connection could not be established.",
-          code: "DB_CONNECTION_NULL"
+          message: "Database connection could not be established (URL is present but connection failed).",
+          code: "DB_CONNECTION_FAILED"
         });
       }
     } catch (error: any) {
