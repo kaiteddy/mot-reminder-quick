@@ -884,7 +884,16 @@ export async function getRichPDF(documentId: number) {
       account_no: '',
       date_of_work: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
     };
+  } else if (doc.docType === 'JS') {
+    type = 'jobsheet';
+    templateData.doc = {
+      reference: doc.docNo,
+      account_no: '',
+      receive_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
+      due_date: '',
+    };
   } else {
+    // Default fallback
     type = 'jobsheet';
     templateData.doc = {
       reference: doc.docNo,
