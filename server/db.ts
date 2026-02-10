@@ -958,10 +958,19 @@ export async function getRichPDF(documentId: number) {
 
       // Address & Customer Info
       const startY = 150;
-      doc.text(templateData.company.address.join('\n'), 50, startY);
+
+      const companyInfo = [
+        templateData.company.name,
+        templateData.company.address_line1,
+        templateData.company.phone,
+        templateData.company.website,
+        `VAT: ${templateData.company.vat}`
+      ].filter(Boolean);
+
+      doc.text(companyInfo.join('\n'), 50, startY);
 
       doc.text(templateData.customer.name, 300, startY);
-      doc.text(templateData.customer.address.join('\n'), 300, startY + 15);
+      doc.text((templateData.customer.address_lines || []).join('\n'), 300, startY + 15);
 
       // Document Meta
       doc.text(`Date: ${templateData.date}`, 300, startY + 80);
