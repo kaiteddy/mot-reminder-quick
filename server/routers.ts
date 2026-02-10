@@ -2071,6 +2071,12 @@ export const appRouter = router({
         const { getServiceHistoryByVehicleId } = await import("./db");
         return getServiceHistoryByVehicleId(input.vehicleId);
       }),
+    getDetailedByVehicleId: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDetailedServiceHistoryByVehicleId } = await import("./db");
+        return getDetailedServiceHistoryByVehicleId(input.vehicleId);
+      }),
 
     getById: publicProcedure
       .input(z.object({ id: z.number() }))

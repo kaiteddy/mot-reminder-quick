@@ -39,13 +39,13 @@ interface ServiceHistoryProps {
 
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [, setLocation] = useLocation();
-    const { data: history, isLoading } = trpc.serviceHistory.getByVehicleId.useQuery({ vehicleId });
+    const { data: history, isLoading } = trpc.serviceHistory.getDetailedByVehicleId.useQuery({ vehicleId });
     const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
     const utils = trpc.useContext();
     const deleteMutation = trpc.serviceHistory.delete.useMutation({
         onSuccess: () => {
-            utils.serviceHistory.getByVehicleId.invalidate({ vehicleId });
+            utils.serviceHistory.getDetailedByVehicleId.invalidate({ vehicleId });
             toast.success("Document deleted successfully");
             setSelectedDoc(null);
         },
@@ -108,7 +108,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {history.map((doc) => (
+                    {history.map((doc: any) => (
                         <TableRow
                             key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -214,47 +214,108 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 <div ref={printRef} className="p-10 text-slate-900 bg-white min-h-screen font-sans">
                     <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-6">
                         <div>
-                            <h1 className="text-2xl font-black uppercase tracking-tighter mb-0.5">Vehicle Service History</h1>
-                            <p className="text-slate-500 font-bold uppercase text-[9px] tracking-widest leading-none">Complete Maintenance Record Timeline</p>
+                            <h1 className="text-3xl font-black uppercase tracking-tighter mb-0.5">Vehicle Service History</h1>
+                            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em] leading-none">Eli Motors Ltd • Complete Maintenance Record</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-lg font-black font-mono leading-none">ELI MOTORS LTD</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Professional Automotive Services</p>
+                            <p className="text-xl font-black font-mono leading-none">ELI MOTORS LTD</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Professional Services</p>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
-                        {history.map((doc, idx) => (
-                            <div key={doc.id} className="relative pl-6 border-l border-slate-200 pb-4 last:pb-0">
-                                <div className="absolute -left-[4.5px] top-1 w-2 h-2 rounded-full bg-slate-900" />
-                                <div className="flex justify-between items-center mb-1.5">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[11px] font-black text-white bg-slate-900 px-1.5 py-0.5 rounded">
-                                            {doc.dateCreated ? format(new Date(doc.dateCreated), "dd/MM/yyyy") : "-"}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                                            {doc.docType === 'SI' ? 'Invoice' : 'Estimate'} #{doc.docNo || doc.externalId.substring(0, 8)}
-                                        </span>
-                                    </div>
-                                    <div className="text-right flex items-center gap-4">
-                                        <div className="text-right">
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase leading-none">{doc.mileage ? `${doc.mileage.toLocaleString()} mi` : "No Mileage"}</p>
-                                            <p className="text-sm font-black tracking-tight leading-none text-slate-900">£{Number(doc.totalGross).toFixed(2)}</p>
+                    <div className="space-y-8">
+                        {history.map((doc: any) => (
+                            <div key={doc.id} className="relative pl-8 border-l-2 border-slate-100 pb-2 last:pb-0">
+                                <div className="absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 border-white bg-slate-900 shadow-sm" />
+
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="text-sm font-black text-slate-900">
+                                                {doc.dateCreated ? format(new Date(doc.dateCreated), "dd MMMM yyyy") : "-"}
+                                            </span>
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${doc.docType === 'SI' ? 'bg-blue-600 text-white' : 'bg-slate-500 text-white'
+                                                }`}>
+                                                {doc.docType === 'SI' ? 'Invoice' : 'Estimate'}
+                                            </span>
+                                            <span className="text-[11px] font-mono text-slate-400">#{doc.docNo || doc.externalId.substring(0, 8)}</span>
                                         </div>
+                                        {doc.mileage && (
+                                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Mileage: {doc.mileage.toLocaleString()} mi</p>
+                                        )}
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm font-black text-slate-900">Total: £{Number(doc.totalGross).toFixed(2)}</p>
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase">Recorded Entry</p>
                                     </div>
                                 </div>
-                                <div className="bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100">
+
+                                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100/80 mb-4">
+                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Job Description</p>
                                     <div className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">
                                         {cleanText(doc.description || doc.mainDescription)}
                                     </div>
                                 </div>
+
+                                {doc.items && doc.items.length > 0 && (
+                                    <div className="ml-2 space-y-4">
+                                        {doc.items.filter((i: any) => i.itemType === 'Labour').length > 0 && (
+                                            <div>
+                                                <h4 className="text-[9px] font-black uppercase text-blue-600 mb-1.5 tracking-wider flex items-center gap-2">
+                                                    Labour
+                                                    <div className="h-[1px] flex-1 bg-blue-100"></div>
+                                                </h4>
+                                                <div className="grid grid-cols-1 gap-1">
+                                                    {doc.items.filter((i: any) => i.itemType === 'Labour').map((item: any) => (
+                                                        <div key={item.id} className="flex justify-between text-[11px] py-1 border-b border-slate-50 last:border-0">
+                                                            <span className="text-slate-600 flex-1 pr-4">{item.description}</span>
+                                                            <span className="font-bold text-slate-900">£{Number(item.subNet).toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {doc.items.filter((i: any) => i.itemType === 'Part').length > 0 && (
+                                            <div>
+                                                <h4 className="text-[9px] font-black uppercase text-orange-600 mb-1.5 tracking-wider flex items-center gap-2">
+                                                    Parts & Consumables
+                                                    <div className="h-[1px] flex-1 bg-orange-100"></div>
+                                                </h4>
+                                                <div className="grid grid-cols-1 gap-1">
+                                                    {doc.items.filter((i: any) => i.itemType === 'Part').map((item: any) => (
+                                                        <div key={item.id} className="flex justify-between text-[11px] py-1 border-b border-slate-50 last:border-0">
+                                                            <span className="text-slate-600 flex-1 pr-4">{item.description}</span>
+                                                            <div className="text-right">
+                                                                <span className="text-[9px] text-slate-400 mr-3">{item.quantity} x £{Number(item.unitPrice).toFixed(2)}</span>
+                                                                <span className="font-bold text-slate-900">£{Number(item.subNet).toFixed(2)}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
 
-                    <div className="mt-8 pt-4 border-t border-dashed border-slate-200 text-center">
-                        <p className="text-[8px] text-slate-400 font-medium italic">
-                            Official service record generated by Eli Motors Ltd on {format(new Date(), "PPpp")}
+                    <div className="mt-12 pt-6 border-t border-slate-100 text-center">
+                        <div className="flex justify-center gap-8 mb-4">
+                            <div className="text-center">
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-1">Total Records</p>
+                                <p className="text-lg font-black text-slate-900">{history.length}</p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-1">Cumulative Spend</p>
+                                <p className="text-lg font-black text-slate-900 text-blue-600">
+                                    £{history.reduce((sum: number, doc: any) => sum + Number(doc.totalGross), 0).toFixed(2)}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="text-[9px] text-slate-300 font-medium italic">
+                            Generated by Eli Motors Management Suite on {format(new Date(), "PPpp")}
                         </p>
                     </div>
                 </div>

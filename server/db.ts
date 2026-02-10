@@ -721,6 +721,15 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     .orderBy(desc(serviceHistory.dateCreated));
 }
 
+export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {
+  const docs = await getServiceHistoryByVehicleId(vehicleId);
+  const docsWithItems = await Promise.all(docs.map(async (doc) => {
+    const items = await getServiceLineItemsByDocumentId(doc.id);
+    return { ...doc, items };
+  }));
+  return docsWithItems;
+}
+
 export async function getServiceHistoryByCustomerId(customerId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -930,13 +939,13 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  // Execute PDF generation script
-  console.log(`[PDF] Executing generation for ${outputFile}`);
+  const pythonCmd = '/usr/bin/python3';
+  console.log(`[PDF] Executing ${pythonCmd} for ${outputFile}`);
 
-  const result = spawnSync('python3', [scriptPath], {
+  const result = spawnSync(pythonCmd, [scriptPath], {
     input: inputJson,
     encoding: 'utf-8',
-    shell: true
+    shell: false
   });
 
   if (result.error) {
