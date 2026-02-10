@@ -926,52 +926,119 @@ export async function getRichPDF(documentId: number) {
     subtotal: Number(i.subNet),
   }));
 
-  const outputFile = `/tmp/${doc.docNo}_${Date.now()}.pdf`;
-  const inputJson = JSON.stringify({
-    type,
-    data: templateData,
-    outputFile
+  // NATIVE PDF GENERATION (Replaces Python script)
+  console.log(`[PDF] Generating native PDF for ${doc.docNo}`);
+
+  return new Promise((resolve, reject) => {
+    try {
+      const PDFDocument = require('pdfkit');
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers: any[] = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        const pdfData = Buffer.concat(buffers);
+        resolve({
+          content: pdfData.toString('base64'),
+          filename: `${templateData.docNo || 'Document'}.pdf`
+        });
+      });
+
+      // --- DOCUMENT CONTENT GENERATION ---
+
+      // Header
+      doc.fontSize(20).text('ELI MOTORS LTD', { align: 'right' });
+      doc.fontSize(10).text('Professional Automotive Services', { align: 'right' });
+      doc.moveDown();
+
+      // Title
+      doc.fontSize(24).font('Helvetica-Bold').text(type === 'invoice' ? 'INVOICE' : (type === 'estimate' ? 'ESTIMATE' : 'JOB SHEET'), 50, 50);
+
+      doc.fontSize(10).font('Helvetica').text(`Use native PDFKit generator`);
+
+      // Address & Customer Info
+      const startY = 150;
+      doc.text(templateData.company.address.join('\n'), 50, startY);
+
+      doc.text(templateData.customer.name, 300, startY);
+      doc.text(templateData.customer.address.join('\n'), 300, startY + 15);
+
+      // Document Meta
+      doc.text(`Date: ${templateData.date}`, 300, startY + 80);
+      doc.text(`${type === 'invoice' ? 'Invoice' : 'Ref'} #: ${templateData.docNo}`, 300, startY + 95);
+
+      // Vehicle Info Box
+      doc.rect(50, 280, 500, 40).stroke();
+      doc.font('Helvetica-Bold').text('Registration', 60, 295);
+      doc.font('Helvetica').text(templateData.vehicle.registration, 130, 295);
+
+      doc.font('Helvetica-Bold').text('Make/Model', 200, 295);
+      doc.font('Helvetica').text(templateData.vehicle.make, 270, 295);
+
+      doc.font('Helvetica-Bold').text('Mileage', 400, 295);
+      doc.font('Helvetica').text(templateData.vehicle.mileage, 450, 295);
+
+      // Line Items Helper
+      let y = 350;
+      const drawRow = (desc: string, qty: any, price: any, total: any) => {
+        if (y > 700) {
+          doc.addPage();
+          y = 50;
+        }
+        doc.text(desc, 50, y, { width: 250 });
+        doc.text(qty.toString(), 310, y, { width: 40, align: 'right' });
+        doc.text(typeof price === 'number' ? `£${price.toFixed(2)}` : price, 360, y, { width: 60, align: 'right' });
+        doc.text(typeof total === 'number' ? `£${total.toFixed(2)}` : total, 430, y, { width: 70, align: 'right' });
+        y += 20;
+      };
+
+      // Table Header
+      doc.font('Helvetica-Bold');
+      drawRow('Description', 'Qty', 'Unit', 'Total');
+      doc.moveTo(50, y).lineTo(550, y).stroke();
+      y += 10;
+      doc.font('Helvetica');
+
+      // Labour
+      if (templateData.labour.length > 0) {
+        doc.font('Helvetica-Bold').text('Labour', 50, y);
+        y += 15;
+        doc.font('Helvetica');
+        templateData.labour.forEach((item: any) => drawRow(item.description, item.qty, item.unit, item.subtotal));
+      }
+
+      // Parts
+      if (templateData.parts.length > 0) {
+        y += 10;
+        doc.font('Helvetica-Bold').text('Parts', 50, y);
+        y += 15;
+        doc.font('Helvetica');
+        templateData.parts.forEach((item: any) => drawRow(item.description, item.qty, item.unit, item.subtotal));
+      }
+
+      // Totals
+      y += 20;
+      doc.moveTo(350, y).lineTo(550, y).stroke();
+      y += 10;
+
+      doc.text('Net Total:', 350, y, { width: 80, align: 'right' });
+      doc.text(`£${Number(templateData.totals.net).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
+      y += 15;
+
+      doc.text(`VAT (${(Number(templateData.totals.vat) / Number(templateData.totals.net) * 100).toFixed(0)}%):`, 350, y, { width: 80, align: 'right' });
+      doc.text(`£${Number(templateData.totals.vat).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
+      y += 15;
+
+      doc.font('Helvetica-Bold');
+      doc.text('Grand Total:', 350, y, { width: 80, align: 'right' });
+      doc.text(`£${Number(templateData.totals.total).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
+
+      doc.end();
+
+    } catch (e: any) {
+      reject(e);
+    }
   });
-
-  const scriptPath = path.join(process.cwd(), 'scripts/generate_pdf.py');
-  if (!fs.existsSync(scriptPath)) {
-    console.error(`[PDF] Script not found at: ${scriptPath}`);
-    throw new Error(`PDF script not found at ${scriptPath}`);
-  }
-
-  // Execute PDF generation script with absolute path to avoid PATH issues
-  // We use /usr/bin/python3 directly as it's the standard location on macOS
-  const pythonCmd = '/usr/bin/python3';
-  console.log(`[PDF] Executing ${pythonCmd} for ${outputFile}`);
-
-  const result = spawnSync(pythonCmd, [scriptPath], {
-    input: inputJson,
-    encoding: 'utf-8',
-    shell: false
-  });
-
-  if (result.error) {
-    console.error("[PDF] Execution error:", result.error);
-    throw new Error(`PDF script execution failed: ${result.error.message}`);
-  }
-
-  if (result.stderr) {
-    console.warn("[PDF] Script stderr:", result.stderr);
-  }
-
-  try {
-    const output = JSON.parse(result.stdout);
-    if (output.error) throw new Error(output.error);
-
-    const pdfContent = fs.readFileSync(output.path);
-    const base64Content = pdfContent.toString('base64');
-    return {
-      content: base64Content,
-      filename: `${doc.docNo || 'Document'}.pdf`
-    };
-  } catch (e: any) {
-    throw new Error(`PDF generation failed: ${e.message}. STDOUT: ${result.stdout}. STDERR: ${result.stderr}`);
-  }
 }
 
 export async function deleteServiceDocument(id: number) {
