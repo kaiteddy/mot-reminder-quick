@@ -76,7 +76,7 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
             model: modelDetails?.ModelIdentification?.Model,
             engineSize: vehicleDetails?.DvlaTechnicalDetails?.EngineCapacityCc,
             fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType,
-            imageUrl: imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl,
+            imageUrl: imageDetails?.VehicleImageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl,
             dimensions: {
                 height: modelDetails?.Dimensions?.HeightMm,
                 width: modelDetails?.Dimensions?.WidthMm,
@@ -90,12 +90,12 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
                 payload: modelDetails?.Weights?.PayloadWeightKg,
             },
             fuelTankCapacity: modelDetails?.BodyDetails?.FuelTankCapacityLitres,
-            euroStatus: vehicleDetails?.DvlaTechnicalDetails?.EuroStatus,
-            co2Emissions: vehicleDetails?.DvlaTechnicalDetails?.Co2Emissions,
+            euroStatus: modelDetails?.Emissions?.EuroStatus || vehicleDetails?.DvlaTechnicalDetails?.EuroStatus,
+            co2Emissions: modelDetails?.Emissions?.ManufacturerCo2 || vehicleDetails?.DvlaTechnicalDetails?.Co2Emissions,
             transmission: {
-                type: modelDetails?.Transmission?.TransmissionType,
-                gears: modelDetails?.Transmission?.NumberOfGears,
-                driveType: modelDetails?.Transmission?.DriveType,
+                type: modelDetails?.Powertrain?.Transmission?.TransmissionType || modelDetails?.Transmission?.TransmissionType,
+                gears: modelDetails?.Powertrain?.Transmission?.NumberOfGears || modelDetails?.Transmission?.NumberOfGears,
+                driveType: modelDetails?.Powertrain?.Transmission?.DriveType || modelDetails?.Transmission?.DriveType,
             },
             raw: data
         };
