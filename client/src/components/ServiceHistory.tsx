@@ -16,9 +16,10 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Loader2, Printer } from "lucide-react";
+import { Download, FileText, Loader2, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
+import { toast } from "sonner";
 
 const cleanText = (text: string | null) => {
     if (!text) return "";
@@ -38,11 +39,29 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const { data: history, isLoading } = trpc.serviceHistory.getByVehicleId.useQuery({ vehicleId });
     const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
+    const utils = trpc.useContext();
+    const deleteMutation = trpc.serviceHistory.delete.useMutation({
+        onSuccess: () => {
+            utils.serviceHistory.getByVehicleId.invalidate({ vehicleId });
+            toast.success("Document deleted successfully");
+            setSelectedDoc(null);
+        },
+        onError: (err) => {
+            toast.error(`Failed to delete document: ${err.message}`);
+        }
+    });
 
     const handlePrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Vehicle_History_${vehicleId}`,
     });
+
+    const handleDelete = (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (window.confirm("Are you sure you want to delete this document? This action cannot be undone.")) {
+            deleteMutation.mutate({ id });
+        }
+    };
 
     if (isLoading) {
         return (
@@ -112,17 +131,28 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 £{Number(doc.totalGross).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedDoc(doc.id);
-                                    }}
-                                >
-                                    <FileText className="h-4 w-4 mr-2" />
-                                    View
-                                </Button>
+                                <div className="flex justify-end gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedDoc(doc.id);
+                                        }}
+                                    >
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        View
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                                        onClick={(e) => handleDelete(doc.id, e)}
+                                        disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </TableCell>
                         </TableRow>
                     ))}
@@ -134,7 +164,22 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     <DialogHeader>
                         <DialogTitle>Document Details</DialogTitle>
                     </DialogHeader>
-                    {selectedDoc && <LineItemsView documentId={selectedDoc} history={history} />}
+                    {selectedDoc && (
+                        <div className="space-y-4">
+                            <LineItemsView documentId={selectedDoc} history={history} />
+                            <div className="flex justify-end pt-4 border-t">
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={(e) => handleDelete(selectedDoc, e as any)}
+                                    disabled={deleteMutation.isPending}
+                                >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Document
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 

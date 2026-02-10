@@ -2105,6 +2105,13 @@ export const appRouter = router({
         const { content, filename } = await getRichPDF(input.documentId);
         return { content, filename };
       }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deleteServiceDocument } = await import("./db");
+        return deleteServiceDocument(input.id);
+      }),
   }),
 });
 

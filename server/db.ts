@@ -915,7 +915,7 @@ export async function getRichPDF(documentId: number) {
     const output = JSON.parse(result.stdout);
     if (output.error) throw new Error(output.error);
 
-    const pdfContent = await import("fs").then(fs => fs.readFileSync(output.path));
+    const pdfContent = fs.readFileSync(output.path);
     const base64Content = pdfContent.toString('base64');
     return {
       content: base64Content,
@@ -924,4 +924,17 @@ export async function getRichPDF(documentId: number) {
   } catch (e: any) {
     throw new Error(`PDF generation failed: ${e.message}. STDOUT: ${result.stdout}. STDERR: ${result.stderr}`);
   }
+}
+
+export async function deleteServiceDocument(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return await db.transaction(async (tx) => {
+    // Delete line items first due to relationship
+    await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
+    // Delete the document header
+    await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
+    return { success: true };
+  });
 }
