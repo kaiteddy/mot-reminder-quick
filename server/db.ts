@@ -922,21 +922,17 @@ export async function getRichPDF(documentId: number) {
   }));
   templateData.parts = items.filter(i => i.itemType === 'Part').map(i => ({
     description: i.description,
-    qty: Number(i.quantity),
-    unit: Number(i.unitPrice),
-    subtotal: Number(i.subNet),
-  }));
 
-  // NATIVE PDF GENERATION (Replaces Python script)
+  // NATIVE PDF GENERATION (Replaces Python script with exact template match)
   console.log(`[PDF] Generating native PDF for ${doc.docNo}`);
 
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50 });
+      // Setup document
+      const pdfDoc = new PDFDocument({ margin: 30, size: 'A4' });
       const buffers: any[] = [];
-
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
+      pdfDoc.on('data', buffers.push.bind(buffers));
+      pdfDoc.on('end', () => {
         const pdfData = Buffer.concat(buffers);
         resolve({
           content: pdfData.toString('base64'),
@@ -944,105 +940,284 @@ export async function getRichPDF(documentId: number) {
         });
       });
 
-      // --- DOCUMENT CONTENT GENERATION ---
+      // --- STYLES & CONFIG ---
+      const PAGE_WIDTH = 595.28; // A4 width in points
+      const PAGE_HEIGHT = 841.89;
+      const MARGIN = 30;
+      const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
+      const HEADER_BG = '#d9d9d9';
+      const BORDER_COLOR = '#cccccc';
+      
+      let y = MARGIN;
 
-      // Header
-      doc.fontSize(20).text('ELI MOTORS LTD', { align: 'right' });
-      doc.fontSize(10).text('Professional Automotive Services', { align: 'right' });
-      doc.moveDown();
-
-      // Title
-      doc.fontSize(24).font('Helvetica-Bold').text(type === 'invoice' ? 'INVOICE' : (type === 'estimate' ? 'ESTIMATE' : 'JOB SHEET'), 50, 50);
-
-      doc.fontSize(10).font('Helvetica').text(`Use native PDFKit generator`);
-
-      // Address & Customer Info
-      const startY = 150;
-
-      const companyInfo = [
-        templateData.company.name,
-        templateData.company.address_line1,
-        templateData.company.phone,
-        templateData.company.website,
-        `VAT: ${templateData.company.vat}`
-      ].filter(Boolean);
-
-      doc.text(companyInfo.join('\n'), 50, startY);
-
-      doc.text(templateData.customer.name, 300, startY);
-      doc.text((templateData.customer.address_lines || []).join('\n'), 300, startY + 15);
-
-      // Document Meta
-      doc.text(`Date: ${templateData.date}`, 300, startY + 80);
-      doc.text(`${type === 'invoice' ? 'Invoice' : 'Ref'} #: ${templateData.docNo}`, 300, startY + 95);
-
-      // Vehicle Info Box
-      doc.rect(50, 280, 500, 40).stroke();
-      doc.font('Helvetica-Bold').text('Registration', 60, 295);
-      doc.font('Helvetica').text(templateData.vehicle.registration, 130, 295);
-
-      doc.font('Helvetica-Bold').text('Make/Model', 200, 295);
-      doc.font('Helvetica').text(templateData.vehicle.make, 270, 295);
-
-      doc.font('Helvetica-Bold').text('Mileage', 400, 295);
-      doc.font('Helvetica').text(templateData.vehicle.mileage, 450, 295);
-
-      // Line Items Helper
-      let y = 350;
-      const drawRow = (desc: string, qty: any, price: any, total: any) => {
-        if (y > 700) {
-          doc.addPage();
-          y = 50;
-        }
-        doc.text(desc, 50, y, { width: 250 });
-        doc.text(qty.toString(), 310, y, { width: 40, align: 'right' });
-        doc.text(typeof price === 'number' ? `£${price.toFixed(2)}` : price, 360, y, { width: 60, align: 'right' });
-        doc.text(typeof total === 'number' ? `£${total.toFixed(2)}` : total, 430, y, { width: 70, align: 'right' });
+      // --- HELPERS ---
+      
+      const drawHeader = () => {
+        const startH = y;
+        // Company Info (Left)
+        pdfDoc.font('Helvetica-Bold').fontSize(18).text(templateData.company.name, MARGIN, y);
         y += 20;
+        pdfDoc.font('Helvetica').fontSize(8);
+        pdfDoc.text(templateData.company.address_line1, MARGIN, y);
+        pdfDoc.text(templateData.company.phone, MARGIN, y + 11);
+        pdfDoc.text(templateData.company.website, MARGIN, y + 22);
+        pdfDoc.text(`VAT ${templateData.company.vat}`, MARGIN, y + 33);
+
+        // Logo (Right)
+        const logoPath = path.join(process.cwd(), 'templates/eli_logo_white.png');
+        if (fs.existsSync(logoPath)) {
+          const logoW = 120;
+          const logoH = logoW * (865.0 / 1930.0);
+          pdfDoc.image(logoPath, PAGE_WIDTH - MARGIN - logoW, startH, { width: logoW });
+        }
+
+        y += 50;
+
+        // Consumer & Doc Info
+        const docTitle = type === 'invoice' ? 'Invoice' : (type === 'estimate' ? 'Estimate' : 'Job Sheet');
+        
+        // Customer (Left)
+        pdfDoc.font('Helvetica').fontSize(10);
+        pdfDoc.text(templateData.customer.name, MARGIN + 30, y);
+        let custY = y + 14;
+        (templateData.customer.address_lines || []).forEach((line: string) => {
+          pdfDoc.text(line, MARGIN + 30, custY);
+          custY += 14;
+        });
+        if (templateData.customer.mobile) {
+            pdfDoc.text(`Mobile: ${templateData.customer.mobile}`, MARGIN + 30, custY);
+             custY += 14;
+        }
+
+        // Document Details (Right)
+        const docX = 340;
+        const docYHeader = y;
+        pdfDoc.font('Helvetica-Bold').fontSize(16).text(docTitle, docX, docYHeader);
+        pdfDoc.font('Helvetica-Bold').fontSize(14).text(templateData.docNo, PAGE_WIDTH - MARGIN - 50, docYHeader, { align: 'right' });
+        
+        pdfDoc.font('Helvetica').fontSize(9);
+        let detailY = docYHeader + 20;
+
+        const details = [
+            ['Date:', templateData.date],
+            ['Account No:', templateData.invoice?.account_no || ''],
+            ['Order Ref:', templateData.invoice?.order_ref || ''],
+            ['Date of Work:', templateData.invoice?.date_of_work || ''],
+            ['Pay Method:', templateData.invoice?.payment_method || ''],
+        ].filter(r => r[1]);
+
+        details.forEach(([label, value]) => {
+            pdfDoc.text(label, docX, detailY);
+            pdfDoc.text(value, PAGE_WIDTH - MARGIN - 50, detailY, { align: 'right' });
+            detailY += 13;
+        });
+
+        y = Math.max(custY + 20, detailY + 20);
       };
 
-      // Table Header
-      doc.font('Helvetica-Bold');
-      drawRow('Description', 'Qty', 'Unit', 'Total');
-      doc.moveTo(50, y).lineTo(550, y).stroke();
-      y += 10;
-      doc.font('Helvetica');
+      const checkPageBreak = (neededHeight: number) => {
+        if (y + neededHeight > PAGE_HEIGHT - MARGIN) {
+          pdfDoc.addPage();
+          y = MARGIN;
+          drawHeader(); 
+          return true;
+        }
+        return false;
+      };
 
-      // Labour
+      const drawTable = (headers: string[], rows: any[][], colWidths: number[], title?: string) => {
+         checkPageBreak(50);
+         
+         if (title) {
+             pdfDoc.font('Helvetica-Bold').fontSize(10).text(title, MARGIN, y);
+             y += 15;
+         }
+
+         const rowHeight = 20;
+         
+         // Draw Header
+         let x = MARGIN;
+         pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+         pdfDoc.fillColor('black');
+         
+         headers.forEach((h, i) => {
+             pdfDoc.font('Helvetica-Bold').fontSize(8.5);
+             if (i === 0) pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left'}); 
+             else pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right'}); 
+             x += colWidths[i];
+         });
+         y += rowHeight;
+
+         // Draw Rows
+         pdfDoc.font('Helvetica').fontSize(8.5);
+         rows.forEach((row, rowIndex) => {
+             checkPageBreak(rowHeight);
+             
+             pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+             
+             x = MARGIN;
+             row.forEach((cell, i) => {
+                const text = cell?.toString() || '';
+                if (i === 0) pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left'});
+                else pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right'});
+                x += colWidths[i];
+             });
+             y += rowHeight;
+         });
+         y += 10; 
+      };
+      
+      const drawVehicleTable = () => {
+          checkPageBreak(80);
+          const ratios = [0.18, 0.15, 0.22, 0.28, 0.17];
+          const colWidths = ratios.map(r => CONTENT_WIDTH * r);
+          const v = templateData.vehicle;
+          
+          const rowHeight = 20;
+          
+          // Row 1 Header
+          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+          pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
+          let x = MARGIN;
+          ['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'].forEach((h, i) => {
+              pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
+              x += colWidths[i];
+          });
+          y += rowHeight;
+          
+          // Row 1 Data
+          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+          pdfDoc.font('Helvetica').fontSize(8);
+          x = MARGIN;
+          [v.registration, v.make, v.model, v.chassis, v.mileage].forEach((d: any, i: number) => {
+              pdfDoc.text(d || '', x, y + 6, { width: colWidths[i], align: 'center' });
+              x += colWidths[i];
+          });
+          y += rowHeight;
+
+          // Row 2 Header
+          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+          pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
+          x = MARGIN;
+          ['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'].forEach((h, i) => {
+              pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
+              x += colWidths[i];
+          });
+          y += rowHeight;
+
+          // Row 2 Data
+          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+          pdfDoc.font('Helvetica').fontSize(8);
+          x = MARGIN;
+          [v.engine_no, v.engine_code, v.engine_cc, v.date_reg, v.colour].forEach((d: any, i: number) => {
+              const val = d !== undefined && d !== null ? d.toString() : '';
+              pdfDoc.text(val, x, y + 6, { width: colWidths[i], align: 'center' });
+              x += colWidths[i];
+          });
+          y += rowHeight + 20; 
+      };
+
+      // --- EXECUTION ---
+      
+      drawHeader();
+      drawVehicleTable();
+
+      // Work Description Header
+      if (templateData.work_title) {
+          checkPageBreak(40);
+          pdfDoc.font('Helvetica-Bold').fontSize(10).text(templateData.work_title, MARGIN, y);
+          const width = pdfDoc.widthOfString(templateData.work_title);
+          pdfDoc.moveTo(MARGIN, y + 12).lineTo(MARGIN + width, y + 12).stroke();
+          y += 20;
+      }
+
+      // Work Items (from description lines)
+      if (doc.description) { 
+           const lines = (doc.description || '').split('\n');
+           pdfDoc.font('Helvetica').fontSize(9);
+           lines.forEach(line => {
+               checkPageBreak(15);
+               pdfDoc.text(`- ${line}`, MARGIN, y);
+               y += 13;
+           });
+           y += 10;
+      }
+
+      // Labour Table
       if (templateData.labour.length > 0) {
-        doc.font('Helvetica-Bold').text('Labour', 50, y);
-        y += 15;
-        doc.font('Helvetica');
-        templateData.labour.forEach((item: any) => drawRow(item.description, item.qty, item.unit, item.subtotal));
+          const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
+          const widths = ratios.map(r => CONTENT_WIDTH * r);
+          const rows = templateData.labour.map((i: any) => [
+              i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
+          ]);
+          drawTable(['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
       }
 
-      // Parts
+      // Parts Table
       if (templateData.parts.length > 0) {
-        y += 10;
-        doc.font('Helvetica-Bold').text('Parts', 50, y);
-        y += 15;
-        doc.font('Helvetica');
-        templateData.parts.forEach((item: any) => drawRow(item.description, item.qty, item.unit, item.subtotal));
+          const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
+          const widths = ratios.map(r => CONTENT_WIDTH * r);
+          const rows = templateData.parts.map((i: any) => [
+              i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
+          ]);
+          drawTable(['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
       }
 
-      // Totals
-      y += 20;
-      doc.moveTo(350, y).lineTo(550, y).stroke();
-      y += 10;
+      // Totals Footer
+      checkPageBreak(120);
+      const totalsWidth = CONTENT_WIDTH * 0.35;
+      const totalsX = PAGE_WIDTH - MARGIN - totalsWidth;
+      
+      const drawTotalRow = (label: string, value: string, isBold = false, isBg = false) => {
+          const h = 16;
+          if (isBg) pdfDoc.rect(totalsX, y, totalsWidth, h).fill('#e8e8e8');
+          pdfDoc.fillColor('black');
+          pdfDoc.rect(totalsX, y, totalsWidth, h).stroke(BORDER_COLOR);
+          
+          pdfDoc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
+          pdfDoc.text(label, totalsX + 5, y + 4, { width: (totalsWidth/2) - 10, align: 'left' });
+          pdfDoc.text(value, totalsX + (totalsWidth/2), y + 4, { width: (totalsWidth/2) - 10, align: 'right' });
+          y += h;
+      };
 
-      doc.text('Net Total:', 350, y, { width: 80, align: 'right' });
-      doc.text(`£${Number(templateData.totals.net).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
-      y += 15;
+      if (Number(templateData.totals.labour) > 0) drawTotalRow('Labour', Number(templateData.totals.labour).toFixed(2));
+      if (Number(templateData.totals.parts) > 0) drawTotalRow('Parts', Number(templateData.totals.parts).toFixed(2));
+      drawTotalRow('SubTotal', Number(templateData.totals.subtotal).toFixed(2), true);
+      drawTotalRow(`VAT (${templateData.totals.vat_rate}%)`, Number(templateData.totals.vat).toFixed(2));
+      drawTotalRow('Total', Number(templateData.totals.total).toFixed(2), true, true);
 
-      doc.text(`VAT (${(Number(templateData.totals.vat) / Number(templateData.totals.net) * 100).toFixed(0)}%):`, 350, y, { width: 80, align: 'right' });
-      doc.text(`£${Number(templateData.totals.vat).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
-      y += 15;
+      // Terms & Conditions (Bottom Left)
+      const footerHeight = 5 * 16; // Approx height of totals block
+      // Reset Y to where totals started, so T&C is to the left of it
+      const tcY = y - (Number(templateData.totals.parts) > 0 || Number(templateData.totals.labour) > 0 ? 0 : 0) - footerHeight - 20; 
+      // Actually, simplest is just to verify space.
+      // Let's just put it below the last thing if we ran out of space, 
+      // or alongside if checks pass.
+      
+      // We'll place it at the same Y as the start of the totals block ideally.
+      // But calculating that is tricky with dynamic rows.
+      // Let's simplified approach: Put it at the current Y if we are far down, 
+      // or duplicate logic.
+      // Python template aligns bottom of T&C with bottom of totals.
+      
+      // Let's just place it to the left of the totals block area.
+      // We know totalsWidth.
+      const tcWidth = CONTENT_WIDTH * 0.55;
+      const finalTcY = y - 90; // Approximation
+      
+      pdfDoc.font('Helvetica').fontSize(7);
+      pdfDoc.text(
+        "I agree to pay for all work and parts required for the repairs described above at your retail charge. " +
+        "It is understood that any estimate given is provisional and all repairs are undertaken on a cash basis " +
+        "unless prior arrangements for credit have been approved. All goods shall remain the property of the seller " +
+        "until paid for in full. I have read and accept your terms and conditions.\n" +
+        "Nothing herein is designed to nor will it affect a customers statutory rights",
+        MARGIN, finalTcY > MARGIN ? finalTcY : y + 10, { width: tcWidth, align: 'justify' }
+      );
+      
+      pdfDoc.text("Signed ________________    Date ________________", MARGIN, (finalTcY > MARGIN ? finalTcY : y + 10) + 60);
 
-      doc.font('Helvetica-Bold');
-      doc.text('Grand Total:', 350, y, { width: 80, align: 'right' });
-      doc.text(`£${Number(templateData.totals.total).toFixed(2)}`, 430, y, { width: 70, align: 'right' });
-
-      doc.end();
+      pdfDoc.end();
 
     } catch (e: any) {
       reject(e);
@@ -1051,14 +1226,14 @@ export async function getRichPDF(documentId: number) {
 }
 
 export async function deleteServiceDocument(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
 
-  return await db.transaction(async (tx) => {
-    // Delete line items first due to relationship
-    await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
-    // Delete the document header
-    await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
-    return { success: true };
-  });
-}
+    return await db.transaction(async (tx) => {
+      // Delete line items first due to relationship
+      await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
+      // Delete the document header
+      await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
+      return { success: true };
+    });
+  }
