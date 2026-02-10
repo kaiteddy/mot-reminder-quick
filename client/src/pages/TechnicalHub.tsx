@@ -13,6 +13,10 @@ import {
     AlertCircle,
     CheckCircle2,
     Info,
+    Box,
+    Activity,
+    FileCode,
+    ChevronRight,
     ShieldCheck,
     Gauge
 } from "lucide-react";
@@ -203,6 +207,27 @@ export default function TechnicalHub() {
                                 </div>
                             ) : (
                                 <>
+                                    {/* Vehicle Hero / Identity Image */}
+                                    {techData.ukvd?.imageUrl && (
+                                        <Card className="shadow-lg overflow-hidden border-0 relative group mb-6">
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
+                                            <img
+                                                src={techData.ukvd.imageUrl}
+                                                alt="Vehicle Identity"
+                                                className="w-full h-48 md:h-72 object-cover group-hover:scale-105 transition-transform duration-700"
+                                            />
+                                            <div className="absolute bottom-6 left-6 z-20">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="px-2 py-0.5 bg-blue-600 text-[9px] font-black text-white rounded uppercase tracking-widest">Library Image</span>
+                                                    <p className="text-[10px] font-black uppercase text-blue-300 tracking-widest drop-shadow-lg">Verified Identity Stream</p>
+                                                </div>
+                                                <h2 className="text-3xl font-black text-white uppercase drop-shadow-xl tracking-tight">
+                                                    {techData.specs?.fullName}
+                                                </h2>
+                                            </div>
+                                        </Card>
+                                    )}
+
                                     {/* Lubricants Card */}
                                     <Card className="shadow-lg border-blue-50">
                                         <CardHeader className="bg-blue-50/50 border-b border-blue-100">
@@ -315,6 +340,84 @@ export default function TechnicalHub() {
                                             </CardContent>
                                         </Card>
 
+                                        {techData.ukvd && (
+                                            <Card className="shadow-lg border-purple-50">
+                                                <CardHeader className="bg-purple-50/50 border-b border-purple-100">
+                                                    <CardTitle className="flex items-center gap-2 text-purple-900 uppercase font-black text-sm">
+                                                        <Box className="w-5 h-5 text-purple-500" />
+                                                        Physical Infrastructure
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent className="p-6 grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Height / Width</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.dimensions?.height || "?"} / {techData.ukvd.dimensions?.width || "?"} <span className="text-[10px] text-slate-400">mm</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Length / WB</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.dimensions?.length || "?"} / {techData.ukvd.dimensions?.wheelbase || "?"}<span className="text-[10px] text-slate-400">mm</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Gross Weight</p>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-xl font-black text-slate-900">{techData.ukvd.weights?.gross || "N/A"}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400">KG</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Payload</p>
+                                                        <div className="flex items-baseline justify-end gap-1">
+                                                            <span className="text-xl font-black text-slate-900">{techData.ukvd.weights?.payload || "N/A"}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400">KG</span>
+                                                        </div>
+                                                    </div>
+                                                    {techData.ukvd.fuelTankCapacity && (
+                                                        <div className="col-span-2 pt-2 border-t border-purple-100 flex justify-between items-center">
+                                                            <span className="text-[10px] font-black uppercase text-purple-600">Fuel Tank Capacity</span>
+                                                            <span className="font-bold text-slate-900">{techData.ukvd.fuelTankCapacity} <span className="text-[10px] text-slate-400 uppercase">Litres</span></span>
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
+                                        {techData.ukvd && (
+                                            <Card className="shadow-lg border-emerald-50">
+                                                <CardHeader className="bg-emerald-50/50 border-b border-emerald-100">
+                                                    <CardTitle className="flex items-center gap-2 text-emerald-900 uppercase font-black text-sm">
+                                                        <Activity className="w-5 h-5 text-emerald-500" />
+                                                        Drivetrain & Environment
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent className="p-6 grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Euro Status</p>
+                                                        <p className="font-bold text-slate-900 text-sm">{techData.ukvd.euroStatus || "N/A"}</p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">CO2 Emissions</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.co2Emissions || "?"} <span className="text-[10px] text-slate-400">g/km</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Transmission</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.transmission?.type || "N/A"} ({techData.ukvd.transmission?.gears || "?"} Speed)
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Drive Type</p>
+                                                        <p className="font-bold text-slate-900 text-sm uppercase">{techData.ukvd.transmission?.driveType || "N/A"}</p>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
                                         <Card className="shadow-lg border-orange-50">
                                             <CardHeader className="bg-orange-50/50 border-b border-orange-100">
                                                 <CardTitle className="flex items-center gap-2 text-orange-900 uppercase font-black text-sm">
@@ -329,7 +432,7 @@ export default function TechnicalHub() {
                                                     </div>
                                                     <div className="text-sm">
                                                         <p className="font-black uppercase text-[10px] text-slate-500">Intelligence Sync Source</p>
-                                                        <p className="font-bold">SWS Multi-API V4 Bridge</p>
+                                                        <p className="font-bold">SWS Bridge + UKVD Enhanced</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-start gap-3">
@@ -344,6 +447,24 @@ export default function TechnicalHub() {
                                             </CardContent>
                                         </Card>
                                     </div>
+
+                                    {/* Raw Intelligence Explorer */}
+                                    <Card className="shadow-lg border-slate-200 overflow-hidden">
+                                        <details className="group">
+                                            <summary className="flex items-center justify-between p-4 cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors list-none">
+                                                <div className="flex items-center gap-2">
+                                                    <FileCode className="w-4 h-4 text-slate-500" />
+                                                    <span className="text-xs font-black uppercase tracking-widest text-slate-600">Raw Intelligence Explorer</span>
+                                                </div>
+                                                <ChevronRight className="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" />
+                                            </summary>
+                                            <CardContent className="p-0 border-t border-slate-200">
+                                                <pre className="p-4 bg-slate-900 text-blue-300 text-[10px] font-mono overflow-auto max-h-[500px] leading-relaxed">
+                                                    {JSON.stringify(techData, null, 2)}
+                                                </pre>
+                                            </CardContent>
+                                        </details>
+                                    </Card>
                                 </>
                             )}
                         </div>

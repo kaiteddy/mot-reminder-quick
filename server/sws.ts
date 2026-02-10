@@ -13,6 +13,7 @@ export interface SWSTechnicalData {
     aircon?: any;
     repairTimes?: any;
     maintenance?: any;
+    ukvd?: any;
     raw?: any;
 }
 
@@ -284,7 +285,28 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         console.error("[SWS] Error on Repair Times logic:", e);
     }
 
-    // 5. SMART INTELLIGENCE FALLBACK
+    // 5. Complementary Intelligence: UKVD (UK Vehicle Data Global)
+    try {
+        const { fetchUKVDData } = await import("./ukvd");
+        const ukvdData = await fetchUKVDData(cleanVRM);
+        if (ukvdData) {
+            console.log(`[UKVD] Successfully merged enhanced data for ${cleanVRM}`);
+            result.ukvd = ukvdData;
+
+            // If SWS specs are missing, UKVD can provide basics
+            if (!result.specs) {
+                result.specs = {
+                    fullName: `${ukvdData.make} ${ukvdData.model}`,
+                    fuelType: ukvdData.fuelType,
+                    engineSize: ukvdData.engineSize
+                };
+            }
+        }
+    } catch (e) {
+        console.error("[UKVD] Integration error:", e);
+    }
+
+    // 6. SMART INTELLIGENCE FALLBACK
     // Only apply if the API returned NOTHING for lubricants
     if (result.specs && (!result.lubricants || result.lubricants.length === 0)) {
         console.log(`[SWS] Applying Smart Intelligence Fallbacks for VRM: ${cleanVRM}`);
