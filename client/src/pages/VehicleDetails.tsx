@@ -17,7 +17,9 @@ import {
     Droplet,
     Thermometer,
     Wrench,
-    AlertTriangle
+    AlertTriangle,
+    Copy,
+    Check
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -101,17 +103,17 @@ export default function VehicleDetails() {
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <ManufacturerLogo make={vehicle.make} size="xl" />
+                        <ManufacturerLogo make={vehicle.make as string} size="xl" />
                         <div>
                             <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
                                 {vehicle.registration}
                             </div>
                             <h1 className="text-2xl font-bold mt-2">
-                                {vehicle.make} {vehicle.model}
+                                {vehicle.make as string} {vehicle.model as string}
                             </h1>
                             <p className="text-muted-foreground flex items-center gap-2">
                                 <Fuel className="w-4 h-4" />
-                                {vehicle.fuelType || "Unknown"} • {vehicle.colour} • {vehicle.engineCC ? `${vehicle.engineCC}cc` : "Unknown Size"}
+                                {(vehicle.fuelType as string) || "Unknown"} • {(vehicle.colour as string)} • {vehicle.engineCC ? `${vehicle.engineCC}cc` : "Unknown Size"}
                             </p>
                         </div>
                     </div>
@@ -154,40 +156,55 @@ export default function VehicleDetails() {
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Make</p>
-                                    <p className="font-semibold">{vehicle.make || "Unknown"}</p>
+                                    <p className="text-sm font-bold">{vehicle.make || "Unknown"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Model</p>
-                                    <p className="font-semibold">{vehicle.model || "Unknown"}</p>
+                                    <p className="text-sm font-bold">{vehicle.model || "Unknown"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Fuel Type</p>
-                                    <div className="flex items-center gap-2 font-semibold">
+                                    <div className="flex items-center gap-2 text-sm font-bold uppercase">
                                         <Fuel className="w-4 h-4 text-orange-500" />
                                         {vehicle.fuelType || "-"}
                                     </div>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Engine CC</p>
-                                    <p className="font-semibold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
+                                    <p className="text-sm font-bold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Tax Status</p>
-                                    <Badge variant={vehicle.taxStatus?.toLowerCase() === 'taxed' ? 'default' : 'destructive'}>
+                                    <Badge variant={vehicle.taxStatus?.toLowerCase() === 'taxed' ? 'default' : 'destructive'} className="text-[10px] px-2 py-0">
                                         {vehicle.taxStatus || "Unknown"}
                                     </Badge>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Tax Due</p>
-                                    <p className="font-semibold">{formatDate(vehicle.taxDueDate)}</p>
+                                    <p className="text-sm font-bold">{formatDate(vehicle.taxDueDate)}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Reg Date</p>
-                                    <p className="font-semibold">{formatDate(vehicle.dateOfRegistration)}</p>
+                                    <p className="text-sm font-bold">{formatDate(vehicle.dateOfRegistration)}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">VIN</p>
-                                    <p className="font-mono text-[10px] break-all">{vehicle.vin || "-"}</p>
+                                    <div className="flex items-center gap-2 group">
+                                        <p className="font-mono text-xs font-bold truncate max-w-[120px]">{vehicle.vin || "-"}</p>
+                                        {vehicle.vin && (
+                                            <button
+                                                onClick={() => {
+                                                    if (vehicle.vin) {
+                                                        navigator.clipboard.writeText(vehicle.vin);
+                                                        toast.success("VIN copied to clipboard");
+                                                    }
+                                                }}
+                                                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
+                                            >
+                                                <Copy className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>
@@ -207,21 +224,21 @@ export default function VehicleDetails() {
                                     <div>
                                         <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
                                         <Link href={`/customers/${customer.id}`}>
-                                            <p className="font-bold text-lg hover:underline cursor-pointer text-primary">
-                                                {customer.name}
+                                            <p className="text-sm font-bold hover:underline cursor-pointer text-primary">
+                                                {customer.name as string}
                                             </p>
                                         </Link>
                                     </div>
                                     {customer.phone && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                                            <p className="font-mono">{customer.phone}</p>
+                                            <p className="text-sm font-bold font-mono">{customer.phone}</p>
                                         </div>
                                     )}
                                     {customer.email && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm truncate">{customer.email}</p>
+                                            <p className="text-sm font-bold truncate">{customer.email}</p>
                                         </div>
                                     )}
                                     {customer.optedOut && (
@@ -263,9 +280,9 @@ export default function VehicleDetails() {
                                                     In v0dashboard-2 they have a better renderer, but let's show key info. */}
                                                 {(vehicle.comprehensiveTechnicalData as any).lubricants.map?.((l: any, i: number) => (
                                                     <div key={i} className="text-sm">
-                                                        <p className="font-semibold text-xs text-muted-foreground uppercase">{l.description || 'Fluid'}</p>
-                                                        <p>{l.specification || 'N/A'}</p>
-                                                        {l.capacity && <p className="text-xs text-primary font-medium mt-0.5">Capacity: {l.capacity}L</p>}
+                                                        <p className="text-xs font-medium text-muted-foreground uppercase">{(l.description as string) || 'Fluid'}</p>
+                                                        <p className="font-bold">{(l.specification as string) || 'N/A'}</p>
+                                                        {l.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {l.capacity}L</p>}
                                                     </div>
                                                 )) || (
                                                         <p className="text-sm text-muted-foreground italic">Specifications available in technical documents</p>
@@ -283,12 +300,12 @@ export default function VehicleDetails() {
                                             </h3>
                                             <div className="space-y-3">
                                                 <div className="text-sm">
-                                                    <p className="font-semibold text-xs text-muted-foreground uppercase">Refrigerant Type</p>
-                                                    <p>{(vehicle.comprehensiveTechnicalData as any).aircon.type || 'N/A'}</p>
+                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Refrigerant Type</p>
+                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.type as string) || 'N/A'}</p>
                                                 </div>
                                                 <div className="text-sm">
-                                                    <p className="font-semibold text-xs text-muted-foreground uppercase">Gas Quantity</p>
-                                                    <p>{(vehicle.comprehensiveTechnicalData as any).aircon.quantity || 'N/A'}</p>
+                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Gas Quantity</p>
+                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.quantity as string) || 'N/A'}</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -302,12 +319,12 @@ export default function VehicleDetails() {
                                         </h3>
                                         <div className="space-y-3">
                                             <div className="text-sm">
-                                                <p className="font-semibold text-xs text-muted-foreground uppercase">Engine Code</p>
-                                                <p>{vehicle.engineCode || "-"}</p>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase">Engine Code</p>
+                                                <p className="font-bold">{(vehicle.engineCode as string) || "-"}</p>
                                             </div>
                                             <div className="text-sm">
-                                                <p className="font-semibold text-xs text-muted-foreground uppercase">Last Deep Scan</p>
-                                                <p className="text-xs">{vehicle.swsLastUpdated ? new Date(vehicle.swsLastUpdated).toLocaleString() : "Never"}</p>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase">Last Deep Scan</p>
+                                                <p className="text-xs font-bold">{vehicle.swsLastUpdated ? new Date(vehicle.swsLastUpdated).toLocaleString() : "Never"}</p>
                                             </div>
                                         </div>
                                     </div>
