@@ -16,8 +16,19 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { FileText, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Download, FileText, Loader2, Printer } from "lucide-react";
+import { useRef, useState } from "react";
+import { useReactToPrint } from "react-to-print";
+
+const cleanText = (text: string | null) => {
+    if (!text) return "";
+    // Remove non-printable characters and normalize line breaks
+    return text
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+        .trim();
+};
 
 interface ServiceHistoryProps {
     vehicleId: number;
@@ -26,6 +37,12 @@ interface ServiceHistoryProps {
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const { data: history, isLoading } = trpc.serviceHistory.getByVehicleId.useQuery({ vehicleId });
     const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
+    const printRef = useRef<HTMLDivElement>(null);
+
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Vehicle_History_${vehicleId}`,
+    });
 
     if (isLoading) {
         return (
@@ -45,6 +62,17 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
 
     return (
         <div className="space-y-4 pt-2">
+            <div className="flex justify-end mb-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrint()}
+                    className="border-primary/20 hover:bg-primary/5 text-primary font-bold shadow-sm transition-all"
+                >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export Full History (PDF)
+                </Button>
+            </div>
             <Table className="table-fixed w-full">
                 <TableHeader>
                     <TableRow>
@@ -75,7 +103,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             </TableCell>
                             <TableCell className="min-w-[200px] max-w-[500px] whitespace-normal">
                                 <div className="break-words">
-                                    {doc.mainDescription || "No details available"}
+                                    {cleanText(doc.mainDescription) || "No details available"}
                                 </div>
                             </TableCell>
                             <TableCell className="text-muted-foreground text-xs font-mono">{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
@@ -109,6 +137,56 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     {selectedDoc && <LineItemsView documentId={selectedDoc} history={history} />}
                 </DialogContent>
             </Dialog>
+
+            {/* Hidden Printable History */}
+            <div style={{ display: "none" }}>
+                <div ref={printRef} className="p-12 text-slate-900 bg-white min-h-screen">
+                    <div className="flex justify-between items-start border-b-4 border-slate-900 pb-6 mb-8">
+                        <div>
+                            <h1 className="text-4xl font-black uppercase tracking-tighter mb-1">Vehicle Service History</h1>
+                            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">Complete Maintenance Record Timeline</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-2xl font-black font-mono">ELI MOTORS LTD</p>
+                            <p className="text-xs text-slate-500">Professional Automotive Services</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-12">
+                        {history.map((doc, idx) => (
+                            <div key={doc.id} className="relative pl-8 border-l-2 border-slate-200 pb-8 last:pb-0">
+                                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-slate-900 border-2 border-white" />
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <span className="text-sm font-black text-white bg-slate-900 px-2 py-0.5 rounded mr-3">
+                                            {doc.dateCreated ? format(new Date(doc.dateCreated), "dd/MM/yyyy") : "-"}
+                                        </span>
+                                        <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                                            {doc.docType === 'SI' ? 'Invoice' : 'Estimate'} #{doc.docNo || doc.externalId.substring(0, 8)}
+                                        </span>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-lg font-black tracking-tight leading-none">£{Number(doc.totalGross).toFixed(2)}</p>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase">{doc.mileage ? `${doc.mileage.toLocaleString()} miles` : "Mileage not recorded"}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-100">
+                                    <div className="font-bold text-md leading-relaxed text-slate-800 whitespace-pre-wrap mb-4">
+                                        {cleanText(doc.description || doc.mainDescription)}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-12 pt-8 border-t border-dashed border-slate-200 text-center">
+                        <p className="text-[10px] text-slate-400 font-medium italic">
+                            This document is a consolidated record of work carried out by Eli Motors Ltd.
+                            Generated on {format(new Date(), "PPpp")}
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
@@ -144,7 +222,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <h4 className="text-xs font-bold uppercase text-slate-500 mb-2">Job Description</h4>
                     <pre className="text-sm font-sans whitespace-pre-wrap text-slate-700 leading-relaxed">
-                        {doc.description}
+                        {cleanText(doc.description)}
                     </pre>
                 </div>
             )}
