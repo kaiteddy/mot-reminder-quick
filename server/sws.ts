@@ -123,24 +123,48 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         console.error("[SWS] Error on GET_INITIAL_SUBJECTS:", e);
     }
 
-    // 2. Get Lubricants & Aircon (GET_LUBRICANTS in V4 bundles these)
+    // 2. Get Lubricants (V4 Protocol)
+    const capacityMap: Record<string, string> = {};
+
     try {
-        const body = new URLSearchParams({
+        const lubesBody = new URLSearchParams({
             APIKey: SWS_CONFIG.apiKey,
             ACTION: 'GET_LUBRICANTS',
             VRM: cleanVRM
         });
 
-        const response = await fetch(SWS_CONFIG.lookupUrl, {
-            method: 'POST',
-            headers: commonHeaders,
-            body: body
-        });
+        const lubesRes = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers: commonHeaders, body: lubesBody });
+        const lubesText = await lubesRes.text();
 
-        const responseText = await response.text();
-        if (response.ok && responseText.trim() && responseText !== "[]") {
-            const data = JSON.parse(responseText);
-            // V4 structure is deeply nested: data[0].TechnicalData.ExtLubricantGroup[n].lubricantItems.item[m]
+        // 3. Get Capacities (via GET_ADJUSTMENTS)
+        const adjBody = new URLSearchParams({
+            APIKey: SWS_CONFIG.apiKey,
+            ACTION: 'GET_ADJUSTMENTS',
+            VRM: cleanVRM
+        });
+        const adjRes = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers: commonHeaders, body: adjBody });
+        const adjText = await adjRes.text();
+
+        if (adjRes.ok && adjText.trim() && adjText !== "[]") {
+            const adjData = JSON.parse(adjText);
+            const adjustments = adjData?.[0]?.TechnicalData?.ExtAdjustment || adjData?.["0"]?.TechnicalData?.ExtAdjustment || [];
+
+            adjustments.forEach((group: any) => {
+                if (group.name === "Capacities") {
+                    const itemsRaw = group.subAdjustments?.item || [];
+                    const items = Array.isArray(itemsRaw) ? itemsRaw : [itemsRaw];
+                    items.forEach((item: any) => {
+                        if (item.name && item.value) {
+                            const key = item.name.toLowerCase().replace(/,/g, '');
+                            capacityMap[key] = `${item.value} ${item.unit || ''}`.trim();
+                        }
+                    });
+                }
+            });
+        }
+
+        if (lubesRes.ok && lubesText.trim() && lubesText !== "[]") {
+            const data = JSON.parse(lubesText);
             const groups = data?.["0"]?.["TechnicalData"]?.["ExtLubricantGroup"] ||
                 data?.[0]?.["TechnicalData"]?.["ExtLubricantGroup"];
 
@@ -158,27 +182,38 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
                         if (!spec) return;
 
                         const description = item.name || groupName;
+                        const lowerDesc = description.toLowerCase();
+                        const lowerGroup = groupName.toLowerCase();
 
                         // Extract Lubricants
-                        if (groupName.toLowerCase().includes("engine") ||
-                            description.toLowerCase().includes("engine oil") ||
-                            groupName.toLowerCase().includes("brake") ||
-                            groupName.toLowerCase().includes("cooling") ||
-                            groupName.toLowerCase().includes("manual transmission")) {
+                        if (lowerGroup.includes("engine") || lowerDesc.includes("engine oil") ||
+                            lowerGroup.includes("brake") || lowerGroup.includes("cooling") ||
+                            lowerGroup.includes("manual transmission")) {
+
+                            // Try to find capacity match
+                            let capacity = item.capacity || null;
+                            if (!capacity) {
+                                if (lowerDesc.includes("engine oil") || lowerGroup === "engine") capacity = capacityMap["engine sump including filter"];
+                                else if (lowerGroup.includes("cooling")) capacity = capacityMap["cooling system"];
+                                else if (lowerGroup.includes("brake")) capacity = capacityMap["brake system"];
+                                else if (lowerGroup.includes("transmission")) capacity = capacityMap["manual transmission"] || capacityMap["gearbox refill"];
+                            }
 
                             parsedLubes.push({
                                 description: description,
                                 specification: spec,
-                                capacity: item.capacity || null
+                                capacity: capacity
                             });
                         }
 
-                        // Extract Aircon (Type & Oil)
-                        if (description.toLowerCase().includes("refrigerant") ||
-                            groupName.toLowerCase().includes("refrigerant")) {
-                            if (!foundAircon) foundAircon = { type: "", capacity: "" };
-                            if (description.toLowerCase().includes("refrigerant")) {
+                        // Extract Aircon (Type & Quantity)
+                        if (lowerDesc.includes("refrigerant") || lowerGroup.includes("refrigerant")) {
+                            if (!foundAircon) foundAircon = { type: "", quantity: "" };
+                            if (lowerDesc.includes("refrigerant")) {
                                 foundAircon.type = item.quality || item.viscosity || "";
+                                // Map refrigerant quantity
+                                if (foundAircon.type.includes("R134a")) foundAircon.quantity = capacityMap["refrigerant"] || capacityMap["with r134a refrigerant"];
+                                else if (foundAircon.type.includes("1234yf")) foundAircon.quantity = capacityMap["refrigerant"] || capacityMap["with r1234yf refrigerant"];
                             }
                         }
                     });
@@ -189,7 +224,7 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
             }
         }
     } catch (e) {
-        console.error("[SWS] Error on GET_LUBRICANTS:", e);
+        console.error("[SWS] Error on V4 Data Pass:", e);
     }
 
     // 4. Labor Times / Repair Tree (GA4 Logic)
@@ -268,11 +303,11 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         );
 
         if (!result.lubricants || result.lubricants.length === 0) {
-            result.lubricants = heuristics.lubricants;
+            result.lubricants = heuristics.lubricants.map(l => ({ ...l, capacity: `${l.capacity} L` }));
         }
 
         if (!result.aircon || Object.keys(result.aircon).length === 0) {
-            result.aircon = heuristics.aircon;
+            result.aircon = { type: heuristics.aircon.type, quantity: `${heuristics.aircon.capacity} g` };
         }
     }
 
