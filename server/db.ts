@@ -939,13 +939,17 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  const pythonCmd = '/usr/bin/python3';
-  console.log(`[PDF] Executing ${pythonCmd} for ${outputFile}`);
+  // Execute PDF generation script with explicit PATH to ensure python3 is found
+  console.log(`[PDF] Executing python3 for ${outputFile}`);
 
-  const result = spawnSync(pythonCmd, [scriptPath], {
+  const result = spawnSync('python3', [scriptPath], {
     input: inputJson,
     encoding: 'utf-8',
-    shell: false
+    shell: true,
+    env: {
+      ...process.env,
+      PATH: '/usr/bin:/usr/local/bin:/opt/homebrew/bin:' + (process.env.PATH || '')
+    }
   });
 
   if (result.error) {
