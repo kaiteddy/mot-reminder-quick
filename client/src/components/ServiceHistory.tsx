@@ -16,10 +16,11 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Loader2, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, FileText, Loader2, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 const cleanText = (text: string | null) => {
     if (!text) return "";
@@ -36,6 +37,7 @@ interface ServiceHistoryProps {
 }
 
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
+    const [, setLocation] = useLocation();
     const { data: history, isLoading } = trpc.serviceHistory.getByVehicleId.useQuery({ vehicleId });
     const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
@@ -135,6 +137,18 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     <Button
                                         variant="outline"
                                         size="sm"
+                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setLocation(`/generate-document?editId=${doc.id}`);
+                                        }}
+                                    >
+                                        <Edit className="h-4 w-4 mr-2" />
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setSelectedDoc(doc.id);
@@ -167,7 +181,15 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     {selectedDoc && (
                         <div className="space-y-4">
                             <LineItemsView documentId={selectedDoc} history={history} />
-                            <div className="flex justify-end pt-4 border-t">
+                            <div className="flex justify-end pt-4 border-t gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setLocation(`/generate-document?editId=${selectedDoc}`)}
+                                >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit Document
+                                </Button>
                                 <Button
                                     variant="destructive"
                                     size="sm"

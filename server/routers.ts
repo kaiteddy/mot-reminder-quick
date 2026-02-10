@@ -2072,6 +2072,13 @@ export const appRouter = router({
         return getServiceHistoryByVehicleId(input.vehicleId);
       }),
 
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getServiceDocumentById } = await import("./db");
+        return getServiceDocumentById(input.id);
+      }),
+
     getLineItems: publicProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
@@ -2093,6 +2100,26 @@ export const appRouter = router({
           await getRichPDF(result.id);
         } catch (e) {
           console.error("BG PDF generation failed", e);
+        }
+
+        return result;
+      }),
+
+    update: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        doc: z.any(),
+        items: z.array(z.any()),
+      }))
+      .mutation(async ({ input }) => {
+        const { updateServiceDocument, getRichPDF } = await import("./db");
+        const result = await updateServiceDocument(input.id, input.doc, input.items);
+
+        // Regenerate PDF
+        try {
+          await getRichPDF(result.id);
+        } catch (e) {
+          console.error("BG PDF regeneration failed", e);
         }
 
         return result;

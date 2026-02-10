@@ -793,6 +793,32 @@ export async function createServiceDocument(doc: any, items: any[]) {
   });
 }
 
+export async function updateServiceDocument(id: number, doc: any, items: any[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { nanoid } = await import("nanoid");
+
+  return await db.transaction(async (tx) => {
+    // Update document header
+    await tx.update(serviceHistory).set(doc).where(eq(serviceHistory.id, id));
+
+    // Delete existing line items and re-insert (simpler than syncing)
+    await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
+
+    if (items.length > 0) {
+      const itemsToInsert = items.map(item => ({
+        ...item,
+        documentId: id,
+        externalId: item.externalId || `ITEM-${nanoid()}`,
+      }));
+      await tx.insert(serviceLineItems).values(itemsToInsert);
+    }
+
+    return { id };
+  });
+}
+
 export async function getRichPDF(documentId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

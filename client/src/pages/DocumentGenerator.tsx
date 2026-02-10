@@ -66,7 +66,8 @@ export default function DocumentGenerator() {
         }
     });
 
-    const [docType, setDocType] = useState<"SI" | "ES">("SI");
+    const [docType, setDocType] = useState<"SI" | "ES" | "JS">("SI");
+    const [editingId, setEditingId] = useState<number | null>(null);
     const [docNo, setDocNo] = useState("");
     const [dateCreated, setDateCreated] = useState(format(new Date(), "yyyy-MM-dd"));
     const [orderRef, setOrderRef] = useState("-");
@@ -150,10 +151,55 @@ export default function DocumentGenerator() {
         const vId = queryParams.get("vehicleId");
         const reg = queryParams.get("reg");
 
+        const editId = queryParams.get("editId");
+
         if (cId) setCustomerId(parseInt(cId));
         if (vId) setVehicleId(parseInt(vId));
         if (reg) setRegistration(reg.toUpperCase());
+        if (editId) setEditingId(parseInt(editId));
     }, []);
+
+    // Load existing document data if editing
+    const { data: existingDoc } = trpc.serviceHistory.getById.useQuery(
+        { id: editingId! },
+        { enabled: !!editingId }
+    );
+
+    const { data: existingItems } = trpc.serviceHistory.getLineItems.useQuery(
+        { documentId: editingId! },
+        { enabled: !!editingId }
+    );
+
+    useEffect(() => {
+        if (existingDoc) {
+            setDocType(existingDoc.docType as any || "SI");
+            setDocNo(existingDoc.docNo || "");
+            if (existingDoc.dateCreated) {
+                setDateCreated(format(new Date(existingDoc.dateCreated), "yyyy-MM-dd"));
+            }
+            setCustomerId(existingDoc.customerId);
+            setVehicleId(existingDoc.vehicleId);
+            setMileage(existingDoc.mileage?.toString() || "");
+            setWorkDone(existingDoc.description || "");
+            // These might need to be stored in DB if we want full recovery, but for now we set defaults
+        }
+    }, [existingDoc]);
+
+    useEffect(() => {
+        if (existingItems && existingItems.length > 0) {
+            const items = existingItems.map(item => ({
+                id: item.id.toString(),
+                description: item.description || "",
+                quantity: Number(item.quantity) || 0,
+                unitPrice: Number(item.unitPrice) || 0,
+                subNet: Number(item.subNet) || 0,
+                itemType: item.itemType as any || "Labour",
+                hasVat: true // Default to true, or we could add this to schema
+            }));
+            setLabourItems(items.filter(i => i.itemType === "Labour"));
+            setPartsItems(items.filter(i => i.itemType === "Part"));
+        }
+    }, [existingItems]);
 
     useEffect(() => {
         if (lookupData?.vehicle) {
@@ -191,11 +237,22 @@ export default function DocumentGenerator() {
     const createDoc = trpc.serviceHistory.create.useMutation({
         onSuccess: (data) => {
             toast.success("Document saved successfully");
+            setEditingId(data.id); // Switch to edit mode after first save
             // Auto-trigger rich PDF download after save
             handleDownloadRichPDF(data.id);
         },
         onError: (err) => {
             toast.error("Failed to save document: " + err.message);
+        }
+    });
+
+    const updateDoc = trpc.serviceHistory.update.useMutation({
+        onSuccess: () => {
+            toast.success("Document updated successfully");
+            if (editingId) handleDownloadRichPDF(editingId);
+        },
+        onError: (err) => {
+            toast.error("Failed to update document: " + err.message);
         }
     });
 
@@ -305,21 +362,31 @@ export default function DocumentGenerator() {
             itemType: i.itemType
         }));
 
-        createDoc.mutate({
-            doc: {
-                customerId,
-                vehicleId,
-                docType,
-                docNo,
-                dateCreated: new Date(dateCreated),
-                totalNet: subTotal.toString(),
-                totalTax: vat.toString(),
-                totalGross: totalGross.toString(),
-                mileage: parseInt(mileage) || 0,
-                description: workDone
-            },
-            items
-        });
+        const docData = {
+            customerId,
+            vehicleId,
+            docType,
+            docNo,
+            dateCreated: new Date(dateCreated),
+            totalNet: subTotal.toString(),
+            totalTax: vat.toString(),
+            totalGross: totalGross.toString(),
+            mileage: parseInt(mileage) || 0,
+            description: workDone
+        };
+
+        if (editingId) {
+            updateDoc.mutate({
+                id: editingId,
+                doc: docData,
+                items
+            });
+        } else {
+            createDoc.mutate({
+                doc: docData,
+                items
+            });
+        }
     };
 
     return (
@@ -332,7 +399,7 @@ export default function DocumentGenerator() {
                             <span className="text-xs font-bold uppercase tracking-widest">Document Workspace</span>
                         </div>
                         <h1 className="text-3xl font-bold tracking-tight">
-                            {docType === 'SI' ? 'Job Invoice' : 'Repair Estimate'}
+                            {docType === 'SI' ? 'Job Invoice' : docType === 'ES' ? 'Repair Estimate' : 'Job Sheet'}
                         </h1>
                         <p className="text-muted-foreground text-sm">Professional document generation for automotive services</p>
                     </div>
@@ -365,10 +432,10 @@ export default function DocumentGenerator() {
                             size="lg"
                             className="h-12 px-8 font-bold shadow-lg"
                             onClick={handleSave}
-                            disabled={createDoc.isPending}
+                            disabled={createDoc.isPending || updateDoc.isPending}
                         >
-                            {createDoc.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
-                            Store Document
+                            {createDoc.isPending || updateDoc.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
+                            {editingId ? 'Update Document' : 'Store Document'}
                         </Button>
                     </div>
                 </div>
@@ -515,6 +582,7 @@ export default function DocumentGenerator() {
                                             <SelectContent>
                                                 <SelectItem value="SI">Invoice</SelectItem>
                                                 <SelectItem value="ES">Estimate</SelectItem>
+                                                <SelectItem value="JS">Job Sheet</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
