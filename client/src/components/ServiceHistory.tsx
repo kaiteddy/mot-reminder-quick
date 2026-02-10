@@ -33,6 +33,31 @@ const cleanText = (text: string | null) => {
         .trim();
 };
 
+const FormattedDescription = ({ text }: { text: string | null }) => {
+    if (!text) return null;
+
+    // Split by common list separators and clean up
+    const points = text
+        .split(/[\n\r]|(?:\s+-\s+)|(?:\s+–\s+)|(?:\s+—\s+)/)
+        .map(p => p.trim())
+        .filter(p => p.length > 3); // Filter out very short segments that might be noise
+
+    if (points.length <= 1) {
+        return <div className="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">{text}</div>;
+    }
+
+    return (
+        <ul className="list-none space-y-2 p-0 m-0">
+            {points.map((point, i) => (
+                <li key={i} className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-700 font-medium">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                    <span className="flex-1">{point}</span>
+                </li>
+            ))}
+        </ul>
+    );
+};
+
 interface ServiceHistoryProps {
     vehicleId: number;
 }
@@ -252,9 +277,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
 
                                 <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100/80 mb-4">
                                     <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Job Description</p>
-                                    <div className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">
-                                        {cleanText(doc.description || doc.mainDescription)}
-                                    </div>
+                                    <FormattedDescription text={doc.description || doc.mainDescription} />
                                 </div>
 
                                 {doc.items && doc.items.length > 0 && (
@@ -354,9 +377,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
             {doc?.description && (
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <h4 className="text-xs font-bold uppercase text-slate-500 mb-2">Job Description</h4>
-                    <pre className="text-sm font-sans whitespace-pre-wrap text-slate-700 leading-relaxed">
-                        {cleanText(doc.description)}
-                    </pre>
+                    <FormattedDescription text={doc.description} />
                 </div>
             )}
 
