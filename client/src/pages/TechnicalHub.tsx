@@ -42,7 +42,7 @@ export default function TechnicalHub() {
             if (res.cached) {
                 toast("Technical intelligence loaded from cache");
             } else {
-                toast.success("Deep technical scan complete!");
+                toast.success("Deep technical scan complete! Vehicle identity image & specs updated.");
             }
             utils.vehicles.getByRegistration.invalidate({ registration: searchQuery });
         },

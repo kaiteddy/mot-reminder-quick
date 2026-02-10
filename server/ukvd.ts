@@ -58,7 +58,6 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
 
         const data = await response.json();
 
-        // Response format according to spec: { Results: { VehicleDetails: { ... }, ModelDetails: { ... } } }
         if (data.ResponseInformation?.StatusCode !== 0) {
             console.warn(`[UKVD] Lookup failed: ${data.ResponseInformation?.StatusMessage}`);
             return null;
@@ -69,6 +68,13 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
         const modelDetails = results?.ModelDetails;
         const imageDetails = results?.VehicleImageDetails;
 
+        console.log(`[UKVD DEBUG] VRM: ${cleanVRM}, Results: ${!!results}, VehicleDetails: ${!!vehicleDetails}, ModelDetails: ${!!modelDetails}, ImageDetails: ${!!imageDetails}`);
+
+        const imageList = imageDetails?.VehicleImageList || imageDetails?.VehicleImageDetails?.VehicleImageList;
+        const foundImageUrl = imageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl;
+
+        console.log(`[UKVD DEBUG] Found Image URL: ${foundImageUrl ? "YES" : "NO"}`);
+
         const mapped: UKVDResponse = {
             vrm: cleanVRM,
             vin: vehicleDetails?.VehicleIdentification?.Vin,
@@ -76,7 +82,7 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
             model: modelDetails?.ModelIdentification?.Model,
             engineSize: vehicleDetails?.DvlaTechnicalDetails?.EngineCapacityCc,
             fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType,
-            imageUrl: imageDetails?.VehicleImageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl,
+            imageUrl: foundImageUrl,
             dimensions: {
                 height: modelDetails?.Dimensions?.HeightMm,
                 width: modelDetails?.Dimensions?.WidthMm,
