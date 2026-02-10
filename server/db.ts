@@ -9,6 +9,7 @@ import {
   reminders, reminderLogs, customers, customerMessages, vehicles,
   serviceHistory, serviceLineItems
 } from "../drizzle/schema";
+import PDFDocument from "pdfkit";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -931,7 +932,6 @@ export async function getRichPDF(documentId: number) {
 
   return new Promise((resolve, reject) => {
     try {
-      const PDFDocument = require('pdfkit');
       const doc = new PDFDocument({ margin: 50 });
       const buffers: any[] = [];
 
