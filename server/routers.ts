@@ -174,15 +174,34 @@ export const appRouter = router({
       }),
 
     fetchTechnicalData: publicProcedure
-      .input(z.object({ registration: z.string() }))
+      .input(z.object({
+        registration: z.string(),
+        force: z.boolean().optional()
+      }))
       .mutation(async ({ input }) => {
-        const { fetchRichVehicleData } = await import("./sws");
-        const { saveTechnicalData } = await import("./db");
+        const { getVehicleByRegistration, saveTechnicalData } = await import("./db");
+        const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
 
+        // 1. Check Cache first (unless forced refresh)
+        if (!input.force) {
+          const existingVehicle = await getVehicleByRegistration(cleanReg);
+          if (existingVehicle?.comprehensiveTechnicalData) {
+            console.log(`[SWS Cache] Hit for ${cleanReg} - skipping API call`);
+            return {
+              success: true,
+              data: existingVehicle.comprehensiveTechnicalData,
+              cached: true
+            };
+          }
+        }
+
+        // 2. Clear for API fetch
+        const { fetchRichVehicleData } = await import("./sws");
         try {
+          console.log(`[SWS Cache] Miss for ${cleanReg} - fetching from API`);
           const data = await fetchRichVehicleData(input.registration);
           await saveTechnicalData(input.registration, data);
-          return { success: true, data };
+          return { success: true, data, cached: false };
         } catch (error) {
           console.error("Technical data fetch failed:", error);
           throw new Error("Failed to fetch technical data");

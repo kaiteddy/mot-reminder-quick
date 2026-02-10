@@ -34,8 +34,12 @@ export default function TechnicalHub() {
     const vehicle = result?.vehicle;
 
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
-        onSuccess: () => {
-            toast.success("Deep technical scan complete!");
+        onSuccess: (res) => {
+            if (res.cached) {
+                toast("Technical intelligence loaded from cache");
+            } else {
+                toast.success("Deep technical scan complete!");
+            }
             utils.vehicles.getByRegistration.invalidate({ registration: searchQuery });
         },
         onError: (err) => {
@@ -152,10 +156,10 @@ export default function TechnicalHub() {
                                                 <Button
                                                     variant="outline"
                                                     className="w-full text-[11px] h-8"
-                                                    onClick={() => fetchTechData.mutate({ registration: searchQuery })}
+                                                    onClick={() => fetchTechData.mutate({ registration: searchQuery, force: true })}
                                                     disabled={fetchTechData.isPending}
                                                 >
-                                                    Refresh Data
+                                                    {fetchTechData.isPending ? "Refreshing..." : "Refresh Data"}
                                                 </Button>
                                             </div>
                                         )}
