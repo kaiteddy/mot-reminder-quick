@@ -236,8 +236,15 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
 
             {/* Hidden Printable History */}
             <div style={{ display: "none" }}>
-                <div ref={printRef} className="p-10 text-slate-900 bg-white min-h-screen font-sans">
-                    <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-6">
+                <div ref={printRef} className="p-10 text-slate-900 bg-white min-h-screen font-sans print:p-8">
+                    <style dangerouslySetInnerHTML={{
+                        __html: `
+                        @media print {
+                            @page { size: A4; margin: 20mm; }
+                            .service-record { break-inside: avoid; page-break-inside: avoid; }
+                        }
+                    `}} />
+                    <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-8">
                         <div>
                             <h1 className="text-3xl font-black uppercase tracking-tighter mb-0.5">Vehicle Service History</h1>
                             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em] leading-none">Eli Motors Ltd • Complete Maintenance Record</p>
@@ -248,9 +255,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         </div>
                     </div>
 
-                    <div className="space-y-8">
+                    <div className="space-y-12">
                         {history.map((doc: any) => (
-                            <div key={doc.id} className="relative pl-8 border-l-2 border-slate-100 pb-2 last:pb-0">
+                            <div key={doc.id} className="service-record relative pl-8 border-l-2 border-slate-100 pb-2 last:pb-0">
                                 <div className="absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 border-white bg-slate-900 shadow-sm" />
 
                                 <div className="flex justify-between items-start mb-3">
