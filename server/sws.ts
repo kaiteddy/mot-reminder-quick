@@ -123,11 +123,11 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         console.error("[SWS] Error on GET_INITIAL_SUBJECTS:", e);
     }
 
-    // 2. Get Lubricants (LUF)
+    // 2. Get Lubricants & Aircon (GET_LUBRICANTS in V4 bundles these)
     try {
         const body = new URLSearchParams({
             APIKey: SWS_CONFIG.apiKey,
-            ACTION: 'LUF',
+            ACTION: 'GET_LUBRICANTS',
             VRM: cleanVRM
         });
 
@@ -140,41 +140,56 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         const responseText = await response.text();
         if (response.ok && responseText.trim() && responseText !== "[]") {
             const data = JSON.parse(responseText);
-            result.lubricants = data || [];
-            if (!Array.isArray(result.lubricants) && typeof result.lubricants === 'object') {
-                const luf = result.lubricants;
-                result.lubricants = Object.keys(luf).map(k => ({
-                    description: k,
-                    specification: luf[k]?.specification || luf[k],
-                    capacity: luf[k]?.capacity
-                }));
+            // V4 structure is deeply nested: data[0].TechnicalData.ExtLubricantGroup[n].lubricantItems.item[m]
+            const groups = data?.["0"]?.["TechnicalData"]?.["ExtLubricantGroup"] ||
+                data?.[0]?.["TechnicalData"]?.["ExtLubricantGroup"];
+
+            if (Array.isArray(groups)) {
+                const parsedLubes: any[] = [];
+                let foundAircon: any = null;
+
+                groups.forEach((group: any) => {
+                    const groupName = group.name || "";
+                    const itemsRaw = group.lubricantItems?.item;
+                    const items = Array.isArray(itemsRaw) ? itemsRaw : (itemsRaw ? [itemsRaw] : []);
+
+                    items.forEach((item: any) => {
+                        const spec = [item.quality, item.viscosity].filter(Boolean).join(" ");
+                        if (!spec) return;
+
+                        const description = item.name || groupName;
+
+                        // Extract Lubricants
+                        if (groupName.toLowerCase().includes("engine") ||
+                            description.toLowerCase().includes("engine oil") ||
+                            groupName.toLowerCase().includes("brake") ||
+                            groupName.toLowerCase().includes("cooling") ||
+                            groupName.toLowerCase().includes("manual transmission")) {
+
+                            parsedLubes.push({
+                                description: description,
+                                specification: spec,
+                                capacity: item.capacity || null
+                            });
+                        }
+
+                        // Extract Aircon (Type & Oil)
+                        if (description.toLowerCase().includes("refrigerant") ||
+                            groupName.toLowerCase().includes("refrigerant")) {
+                            if (!foundAircon) foundAircon = { type: "", capacity: "" };
+                            if (description.toLowerCase().includes("refrigerant")) {
+                                foundAircon.type = item.quality || item.viscosity || "";
+                            }
+                        }
+                    });
+                });
+
+                if (parsedLubes.length > 0) result.lubricants = parsedLubes;
+                if (foundAircon) result.aircon = foundAircon;
             }
         }
     } catch (e) {
-        console.error("[SWS] Error on LUF:", e);
-    }
-
-    // 3. Get Aircon (ACG)
-    try {
-        const body = new URLSearchParams({
-            APIKey: SWS_CONFIG.apiKey,
-            ACTION: 'ACG',
-            VRM: cleanVRM
-        });
-
-        const response = await fetch(SWS_CONFIG.lookupUrl, {
-            method: 'POST',
-            headers: commonHeaders,
-            body: body
-        });
-
-        const responseText = await response.text();
-        if (response.ok && responseText.trim() && responseText !== "[]" && responseText !== "{}") {
-            const data = JSON.parse(responseText);
-            result.aircon = data || {};
-        }
-    } catch (e) {
-        console.error("[SWS] Error on ACG:", e);
+        console.error("[SWS] Error on GET_LUBRICANTS:", e);
     }
 
     // 4. Labor Times / Repair Tree (GA4 Logic)
@@ -219,11 +234,6 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
                     const categoryData = JSON.parse(categoriesText);
                     const rawNodes = categoryData?.["0"]?.["nodes"] || categoryData?.[0]?.["nodes"] || [];
 
-                    // C. Process key nodes to get actual times (e.g. for common parts)
-                    // We'll grab some common IDs if they exist in the tree
-                    const commonNodeIds = ["1D", "1F", "1K", "1M"]; // Engine, Braking, Steering, Transmission usually
-                    const foundNodes = rawNodes.filter((n: any) => commonNodeIds.includes(n.id) || n.hasChildren);
-
                     result.repairTimes = {
                         repairedTypeId: repid,
                         tree: rawNodes.map((n: any) => ({
@@ -232,30 +242,6 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
                             hasChildren: n.hasChildren
                         }))
                     };
-
-                    // D. Attempt to fetch specific times for the first few top nodes
-                    if (rawNodes.length > 0) {
-                        const firstNodes = rawNodes.slice(0, 5).map((n: any) => n.id).join(',');
-                        const infoBody = new URLSearchParams({
-                            APIKey: SWS_CONFIG.apiKey,
-                            ACTION: 'PROCESS_REPAIR_INFO',
-                            VRM: cleanVRM,
-                            REPID: repid.toString(),
-                            NODEID: firstNodes
-                        });
-
-                        const infoRes = await fetch(SWS_CONFIG.lookupUrl, {
-                            method: 'POST',
-                            headers: commonHeaders,
-                            body: infoBody
-                        });
-
-                        const infoText = await infoRes.text();
-                        if (infoRes.ok && infoText.trim() !== "[]") {
-                            const infoData = JSON.parse(infoText);
-                            result.repairTimes.details = infoData;
-                        }
-                    }
                 }
             }
         }
@@ -264,8 +250,8 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
     }
 
     // 5. SMART INTELLIGENCE FALLBACK
-    // If the API returned confirmation of the vehicle but empty fluids/aircon, apply heuristics
-    if (result.specs && (!result.lubricants || result.lubricants.length === 0 || !result.aircon || Object.keys(result.aircon).length === 0)) {
+    // Only apply if the API returned NOTHING for lubricants
+    if (result.specs && (!result.lubricants || result.lubricants.length === 0)) {
         console.log(`[SWS] Applying Smart Intelligence Fallbacks for VRM: ${cleanVRM}`);
 
         let yearNum = 0;
@@ -276,7 +262,7 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         const heuristics = getHeuristicData(
             result.specs.fullName || "",
             result.specs.name || "",
-            "", // VIN not available in specs usually, will rely on name/make
+            "", // VIN not available in specs usually
             result.specs.fuelType || "",
             yearNum
         );
@@ -289,7 +275,6 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
             result.aircon = heuristics.aircon;
         }
     }
-
 
     return result;
 }
