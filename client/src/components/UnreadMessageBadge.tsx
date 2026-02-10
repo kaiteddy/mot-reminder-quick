@@ -10,7 +10,7 @@ interface UnreadMessageBadgeProps {
 export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
   const [previousCount, setPreviousCount] = useState<number | null>(null);
   const [hasPermission, setHasPermission] = useState(false);
-  
+
   // Poll for unread count every 10 seconds
   const { data: unreadCount = 0, error } = trpc.messages.getUnreadCount.useQuery(undefined, {
     refetchInterval: 10000, // 10 seconds
@@ -18,7 +18,7 @@ export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
     retry: 3,
     retryDelay: 1000,
   });
-  
+
   // Log errors but don't crash
   useEffect(() => {
     if (error) {
@@ -26,15 +26,11 @@ export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
     }
   }, [error]);
 
-  // Request notification permission on mount
+  // Check notification permission on mount
   useEffect(() => {
     if ("Notification" in window) {
       if (Notification.permission === "granted") {
         setHasPermission(true);
-      } else if (Notification.permission !== "denied") {
-        Notification.requestPermission().then((permission) => {
-          setHasPermission(permission === "granted");
-        });
       }
     }
   }, []);
@@ -43,12 +39,12 @@ export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
   useEffect(() => {
     if (previousCount !== null && unreadCount > previousCount) {
       const newMessages = unreadCount - previousCount;
-      
+
       // Show toast notification
       toast.info(`${newMessages} new customer ${newMessages === 1 ? 'message' : 'messages'}!`, {
         duration: 5000,
       });
-      
+
       // Show browser notification if permission granted
       if (hasPermission && "Notification" in window) {
         new Notification("New Customer Message", {
@@ -57,11 +53,11 @@ export function UnreadMessageBadge({ onNewMessage }: UnreadMessageBadgeProps) {
           tag: "customer-message",
         });
       }
-      
+
       // Call callback if provided
       onNewMessage?.();
     }
-    
+
     setPreviousCount(unreadCount);
   }, [unreadCount, previousCount, hasPermission, onNewMessage]);
 
