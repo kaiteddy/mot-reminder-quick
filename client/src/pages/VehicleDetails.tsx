@@ -27,6 +27,7 @@ import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
+import { ServiceHistory } from "@/components/ServiceHistory";
 
 export default function VehicleDetails() {
     // We try to get the registration from the URL parameter "registration"
@@ -156,17 +157,17 @@ export default function VehicleDetails() {
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Make</p>
-                                    <p className="text-sm font-bold">{vehicle.make || "Unknown"}</p>
+                                    <p className="text-sm font-bold">{vehicle.make as string || "Unknown"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Model</p>
-                                    <p className="text-sm font-bold">{vehicle.model || "Unknown"}</p>
+                                    <p className="text-sm font-bold">{vehicle.model as string || "Unknown"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Fuel Type</p>
                                     <div className="flex items-center gap-2 text-sm font-bold uppercase">
                                         <Fuel className="w-4 h-4 text-orange-500" />
-                                        {vehicle.fuelType || "-"}
+                                        {(vehicle.fuelType as string) || "-"}
                                     </div>
                                 </div>
                                 <div className="space-y-1">
@@ -176,7 +177,7 @@ export default function VehicleDetails() {
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Tax Status</p>
                                     <Badge variant={vehicle.taxStatus?.toLowerCase() === 'taxed' ? 'default' : 'destructive'} className="text-[10px] px-2 py-0">
-                                        {vehicle.taxStatus || "Unknown"}
+                                        {vehicle.taxStatus as string || "Unknown"}
                                     </Badge>
                                 </div>
                                 <div className="space-y-1">
@@ -232,13 +233,13 @@ export default function VehicleDetails() {
                                     {customer.phone && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                                            <p className="text-sm font-bold font-mono">{customer.phone}</p>
+                                            <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
                                         </div>
                                     )}
                                     {customer.email && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm font-bold truncate">{customer.email}</p>
+                                            <p className="text-sm font-bold truncate">{customer.email as string}</p>
                                         </div>
                                     )}
                                     {customer.optedOut && (
@@ -332,6 +333,20 @@ export default function VehicleDetails() {
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Service History */}
+                    <Card className="md:col-span-3">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <History className="w-5 h-5" />
+                                Workshop Service History
+                            </CardTitle>
+                            <CardDescription>Full timeline of garage invoices and estimates</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ServiceHistory vehicleId={vehicle.id} />
+                        </CardContent>
+                    </Card>
 
                     {/* Reminder History */}
                     <Card className="md:col-span-3">
