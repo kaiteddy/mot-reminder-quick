@@ -268,15 +268,16 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
                 const categoriesText = await categoriesRes.text();
                 if (categoriesRes.ok && categoriesText.trim() !== "[]") {
                     const categoryData = JSON.parse(categoriesText);
-                    const rawNodes = categoryData?.["0"]?.["nodes"] || categoryData?.[0]?.["nodes"] || [];
+                    const rawNodes = categoryData?.[0]?.TechnicalData?.ExtRepairtimeNode?.nodes?.item ||
+                        categoryData?.["0"]?.TechnicalData?.ExtRepairtimeNode?.nodes?.item || [];
 
                     result.repairTimes = {
                         repairedTypeId: repid,
-                        tree: rawNodes.map((n: any) => ({
+                        tree: Array.isArray(rawNodes) ? rawNodes.map((n: any) => ({
                             id: n.id,
                             text: n.description,
-                            hasChildren: n.hasChildren
-                        }))
+                            hasChildren: n.hasSubnodes
+                        })) : []
                     };
                 }
             }
