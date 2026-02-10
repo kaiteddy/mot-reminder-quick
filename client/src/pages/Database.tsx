@@ -64,12 +64,6 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { ComprehensiveVehicleTable } from "@/components/ComprehensiveVehicleTable";
 import { BookMOTDialog } from "@/components/BookMOTDialog";
 import { ServiceHistory } from "@/components/ServiceHistory";
-import {
-  Dialog as UI_Dialog,
-  DialogContent as UI_DialogContent,
-  DialogHeader as UI_DialogHeader,
-  DialogTitle as UI_DialogTitle
-} from "@/components/ui/dialog";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
@@ -1237,16 +1231,16 @@ export default function Database() {
         </AlertDialog>
 
         {/* Service History Dialog */}
-        <UI_Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-          <UI_DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <UI_DialogHeader>
-              <UI_DialogTitle>Service History: {selectedVehicleForHistory?.registration}</UI_DialogTitle>
-            </UI_DialogHeader>
+        <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+            </DialogHeader>
             {selectedVehicleForHistory && (
               <ServiceHistory vehicleId={selectedVehicleForHistory.id} />
             )}
-          </UI_DialogContent>
-        </UI_Dialog>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

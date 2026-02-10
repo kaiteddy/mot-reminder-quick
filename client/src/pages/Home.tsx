@@ -465,7 +465,10 @@ export default function Home() {
         {/* Dialogs */}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Preview Message</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Preview Message</DialogTitle>
+              <DialogDescription className="sr-only">Preview of the message content that will be sent to the customer.</DialogDescription>
+            </DialogHeader>
             <div className="p-4 bg-slate-50 rounded-lg whitespace-pre-wrap">{previewContent}</div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cancel</Button>
@@ -484,6 +487,7 @@ export default function Home() {
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+              <DialogDescription className="sr-only">Historical service and document logs for this vehicle.</DialogDescription>
             </DialogHeader>
             {selectedVehicleForHistory && (
               <ServiceHistory vehicleId={selectedVehicleForHistory.id} />

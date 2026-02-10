@@ -38,6 +38,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { ServiceHistory } from "@/components/ServiceHistory";
@@ -551,6 +552,9 @@ export default function DocumentGenerator() {
                                                     <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
                                                         <DialogHeader>
                                                             <DialogTitle>Service History: {selectedVehicle.registration}</DialogTitle>
+                                                            <DialogDescription className="sr-only">
+                                                                Historical service records and documents for this vehicle.
+                                                            </DialogDescription>
                                                         </DialogHeader>
                                                         <div className="mt-4">
                                                             <ServiceHistory vehicleId={selectedVehicle.id} />

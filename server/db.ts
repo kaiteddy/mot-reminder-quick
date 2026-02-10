@@ -930,11 +930,12 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  console.log(`[PDF] Executing python3 for ${outputFile} using script at ${scriptPath}`);
-  const result = spawnSync('python3', [scriptPath], {
+  // Use absolute path to bypass any shell PATH issues
+  console.log(`[PDF] Executing /usr/bin/python3 for ${outputFile}`);
+  const result = spawnSync('/usr/bin/python3', [scriptPath], {
     input: inputJson,
     encoding: 'utf-8',
-    shell: true
+    shell: false
   });
 
   if (result.error) {

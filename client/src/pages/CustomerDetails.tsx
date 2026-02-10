@@ -418,6 +418,7 @@ export default function CustomerDetails() {
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+                        <DialogDescription className="sr-only">Historical service records and document history for this vehicle.</DialogDescription>
                     </DialogHeader>
                     {selectedVehicleForHistory && (
                         <ServiceHistory vehicleId={selectedVehicleForHistory.id} />

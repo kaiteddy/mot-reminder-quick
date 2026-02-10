@@ -13,6 +13,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -177,6 +178,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Document Details</DialogTitle>
+                        <DialogDescription className="sr-only">
+                            Detailed view of the selected workshop document and its line items.
+                        </DialogDescription>
                     </DialogHeader>
                     {selectedDoc && (
                         <div className="space-y-4">
