@@ -930,32 +930,47 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  // Determine the best python command to use
-  let pythonCmd = '/usr/bin/python3';
-  let useShell = false;
+  // Robust Python lookup and execution
+  const pythonPaths = [
+    '/usr/bin/python3',
+    '/usr/local/bin/python3',
+    '/opt/homebrew/bin/python3',
+    'python3'
+  ];
 
-  console.log(`[PDF] Executing PDF generation for ${outputFile}`);
+  let lastError: any = null;
+  let finalResult: any = null;
 
-  let result = spawnSync(pythonCmd, [scriptPath], {
-    input: inputJson,
-    encoding: 'utf-8',
-    shell: useShell
-  });
+  console.log(`[PDF] Starting generation for ${outputFile}. Script: ${scriptPath}`);
 
-  // Fallback if absolute path fails with ENOENT
-  if (result.error && (result.error as any).code === 'ENOENT') {
-    console.warn(`[PDF] ${pythonCmd} not found, falling back to 'python3' with shell:true`);
-    result = spawnSync('python3', [scriptPath], {
-      input: inputJson,
-      encoding: 'utf-8',
-      shell: true
-    });
+  for (const cmd of pythonPaths) {
+    try {
+      const isAbsolute = cmd.startsWith('/');
+      const r = spawnSync(cmd, [scriptPath], {
+        input: inputJson,
+        encoding: 'utf-8',
+        shell: !isAbsolute // Use shell for non-absolute commands to help with PATH
+      });
+
+      if (!r.error && (r.status === 0 || r.stdout)) {
+        finalResult = r;
+        break;
+      }
+      lastError = r.error || new Error(`Exit code ${r.status}`);
+      console.warn(`[PDF] Try with ${cmd} failed: ${lastError.message}`);
+    } catch (e: any) {
+      lastError = e;
+      console.warn(`[PDF] Try with ${cmd} threw: ${e.message}`);
+    }
   }
 
-  if (result.error) {
-    console.error("[PDF] Fatal execution error:", result.error);
-    throw new Error(`PDF script execution failed: ${result.error.message}`);
+  if (!finalResult) {
+    const envPath = process.env.PATH || 'not set';
+    console.error(`[PDF] All Python attempts failed. PATH: ${envPath}`);
+    throw new Error(`PDF generation failed: No working Python found. Last error: ${lastError?.message}. Check server logs for details.`);
   }
+
+  const result = finalResult;
 
   if (result.stderr) {
     console.warn("[PDF] Script stderr:", result.stderr);
