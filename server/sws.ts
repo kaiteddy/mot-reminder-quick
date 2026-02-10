@@ -244,13 +244,14 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
         });
 
         const repairIdsText = await repairIdsRes.text();
-        if (repairIdsRes.ok && repairIdsText.includes('repairtimeTypeId')) {
+        if (repairIdsRes.ok && repairIdsText.trim() !== "" && repairIdsText.includes('repairtimeTypeId')) {
             const repairData = JSON.parse(repairIdsText);
-            const techData = repairData?.["0"]?.["TechnicalData"] || repairData?.[0]?.["TechnicalData"];
-            const repid = techData?.ExtRepairtimeType?.repairtimeTypeId;
+            const dataObj = repairData?.[0] || repairData?.["0"] || repairData;
+            const repid = dataObj?.TechnicalData?.ExtRepairtimeType?.repairtimeTypeId;
 
             if (repid) {
-                // B. Get Top-Level Categories (Repair Tree)
+                result.repairTimes = { repairedTypeId: repid, tree: [] };
+
                 const categoriesBody = new URLSearchParams({
                     APIKey: SWS_CONFIG.apiKey,
                     ACTION: 'REPAIR_CATEGORIES',
@@ -266,19 +267,32 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
                 });
 
                 const categoriesText = await categoriesRes.text();
-                if (categoriesRes.ok && categoriesText.trim() !== "[]") {
-                    const categoryData = JSON.parse(categoriesText);
-                    const rawNodes = categoryData?.[0]?.TechnicalData?.ExtRepairtimeNode?.nodes?.item ||
-                        categoryData?.["0"]?.TechnicalData?.ExtRepairtimeNode?.nodes?.item || [];
+                if (categoriesRes.ok && categoriesText.trim() !== "" && categoriesText.trim() !== "[]") {
+                    try {
+                        const categoryData = JSON.parse(categoriesText);
+                        const catDataObj = Array.isArray(categoryData) ? (categoryData[0] || {}) : categoryData;
+                        const techData = catDataObj?.TechnicalData;
+                        const extNode = techData?.ExtRepairtimeNode;
 
-                    result.repairTimes = {
-                        repairedTypeId: repid,
-                        tree: Array.isArray(rawNodes) ? rawNodes.map((n: any) => ({
-                            id: n.id,
-                            text: n.description,
-                            hasChildren: n.hasSubnodes
-                        })) : []
-                    };
+                        let rawNodes: any[] = [];
+                        if (Array.isArray(extNode)) {
+                            rawNodes = extNode;
+                        } else {
+                            const actualNode = extNode || {};
+                            const nodeItem = actualNode?.nodes?.item || actualNode?.nodes;
+                            rawNodes = Array.isArray(nodeItem) ? nodeItem : (nodeItem ? [nodeItem] : []);
+                        }
+
+                        if (rawNodes.length > 0) {
+                            result.repairTimes.tree = rawNodes.map((n: any) => ({
+                                id: n.id,
+                                text: n.description,
+                                hasChildren: n.hasSubnodes
+                            }));
+                        }
+                    } catch (parseE) {
+                        console.error("[SWS] Categories Parse Error:", parseE);
+                    }
                 }
             }
         }
@@ -336,4 +350,3 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
 
     return result;
 }
-

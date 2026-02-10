@@ -68,40 +68,48 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
         const modelDetails = results?.ModelDetails;
         const imageDetails = results?.VehicleImageDetails;
 
-        console.log(`[UKVD DEBUG] VRM: ${cleanVRM}, Results: ${!!results}, VehicleDetails: ${!!vehicleDetails}, ModelDetails: ${!!modelDetails}, ImageDetails: ${!!imageDetails}`);
-
         const imageList = imageDetails?.VehicleImageList || imageDetails?.VehicleImageDetails?.VehicleImageList;
         const foundImageUrl = imageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl;
 
         console.log(`[UKVD DEBUG] Found Image URL: ${foundImageUrl ? "YES" : "NO"}`);
 
+        const modelId = modelDetails?.ModelIdentification;
+        const emissions = modelDetails?.Emissions;
+        const powertrain = modelDetails?.Powertrain;
+        const transmission = powertrain?.Transmission || modelDetails?.Transmission;
+        const weights = modelDetails?.Weights;
+        const dimensions = modelDetails?.Dimensions;
+        const dvlaTech = vehicleDetails?.DvlaTechnicalDetails;
+
+        console.log(`[UKVD DEBUG] Mapping checks: modelId=${!!modelId}, emissions=${!!emissions}, powertrain=${!!powertrain}, transmission=${!!transmission}`);
+
         const mapped: UKVDResponse = {
             vrm: cleanVRM,
             vin: vehicleDetails?.VehicleIdentification?.Vin,
-            make: modelDetails?.ModelIdentification?.Make,
-            model: modelDetails?.ModelIdentification?.Model,
-            engineSize: vehicleDetails?.DvlaTechnicalDetails?.EngineCapacityCc,
-            fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType,
+            make: modelId?.Make,
+            model: modelId?.Model,
+            engineSize: dvlaTech?.EngineCapacityCc || modelDetails?.Powertrain?.IceDetails?.EngineCapacityCc,
+            fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType || modelDetails?.Powertrain?.FuelType,
             imageUrl: foundImageUrl,
             dimensions: {
-                height: modelDetails?.Dimensions?.HeightMm,
-                width: modelDetails?.Dimensions?.WidthMm,
-                length: modelDetails?.Dimensions?.LengthMm,
-                wheelbase: modelDetails?.Dimensions?.WheelbaseLengthMm,
+                height: dimensions?.HeightMm,
+                width: dimensions?.WidthMm,
+                length: dimensions?.LengthMm,
+                wheelbase: dimensions?.WheelbaseLengthMm,
             },
             weights: {
-                kerb: modelDetails?.Weights?.KerbWeightKg,
-                gross: modelDetails?.Weights?.GrossVehicleWeightKg,
-                unladen: modelDetails?.Weights?.UnladenWeightKg,
-                payload: modelDetails?.Weights?.PayloadWeightKg,
+                kerb: weights?.KerbWeightKg,
+                gross: weights?.GrossVehicleWeightKg,
+                unladen: weights?.UnladenWeightKg,
+                payload: weights?.PayloadWeightKg,
             },
             fuelTankCapacity: modelDetails?.BodyDetails?.FuelTankCapacityLitres,
-            euroStatus: modelDetails?.Emissions?.EuroStatus || vehicleDetails?.DvlaTechnicalDetails?.EuroStatus,
-            co2Emissions: modelDetails?.Emissions?.ManufacturerCo2 || vehicleDetails?.DvlaTechnicalDetails?.Co2Emissions,
+            euroStatus: emissions?.EuroStatus || dvlaTech?.EuroStatus,
+            co2Emissions: emissions?.ManufacturerCo2 || dvlaTech?.Co2Emissions,
             transmission: {
-                type: modelDetails?.Powertrain?.Transmission?.TransmissionType || modelDetails?.Transmission?.TransmissionType,
-                gears: modelDetails?.Powertrain?.Transmission?.NumberOfGears || modelDetails?.Transmission?.NumberOfGears,
-                driveType: modelDetails?.Powertrain?.Transmission?.DriveType || modelDetails?.Transmission?.DriveType,
+                type: transmission?.TransmissionType,
+                gears: transmission?.NumberOfGears,
+                driveType: transmission?.DriveType,
             },
             raw: data
         };
