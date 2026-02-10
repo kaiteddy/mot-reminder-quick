@@ -44,8 +44,8 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     }
 
     return (
-        <div className="space-y-4">
-            <Table>
+        <div className="space-y-4 pt-2">
+            <Table className="table-fixed w-full">
                 <TableHeader>
                     <TableRow>
                         <TableHead className="w-[100px]">Date</TableHead>
@@ -73,7 +73,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     {doc.docType === 'SI' ? 'Invoice' : 'Estimate'}
                                 </span>
                             </TableCell>
-                            <TableCell className="min-w-[200px] max-w-[500px]">
+                            <TableCell className="min-w-[200px] max-w-[500px] whitespace-normal">
                                 <div className="break-words">
                                     {doc.mainDescription || "No details available"}
                                 </div>
@@ -165,7 +165,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
                             <TableBody>
                                 {items.filter(i => i.itemType === 'Labour').map((item) => (
                                     <TableRow key={item.id}>
-                                        <TableCell className="font-medium text-slate-700">{item.description}</TableCell>
+                                        <TableCell className="font-medium text-slate-700 whitespace-normal">{item.description}</TableCell>
                                         <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
                                         <TableCell className="text-right">£{Number(item.unitPrice).toFixed(2)}</TableCell>
                                         <TableCell className="text-right font-semibold">£{Number(item.subNet).toFixed(2)}</TableCell>
@@ -191,7 +191,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
                             <TableBody>
                                 {items.filter(i => i.itemType === 'Part').map((item) => (
                                     <TableRow key={item.id}>
-                                        <TableCell className="font-medium text-slate-700">{item.description}</TableCell>
+                                        <TableCell className="font-medium text-slate-700 whitespace-normal">{item.description}</TableCell>
                                         <TableCell className="text-right">{Number(item.quantity).toFixed(2)}</TableCell>
                                         <TableCell className="text-right">£{Number(item.unitPrice).toFixed(2)}</TableCell>
                                         <TableCell className="text-right font-semibold">£{Number(item.subNet).toFixed(2)}</TableCell>
@@ -215,7 +215,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
                         <TableBody>
                             {items.filter(i => i.itemType !== 'Labour' && i.itemType !== 'Part').map((item) => (
                                 <tr key={item.id} className="border-b">
-                                    <td className="p-2 font-medium">{item.description}</td>
+                                    <td className="p-2 font-medium whitespace-normal">{item.description}</td>
                                     <td className="p-2 text-right">{Number(item.quantity).toFixed(2)}</td>
                                     <td className="p-2 text-right">£{Number(item.unitPrice).toFixed(2)}</td>
                                     <td className="p-2 text-right">£{Number(item.subNet).toFixed(2)}</td>
