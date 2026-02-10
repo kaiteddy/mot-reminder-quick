@@ -430,7 +430,7 @@ export default function DocumentGenerator() {
                                                             View Previous History
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                                                    <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
                                                         <DialogHeader>
                                                             <DialogTitle>Service History: {selectedVehicle.registration}</DialogTitle>
                                                         </DialogHeader>
@@ -620,8 +620,108 @@ export default function DocumentGenerator() {
                                     </Button>
                                 </div>
                             </CardHeader>
-                            <CardContent className="space-y-4 pt-4">
-                                <div className="grid grid-cols-2 gap-6">
+                            <CardContent className="space-y-6 pt-4">
+                                {/* Labour Items */}
+                                {labourItems.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 text-blue-700">
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Labour Items</span>
+                                            <div className="h-[1px] flex-1 bg-blue-100" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            {labourItems.map((item) => (
+                                                <div key={item.id} className="grid grid-cols-12 gap-2 items-start bg-blue-50/30 p-2 rounded-lg border border-blue-100/50">
+                                                    <div className="col-span-6">
+                                                        <Input
+                                                            placeholder="Description"
+                                                            value={item.description}
+                                                            onChange={(e) => handleUpdateLine(item.id, "Labour", "description", e.target.value)}
+                                                            className="h-9 bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="Qty"
+                                                            value={item.quantity}
+                                                            onChange={(e) => handleUpdateLine(item.id, "Labour", "quantity", parseFloat(e.target.value) || 0)}
+                                                            className="h-9 bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <div className="relative">
+                                                            <span className="absolute left-2 top-2.5 text-muted-foreground text-xs">£</span>
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Price"
+                                                                value={item.unitPrice}
+                                                                onChange={(e) => handleUpdateLine(item.id, "Labour", "unitPrice", parseFloat(e.target.value) || 0)}
+                                                                className="h-9 pl-5 bg-white font-mono"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-1 pt-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleRemoveLine(item.id, "Labour")}>
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Parts Items */}
+                                {partsItems.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 text-orange-700">
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Parts Items</span>
+                                            <div className="h-[1px] flex-1 bg-orange-100" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            {partsItems.map((item) => (
+                                                <div key={item.id} className="grid grid-cols-12 gap-2 items-start bg-orange-50/30 p-2 rounded-lg border border-orange-100/50">
+                                                    <div className="col-span-6">
+                                                        <Input
+                                                            placeholder="Part Description"
+                                                            value={item.description}
+                                                            onChange={(e) => handleUpdateLine(item.id, "Part", "description", e.target.value)}
+                                                            className="h-9 bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="Qty"
+                                                            value={item.quantity}
+                                                            onChange={(e) => handleUpdateLine(item.id, "Part", "quantity", parseFloat(e.target.value) || 0)}
+                                                            className="h-9 bg-white"
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <div className="relative">
+                                                            <span className="absolute left-2 top-2.5 text-muted-foreground text-xs">£</span>
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Price"
+                                                                value={item.unitPrice}
+                                                                onChange={(e) => handleUpdateLine(item.id, "Part", "unitPrice", parseFloat(e.target.value) || 0)}
+                                                                className="h-9 pl-5 bg-white font-mono"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-1 pt-1">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleRemoveLine(item.id, "Part")}>
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-6 pt-4 border-t border-dashed">
                                     <div className="space-y-2">
                                         <Label className="text-[10px] uppercase font-bold text-blue-600">Paint & Materials (£)</Label>
                                         <Input

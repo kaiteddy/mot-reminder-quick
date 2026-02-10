@@ -888,7 +888,7 @@ export async function getRichPDF(documentId: number) {
     outputFile
   });
 
-  const result = spawnSync('python3', [
+  const result = spawnSync('/usr/bin/python3', [
     path.join(process.cwd(), 'scripts/generate_pdf.py')
   ], {
     input: inputJson,

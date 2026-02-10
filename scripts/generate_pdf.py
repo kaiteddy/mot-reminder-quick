@@ -1,8 +1,12 @@
-
 import os
 import sys
 import json
 import base64
+
+# Ensure the root directory and templates directory are in the path
+sys.path.append(os.getcwd())
+sys.path.append(os.path.join(os.getcwd(), 'templates'))
+
 from templates.invoice_template import generate_invoice
 from templates.estimate_template import generate_estimate
 from templates.jobsheet_template import generate_job_sheet

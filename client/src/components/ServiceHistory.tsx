@@ -73,16 +73,16 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     Export Full History (PDF)
                 </Button>
             </div>
-            <Table className="table-fixed w-full">
+            <Table className="w-full">
                 <TableHeader>
                     <TableRow>
-                        <TableHead className="w-[100px]">Date</TableHead>
-                        <TableHead className="w-[80px]">Type</TableHead>
+                        <TableHead className="w-[100px] whitespace-nowrap">Date</TableHead>
+                        <TableHead className="w-[80px] whitespace-nowrap">Type</TableHead>
                         <TableHead>Description</TableHead>
-                        <TableHead className="w-[120px]">No.</TableHead>
-                        <TableHead className="w-[100px]">Mileage</TableHead>
-                        <TableHead className="text-right w-[100px]">Total</TableHead>
-                        <TableHead className="text-right w-[80px]">Action</TableHead>
+                        <TableHead className="w-[120px] whitespace-nowrap">No.</TableHead>
+                        <TableHead className="w-[100px] whitespace-nowrap">Mileage</TableHead>
+                        <TableHead className="text-right w-[100px] whitespace-nowrap">Total</TableHead>
+                        <TableHead className="text-right w-[80px] whitespace-nowrap">Action</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -130,7 +130,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
             </Table>
 
             <Dialog open={selectedDoc !== null} onOpenChange={(open) => !open && setSelectedDoc(null)}>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Document Details</DialogTitle>
                     </DialogHeader>
