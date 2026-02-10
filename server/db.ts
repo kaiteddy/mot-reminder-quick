@@ -930,47 +930,19 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  // Robust Python lookup and execution
-  const pythonPaths = [
-    '/usr/bin/python3',
-    '/usr/local/bin/python3',
-    '/opt/homebrew/bin/python3',
-    'python3'
-  ];
+  // Execute PDF generation script
+  console.log(`[PDF] Executing generation for ${outputFile}`);
 
-  let lastError: any = null;
-  let finalResult: any = null;
+  const result = spawnSync('python3', [scriptPath], {
+    input: inputJson,
+    encoding: 'utf-8',
+    shell: true
+  });
 
-  console.log(`[PDF] Starting generation for ${outputFile}. Script: ${scriptPath}`);
-
-  for (const cmd of pythonPaths) {
-    try {
-      const isAbsolute = cmd.startsWith('/');
-      const r = spawnSync(cmd, [scriptPath], {
-        input: inputJson,
-        encoding: 'utf-8',
-        shell: !isAbsolute // Use shell for non-absolute commands to help with PATH
-      });
-
-      if (!r.error && (r.status === 0 || r.stdout)) {
-        finalResult = r;
-        break;
-      }
-      lastError = r.error || new Error(`Exit code ${r.status}`);
-      console.warn(`[PDF] Try with ${cmd} failed: ${lastError.message}`);
-    } catch (e: any) {
-      lastError = e;
-      console.warn(`[PDF] Try with ${cmd} threw: ${e.message}`);
-    }
+  if (result.error) {
+    console.error("[PDF] Execution error:", result.error);
+    throw new Error(`PDF script execution failed: ${result.error.message}`);
   }
-
-  if (!finalResult) {
-    const envPath = process.env.PATH || 'not set';
-    console.error(`[PDF] All Python attempts failed. PATH: ${envPath}`);
-    throw new Error(`PDF generation failed: No working Python found. Last error: ${lastError?.message}. Check server logs for details.`);
-  }
-
-  const result = finalResult;
 
   if (result.stderr) {
     console.warn("[PDF] Script stderr:", result.stderr);
