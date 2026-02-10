@@ -140,38 +140,40 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
 
             {/* Hidden Printable History */}
             <div style={{ display: "none" }}>
-                <div ref={printRef} className="p-12 text-slate-900 bg-white min-h-screen">
-                    <div className="flex justify-between items-start border-b-4 border-slate-900 pb-6 mb-8">
+                <div ref={printRef} className="p-10 text-slate-900 bg-white min-h-screen font-sans">
+                    <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 mb-6">
                         <div>
-                            <h1 className="text-4xl font-black uppercase tracking-tighter mb-1">Vehicle Service History</h1>
-                            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">Complete Maintenance Record Timeline</p>
+                            <h1 className="text-2xl font-black uppercase tracking-tighter mb-0.5">Vehicle Service History</h1>
+                            <p className="text-slate-500 font-bold uppercase text-[9px] tracking-widest leading-none">Complete Maintenance Record Timeline</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-2xl font-black font-mono">ELI MOTORS LTD</p>
-                            <p className="text-xs text-slate-500">Professional Automotive Services</p>
+                            <p className="text-lg font-black font-mono leading-none">ELI MOTORS LTD</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Professional Automotive Services</p>
                         </div>
                     </div>
 
-                    <div className="space-y-12">
+                    <div className="space-y-4">
                         {history.map((doc, idx) => (
-                            <div key={doc.id} className="relative pl-8 border-l-2 border-slate-200 pb-8 last:pb-0">
-                                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-slate-900 border-2 border-white" />
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <span className="text-sm font-black text-white bg-slate-900 px-2 py-0.5 rounded mr-3">
+                            <div key={doc.id} className="relative pl-6 border-l border-slate-200 pb-4 last:pb-0">
+                                <div className="absolute -left-[4.5px] top-1 w-2 h-2 rounded-full bg-slate-900" />
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[11px] font-black text-white bg-slate-900 px-1.5 py-0.5 rounded">
                                             {doc.dateCreated ? format(new Date(doc.dateCreated), "dd/MM/yyyy") : "-"}
                                         </span>
-                                        <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
                                             {doc.docType === 'SI' ? 'Invoice' : 'Estimate'} #{doc.docNo || doc.externalId.substring(0, 8)}
                                         </span>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-lg font-black tracking-tight leading-none">£{Number(doc.totalGross).toFixed(2)}</p>
-                                        <p className="text-[10px] text-slate-500 font-bold uppercase">{doc.mileage ? `${doc.mileage.toLocaleString()} miles` : "Mileage not recorded"}</p>
+                                    <div className="text-right flex items-center gap-4">
+                                        <div className="text-right">
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase leading-none">{doc.mileage ? `${doc.mileage.toLocaleString()} mi` : "No Mileage"}</p>
+                                            <p className="text-sm font-black tracking-tight leading-none text-slate-900">£{Number(doc.totalGross).toFixed(2)}</p>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-100">
-                                    <div className="font-bold text-md leading-relaxed text-slate-800 whitespace-pre-wrap mb-4">
+                                <div className="bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-100">
+                                    <div className="text-xs leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">
                                         {cleanText(doc.description || doc.mainDescription)}
                                     </div>
                                 </div>
@@ -179,10 +181,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         ))}
                     </div>
 
-                    <div className="mt-12 pt-8 border-t border-dashed border-slate-200 text-center">
-                        <p className="text-[10px] text-slate-400 font-medium italic">
-                            This document is a consolidated record of work carried out by Eli Motors Ltd.
-                            Generated on {format(new Date(), "PPpp")}
+                    <div className="mt-8 pt-4 border-t border-dashed border-slate-200 text-center">
+                        <p className="text-[8px] text-slate-400 font-medium italic">
+                            Official service record generated by Eli Motors Ltd on {format(new Date(), "PPpp")}
                         </p>
                     </div>
                 </div>
