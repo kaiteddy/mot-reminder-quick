@@ -1,3 +1,4 @@
+import "dotenv/config";
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
@@ -6,7 +7,6 @@ import { getDb } from '../server/db';
 import {
     customers, vehicles, serviceHistory, serviceLineItems
 } from '../drizzle/schema';
-import "dotenv/config";
 import { sql } from 'drizzle-orm';
 
 const EXPORT_DIR = "/Users/service/Desktop/Data Exports";
@@ -27,11 +27,30 @@ function loadCsv(filename: string) {
     });
 }
 
-function isValidDate(dateStr: string) {
-    if (!dateStr || isNaN(Date.parse(dateStr))) return false;
-    const d = new Date(dateStr);
-    const year = d.getFullYear();
-    return year > 1900 && year < 2100;
+function parseUKDate(dateStr: string): Date | null {
+    if (!dateStr || dateStr.trim() === '') return null;
+    // Remove quotes if present
+    const clean = dateStr.replace(/"/g, '').trim();
+    if (clean === '') return null;
+
+    // Handle DD/MM/YYYY HH:MM:SS or just DD/MM/YYYY
+    const parts = clean.split(' ')[0].split('/');
+    if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+        const date = new Date(year, month, day);
+        if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+            return date;
+        }
+    }
+
+    // Fallback to standard parse if it doesn't match DD/MM/YYYY
+    const parsed = new Date(clean);
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) return parsed;
+
+    return null;
 }
 
 function toDecimal(val: any) {
@@ -69,6 +88,12 @@ async function runDeepImport() {
     const vehicleList = await db.select({ id: vehicles.id, externalId: vehicles.externalId }).from(vehicles);
     const vehicleIdMap = new Map(vehicleList.map(v => [v.externalId, v.id]));
 
+    // 0. LOAD EXTRAS (for job descriptions)
+    console.log("Loading Document Extras...");
+    const rawExtras = loadCsv("Document_Extras.csv");
+    const extrasMap = new Map(rawExtras.map((e: any) => [e._ID, e["Labour Description"] || e.docNotes || ""]));
+    console.log(`Cached ${extrasMap.size} extra descriptions.`);
+
     // 1. IMPORT DOCUMENTS
     console.log("\nLoading Documents...");
     const rawDocs = loadCsv("Documents.csv");
@@ -79,20 +104,20 @@ async function runDeepImport() {
             const customerId = customerIdMap.get(raw._ID_Customer);
             const vehicleId = vehicleIdMap.get(raw._ID_Vehicle);
 
-            // Map the correct columns found from head analysis
             return {
                 externalId: raw._ID,
                 customerId: customerId || null,
                 vehicleId: vehicleId || null,
                 docType: raw.docType || null,
                 docNo: raw.docNumber_Invoice || raw.docNumber_Estimate || raw.docNumber_Jobsheet || null,
-                dateCreated: isValidDate(raw.docDate_Created) ? new Date(raw.docDate_Created) : null,
-                dateIssued: isValidDate(raw.docDate_Issued) ? new Date(raw.docDate_Issued) : null,
-                datePaid: isValidDate(raw.docDate_Paid) ? new Date(raw.docDate_Paid) : null,
+                dateCreated: parseUKDate(raw.docDate_Created),
+                dateIssued: parseUKDate(raw.docDate_Issued),
+                datePaid: parseUKDate(raw.docDate_Paid),
                 totalNet: toDecimal(raw.us_TotalNET),
                 totalTax: toDecimal(raw.us_TotalTAX),
                 totalGross: toDecimal(raw.us_TotalGROSS),
-                mileage: safeInt(raw.vehMileage) || safeInt(raw.Mileage)
+                mileage: safeInt(raw.vehMileage) || safeInt(raw.Mileage),
+                description: extrasMap.get(raw._ID) || null
             };
         });
 
@@ -100,10 +125,13 @@ async function runDeepImport() {
             set: {
                 docNo: sql`VALUES(docNo)`,
                 dateCreated: sql`VALUES(dateCreated)`,
+                dateIssued: sql`VALUES(dateIssued)`,
+                datePaid: sql`VALUES(datePaid)`,
                 totalNet: sql`VALUES(totalNet)`,
                 totalTax: sql`VALUES(totalTax)`,
                 totalGross: sql`VALUES(totalGross)`,
-                mileage: sql`VALUES(mileage)`
+                mileage: sql`VALUES(mileage)`,
+                description: sql`VALUES(description)`
             }
         });
         if (i % 1000 === 0) console.log(`  Imported ${i}/${rawDocs.length} documents...`);
