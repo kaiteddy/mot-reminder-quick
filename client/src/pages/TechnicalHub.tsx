@@ -272,11 +272,17 @@ export default function TechnicalHub() {
                                                 <div className="space-y-6">
                                                     {/* Categories Tree */}
                                                     <div className="flex flex-wrap gap-2">
-                                                        {techData.repairTimes.tree?.map((node: any) => (
-                                                            <div key={node.id} className="bg-white px-3 py-1 rounded-full text-[10px] font-bold text-slate-600 uppercase border border-slate-200 shadow-sm">
-                                                                {node.text}
+                                                        {techData.repairTimes.tree?.length > 0 ? (
+                                                            techData.repairTimes.tree.map((node: any) => (
+                                                                <div key={node.id} className="bg-white px-3 py-1 rounded-full text-[10px] font-bold text-slate-600 uppercase border border-slate-200 shadow-sm">
+                                                                    {node.text}
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-center w-full py-4 text-xs italic text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
+                                                                No repair categories returned for this vehicle model.
                                                             </div>
-                                                        ))}
+                                                        )}
                                                     </div>
 
                                                     {/* Specific Times (Details) */}
