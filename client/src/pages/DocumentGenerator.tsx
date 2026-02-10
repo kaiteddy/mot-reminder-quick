@@ -214,7 +214,7 @@ export default function DocumentGenerator() {
         else setPartsItems([...partsItems, newItem]);
     };
 
-    const handleAddMOT = () => {
+    const handleAddMOT = async () => {
         setIsAddingMOT(true);
         // Add MOT to labour list
         const motItem: LineItem = {
@@ -231,18 +231,21 @@ export default function DocumentGenerator() {
         setMotClass("4");
         setMotStatus("Pass");
 
-        // Pull previous results if available
-        if (selectedVehicle && activeVehicleData?.history) {
-            const lastMOT = activeVehicleData.history.find(h =>
-                h.mainDescription?.toUpperCase().includes("MOT") ||
-                h.description?.toUpperCase().includes("MOT")
-            );
+        // Fetch live MOT data if not already present
+        if (registration && registration.length >= 5) {
+            try {
+                const data = await motLookup.mutateAsync({ registration: registration.replace(/\s/g, "").toUpperCase() });
+                if (data && data.motTests && data.motTests.length > 0) {
+                    const latest = data.motTests[0];
+                    const defectsList = latest.defects || [];
+                    const historyText = `\n\nLATEST MOT RESULTS (${format(new Date(latest.completedDate), "dd/MM/yyyy")}):\nResult: ${latest.testResult}\nMileage: ${latest.odometerValue} ${latest.odometerUnit}\n${defectsList.length > 0 ? 'Defects/Advisories:\n' + defectsList.map((d: any) => `- [${d.type}] ${d.text}`).join('\n') : 'No defects or advisories.'}`;
 
-            if (lastMOT) {
-                const historyText = `\n\nPREVIOUS MOT HISTORY (${format(new Date(lastMOT.dateCreated!), "dd/MM/yyyy")}):\n${lastMOT.description || lastMOT.mainDescription || 'No previous results found.'}`;
-                if (!workDone.includes("PREVIOUS MOT HISTORY")) {
-                    setWorkDone(prev => prev + historyText);
+                    if (!workDone.includes("LATEST MOT RESULTS")) {
+                        setWorkDone(prev => prev.trim() + historyText);
+                    }
                 }
+            } catch (err) {
+                console.error("Failed to fetch live MOT history for work description", err);
             }
         }
     };
@@ -673,19 +676,19 @@ export default function DocumentGenerator() {
                             </CardHeader>
                             <CardContent className="p-0">
                                 {isAddingMOT && (
-                                    <div className="bg-slate-900 text-white p-4 rounded-t-lg space-y-4">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <History className="w-4 h-4 text-blue-400" />
-                                            <span className="text-xs font-bold uppercase tracking-wider">MOT Details</span>
-                                            <Button variant="ghost" size="sm" className="ml-auto h-6 text-[10px] text-slate-400 hover:text-white" onClick={() => setIsAddingMOT(false)}>Cancel</Button>
+                                    <div className="bg-blue-50/50 border-y border-blue-100 p-4 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <History className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-[11px] font-black uppercase tracking-tight text-blue-900">MOT Test Assignment</span>
+                                            <Button variant="ghost" size="sm" className="ml-auto h-6 text-[10px] text-blue-600 hover:bg-blue-100" onClick={() => setIsAddingMOT(false)}>Remove Details</Button>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Type</Label>
+                                        <div className="flex flex-wrap gap-4">
+                                            <div className="flex-1 min-w-[140px] space-y-1">
+                                                <Label className="text-[9px] uppercase font-black text-blue-600/70">Type & Qty</Label>
                                                 <div className="flex gap-1">
                                                     <Select value={motType} onValueChange={setMotType}>
-                                                        <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                            <SelectValue placeholder="Full" />
+                                                        <SelectTrigger className="h-7 bg-white border-blue-200 text-[11px] font-bold">
+                                                            <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="Full">Full</SelectItem>
@@ -697,43 +700,43 @@ export default function DocumentGenerator() {
                                                         type="number"
                                                         value={motQty}
                                                         onChange={e => setMotQty(parseInt(e.target.value) || 1)}
-                                                        className="h-8 w-12 bg-slate-800 border-slate-700 text-xs text-center text-white"
+                                                        className="h-7 w-12 bg-white border-blue-200 text-[11px] text-center font-bold"
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Class</Label>
+                                            <div className="flex-1 min-w-[100px] space-y-1">
+                                                <Label className="text-[9px] uppercase font-black text-blue-600/70">Class</Label>
                                                 <Select value={motClass} onValueChange={setMotClass}>
-                                                    <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                        <SelectValue placeholder="Class 4" />
+                                                    <SelectTrigger className="h-7 bg-white border-blue-200 text-[11px] font-bold">
+                                                        <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="4">Class 4 (Car)</SelectItem>
-                                                        <SelectItem value="7">Class 7 (Van)</SelectItem>
+                                                        <SelectItem value="4">Class 4</SelectItem>
+                                                        <SelectItem value="7">Class 7</SelectItem>
                                                         <SelectItem value="1">Class 1</SelectItem>
                                                         <SelectItem value="2">Class 2</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Status</Label>
+                                            <div className="flex-1 min-w-[120px] space-y-1">
+                                                <Label className="text-[9px] uppercase font-black text-blue-600/70">Result</Label>
                                                 <Select value={motStatus} onValueChange={setMotStatus}>
-                                                    <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                        <SelectValue placeholder="Pass" />
+                                                    <SelectTrigger className="h-7 bg-white border-blue-200 text-[11px] font-bold text-blue-700">
+                                                        <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="Pass">Pass</SelectItem>
                                                         <SelectItem value="Fail">Fail</SelectItem>
-                                                        <SelectItem value="Advisory">Advisory Only</SelectItem>
-                                                        <SelectItem value="PRS">Pass After Repair (PRS)</SelectItem>
+                                                        <SelectItem value="Advisory">Advisory</SelectItem>
+                                                        <SelectItem value="PRS">PRS</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Tester</Label>
+                                            <div className="flex-1 min-w-[120px] space-y-1">
+                                                <Label className="text-[9px] uppercase font-black text-blue-600/70">Tester</Label>
                                                 <Select value={motTester} onValueChange={setMotTester}>
-                                                    <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                        <SelectValue placeholder="Select Tester" />
+                                                    <SelectTrigger className="h-7 bg-white border-blue-200 text-[11px] font-bold">
+                                                        <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="DB">DB | Dec</SelectItem>
@@ -748,21 +751,21 @@ export default function DocumentGenerator() {
                                 <Table>
                                     <TableHeader className="bg-slate-50/50">
                                         <TableRow className="text-[10px] h-8">
-                                            <TableHead className="w-[10px]"></TableHead>
-                                            <TableHead className="py-2">Description</TableHead>
+                                            <TableHead className="w-[6px] p-0"></TableHead>
+                                            <TableHead className="py-2 pl-4">Description</TableHead>
                                             <TableHead className="w-20 text-center">Qty</TableHead>
                                             <TableHead className="w-24 text-right">Price</TableHead>
                                             <TableHead className="w-16 text-center">VAT</TableHead>
                                             <TableHead className="w-24 text-right">Subtotal</TableHead>
-                                            <TableHead className="w-10"></TableHead>
+                                            <TableHead className="w-12 pr-6"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {/* Labour Rows */}
                                         {labourItems.map((item) => (
                                             <TableRow key={item.id} className="group hover:bg-blue-50/20 transition-colors h-11">
-                                                <TableCell className="bg-blue-500/10 w-1 p-0"></TableCell>
-                                                <TableCell className="py-1">
+                                                <TableCell className="bg-blue-500/10 w-[6px] p-0"></TableCell>
+                                                <TableCell className="py-1 pl-4">
                                                     <Input
                                                         placeholder="Labour description..."
                                                         value={item.description}
@@ -802,7 +805,7 @@ export default function DocumentGenerator() {
                                                 <TableCell className="py-1 text-right text-xs font-mono font-bold">
                                                     £{item.subNet.toFixed(2)}
                                                 </TableCell>
-                                                <TableCell className="py-1">
+                                                <TableCell className="py-1 pr-6 text-right">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity" onClick={() => handleRemoveLine(item.id, "Labour")}>
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
@@ -813,8 +816,8 @@ export default function DocumentGenerator() {
                                         {/* Parts Rows */}
                                         {partsItems.map((item) => (
                                             <TableRow key={item.id} className="group hover:bg-orange-50/20 transition-colors h-11">
-                                                <TableCell className="bg-orange-500/10 w-1 p-0"></TableCell>
-                                                <TableCell className="py-1">
+                                                <TableCell className="bg-orange-500/10 w-[6px] p-0"></TableCell>
+                                                <TableCell className="py-1 pl-4">
                                                     <Input
                                                         placeholder="Part description..."
                                                         value={item.description}
@@ -854,7 +857,7 @@ export default function DocumentGenerator() {
                                                 <TableCell className="py-1 text-right text-xs font-mono font-bold">
                                                     £{item.subNet.toFixed(2)}
                                                 </TableCell>
-                                                <TableCell className="py-1 text-center">
+                                                <TableCell className="py-1 pr-6 text-right">
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity" onClick={() => handleRemoveLine(item.id, "Part")}>
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
@@ -864,7 +867,7 @@ export default function DocumentGenerator() {
                                     </TableBody>
                                 </Table>
 
-                                <div className="p-4 space-y-4 border-t bg-slate-50/30">
+                                <div className="p-6 space-y-4 border-t bg-slate-50/30">
                                     <div className="space-y-2">
                                         <Label className="text-[10px] uppercase font-bold text-blue-600">Paint & Materials (£)</Label>
                                         <Input
@@ -885,7 +888,7 @@ export default function DocumentGenerator() {
                                     </div>
                                 </div>
 
-                                <div className="pt-4 border-t space-y-2">
+                                <div className="px-6 pb-6 pt-4 border-t space-y-2">
                                     <div className="flex justify-between text-sm">
                                         <span className="text-muted-foreground">SubTotal (Net)</span>
                                         <span className="font-bold">£{subTotal.toFixed(2)}</span>
