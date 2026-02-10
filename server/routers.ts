@@ -2085,8 +2085,25 @@ export const appRouter = router({
         items: z.array(z.any()),
       }))
       .mutation(async ({ input }) => {
-        const { createServiceDocument } = await import("./db");
-        return createServiceDocument(input.doc, input.items);
+        const { createServiceDocument, getRichPDF } = await import("./db");
+        const result = await createServiceDocument(input.doc, input.items);
+
+        // Background generate the PDF
+        try {
+          await getRichPDF(result.id);
+        } catch (e) {
+          console.error("BG PDF generation failed", e);
+        }
+
+        return result;
+      }),
+
+    getRichPDF: publicProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        const { getRichPDF } = await import("./db");
+        const { content, filename } = await getRichPDF(input.documentId);
+        return { content, filename };
       }),
   }),
 });

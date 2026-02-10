@@ -161,9 +161,30 @@ export default function DocumentGenerator() {
         }
     }, [lookupData]);
 
+    const [generatingRichPDF, setGeneratingRichPDF] = useState(false);
+
+    const handleDownloadRichPDF = async (docId: number) => {
+        setGeneratingRichPDF(true);
+        try {
+            const result = await utils.serviceHistory.getRichPDF.fetch({ documentId: docId });
+            if (result.content) {
+                const link = document.createElement('a');
+                link.href = `data:application/pdf;base64,${result.content}`;
+                link.download = result.filename;
+                link.click();
+            }
+        } catch (error: any) {
+            toast.error("Failed to generate rich PDF: " + error.message);
+        } finally {
+            setGeneratingRichPDF(false);
+        }
+    };
+
     const createDoc = trpc.serviceHistory.create.useMutation({
-        onSuccess: () => {
+        onSuccess: (data) => {
             toast.success("Document saved successfully");
+            // Auto-trigger rich PDF download after save
+            handleDownloadRichPDF(data.id);
         },
         onError: (err) => {
             toast.error("Failed to save document: " + err.message);
@@ -171,7 +192,6 @@ export default function DocumentGenerator() {
     });
 
     const filteredVehicles = customerVehicles || [];
-
     const handleAddLine = (type: "Labour" | "Part") => {
         const newItem: LineItem = {
             id: Math.random().toString(),
@@ -274,6 +294,21 @@ export default function DocumentGenerator() {
                         >
                             <Printer className="w-5 h-5 mr-2" />
                             Print / PDF
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="lg"
+                            className="h-12 border-orange-200 hover:bg-orange-50 text-orange-700 font-bold shadow-sm"
+                            onClick={() => {
+                                // This requires the doc to be saved first.
+                                // If it's saved, we should have a documentId somewhere.
+                                // For now, we'll let handleSave also trigger it.
+                                toast.info("Click 'Store Document' to generate the professional Rich PDF");
+                            }}
+                            disabled={generatingRichPDF}
+                        >
+                            {generatingRichPDF ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Download className="w-5 h-5 mr-2" />}
+                            Rich PDF Export
                         </Button>
                         <Button
                             size="lg"

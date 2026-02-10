@@ -1,6 +1,8 @@
 import { eq, or, inArray, and, sql, desc, isNotNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import os from "os";
+import path from "path";
 import {
   InsertUser, users, InsertReminder, InsertCustomer, InsertReminderLog,
   reminders, reminderLogs, customers, customerMessages, vehicles,
@@ -788,4 +790,124 @@ export async function createServiceDocument(doc: any, items: any[]) {
 
     return { id: documentId };
   });
+}
+
+export async function getRichPDF(documentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const doc = await getServiceDocumentById(documentId);
+  if (!doc) throw new Error("Document not found");
+
+  const customer = await getCustomerById(doc.customerId as number);
+  const vehicle = await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId as number)).limit(1).then(r => r[0]);
+  const items = await getServiceLineItemsByDocumentId(documentId);
+
+  const { spawnSync } = await import("child_process");
+
+  const templateData: any = {
+    company: {
+      name: 'ELI MOTORS LIMITED',
+      address_line1: '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP',
+      phone: '020 8203 6449, Sales 07950 250970',
+      website: 'www.elimotors.co.uk',
+      vat: '330 9339 65',
+    },
+    customer: {
+      name: customer?.name || 'Unknown Client',
+      address_lines: (customer?.address || '').split(',').map(s => s.trim()),
+      mobile: customer?.phone || '',
+    },
+    vehicle: {
+      reg: vehicle?.registration || '',
+      make: vehicle?.make || '',
+      model: vehicle?.model || '',
+      chassis: vehicle?.vin || '',
+      mileage: (doc.mileage || 0).toString(),
+      engine_no: vehicle?.engineNo || '',
+      engine_code: vehicle?.engineCode || '',
+      engine_cc: vehicle?.engineCC || 0,
+      date_reg: vehicle?.dateOfRegistration ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB') : '',
+      colour: vehicle?.colour || '',
+    },
+    totals: {
+      labour: items.filter(i => i.itemType === 'Labour').reduce((acc, i) => acc + Number(i.subNet), 0),
+      parts: items.filter(i => i.itemType === 'Part').reduce((acc, i) => acc + Number(i.subNet), 0),
+      subtotal: Number(doc.totalNet),
+      vat_rate: 20,
+      vat: Number(doc.totalTax),
+      total: Number(doc.totalGross),
+    }
+  };
+
+  let type: 'invoice' | 'estimate' | 'jobsheet' = 'invoice';
+  if (doc.docType === 'ES') {
+    type = 'estimate';
+    templateData.estimate = {
+      number: doc.docNo,
+      date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
+      account_no: '',
+      valid_to: '',
+    };
+  } else if (doc.docType === 'SI') {
+    type = 'invoice';
+    templateData.invoice = {
+      number: doc.docNo,
+      invoice_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
+      account_no: '',
+      date_of_work: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
+    };
+  } else {
+    type = 'jobsheet';
+    templateData.doc = {
+      reference: doc.docNo,
+      account_no: '',
+      receive_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
+      due_date: '',
+    };
+  }
+
+  templateData.work_title = doc.description;
+  templateData.labour = items.filter(i => i.itemType === 'Labour').map(i => ({
+    description: i.description,
+    qty: Number(i.quantity),
+    unit: Number(i.unitPrice),
+    subtotal: Number(i.subNet),
+  }));
+  templateData.parts = items.filter(i => i.itemType === 'Part').map(i => ({
+    description: i.description,
+    qty: Number(i.quantity),
+    unit: Number(i.unitPrice),
+    subtotal: Number(i.subNet),
+  }));
+
+  const outputFile = `/tmp/${doc.docNo}_${Date.now()}.pdf`;
+  const inputJson = JSON.stringify({
+    type,
+    data: templateData,
+    outputFile
+  });
+
+  const result = spawnSync('python3', [
+    path.join(process.cwd(), 'scripts/generate_pdf.py')
+  ], {
+    input: inputJson,
+    encoding: 'utf-8'
+  });
+
+  if (result.error) throw new Error(`Script execution failed: ${result.error.message}`);
+
+  try {
+    const output = JSON.parse(result.stdout);
+    if (output.error) throw new Error(output.error);
+
+    const pdfContent = await import("fs").then(fs => fs.readFileSync(output.path));
+    const base64Content = pdfContent.toString('base64');
+    return {
+      content: base64Content,
+      filename: `${doc.docNo || 'Document'}.pdf`
+    };
+  } catch (e: any) {
+    throw new Error(`PDF generation failed: ${e.message}. STDOUT: ${result.stdout}. STDERR: ${result.stderr}`);
+  }
 }
