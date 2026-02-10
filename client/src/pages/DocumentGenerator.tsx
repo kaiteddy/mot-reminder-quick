@@ -468,79 +468,6 @@ export default function DocumentGenerator() {
                                                 <p className="font-bold text-slate-900">{vehicleStats?.totalJobs || 0} visits</p>
                                             </div>
                                         </div>
-                                        {isAddingMOT && (
-                                            <div className="bg-slate-900 text-white p-4 rounded-t-lg space-y-4">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <History className="w-4 h-4 text-blue-400" />
-                                                    <span className="text-xs font-bold uppercase tracking-wider">MOT Details</span>
-                                                    <Button variant="ghost" size="sm" className="ml-auto h-6 text-[10px] text-slate-400 hover:text-white" onClick={() => setIsAddingMOT(false)}>Cancel</Button>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Type</Label>
-                                                        <div className="flex gap-1">
-                                                            <Select value={motType} onValueChange={setMotType}>
-                                                                <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                                    <SelectValue placeholder="Full" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="Full">Full</SelectItem>
-                                                                    <SelectItem value="Re-test">Re-test</SelectItem>
-                                                                    <SelectItem value="Partial">Partial</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <Input
-                                                                type="number"
-                                                                value={motQty}
-                                                                onChange={e => setMotQty(parseInt(e.target.value) || 1)}
-                                                                className="h-8 w-12 bg-slate-800 border-slate-700 text-xs text-center text-white"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Class</Label>
-                                                        <Select value={motClass} onValueChange={setMotClass}>
-                                                            <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                                <SelectValue placeholder="Class 4" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="4">Class 4 (Car)</SelectItem>
-                                                                <SelectItem value="7">Class 7 (Van)</SelectItem>
-                                                                <SelectItem value="1">Class 1</SelectItem>
-                                                                <SelectItem value="2">Class 2</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Status</Label>
-                                                        <Select value={motStatus} onValueChange={setMotStatus}>
-                                                            <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                                <SelectValue placeholder="Pass" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="Pass">Pass</SelectItem>
-                                                                <SelectItem value="Fail">Fail</SelectItem>
-                                                                <SelectItem value="Advisory">Advisory Only</SelectItem>
-                                                                <SelectItem value="PRS">Pass After Repair (PRS)</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[10px] uppercase font-bold text-slate-400">MOT Tester</Label>
-                                                        <Select value={motTester} onValueChange={setMotTester}>
-                                                            <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-xs text-white">
-                                                                <SelectValue placeholder="Select Tester" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="DB">DB | Dec</SelectItem>
-                                                                <SelectItem value="AJ">AJ | Alex</SelectItem>
-                                                                <SelectItem value="ST">ST | Sam</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
 
                                         {vehicleHistory.length > 0 && (
                                             <div className="pt-2 border-t">
@@ -625,7 +552,7 @@ export default function DocumentGenerator() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <Select
-                                    value={customerId?.toString()}
+                                    value={customerId?.toString() || ""}
                                     onValueChange={(val) => {
                                         setCustomerId(parseInt(val));
                                         setVehicleId(null);

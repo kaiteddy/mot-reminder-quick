@@ -888,15 +888,22 @@ export async function getRichPDF(documentId: number) {
     outputFile
   });
 
-  const result = spawnSync('python3', [
+  console.log(`[PDF] Executing /usr/bin/python3 for ${outputFile}`);
+  const result = spawnSync('/usr/bin/python3', [
     path.join(process.cwd(), 'scripts/generate_pdf.py')
   ], {
     input: inputJson,
-    encoding: 'utf-8',
-    shell: true
+    encoding: 'utf-8'
   });
 
-  if (result.error) throw new Error(`Script execution failed: ${result.error.message}`);
+  if (result.error) {
+    console.error("[PDF] Spawn error:", result.error);
+    throw new Error(`Script execution failed: ${result.error.message}`);
+  }
+
+  if (result.stderr) {
+    console.warn("[PDF] Script stderr:", result.stderr);
+  }
 
   try {
     const output = JSON.parse(result.stdout);
