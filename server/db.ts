@@ -939,17 +939,15 @@ export async function getRichPDF(documentId: number) {
     throw new Error(`PDF script not found at ${scriptPath}`);
   }
 
-  // Execute PDF generation script with explicit PATH to ensure python3 is found
-  console.log(`[PDF] Executing python3 for ${outputFile}`);
+  // Execute PDF generation script with absolute path to avoid PATH issues
+  // We use /usr/bin/python3 directly as it's the standard location on macOS
+  const pythonCmd = '/usr/bin/python3';
+  console.log(`[PDF] Executing ${pythonCmd} for ${outputFile}`);
 
-  const result = spawnSync('python3', [scriptPath], {
+  const result = spawnSync(pythonCmd, [scriptPath], {
     input: inputJson,
     encoding: 'utf-8',
-    shell: true,
-    env: {
-      ...process.env,
-      PATH: '/usr/bin:/usr/local/bin:/opt/homebrew/bin:' + (process.env.PATH || '')
-    }
+    shell: false
   });
 
   if (result.error) {
