@@ -9,7 +9,6 @@ import {
   reminders, reminderLogs, customers, customerMessages, vehicles,
   serviceHistory, serviceLineItems
 } from "../drizzle/schema";
-import PDFDocument from "pdfkit";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -840,392 +839,197 @@ export async function getRichPDF(documentId: number) {
   const vehicle = await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId as number)).limit(1).then(r => r[0]);
   const items = await getServiceLineItemsByDocumentId(documentId);
 
-  const { spawnSync } = await import("child_process");
+  const {
+    generateInvoicePDF,
+    generateEstimatePDF,
+    generateJobSheetPDF,
+  } = await import("./pdf-templates");
 
-  const templateData: any = {
-    company: {
-      name: 'ELI MOTORS LIMITED',
-      address_line1: '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP',
-      phone: '020 8203 6449, Sales 07950 250970',
-      website: 'www.elimotors.co.uk',
-      vat: '330 9339 65',
-    },
-    customer: {
-      name: customer?.name || 'Unknown Client',
-      address_lines: (customer?.address || '').split(',').map(s => s.trim()),
-      mobile: customer?.phone || '',
-    },
-    vehicle: {
-      reg: vehicle?.registration || '',
-      make: vehicle?.make || '',
-      model: vehicle?.model || '',
-      chassis: vehicle?.vin || '',
-      mileage: (doc.mileage || 0).toString(),
-      engine_no: vehicle?.engineNo || '',
-      engine_code: vehicle?.engineCode || '',
-      engine_cc: vehicle?.engineCC || 0,
-      date_reg: vehicle?.dateOfRegistration ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB') : '',
-      colour: vehicle?.colour || '',
-    },
-    totals: {
-      labour: items.filter(i => i.itemType === 'Labour').reduce((acc, i) => acc + Number(i.subNet), 0),
-      parts: items.filter(i => i.itemType === 'Part').reduce((acc, i) => acc + Number(i.subNet), 0),
-      subtotal: Number(doc.totalNet),
-      vat_rate: 20,
-      vat: Number(doc.totalTax),
-      total: Number(doc.totalGross),
-    }
+  // Build shared data
+  const company = {
+    name: 'ELI MOTORS LIMITED',
+    address_line1: '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP',
+    phone: '020 8203 6449, Sales 07950 250970',
+    website: 'www.elimotors.co.uk',
+    vat: '330 9339 65',
   };
 
-  let type: 'invoice' | 'estimate' | 'jobsheet' = 'invoice';
+  const customerData = {
+    name: customer?.name || 'Unknown Client',
+    address_lines: (customer?.address || '').split(',').map((s: string) => s.trim()),
+    mobile: customer?.phone || '',
+  };
+
+  const vehicleData = {
+    reg: vehicle?.registration || '',
+    make: vehicle?.make || '',
+    model: vehicle?.model || '',
+    chassis: vehicle?.vin || '',
+    mileage: (doc.mileage || 0).toString(),
+    engine_no: vehicle?.engineNo || '',
+    engine_code: vehicle?.engineCode || '',
+    engine_cc: vehicle?.engineCC || 0,
+    date_reg: vehicle?.dateOfRegistration
+      ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB')
+      : '',
+    colour: vehicle?.colour || '',
+  };
+
+  const labour = items.filter(i => i.itemType === 'Labour').map(i => ({
+    description: i.description,
+    qty: Number(i.quantity),
+    unit: Number(i.unitPrice),
+    d: '',
+    subtotal: Number(i.subNet),
+  }));
+
+  const parts = items.filter(i => i.itemType === 'Part').map(i => ({
+    description: i.description,
+    qty: Number(i.quantity),
+    unit: Number(i.unitPrice),
+    d: '',
+    subtotal: Number(i.subNet),
+  }));
+
+  const motItems = items.filter(i => i.itemType === 'MOT').map(i => ({
+    description: i.description,
+    qty: Number(i.quantity),
+    status: '',
+  }));
+
+  const totals = {
+    labour: labour.reduce((acc, i) => acc + i.subtotal, 0),
+    parts: parts.reduce((acc, i) => acc + i.subtotal, 0),
+    subtotal: Number(doc.totalNet),
+    vat_rate: 20,
+    vat: Number(doc.totalTax),
+    total: Number(doc.totalGross),
+    balance: Number(doc.totalGross),
+  };
+
+  // Split description into title + work items
+  const descLines = (doc.description || '').split('\n').filter((l: string) => l.trim());
+  const work_title = descLines.length > 0 ? descLines[0] : '';
+  const work_items = descLines.length > 1 ? descLines.slice(1) : [];
+
+  const dateStr = doc.dateCreated
+    ? new Date(doc.dateCreated).toLocaleDateString('en-GB')
+    : '';
+
+  console.log(`[PDF] Generating ${doc.docType} PDF for ${doc.docNo}`);
+
+  // Dispatch to correct template
   if (doc.docType === 'ES') {
-    type = 'estimate';
-    templateData.estimate = {
-      number: doc.docNo,
-      date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
-      account_no: '',
-      valid_to: '',
-    };
-  } else if (doc.docType === 'SI') {
-    type = 'invoice';
-    templateData.invoice = {
-      number: doc.docNo,
-      invoice_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
-      account_no: '',
-      date_of_work: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
-    };
-  } else if (doc.docType === 'JS') {
-    type = 'jobsheet';
-    templateData.doc = {
-      reference: doc.docNo,
-      account_no: '',
-      receive_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
-      due_date: '',
-    };
-  } else {
-    // Default fallback
-    type = 'jobsheet';
-    templateData.doc = {
-      reference: doc.docNo,
-      account_no: '',
-      receive_date: doc.dateCreated ? new Date(doc.dateCreated).toLocaleDateString('en-GB') : '',
-      due_date: '',
-    };
+    return generateEstimatePDF({
+      company, customer: customerData, vehicle: vehicleData,
+      estimate: {
+        number: doc.docNo,
+        date: dateStr,
+        account_no: '',
+        order_ref: '',
+        valid_to: '',
+      },
+      work_title, work_items,
+      labour, parts, totals,
+    });
   }
 
-  templateData.work_title = doc.description;
-  templateData.labour = items.filter(i => i.itemType === 'Labour').map(i => ({
-    description: i.description,
-    qty: Number(i.quantity),
-    unit: Number(i.unitPrice),
-    subtotal: Number(i.subNet),
-  }));
-  templateData.parts = items.filter(i => i.itemType === 'Part').map(i => ({
-    description: i.description,
-    qty: Number(i.quantity),
-    unit: Number(i.unitPrice),
-    subtotal: Number(i.subNet),
-  }));
+  if (doc.docType === 'JS') {
+    const work_description = (doc.description || '').split('\n');
 
-  // NATIVE PDF GENERATION (Replaces Python script with exact template match)
-  console.log(`[PDF] Generating native PDF for ${doc.docNo}`);
-
-  return new Promise((resolve, reject) => {
+    let oil_specs: any[] = [];
     try {
-      // Setup document
-      const pdfDoc = new PDFDocument({ margin: 30, size: 'A4' });
-      const buffers: any[] = [];
-      pdfDoc.on('data', buffers.push.bind(buffers));
-      pdfDoc.on('end', () => {
-        const pdfData = Buffer.concat(buffers);
-        resolve({
-          content: pdfData.toString('base64'),
-          filename: `${templateData.docNo || 'Document'}.pdf`
-        });
-      });
+      const techData = vehicle?.comprehensiveTechnicalData
+        ? (typeof vehicle.comprehensiveTechnicalData === 'string'
+          ? JSON.parse(vehicle.comprehensiveTechnicalData)
+          : vehicle.comprehensiveTechnicalData)
+        : null;
+      if (techData?.oil_specs) oil_specs = techData.oil_specs;
+    } catch { /* ignore */ }
 
-      // --- STYLES & CONFIG ---
-      const PAGE_WIDTH = 595.28; // A4 width in points
-      const PAGE_HEIGHT = 841.89;
-      const MARGIN = 30;
-      const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
-      const HEADER_BG = '#d9d9d9';
-      const BORDER_COLOR = '#cccccc';
+    return generateJobSheetPDF({
+      customer: customerData, vehicle: vehicleData,
+      doc: {
+        reference: doc.docNo,
+        account_no: '',
+        order_ref: '',
+        receive_date: dateStr,
+        due_date: dateStr,
+        status: '~',
+        technician: '',
+      },
+      work_description,
+      oil_specs,
+      labour_rows: 5,
+      parts_rows: 5,
+    });
+  }
 
-      let y = MARGIN;
+  // Default: Invoice (SI or any other type)
+  return generateInvoicePDF({
+    company, customer: customerData, vehicle: vehicleData,
+    invoice: {
+      number: doc.docNo,
+      invoice_date: dateStr,
+      account_no: '',
+      order_ref: '',
+      date_of_work: dateStr,
+      payment_date: '',
+      payment_method: '',
+    },
+    work_title, work_items,
+    mot: motItems.length > 0 ? motItems : undefined,
+    labour, parts, totals,
+  });
+}
 
-      // --- HELPERS ---
+/**
+ * Generate a Vehicle Service History PDF for all documents associated with a vehicle.
+ */
+export async function getServiceHistoryPDF(vehicleId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
-      const drawHeader = () => {
-        const startH = y;
-        // Company Info (Left)
-        pdfDoc.font('Helvetica-Bold').fontSize(18).text(templateData.company.name, MARGIN, y);
-        y += 20;
-        pdfDoc.font('Helvetica').fontSize(8);
-        pdfDoc.text(templateData.company.address_line1, MARGIN, y);
-        pdfDoc.text(templateData.company.phone, MARGIN, y + 11);
-        pdfDoc.text(templateData.company.website, MARGIN, y + 22);
-        pdfDoc.text(`VAT ${templateData.company.vat}`, MARGIN, y + 33);
+  const { generateServiceHistoryPDF } = await import("./pdf-templates");
 
-        // Logo (Right)
-        const logoPath = path.join(process.cwd(), 'templates/eli_logo_white.png');
-        if (fs.existsSync(logoPath)) {
-          const logoW = 120;
-          const logoH = logoW * (865.0 / 1930.0);
-          pdfDoc.image(logoPath, PAGE_WIDTH - MARGIN - logoW, startH, { width: logoW });
-        }
+  const vehicle = await db.select().from(vehicles)
+    .where(eq(vehicles.id, vehicleId)).limit(1).then(r => r[0]);
+  if (!vehicle) throw new Error("Vehicle not found");
 
-        y += 50;
+  const docs = await db.select().from(serviceHistory)
+    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .orderBy(desc(serviceHistory.dateCreated));
 
-        // Consumer & Doc Info
-        const docTitle = type === 'invoice' ? 'Invoice' : (type === 'estimate' ? 'Estimate' : 'Job Sheet');
+  let cumulative = 0;
+  const entries = docs.map(d => {
+    const total = Number(d.totalGross) || 0;
+    cumulative += total;
+    const dateObj = d.dateCreated ? new Date(d.dateCreated) : new Date();
+    const months = ['January','February','March','April','May','June',
+      'July','August','September','October','November','December'];
+    const dateStr = `${String(dateObj.getDate()).padStart(2, '0')} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
+    const mileage = d.mileage ? `${Number(d.mileage).toLocaleString()} MI` : null;
 
-        // Customer (Left)
-        pdfDoc.font('Helvetica').fontSize(10);
-        pdfDoc.text(templateData.customer.name, MARGIN + 30, y);
-        let custY = y + 14;
-        (templateData.customer.address_lines || []).forEach((line: string) => {
-          pdfDoc.text(line, MARGIN + 30, custY);
-          custY += 14;
-        });
-        if (templateData.customer.mobile) {
-          pdfDoc.text(`Mobile: ${templateData.customer.mobile}`, MARGIN + 30, custY);
-          custY += 14;
-        }
+    return {
+      date: dateStr,
+      invoice_number: `#${d.docNo}`,
+      mileage,
+      total: `£${total.toFixed(2)}`,
+      description: d.description || '',
+    };
+  });
 
-        // Document Details (Right)
-        const docX = 340;
-        const docYHeader = y;
-        pdfDoc.font('Helvetica-Bold').fontSize(16).text(docTitle, docX, docYHeader);
-        pdfDoc.font('Helvetica-Bold').fontSize(14).text(templateData.docNo, PAGE_WIDTH - MARGIN - 50, docYHeader, { align: 'right' });
-
-        pdfDoc.font('Helvetica').fontSize(9);
-        let detailY = docYHeader + 20;
-
-        const details = [
-          ['Date:', templateData.date],
-          ['Account No:', templateData.invoice?.account_no || ''],
-          ['Order Ref:', templateData.invoice?.order_ref || ''],
-          ['Date of Work:', templateData.invoice?.date_of_work || ''],
-          ['Pay Method:', templateData.invoice?.payment_method || ''],
-        ].filter(r => r[1]);
-
-        details.forEach(([label, value]) => {
-          pdfDoc.text(label, docX, detailY);
-          pdfDoc.text(value, PAGE_WIDTH - MARGIN - 50, detailY, { align: 'right' });
-          detailY += 13;
-        });
-
-        y = Math.max(custY + 20, detailY + 20);
-      };
-
-      const checkPageBreak = (neededHeight: number) => {
-        if (y + neededHeight > PAGE_HEIGHT - MARGIN) {
-          pdfDoc.addPage();
-          y = MARGIN;
-          drawHeader();
-          return true;
-        }
-        return false;
-      };
-
-      const drawTable = (headers: string[], rows: any[][], colWidths: number[], title?: string) => {
-        checkPageBreak(50);
-
-        if (title) {
-          pdfDoc.font('Helvetica-Bold').fontSize(10).text(title, MARGIN, y);
-          y += 15;
-        }
-
-        const rowHeight = 20;
-
-        // Draw Header
-        let x = MARGIN;
-        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-        pdfDoc.fillColor('black');
-
-        headers.forEach((h, i) => {
-          pdfDoc.font('Helvetica-Bold').fontSize(8.5);
-          if (i === 0) pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left' });
-          else pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right' });
-          x += colWidths[i];
-        });
-        y += rowHeight;
-
-        // Draw Rows
-        pdfDoc.font('Helvetica').fontSize(8.5);
-        rows.forEach((row, rowIndex) => {
-          checkPageBreak(rowHeight);
-
-          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-
-          x = MARGIN;
-          row.forEach((cell, i) => {
-            const text = cell?.toString() || '';
-            if (i === 0) pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left' });
-            else pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right' });
-            x += colWidths[i];
-          });
-          y += rowHeight;
-        });
-        y += 10;
-      };
-
-      const drawVehicleTable = () => {
-        checkPageBreak(80);
-        const ratios = [0.18, 0.15, 0.22, 0.28, 0.17];
-        const colWidths = ratios.map(r => CONTENT_WIDTH * r);
-        const v = templateData.vehicle;
-
-        const rowHeight = 20;
-
-        // Row 1 Header
-        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-        pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-        let x = MARGIN;
-        ['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'].forEach((h, i) => {
-          pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
-          x += colWidths[i];
-        });
-        y += rowHeight;
-
-        // Row 1 Data
-        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-        pdfDoc.font('Helvetica').fontSize(8);
-        x = MARGIN;
-        [v.registration, v.make, v.model, v.chassis, v.mileage].forEach((d: any, i: number) => {
-          pdfDoc.text(d || '', x, y + 6, { width: colWidths[i], align: 'center' });
-          x += colWidths[i];
-        });
-        y += rowHeight;
-
-        // Row 2 Header
-        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-        pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-        x = MARGIN;
-        ['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'].forEach((h, i) => {
-          pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
-          x += colWidths[i];
-        });
-        y += rowHeight;
-
-        // Row 2 Data
-        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-        pdfDoc.font('Helvetica').fontSize(8);
-        x = MARGIN;
-        [v.engine_no, v.engine_code, v.engine_cc, v.date_reg, v.colour].forEach((d: any, i: number) => {
-          const val = d !== undefined && d !== null ? d.toString() : '';
-          pdfDoc.text(val, x, y + 6, { width: colWidths[i], align: 'center' });
-          x += colWidths[i];
-        });
-        y += rowHeight + 20;
-      };
-
-      // --- EXECUTION ---
-
-      drawHeader();
-      drawVehicleTable();
-
-      // Work Description Header
-      if (templateData.work_title) {
-        checkPageBreak(40);
-        pdfDoc.font('Helvetica-Bold').fontSize(10).text(templateData.work_title, MARGIN, y);
-        const width = pdfDoc.widthOfString(templateData.work_title);
-        pdfDoc.moveTo(MARGIN, y + 12).lineTo(MARGIN + width, y + 12).stroke();
-        y += 20;
-      }
-
-      // Work Items (from description lines)
-      if (doc.description) {
-        const lines = (doc.description || '').split('\n');
-        pdfDoc.font('Helvetica').fontSize(9);
-        lines.forEach(line => {
-          checkPageBreak(15);
-          pdfDoc.text(`- ${line}`, MARGIN, y);
-          y += 13;
-        });
-        y += 10;
-      }
-
-      // Labour Table
-      if (templateData.labour.length > 0) {
-        const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
-        const widths = ratios.map(r => CONTENT_WIDTH * r);
-        const rows = templateData.labour.map((i: any) => [
-          i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
-        ]);
-        drawTable(['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
-      }
-
-      // Parts Table
-      if (templateData.parts.length > 0) {
-        const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
-        const widths = ratios.map(r => CONTENT_WIDTH * r);
-        const rows = templateData.parts.map((i: any) => [
-          i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
-        ]);
-        drawTable(['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
-      }
-
-      // Totals Footer
-      checkPageBreak(120);
-      const totalsWidth = CONTENT_WIDTH * 0.35;
-      const totalsX = PAGE_WIDTH - MARGIN - totalsWidth;
-
-      const drawTotalRow = (label: string, value: string, isBold = false, isBg = false) => {
-        const h = 16;
-        if (isBg) pdfDoc.rect(totalsX, y, totalsWidth, h).fill('#e8e8e8');
-        pdfDoc.fillColor('black');
-        pdfDoc.rect(totalsX, y, totalsWidth, h).stroke(BORDER_COLOR);
-
-        pdfDoc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
-        pdfDoc.text(label, totalsX + 5, y + 4, { width: (totalsWidth / 2) - 10, align: 'left' });
-        pdfDoc.text(value, totalsX + (totalsWidth / 2), y + 4, { width: (totalsWidth / 2) - 10, align: 'right' });
-        y += h;
-      };
-
-      if (Number(templateData.totals.labour) > 0) drawTotalRow('Labour', Number(templateData.totals.labour).toFixed(2));
-      if (Number(templateData.totals.parts) > 0) drawTotalRow('Parts', Number(templateData.totals.parts).toFixed(2));
-      drawTotalRow('SubTotal', Number(templateData.totals.subtotal).toFixed(2), true);
-      drawTotalRow(`VAT (${templateData.totals.vat_rate}%)`, Number(templateData.totals.vat).toFixed(2));
-      drawTotalRow('Total', Number(templateData.totals.total).toFixed(2), true, true);
-
-      // Terms & Conditions (Bottom Left)
-      const footerHeight = 5 * 16; // Approx height of totals block
-      // Reset Y to where totals started, so T&C is to the left of it
-      const tcY = y - (Number(templateData.totals.parts) > 0 || Number(templateData.totals.labour) > 0 ? 0 : 0) - footerHeight - 20;
-      // Actually, simplest is just to verify space.
-      // Let's just put it below the last thing if we ran out of space, 
-      // or alongside if checks pass.
-
-      // We'll place it at the same Y as the start of the totals block ideally.
-      // But calculating that is tricky with dynamic rows.
-      // Let's simplified approach: Put it at the current Y if we are far down, 
-      // or duplicate logic.
-      // Python template aligns bottom of T&C with bottom of totals.
-
-      // Let's just place it to the left of the totals block area.
-      // We know totalsWidth.
-      const tcWidth = CONTENT_WIDTH * 0.55;
-      const finalTcY = y - 90; // Approximation
-
-      pdfDoc.font('Helvetica').fontSize(7);
-      pdfDoc.text(
-        "I agree to pay for all work and parts required for the repairs described above at your retail charge. " +
-        "It is understood that any estimate given is provisional and all repairs are undertaken on a cash basis " +
-        "unless prior arrangements for credit have been approved. All goods shall remain the property of the seller " +
-        "until paid for in full. I have read and accept your terms and conditions.\n" +
-        "Nothing herein is designed to nor will it affect a customers statutory rights",
-        MARGIN, finalTcY > MARGIN ? finalTcY : y + 10, { width: tcWidth, align: 'justify' }
-      );
-
-      pdfDoc.text("Signed ________________    Date ________________", MARGIN, (finalTcY > MARGIN ? finalTcY : y + 10) + 60);
-
-      pdfDoc.end();
-
-    } catch (e: any) {
-      reject(e);
-    }
+  return generateServiceHistoryPDF({
+    company_name: 'ELI MOTORS LIMITED',
+    address: '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP',
+    phone: '020 8203 6449, Sales 07950 250970',
+    website: 'www.elimotors.co.uk',
+    vehicle_reg: vehicle.registration || '',
+    vehicle_make: vehicle.make || '',
+    vehicle_model: vehicle.model || '',
+    entries,
+    total_records: entries.length,
+    cumulative_spend: `£${cumulative.toFixed(2)}`,
   });
 }
 

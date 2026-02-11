@@ -2139,6 +2139,14 @@ export const appRouter = router({
         return { content, filename };
       }),
 
+    getServiceHistoryPDF: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .query(async ({ input }) => {
+        const { getServiceHistoryPDF } = await import("./db");
+        const { content, filename } = await getServiceHistoryPDF(input.vehicleId);
+        return { content, filename };
+      }),
+
     delete: publicProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
