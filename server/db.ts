@@ -922,6 +922,10 @@ export async function getRichPDF(documentId: number) {
   }));
   templateData.parts = items.filter(i => i.itemType === 'Part').map(i => ({
     description: i.description,
+    qty: Number(i.quantity),
+    unit: Number(i.unitPrice),
+    subtotal: Number(i.subNet),
+  }));
 
   // NATIVE PDF GENERATION (Replaces Python script with exact template match)
   console.log(`[PDF] Generating native PDF for ${doc.docNo}`);
@@ -947,11 +951,11 @@ export async function getRichPDF(documentId: number) {
       const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
       const HEADER_BG = '#d9d9d9';
       const BORDER_COLOR = '#cccccc';
-      
+
       let y = MARGIN;
 
       // --- HELPERS ---
-      
+
       const drawHeader = () => {
         const startH = y;
         // Company Info (Left)
@@ -975,7 +979,7 @@ export async function getRichPDF(documentId: number) {
 
         // Consumer & Doc Info
         const docTitle = type === 'invoice' ? 'Invoice' : (type === 'estimate' ? 'Estimate' : 'Job Sheet');
-        
+
         // Customer (Left)
         pdfDoc.font('Helvetica').fontSize(10);
         pdfDoc.text(templateData.customer.name, MARGIN + 30, y);
@@ -985,8 +989,8 @@ export async function getRichPDF(documentId: number) {
           custY += 14;
         });
         if (templateData.customer.mobile) {
-            pdfDoc.text(`Mobile: ${templateData.customer.mobile}`, MARGIN + 30, custY);
-             custY += 14;
+          pdfDoc.text(`Mobile: ${templateData.customer.mobile}`, MARGIN + 30, custY);
+          custY += 14;
         }
 
         // Document Details (Right)
@@ -994,22 +998,22 @@ export async function getRichPDF(documentId: number) {
         const docYHeader = y;
         pdfDoc.font('Helvetica-Bold').fontSize(16).text(docTitle, docX, docYHeader);
         pdfDoc.font('Helvetica-Bold').fontSize(14).text(templateData.docNo, PAGE_WIDTH - MARGIN - 50, docYHeader, { align: 'right' });
-        
+
         pdfDoc.font('Helvetica').fontSize(9);
         let detailY = docYHeader + 20;
 
         const details = [
-            ['Date:', templateData.date],
-            ['Account No:', templateData.invoice?.account_no || ''],
-            ['Order Ref:', templateData.invoice?.order_ref || ''],
-            ['Date of Work:', templateData.invoice?.date_of_work || ''],
-            ['Pay Method:', templateData.invoice?.payment_method || ''],
+          ['Date:', templateData.date],
+          ['Account No:', templateData.invoice?.account_no || ''],
+          ['Order Ref:', templateData.invoice?.order_ref || ''],
+          ['Date of Work:', templateData.invoice?.date_of_work || ''],
+          ['Pay Method:', templateData.invoice?.payment_method || ''],
         ].filter(r => r[1]);
 
         details.forEach(([label, value]) => {
-            pdfDoc.text(label, docX, detailY);
-            pdfDoc.text(value, PAGE_WIDTH - MARGIN - 50, detailY, { align: 'right' });
-            detailY += 13;
+          pdfDoc.text(label, docX, detailY);
+          pdfDoc.text(value, PAGE_WIDTH - MARGIN - 50, detailY, { align: 'right' });
+          detailY += 13;
         });
 
         y = Math.max(custY + 20, detailY + 20);
@@ -1019,165 +1023,165 @@ export async function getRichPDF(documentId: number) {
         if (y + neededHeight > PAGE_HEIGHT - MARGIN) {
           pdfDoc.addPage();
           y = MARGIN;
-          drawHeader(); 
+          drawHeader();
           return true;
         }
         return false;
       };
 
       const drawTable = (headers: string[], rows: any[][], colWidths: number[], title?: string) => {
-         checkPageBreak(50);
-         
-         if (title) {
-             pdfDoc.font('Helvetica-Bold').fontSize(10).text(title, MARGIN, y);
-             y += 15;
-         }
+        checkPageBreak(50);
 
-         const rowHeight = 20;
-         
-         // Draw Header
-         let x = MARGIN;
-         pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-         pdfDoc.fillColor('black');
-         
-         headers.forEach((h, i) => {
-             pdfDoc.font('Helvetica-Bold').fontSize(8.5);
-             if (i === 0) pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left'}); 
-             else pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right'}); 
-             x += colWidths[i];
-         });
-         y += rowHeight;
+        if (title) {
+          pdfDoc.font('Helvetica-Bold').fontSize(10).text(title, MARGIN, y);
+          y += 15;
+        }
 
-         // Draw Rows
-         pdfDoc.font('Helvetica').fontSize(8.5);
-         rows.forEach((row, rowIndex) => {
-             checkPageBreak(rowHeight);
-             
-             pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-             
-             x = MARGIN;
-             row.forEach((cell, i) => {
-                const text = cell?.toString() || '';
-                if (i === 0) pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left'});
-                else pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right'});
-                x += colWidths[i];
-             });
-             y += rowHeight;
-         });
-         y += 10; 
+        const rowHeight = 20;
+
+        // Draw Header
+        let x = MARGIN;
+        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+        pdfDoc.fillColor('black');
+
+        headers.forEach((h, i) => {
+          pdfDoc.font('Helvetica-Bold').fontSize(8.5);
+          if (i === 0) pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left' });
+          else pdfDoc.text(h, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right' });
+          x += colWidths[i];
+        });
+        y += rowHeight;
+
+        // Draw Rows
+        pdfDoc.font('Helvetica').fontSize(8.5);
+        rows.forEach((row, rowIndex) => {
+          checkPageBreak(rowHeight);
+
+          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+
+          x = MARGIN;
+          row.forEach((cell, i) => {
+            const text = cell?.toString() || '';
+            if (i === 0) pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'left' });
+            else pdfDoc.text(text, x + 5, y + 6, { width: colWidths[i] - 10, align: 'right' });
+            x += colWidths[i];
+          });
+          y += rowHeight;
+        });
+        y += 10;
       };
-      
+
       const drawVehicleTable = () => {
-          checkPageBreak(80);
-          const ratios = [0.18, 0.15, 0.22, 0.28, 0.17];
-          const colWidths = ratios.map(r => CONTENT_WIDTH * r);
-          const v = templateData.vehicle;
-          
-          const rowHeight = 20;
-          
-          // Row 1 Header
-          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-          pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-          let x = MARGIN;
-          ['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'].forEach((h, i) => {
-              pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
-              x += colWidths[i];
-          });
-          y += rowHeight;
-          
-          // Row 1 Data
-          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-          pdfDoc.font('Helvetica').fontSize(8);
-          x = MARGIN;
-          [v.registration, v.make, v.model, v.chassis, v.mileage].forEach((d: any, i: number) => {
-              pdfDoc.text(d || '', x, y + 6, { width: colWidths[i], align: 'center' });
-              x += colWidths[i];
-          });
-          y += rowHeight;
+        checkPageBreak(80);
+        const ratios = [0.18, 0.15, 0.22, 0.28, 0.17];
+        const colWidths = ratios.map(r => CONTENT_WIDTH * r);
+        const v = templateData.vehicle;
 
-          // Row 2 Header
-          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
-          pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-          x = MARGIN;
-          ['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'].forEach((h, i) => {
-              pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
-              x += colWidths[i];
-          });
-          y += rowHeight;
+        const rowHeight = 20;
 
-          // Row 2 Data
-          pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
-          pdfDoc.font('Helvetica').fontSize(8);
-          x = MARGIN;
-          [v.engine_no, v.engine_code, v.engine_cc, v.date_reg, v.colour].forEach((d: any, i: number) => {
-              const val = d !== undefined && d !== null ? d.toString() : '';
-              pdfDoc.text(val, x, y + 6, { width: colWidths[i], align: 'center' });
-              x += colWidths[i];
-          });
-          y += rowHeight + 20; 
+        // Row 1 Header
+        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+        pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
+        let x = MARGIN;
+        ['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'].forEach((h, i) => {
+          pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
+          x += colWidths[i];
+        });
+        y += rowHeight;
+
+        // Row 1 Data
+        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+        pdfDoc.font('Helvetica').fontSize(8);
+        x = MARGIN;
+        [v.registration, v.make, v.model, v.chassis, v.mileage].forEach((d: any, i: number) => {
+          pdfDoc.text(d || '', x, y + 6, { width: colWidths[i], align: 'center' });
+          x += colWidths[i];
+        });
+        y += rowHeight;
+
+        // Row 2 Header
+        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).fill(HEADER_BG);
+        pdfDoc.fillColor('black').font('Helvetica-Bold').fontSize(8);
+        x = MARGIN;
+        ['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'].forEach((h, i) => {
+          pdfDoc.text(h, x, y + 6, { width: colWidths[i], align: 'center' });
+          x += colWidths[i];
+        });
+        y += rowHeight;
+
+        // Row 2 Data
+        pdfDoc.rect(MARGIN, y, CONTENT_WIDTH, rowHeight).stroke(BORDER_COLOR);
+        pdfDoc.font('Helvetica').fontSize(8);
+        x = MARGIN;
+        [v.engine_no, v.engine_code, v.engine_cc, v.date_reg, v.colour].forEach((d: any, i: number) => {
+          const val = d !== undefined && d !== null ? d.toString() : '';
+          pdfDoc.text(val, x, y + 6, { width: colWidths[i], align: 'center' });
+          x += colWidths[i];
+        });
+        y += rowHeight + 20;
       };
 
       // --- EXECUTION ---
-      
+
       drawHeader();
       drawVehicleTable();
 
       // Work Description Header
       if (templateData.work_title) {
-          checkPageBreak(40);
-          pdfDoc.font('Helvetica-Bold').fontSize(10).text(templateData.work_title, MARGIN, y);
-          const width = pdfDoc.widthOfString(templateData.work_title);
-          pdfDoc.moveTo(MARGIN, y + 12).lineTo(MARGIN + width, y + 12).stroke();
-          y += 20;
+        checkPageBreak(40);
+        pdfDoc.font('Helvetica-Bold').fontSize(10).text(templateData.work_title, MARGIN, y);
+        const width = pdfDoc.widthOfString(templateData.work_title);
+        pdfDoc.moveTo(MARGIN, y + 12).lineTo(MARGIN + width, y + 12).stroke();
+        y += 20;
       }
 
       // Work Items (from description lines)
-      if (doc.description) { 
-           const lines = (doc.description || '').split('\n');
-           pdfDoc.font('Helvetica').fontSize(9);
-           lines.forEach(line => {
-               checkPageBreak(15);
-               pdfDoc.text(`- ${line}`, MARGIN, y);
-               y += 13;
-           });
-           y += 10;
+      if (doc.description) {
+        const lines = (doc.description || '').split('\n');
+        pdfDoc.font('Helvetica').fontSize(9);
+        lines.forEach(line => {
+          checkPageBreak(15);
+          pdfDoc.text(`- ${line}`, MARGIN, y);
+          y += 13;
+        });
+        y += 10;
       }
 
       // Labour Table
       if (templateData.labour.length > 0) {
-          const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
-          const widths = ratios.map(r => CONTENT_WIDTH * r);
-          const rows = templateData.labour.map((i: any) => [
-              i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
-          ]);
-          drawTable(['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
+        const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
+        const widths = ratios.map(r => CONTENT_WIDTH * r);
+        const rows = templateData.labour.map((i: any) => [
+          i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
+        ]);
+        drawTable(['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
       }
 
       // Parts Table
       if (templateData.parts.length > 0) {
-          const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
-          const widths = ratios.map(r => CONTENT_WIDTH * r);
-          const rows = templateData.parts.map((i: any) => [
-              i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
-          ]);
-          drawTable(['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
+        const ratios = [0.52, 0.10, 0.14, 0.10, 0.14];
+        const widths = ratios.map(r => CONTENT_WIDTH * r);
+        const rows = templateData.parts.map((i: any) => [
+          i.description, i.qty, i.unit.toFixed(2), '', i.subtotal.toFixed(2)
+        ]);
+        drawTable(['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, widths);
       }
 
       // Totals Footer
       checkPageBreak(120);
       const totalsWidth = CONTENT_WIDTH * 0.35;
       const totalsX = PAGE_WIDTH - MARGIN - totalsWidth;
-      
+
       const drawTotalRow = (label: string, value: string, isBold = false, isBg = false) => {
-          const h = 16;
-          if (isBg) pdfDoc.rect(totalsX, y, totalsWidth, h).fill('#e8e8e8');
-          pdfDoc.fillColor('black');
-          pdfDoc.rect(totalsX, y, totalsWidth, h).stroke(BORDER_COLOR);
-          
-          pdfDoc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
-          pdfDoc.text(label, totalsX + 5, y + 4, { width: (totalsWidth/2) - 10, align: 'left' });
-          pdfDoc.text(value, totalsX + (totalsWidth/2), y + 4, { width: (totalsWidth/2) - 10, align: 'right' });
-          y += h;
+        const h = 16;
+        if (isBg) pdfDoc.rect(totalsX, y, totalsWidth, h).fill('#e8e8e8');
+        pdfDoc.fillColor('black');
+        pdfDoc.rect(totalsX, y, totalsWidth, h).stroke(BORDER_COLOR);
+
+        pdfDoc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
+        pdfDoc.text(label, totalsX + 5, y + 4, { width: (totalsWidth / 2) - 10, align: 'left' });
+        pdfDoc.text(value, totalsX + (totalsWidth / 2), y + 4, { width: (totalsWidth / 2) - 10, align: 'right' });
+        y += h;
       };
 
       if (Number(templateData.totals.labour) > 0) drawTotalRow('Labour', Number(templateData.totals.labour).toFixed(2));
@@ -1189,22 +1193,22 @@ export async function getRichPDF(documentId: number) {
       // Terms & Conditions (Bottom Left)
       const footerHeight = 5 * 16; // Approx height of totals block
       // Reset Y to where totals started, so T&C is to the left of it
-      const tcY = y - (Number(templateData.totals.parts) > 0 || Number(templateData.totals.labour) > 0 ? 0 : 0) - footerHeight - 20; 
+      const tcY = y - (Number(templateData.totals.parts) > 0 || Number(templateData.totals.labour) > 0 ? 0 : 0) - footerHeight - 20;
       // Actually, simplest is just to verify space.
       // Let's just put it below the last thing if we ran out of space, 
       // or alongside if checks pass.
-      
+
       // We'll place it at the same Y as the start of the totals block ideally.
       // But calculating that is tricky with dynamic rows.
       // Let's simplified approach: Put it at the current Y if we are far down, 
       // or duplicate logic.
       // Python template aligns bottom of T&C with bottom of totals.
-      
+
       // Let's just place it to the left of the totals block area.
       // We know totalsWidth.
       const tcWidth = CONTENT_WIDTH * 0.55;
       const finalTcY = y - 90; // Approximation
-      
+
       pdfDoc.font('Helvetica').fontSize(7);
       pdfDoc.text(
         "I agree to pay for all work and parts required for the repairs described above at your retail charge. " +
@@ -1214,7 +1218,7 @@ export async function getRichPDF(documentId: number) {
         "Nothing herein is designed to nor will it affect a customers statutory rights",
         MARGIN, finalTcY > MARGIN ? finalTcY : y + 10, { width: tcWidth, align: 'justify' }
       );
-      
+
       pdfDoc.text("Signed ________________    Date ________________", MARGIN, (finalTcY > MARGIN ? finalTcY : y + 10) + 60);
 
       pdfDoc.end();
@@ -1226,14 +1230,14 @@ export async function getRichPDF(documentId: number) {
 }
 
 export async function deleteServiceDocument(id: number) {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
-    return await db.transaction(async (tx) => {
-      // Delete line items first due to relationship
-      await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
-      // Delete the document header
-      await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
-      return { success: true };
-    });
-  }
+  return await db.transaction(async (tx) => {
+    // Delete line items first due to relationship
+    await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
+    // Delete the document header
+    await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
+    return { success: true };
+  });
+}
