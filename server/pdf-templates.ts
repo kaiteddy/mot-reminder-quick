@@ -29,7 +29,7 @@ const MUTED = '#888888';
 const PARTS_ACCENT = '#5a7fb5';
 
 // Column width ratios
-const V_RATIOS = [0.18, 0.15, 0.22, 0.28, 0.17];
+const V_RATIOS = [0.12, 0.12, 0.40, 0.24, 0.12];
 const LP_RATIOS = [0.52, 0.10, 0.14, 0.10, 0.14];
 
 // T&C wording
@@ -595,7 +595,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
 
   // ── Blank Labour table ──
   const numLabour = data.labour_rows || 5;
-  const blankRowH = 22;
+  const blankRowH = 18;
   y = checkBreak(ROW_H + numLabour * blankRowH);
   const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
 
