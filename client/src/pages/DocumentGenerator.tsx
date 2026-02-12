@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, memo, forwardRef, useDeferredValue, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,349 @@ interface LineItem {
     itemType: "Labour" | "Part";
     hasVat: boolean;
 }
+
+const LineItemRow = memo(({ item, onUpdate, onRemove, type }: { item: LineItem, onUpdate: any, onRemove: any, type: "Labour" | "Part" }) => {
+    const accentClass = type === "Labour" ? "bg-blue-500/10" : "bg-orange-500/10";
+    const hoverClass = type === "Labour" ? "hover:bg-blue-50/20" : "hover:bg-orange-50/20";
+    const vatClass = type === "Labour" ? "bg-blue-100 text-blue-700 hover:bg-blue-200" : "bg-orange-100 text-orange-700 hover:bg-orange-200";
+
+    return (
+        <TableRow className={cn("group transition-colors h-11", hoverClass)}>
+            <TableCell className={cn("w-[6px] p-0", accentClass)}></TableCell>
+            <TableCell className="py-1 pl-4">
+                <Input
+                    placeholder={`${type} description...`}
+                    value={item.description}
+                    onChange={(e) => onUpdate(item.id, type, "description", e.target.value)}
+                    className="h-8 text-xs border-transparent focus:border-slate-200 bg-transparent"
+                />
+            </TableCell>
+            <TableCell className="py-1">
+                <Input
+                    type="number"
+                    value={item.quantity}
+                    onChange={(e) => onUpdate(item.id, type, "quantity", parseFloat(e.target.value) || 0)}
+                    className="h-8 text-xs text-center bg-transparent border-transparent"
+                />
+            </TableCell>
+            <TableCell className="py-1">
+                <div className="relative">
+                    <span className="absolute left-1 top-1.5 text-[10px] text-muted-foreground">£</span>
+                    <Input
+                        type="number"
+                        value={item.unitPrice}
+                        onChange={(e) => onUpdate(item.id, type, "unitPrice", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs text-right pl-4 bg-transparent border-transparent"
+                    />
+                </div>
+            </TableCell>
+            <TableCell className="py-1 text-center">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn("h-6 w-10 text-[9px] font-bold tracking-tighter", item.hasVat ? vatClass : "bg-slate-100 text-slate-400")}
+                    onClick={() => onUpdate(item.id, type, "hasVat", !item.hasVat)}
+                >
+                    {item.hasVat ? "VAT" : "EX"}
+                </Button>
+            </TableCell>
+            <TableCell className="py-1 text-right text-xs font-mono font-bold">
+                £{item.subNet.toFixed(2)}
+            </TableCell>
+            <TableCell className="py-1 pr-6 text-right">
+                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity" onClick={() => onRemove(item.id, type)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+            </TableCell>
+        </TableRow>
+    );
+});
+
+interface PrintSectionProps {
+    selectedCustomer: any;
+    docType: string;
+    docNo: string;
+    dateCreated: string;
+    accountNo: string;
+    orderRef: string;
+    paymentMethod: string;
+    selectedVehicle: any;
+    mileage: string;
+    workDone: string;
+    labourItems: LineItem[];
+    partsItems: LineItem[];
+    totalLabour: number;
+    totalParts: number;
+    paintMaterials: number;
+    subTotal: number;
+    vat: number;
+    excess: number;
+    totalGross: number;
+    customerId: number | null;
+}
+
+const PrintSection = memo(forwardRef<HTMLDivElement, PrintSectionProps>((props, ref) => {
+    const {
+        selectedCustomer, docType, docNo, dateCreated, accountNo, orderRef,
+        paymentMethod, selectedVehicle, mileage, workDone, labourItems,
+        partsItems, totalLabour, totalParts, paintMaterials, subTotal, vat,
+        excess, totalGross, customerId
+    } = props;
+
+    return (
+        <div ref={ref} className="p-10 text-[#1e293b] bg-white min-h-[29.7cm] flex flex-col font-sans" style={{ width: '210mm' }}>
+            <style>{`
+                @media print {
+                    body { -webkit-print-color-adjust: exact; margin: 0; }
+                    .print-container { padding: 40px; }
+                }
+                .invoice-container { background: white; }
+                .header-row { display: flex; justify-content: space-between; margin-bottom: 24px; }
+                .company-branding h1 { font-size: 32px; font-weight: 900; margin: 0; color: #000; letter-spacing: -0.01em; }
+                .company-branding p { margin: 1px 0; font-size: 11px; color: #334155; font-weight: 500; }
+                
+                .client-doc-split { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; margin-bottom: 24px; }
+                .client-address p { margin: 1px 0; font-size: 11px; }
+                .client-name { font-size: 14px; font-weight: 800; margin-bottom: 4px !important; }
+
+                .doc-meta-table { font-size: 12px; width: 100%; text-align: right; }
+                .doc-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; }
+                .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 2px; }
+                .meta-label { color: #64748b; font-weight: 500; }
+                .meta-value { font-weight: 700; color: #0f172a; }
+
+                .blue-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
+                .blue-table th { background-color: #e7f1ff !important; color: #1e3a8a !important; padding: 6px 10px; text-align: left; font-weight: 700; border: 1px solid #bfdbfe; text-transform: uppercase; }
+                .blue-table td { padding: 8px 10px; border: 1px solid #bfdbfe; color: #1e293b; font-weight: 600; }
+
+                .items-section-header { background-color: #3b82f6 !important; color: white !important; padding: 4px 12px; font-weight: 800; text-transform: uppercase; font-size: 11px; margin-bottom: 0; }
+                .line-items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+                .line-items-table th { background-color: #f8fafc; padding: 6px 12px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; color: #475569; }
+                .line-items-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+                .line-items-table .type-label { font-weight: 900; color: #1e3a8a; }
+
+                .job-desc-section h3 { font-size: 12px; font-weight: 800; border-bottom: 2px solid #000; display: inline-block; margin-bottom: 12px; text-transform: uppercase; }
+                .job-list { space-y: 1.5; font-size: 11px; }
+                .job-item { margin-bottom: 12px; }
+                .job-title { font-weight: 800; text-transform: uppercase; margin-bottom: 4px; display: block; }
+                .job-bullets { margin-left: 16px; list-style-type: disc; }
+                .job-bullets li { margin-bottom: 2px; }
+
+                .totals-block { align-self: flex-end; width: 280px; margin-top: auto; }
+                .totals-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 11px; border: 1px solid #f1f5f9; }
+                .totals-row-bold { font-weight: 800; background-color: #f8fafc; border: 1px solid #e2e8f0; }
+                .grand-total-row { background-color: #e7f1ff !important; color: #1e3a8a !important; font-size: 14px; font-weight: 900; padding: 8px; margin-top: 4px; border: 2px solid #3b82f6; }
+            `}</style>
+
+            {/* 1. Company Header */}
+            <div className="header-row">
+                <div className="company-branding">
+                    <h1>ELI MOTORS LIMITED</h1>
+                    <p>49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP</p>
+                    <p>020 8203 6449, Sales 07950 250970</p>
+                    <p>www.elimotors.co.uk</p>
+                    <p style={{ marginTop: '4px', fontWeight: '800' }}>VAT 330 9339 65</p>
+                </div>
+                <div>
+                    <img src="/logo.png" alt="Logo" className="h-24 w-auto" />
+                </div>
+            </div>
+
+            {/* 2. Addresses & Document Meta */}
+            <div className="client-doc-split">
+                <div className="client-address">
+                    <p className="client-name">{selectedCustomer?.name || 'Customer Name'}</p>
+                    <p className="whitespace-pre-line">{selectedCustomer?.address || 'Customer Address'}</p>
+                    <p>{selectedCustomer?.postcode}</p>
+                    <p style={{ marginTop: '12px' }}>Tel: {selectedCustomer?.phone}</p>
+                </div>
+                <div>
+                    <div className="doc-meta-table">
+                        <div className="doc-title">{docType === 'SI' ? 'Invoice' : 'Estimate'}</div>
+                        <div style={{ fontSize: '20px', fontWeight: '900', marginBottom: '16px' }}>{docNo || 'DRAFT'}</div>
+                        <div className="meta-row"><span className="meta-label">{docType === 'SI' ? 'Invoice' : 'Estimate'} Date:</span><span className="meta-value">{dateCreated ? format(new Date(dateCreated), "dd/MM/yyyy") : '-'}</span></div>
+                        <div className="meta-row"><span className="meta-label">Account No:</span><span className="meta-value">{accountNo || `ELI${customerId || '00'}`}</span></div>
+                        <div className="meta-row"><span className="meta-label">Order Ref:</span><span className="meta-value">{orderRef}</span></div>
+                        <div className="meta-row"><span className="meta-label">Date of Work:</span><span className="meta-value">{dateCreated ? format(new Date(dateCreated), "dd/MM/yyyy") : '-'}</span></div>
+                        <div className="meta-row"><span className="meta-label">Payment Member:</span><span className="meta-value">-</span></div>
+                        <div className="meta-row"><span className="meta-label">Payment Method:</span><span className="meta-value">{paymentMethod}</span></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. Vehicle Table */}
+            <table className="blue-table">
+                <thead>
+                    <tr>
+                        <th>Registration</th>
+                        <th>Make</th>
+                        <th>Model</th>
+                        <th>Chassis Number</th>
+                        <th>Mileage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style={{ fontSize: '14px', fontWeight: '900' }}>{selectedVehicle?.registration || '-'}</td>
+                        <td>{selectedVehicle?.make || '-'}</td>
+                        <td>{selectedVehicle?.model || '-'}</td>
+                        <td style={{ fontSize: '10px' }}>{selectedVehicle?.vin || '-'}</td>
+                        <td style={{ fontSize: '14px', fontWeight: '900' }}>{mileage || '0'}</td>
+                    </tr>
+                    <tr>
+                        <th>Engine No</th>
+                        <th>Engine Code</th>
+                        <th>Engine CC</th>
+                        <th>Date Reg</th>
+                        <th>Colour</th>
+                    </tr>
+                    <tr>
+                        <td>{selectedVehicle?.engineNo || '-'}</td>
+                        <td>{selectedVehicle?.engineCode || '-'}</td>
+                        <td>{selectedVehicle?.engineCC || '-'}</td>
+                        <td>{selectedVehicle?.dateOfRegistration ? format(new Date(selectedVehicle.dateOfRegistration), "dd/MM/yyyy") : '-'}</td>
+                        <td>{selectedVehicle?.colour || '-'}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {/* 3.5 Technical Intelligence Reference (Internal/Print) */}
+            {(selectedVehicle as any)?.comprehensiveTechnicalData && (
+                <div style={{ marginBottom: '16px', padding: '10px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                        Technical Reference (Source: UKVD/SWS)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+                        <div>
+                            <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Engine Oil Spec</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.specification || 'Refer to Manual'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Oil Capacity</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.capacity || 'N/A'}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Aircon System</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700' }}>
+                                {(selectedVehicle as any).comprehensiveTechnicalData.aircon
+                                    ? `${(selectedVehicle as any).comprehensiveTechnicalData.aircon.type} (${(selectedVehicle as any).comprehensiveTechnicalData.aircon.quantity})`
+                                    : 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 4. Job Description */}
+            <div className="job-desc-section">
+                <h3>Job Description</h3>
+                <div className="job-list">
+                    {workDone.split('\n\n').map((block, bi) => {
+                        const lines = block.split('\n');
+                        const title = lines[0];
+                        const bullets = lines.slice(1);
+                        return (
+                            <div key={bi} className="job-item">
+                                <span className="job-title">{title}</span>
+                                {bullets.length > 0 && (
+                                    <ul className="job-bullets">
+                                        {bullets.map((b, li) => <li key={li}>{b.replace(/^[•\-\*]\s*/, '')}</li>)}
+                                    </ul>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* 5. Labor & Parts Tables */}
+            <div style={{ marginTop: '20px' }}>
+                {labourItems.filter(i => i.description).length > 0 && (
+                    <table className="line-items-table">
+                        <thead>
+                            <tr>
+                                <th style={{ backgroundColor: '#e7f1ff', color: '#1e3a8a', width: '50%' }}>Labour</th>
+                                <th style={{ textAlign: 'center' }}>Qty</th>
+                                <th style={{ textAlign: 'right' }}>Unit</th>
+                                <th style={{ textAlign: 'center' }}>D</th>
+                                <th style={{ textAlign: 'right', width: '20%' }}>Sub Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {labourItems.filter(i => i.description).map((item, id) => (
+                                <tr key={id}>
+                                    <td style={{ fontWeight: '500' }}>{item.description}</td>
+                                    <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                                    <td style={{ textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'center' }}>-</td>
+                                    <td style={{ textAlign: 'right', fontWeight: '700' }}>{item.subNet.toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+
+                {partsItems.filter(i => i.description).length > 0 && (
+                    <table className="line-items-table">
+                        <thead>
+                            <tr>
+                                <th style={{ backgroundColor: '#fff7ed', color: '#9a3412', width: '50%' }}>Parts</th>
+                                <th style={{ textAlign: 'center' }}>Qty</th>
+                                <th style={{ textAlign: 'right' }}>Unit</th>
+                                <th style={{ textAlign: 'center' }}>D</th>
+                                <th style={{ textAlign: 'right', width: '20%' }}>Sub Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {partsItems.filter(i => i.description).map((item, id) => (
+                                <tr key={id}>
+                                    <td style={{ fontWeight: '500' }}>{item.description}</td>
+                                    <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                                    <td style={{ textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'center' }}>-</td>
+                                    <td style={{ textAlign: 'right', fontWeight: '700' }}>{item.subNet.toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* 6. Totals Section */}
+            <div className="totals-block">
+                <div className="totals-row"><span className="meta-label">Labour</span><span className="meta-value">{totalLabour.toFixed(2)}</span></div>
+                <div className="totals-row"><span className="meta-label">Parts</span><span className="meta-value">{totalParts.toFixed(2)}</span></div>
+                {paintMaterials > 0 && (
+                    <div className="totals-row"><span className="meta-label">Paint & Mat.</span><span className="meta-value">{Number(paintMaterials).toFixed(2)}</span></div>
+                )}
+                <div className="totals-row totals-row-bold"><span className="meta-label">SubTotal</span><span className="meta-value">{subTotal.toFixed(2)}</span></div>
+                <div className="totals-row"><span className="meta-label">VAT (20%)</span><span className="meta-value">{vat.toFixed(2)}</span></div>
+                {excess > 0 && (
+                    <div className="totals-row" style={{ color: '#dc2626' }}><span className="meta-label">Less Excess</span><span className="meta-value">-{Number(excess).toFixed(2)}</span></div>
+                )}
+                <div className="grand-total-row">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', textTransform: 'uppercase' }}>Total</span>
+                        <span>£{totalGross.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div className="totals-row" style={{ border: 'none', marginTop: '4px' }}>
+                    <span className="meta-label" style={{ fontWeight: '800' }}>Balance</span>
+                    <span className="meta-value" style={{ fontSize: '14px' }}>£{totalGross.toFixed(2)}</span>
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ marginTop: 'auto', paddingTop: '40px', textAlign: 'center', fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Thank you for your business. ELI MOTORS LIMITED
+            </div>
+        </div>
+    );
+}));
 
 export default function DocumentGenerator() {
     const params = useParams();
@@ -258,7 +601,7 @@ export default function DocumentGenerator() {
     });
 
     const filteredVehicles = customerVehicles || [];
-    const handleAddLine = (type: "Labour" | "Part") => {
+    const handleAddLine = useCallback((type: "Labour" | "Part") => {
         const newItem: LineItem = {
             id: Math.random().toString(),
             description: "",
@@ -268,9 +611,9 @@ export default function DocumentGenerator() {
             itemType: type,
             hasVat: type === "Labour" || type === "Part" // Default to true for standard items
         };
-        if (type === "Labour") setLabourItems([...labourItems, newItem]);
-        else setPartsItems([...partsItems, newItem]);
-    };
+        if (type === "Labour") setLabourItems(prev => [...prev, newItem]);
+        else setPartsItems(prev => [...prev, newItem]);
+    }, []);
 
     const handleAddMOT = async () => {
         setIsAddingMOT(true);
@@ -284,7 +627,7 @@ export default function DocumentGenerator() {
             itemType: "Labour",
             hasVat: false // MOT is VAT exempt
         };
-        setLabourItems([...labourItems, motItem]);
+        setLabourItems(prev => [...prev, motItem]);
         setMotType("Full");
         setMotClass("4");
         setMotStatus("Pass");
@@ -308,12 +651,12 @@ export default function DocumentGenerator() {
         }
     };
 
-    const handleRemoveLine = (id: string, type: "Labour" | "Part") => {
-        if (type === "Labour") setLabourItems(labourItems.filter(item => item.id !== id));
-        else setPartsItems(partsItems.filter(item => item.id !== id));
-    };
+    const handleRemoveLine = useCallback((id: string, type: "Labour" | "Part") => {
+        if (type === "Labour") setLabourItems(prev => prev.filter(item => item.id !== id));
+        else setPartsItems(prev => prev.filter(item => item.id !== id));
+    }, []);
 
-    const handleUpdateLine = (id: string, type: "Labour" | "Part", field: keyof LineItem, value: any) => {
+    const handleUpdateLine = useCallback((id: string, type: "Labour" | "Part", field: keyof LineItem, value: any) => {
         const update = (items: LineItem[]) => items.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
@@ -324,9 +667,9 @@ export default function DocumentGenerator() {
             }
             return item;
         });
-        if (type === "Labour") setLabourItems(update(labourItems));
-        else setPartsItems(update(partsItems));
-    };
+        if (type === "Labour") setLabourItems(prev => update(prev));
+        else setPartsItems(prev => update(prev));
+    }, []);
 
     const { subTotal, vat, totalGross, totalLabour, totalParts } = useMemo(() => {
         const totalLabour = labourItems.reduce((acc, item) => acc + item.subNet, 0);
@@ -342,6 +685,16 @@ export default function DocumentGenerator() {
         const totalGross = subTotal + vat - Number(excess);
         return { subTotal, vat, totalGross, totalLabour, totalParts };
     }, [labourItems, partsItems, paintMaterials, excess]);
+
+    // Use deferred values for the heavy print section to keep typing snappy
+    const deferredWorkDone = useDeferredValue(workDone);
+    const deferredLabourItems = useDeferredValue(labourItems);
+    const deferredPartsItems = useDeferredValue(partsItems);
+    const deferredSubTotal = useDeferredValue(subTotal);
+    const deferredVat = useDeferredValue(vat);
+    const deferredTotalGross = useDeferredValue(totalGross);
+    const deferredTotalLabour = useDeferredValue(totalLabour);
+    const deferredTotalParts = useDeferredValue(totalParts);
 
     const printRef = useRef<HTMLDivElement>(null);
     const handlePrint = useReactToPrint({
@@ -838,106 +1191,24 @@ export default function DocumentGenerator() {
                                     <TableBody>
                                         {/* Labour Rows */}
                                         {labourItems.map((item) => (
-                                            <TableRow key={item.id} className="group hover:bg-blue-50/20 transition-colors h-11">
-                                                <TableCell className="bg-blue-500/10 w-[6px] p-0"></TableCell>
-                                                <TableCell className="py-1 pl-4">
-                                                    <Input
-                                                        placeholder="Labour description..."
-                                                        value={item.description}
-                                                        onChange={(e) => handleUpdateLine(item.id, "Labour", "description", e.target.value)}
-                                                        className="h-8 text-xs border-transparent focus:border-slate-200 bg-transparent"
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-1">
-                                                    <Input
-                                                        type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => handleUpdateLine(item.id, "Labour", "quantity", parseFloat(e.target.value) || 0)}
-                                                        className="h-8 text-xs text-center bg-transparent border-transparent"
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-1">
-                                                    <div className="relative">
-                                                        <span className="absolute left-1 top-1.5 text-[10px] text-muted-foreground">£</span>
-                                                        <Input
-                                                            type="number"
-                                                            value={item.unitPrice}
-                                                            onChange={(e) => handleUpdateLine(item.id, "Labour", "unitPrice", parseFloat(e.target.value) || 0)}
-                                                            className="h-8 text-xs text-right pl-4 bg-transparent border-transparent"
-                                                        />
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className={cn("h-6 w-10 text-[9px] font-bold tracking-tighter", item.hasVat ? "bg-blue-100 text-blue-700 hover:bg-blue-200" : "bg-slate-100 text-slate-400")}
-                                                        onClick={() => handleUpdateLine(item.id, "Labour", "hasVat", !item.hasVat)}
-                                                    >
-                                                        {item.hasVat ? "VAT" : "EX"}
-                                                    </Button>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-right text-xs font-mono font-bold">
-                                                    £{item.subNet.toFixed(2)}
-                                                </TableCell>
-                                                <TableCell className="py-1 pr-6 text-right">
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity" onClick={() => handleRemoveLine(item.id, "Labour")}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
+                                            <LineItemRow
+                                                key={item.id}
+                                                item={item}
+                                                type="Labour"
+                                                onUpdate={handleUpdateLine}
+                                                onRemove={handleRemoveLine}
+                                            />
                                         ))}
 
                                         {/* Parts Rows */}
                                         {partsItems.map((item) => (
-                                            <TableRow key={item.id} className="group hover:bg-orange-50/20 transition-colors h-11">
-                                                <TableCell className="bg-orange-500/10 w-[6px] p-0"></TableCell>
-                                                <TableCell className="py-1 pl-4">
-                                                    <Input
-                                                        placeholder="Part description..."
-                                                        value={item.description}
-                                                        onChange={(e) => handleUpdateLine(item.id, "Part", "description", e.target.value)}
-                                                        className="h-8 text-xs border-transparent focus:border-slate-200 bg-transparent"
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-1">
-                                                    <Input
-                                                        type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => handleUpdateLine(item.id, "Part", "quantity", parseFloat(e.target.value) || 0)}
-                                                        className="h-8 text-xs text-center bg-transparent border-transparent"
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-1">
-                                                    <div className="relative">
-                                                        <span className="absolute left-1 top-1.5 text-[10px] text-muted-foreground">£</span>
-                                                        <Input
-                                                            type="number"
-                                                            value={item.unitPrice}
-                                                            onChange={(e) => handleUpdateLine(item.id, "Part", "unitPrice", parseFloat(e.target.value) || 0)}
-                                                            className="h-8 text-xs text-right pl-4 bg-transparent border-transparent"
-                                                        />
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-center">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className={cn("h-6 w-10 text-[9px] font-bold tracking-tighter", item.hasVat ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-slate-100 text-slate-400")}
-                                                        onClick={() => handleUpdateLine(item.id, "Part", "hasVat", !item.hasVat)}
-                                                    >
-                                                        {item.hasVat ? "VAT" : "EX"}
-                                                    </Button>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-right text-xs font-mono font-bold">
-                                                    £{item.subNet.toFixed(2)}
-                                                </TableCell>
-                                                <TableCell className="py-1 pr-6 text-right">
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity" onClick={() => handleRemoveLine(item.id, "Part")}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
+                                            <LineItemRow
+                                                key={item.id}
+                                                item={item}
+                                                type="Part"
+                                                onUpdate={handleUpdateLine}
+                                                onRemove={handleRemoveLine}
+                                            />
                                         ))}
                                     </TableBody>
                                 </Table>
@@ -985,258 +1256,29 @@ export default function DocumentGenerator() {
 
             {/* Print Preview Hidden component */}
             <div style={{ display: "none" }}>
-                <div ref={printRef} className="p-10 text-[#1e293b] bg-white min-h-[29.7cm] flex flex-col font-sans" style={{ width: '210mm' }}>
-                    {/* CSS Overrides for print layout */}
-                    <style>{`
-                        @media print {
-                            body { -webkit-print-color-adjust: exact; margin: 0; }
-                            .print-container { padding: 40px; }
-                        }
-                        .invoice-container { background: white; }
-                        .header-row { display: flex; justify-content: space-between; margin-bottom: 24px; }
-                        .company-branding h1 { font-size: 32px; font-weight: 900; margin: 0; color: #000; letter-spacing: -0.01em; }
-                        .company-branding p { margin: 1px 0; font-size: 11px; color: #334155; font-weight: 500; }
-                        
-                        .client-doc-split { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; margin-bottom: 24px; }
-                        .client-address p { margin: 1px 0; font-size: 11px; }
-                        .client-name { font-size: 14px; font-weight: 800; margin-bottom: 4px !important; }
-
-                        .doc-meta-table { font-size: 12px; width: 100%; text-align: right; }
-                        .doc-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; }
-                        .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 2px; }
-                        .meta-label { color: #64748b; font-weight: 500; }
-                        .meta-value { font-weight: 700; color: #0f172a; }
-
-                        .blue-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
-                        .blue-table th { background-color: #e7f1ff !important; color: #1e3a8a !important; padding: 6px 10px; text-align: left; font-weight: 700; border: 1px solid #bfdbfe; text-transform: uppercase; }
-                        .blue-table td { padding: 8px 10px; border: 1px solid #bfdbfe; color: #1e293b; font-weight: 600; }
-
-                        .items-section-header { background-color: #3b82f6 !important; color: white !important; padding: 4px 12px; font-weight: 800; text-transform: uppercase; font-size: 11px; margin-bottom: 0; }
-                        .line-items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
-                        .line-items-table th { background-color: #f8fafc; padding: 6px 12px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; color: #475569; }
-                        .line-items-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
-                        .line-items-table .type-label { font-weight: 900; color: #1e3a8a; }
-
-                        .job-desc-section h3 { font-size: 12px; font-weight: 800; border-bottom: 2px solid #000; display: inline-block; margin-bottom: 12px; text-transform: uppercase; }
-                        .job-list { space-y: 1.5; font-size: 11px; }
-                        .job-item { margin-bottom: 12px; }
-                        .job-title { font-weight: 800; text-transform: uppercase; margin-bottom: 4px; display: block; }
-                        .job-bullets { margin-left: 16px; list-style-type: disc; }
-                        .job-bullets li { margin-bottom: 2px; }
-
-                        .totals-block { align-self: flex-end; width: 280px; margin-top: auto; }
-                        .totals-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 11px; border: 1px solid #f1f5f9; }
-                        .totals-row-bold { font-weight: 800; background-color: #f8fafc; border: 1px solid #e2e8f0; }
-                        .grand-total-row { background-color: #e7f1ff !important; color: #1e3a8a !important; font-size: 14px; font-weight: 900; padding: 8px; margin-top: 4px; border: 2px solid #3b82f6; }
-                    `}</style>
-
-                    {/* 1. Company Header */}
-                    <div className="header-row">
-                        <div className="company-branding">
-                            <h1>ELI MOTORS LIMITED</h1>
-                            <p>49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP</p>
-                            <p>020 8203 6449, Sales 07950 250970</p>
-                            <p>www.elimotors.co.uk</p>
-                            <p style={{ marginTop: '4px', fontWeight: '800' }}>VAT 330 9339 65</p>
-                        </div>
-                        <div>
-                            <img src="/logo.png" alt="Logo" className="h-24 w-auto" />
-                        </div>
-                    </div>
-
-                    {/* 2. Addresses & Document Meta */}
-                    <div className="client-doc-split">
-                        <div className="client-address">
-                            <p className="client-name">{selectedCustomer?.name || 'Customer Name'}</p>
-                            <p className="whitespace-pre-line">{selectedCustomer?.address || 'Customer Address'}</p>
-                            <p>{selectedCustomer?.postcode}</p>
-                            <p style={{ marginTop: '12px' }}>Tel: {selectedCustomer?.phone}</p>
-                        </div>
-                        <div>
-                            <div className="doc-meta-table">
-                                <div className="doc-title">{docType === 'SI' ? 'Invoice' : 'Estimate'}</div>
-                                <div style={{ fontSize: '20px', fontWeight: '900', marginBottom: '16px' }}>{docNo || 'DRAFT'}</div>
-                                <div className="meta-row"><span className="meta-label">{docType === 'SI' ? 'Invoice' : 'Estimate'} Date:</span><span className="meta-value">{dateCreated ? format(new Date(dateCreated), "dd/MM/yyyy") : '-'}</span></div>
-                                <div className="meta-row"><span className="meta-label">Account No:</span><span className="meta-value">{accountNo || `ELI${customerId || '00'}`}</span></div>
-                                <div className="meta-row"><span className="meta-label">Order Ref:</span><span className="meta-value">{orderRef}</span></div>
-                                <div className="meta-row"><span className="meta-label">Date of Work:</span><span className="meta-value">{dateCreated ? format(new Date(dateCreated), "dd/MM/yyyy") : '-'}</span></div>
-                                <div className="meta-row"><span className="meta-label">Payment Member:</span><span className="meta-value">-</span></div>
-                                <div className="meta-row"><span className="meta-label">Payment Method:</span><span className="meta-value">{paymentMethod}</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 3. Vehicle Table */}
-                    <table className="blue-table">
-                        <thead>
-                            <tr>
-                                <th>Registration</th>
-                                <th>Make</th>
-                                <th>Model</th>
-                                <th>Chassis Number</th>
-                                <th>Mileage</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style={{ fontSize: '14px', fontWeight: '900' }}>{selectedVehicle?.registration || '-'}</td>
-                                <td>{selectedVehicle?.make || '-'}</td>
-                                <td>{selectedVehicle?.model || '-'}</td>
-                                <td style={{ fontSize: '10px' }}>{selectedVehicle?.vin || '-'}</td>
-                                <td style={{ fontSize: '14px', fontWeight: '900' }}>{mileage || '0'}</td>
-                            </tr>
-                            <tr>
-                                <th>Engine No</th>
-                                <th>Engine Code</th>
-                                <th>Engine CC</th>
-                                <th>Date Reg</th>
-                                <th>Colour</th>
-                            </tr>
-                            <tr>
-                                <td>{selectedVehicle?.engineNo || '-'}</td>
-                                <td>{selectedVehicle?.engineCode || '-'}</td>
-                                <td>{selectedVehicle?.engineCC || '-'}</td>
-                                <td>{selectedVehicle?.dateOfRegistration ? format(new Date(selectedVehicle.dateOfRegistration), "dd/MM/yyyy") : '-'}</td>
-                                <td>{selectedVehicle?.colour || '-'}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    {/* 3.5 Technical Intelligence Reference (Internal/Print) */}
-                    {(selectedVehicle as any)?.comprehensiveTechnicalData && (
-                        <div style={{ marginBottom: '16px', padding: '10px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '4px' }}>
-                            <div style={{ fontSize: '10px', fontWeight: '900', color: '#0369a1', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>
-                                Technical Reference (Source: UKVD/SWS)
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
-                                <div>
-                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Engine Oil Spec</div>
-                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
-                                        {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.specification || 'Refer to Manual'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Oil Capacity</div>
-                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
-                                        {(selectedVehicle as any).comprehensiveTechnicalData.lubricants?.find?.((l: any) => l.description?.toLowerCase().includes('engine oil'))?.capacity || 'N/A'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '9px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Aircon System</div>
-                                    <div style={{ fontSize: '11px', fontWeight: '700' }}>
-                                        {(selectedVehicle as any).comprehensiveTechnicalData.aircon
-                                            ? `${(selectedVehicle as any).comprehensiveTechnicalData.aircon.type} (${(selectedVehicle as any).comprehensiveTechnicalData.aircon.quantity})`
-                                            : 'N/A'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 4. Job Description */}
-                    <div className="job-desc-section">
-                        <h3>Job Description</h3>
-                        <div className="job-list">
-                            {workDone.split('\n\n').map((block, bi) => {
-                                const lines = block.split('\n');
-                                const title = lines[0];
-                                const bullets = lines.slice(1);
-                                return (
-                                    <div key={bi} className="job-item">
-                                        <span className="job-title">{title}</span>
-                                        {bullets.length > 0 && (
-                                            <ul className="job-bullets">
-                                                {bullets.map((b, li) => <li key={li}>{b.replace(/^[•\-\*]\s*/, '')}</li>)}
-                                            </ul>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* 5. Labor & Parts Tables */}
-                    <div style={{ marginTop: '20px' }}>
-                        {labourItems.filter(i => i.description).length > 0 && (
-                            <table className="line-items-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ backgroundColor: '#e7f1ff', color: '#1e3a8a', width: '50%' }}>Labour</th>
-                                        <th style={{ textAlign: 'center' }}>Qty</th>
-                                        <th style={{ textAlign: 'right' }}>Unit</th>
-                                        <th style={{ textAlign: 'center' }}>D</th>
-                                        <th style={{ textAlign: 'right', width: '20%' }}>Sub Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {labourItems.filter(i => i.description).map((item, id) => (
-                                        <tr key={id}>
-                                            <td style={{ fontWeight: '500' }}>{item.description}</td>
-                                            <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                                            <td style={{ textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
-                                            <td style={{ textAlign: 'center' }}>-</td>
-                                            <td style={{ textAlign: 'right', fontWeight: '700' }}>{item.subNet.toFixed(2)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-
-                        {partsItems.filter(i => i.description).length > 0 && (
-                            <table className="line-items-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ backgroundColor: '#fff7ed', color: '#9a3412', width: '50%' }}>Parts</th>
-                                        <th style={{ textAlign: 'center' }}>Qty</th>
-                                        <th style={{ textAlign: 'right' }}>Unit</th>
-                                        <th style={{ textAlign: 'center' }}>D</th>
-                                        <th style={{ textAlign: 'right', width: '20%' }}>Sub Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {partsItems.filter(i => i.description).map((item, id) => (
-                                        <tr key={id}>
-                                            <td style={{ fontWeight: '500' }}>{item.description}</td>
-                                            <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                                            <td style={{ textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
-                                            <td style={{ textAlign: 'center' }}>-</td>
-                                            <td style={{ textAlign: 'right', fontWeight: '700' }}>{item.subNet.toFixed(2)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-
-                    {/* 6. Totals Section */}
-                    <div className="totals-block">
-                        <div className="totals-row"><span className="meta-label">Labour</span><span className="meta-value">{totalLabour.toFixed(2)}</span></div>
-                        <div className="totals-row"><span className="meta-label">Parts</span><span className="meta-value">{totalParts.toFixed(2)}</span></div>
-                        {paintMaterials > 0 && (
-                            <div className="totals-row"><span className="meta-label">Paint & Mat.</span><span className="meta-value">{Number(paintMaterials).toFixed(2)}</span></div>
-                        )}
-                        <div className="totals-row totals-row-bold"><span className="meta-label">SubTotal</span><span className="meta-value">{subTotal.toFixed(2)}</span></div>
-                        <div className="totals-row"><span className="meta-label">VAT (20%)</span><span className="meta-value">{vat.toFixed(2)}</span></div>
-                        {excess > 0 && (
-                            <div className="totals-row" style={{ color: '#dc2626' }}><span className="meta-label">Less Excess</span><span className="meta-value">-{Number(excess).toFixed(2)}</span></div>
-                        )}
-                        <div className="grand-total-row">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', textTransform: 'uppercase' }}>Total</span>
-                                <span>£{totalGross.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        <div className="totals-row" style={{ border: 'none', marginTop: '4px' }}>
-                            <span className="meta-label" style={{ fontWeight: '800' }}>Balance</span>
-                            <span className="meta-value" style={{ fontSize: '14px' }}>£{totalGross.toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div style={{ marginTop: 'auto', paddingTop: '40px', textAlign: 'center', fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                        Thank you for your business. ELI MOTORS LIMITED
-                    </div>
-                </div>
+                <PrintSection
+                    ref={printRef}
+                    selectedCustomer={selectedCustomer}
+                    docType={docType}
+                    docNo={docNo}
+                    dateCreated={dateCreated}
+                    accountNo={accountNo}
+                    orderRef={orderRef}
+                    paymentMethod={paymentMethod}
+                    selectedVehicle={selectedVehicle}
+                    mileage={mileage}
+                    workDone={deferredWorkDone}
+                    labourItems={deferredLabourItems}
+                    partsItems={deferredPartsItems}
+                    totalLabour={deferredTotalLabour}
+                    totalParts={deferredTotalParts}
+                    paintMaterials={paintMaterials}
+                    subTotal={deferredSubTotal}
+                    vat={deferredVat}
+                    excess={excess}
+                    totalGross={deferredTotalGross}
+                    customerId={customerId}
+                />
             </div>
         </DashboardLayout>
     );
