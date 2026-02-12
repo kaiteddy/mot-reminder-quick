@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -114,8 +114,8 @@ export default function DocumentGenerator() {
 
     // 0. Search for suggestions as the user types
     const { data: suggestions } = trpc.vehicles.search.useQuery(
-        { query: registration },
-        { enabled: registration.length >= 2 && !isLookingUp }
+        { query: debouncedReg },
+        { enabled: debouncedReg.length >= 2 && !isLookingUp }
     );
 
     // 2. If we have a vehicleId (from a link), use that lookup
@@ -328,17 +328,20 @@ export default function DocumentGenerator() {
         else setPartsItems(update(partsItems));
     };
 
-    const totalLabour = labourItems.reduce((acc, item) => acc + item.subNet, 0);
-    const totalParts = partsItems.reduce((acc, item) => acc + item.subNet, 0);
-    const subTotal = totalLabour + totalParts + Number(paintMaterials);
+    const { subTotal, vat, totalGross, totalLabour, totalParts } = useMemo(() => {
+        const totalLabour = labourItems.reduce((acc, item) => acc + item.subNet, 0);
+        const totalParts = partsItems.reduce((acc, item) => acc + item.subNet, 0);
+        const subTotal = totalLabour + totalParts + Number(paintMaterials);
 
-    // VAT is only calculated on items where hasVat is true
-    const vatLabour = labourItems.filter(i => i.hasVat).reduce((acc, item) => acc + item.subNet, 0) * 0.2;
-    const vatParts = partsItems.filter(i => i.hasVat).reduce((acc, item) => acc + item.subNet, 0) * 0.2;
-    const vatPaint = Number(paintMaterials) * 0.2; // Assuming paint always has VAT
-    const vat = vatLabour + vatParts + vatPaint;
+        // VAT is only calculated on items where hasVat is true
+        const vatLabour = labourItems.filter(i => i.hasVat).reduce((acc, item) => acc + item.subNet, 0) * 0.2;
+        const vatParts = partsItems.filter(i => i.hasVat).reduce((acc, item) => acc + item.subNet, 0) * 0.2;
+        const vatPaint = Number(paintMaterials) * 0.2; // Assuming paint always has VAT
+        const vat = vatLabour + vatParts + vatPaint;
 
-    const totalGross = subTotal + vat - Number(excess);
+        const totalGross = subTotal + vat - Number(excess);
+        return { subTotal, vat, totalGross, totalLabour, totalParts };
+    }, [labourItems, partsItems, paintMaterials, excess]);
 
     const printRef = useRef<HTMLDivElement>(null);
     const handlePrint = useReactToPrint({

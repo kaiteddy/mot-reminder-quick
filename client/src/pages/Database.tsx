@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -99,6 +99,16 @@ export default function Database() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"single" | "batch">("single");
   const [vehicleIdToDelete, setVehicleIdToDelete] = useState<number | null>(null);
+
+  // Debounced search term
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Service History State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -478,7 +488,7 @@ export default function Database() {
         return false;
       }
 
-      const termLower = searchTerm.toLowerCase();
+      const termLower = debouncedSearchTerm.toLowerCase();
       const termNormalized = termLower.replace(/\s+/g, '');
 
       const matchesSearch =
@@ -591,12 +601,12 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter]);
+  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter]);
 
   // Reset to page 1 when filters change
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, dateRangeFilter]);
+  }, [debouncedSearchTerm, motStatusFilter, dateRangeFilter]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
