@@ -51,6 +51,10 @@ function findImg(name: string): string | null {
   // Check multiple possible locations for image assets.
   // In production (Vercel), cwd or __dirname-relative paths work.
   // When compiled to a different dir, we search upward for templates/.
+
+  // ES Module workaround for __dirname
+  const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
   const candidates = [
     path.join(process.cwd(), 'templates', name),
     path.join(process.cwd(), name),
@@ -972,7 +976,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
   y += 30;
   doc.font('Helvetica-Oblique').fontSize(7).fillColor(MUTED);
   const now = new Date();
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const h = now.getHours(); const mi = now.getMinutes(); const s = now.getSeconds();
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
