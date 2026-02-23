@@ -229,7 +229,7 @@ export function ComprehensiveVehicleTable({
                                         />
                                     </TableCell>
                                     <TableCell className="font-mono font-bold whitespace-nowrap">
-                                        <Link href={`/v/${vehicle.registration}`}>
+                                        <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration)}`}>
                                             <span className="cursor-pointer hover:underline text-blue-600">
                                                 {vehicle.registration}
                                             </span>

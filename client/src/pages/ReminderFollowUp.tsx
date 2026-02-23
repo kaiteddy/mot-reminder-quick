@@ -289,7 +289,7 @@ export default function ReminderFollowUp() {
                                                         {sentDate.toLocaleDateString("en-GB")}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Link href={`/v/${log.registration}`}>
+                                                        <Link href={`/view-vehicle/${encodeURIComponent(log.registration || '')}`}>
                                                             <div className="font-mono font-bold cursor-pointer hover:underline text-blue-600">{log.registration}</div>
                                                         </Link>
                                                         <div className="text-[10px] text-muted-foreground uppercase">{log.vehicleMake} {log.vehicleModel}</div>

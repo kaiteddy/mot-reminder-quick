@@ -264,7 +264,7 @@ export default function GA4Scanner() {
                                                 </TableCell>
                                                 <TableCell className="font-mono font-semibold text-xs text-blue-600 hover:underline">
                                                     {item.vehicleId ? (
-                                                        <Link href={`/v/${item.registration}`}>
+                                                        <Link href={`/view-vehicle/${encodeURIComponent(item.registration)}`}>
                                                             {item.registration}
                                                         </Link>
                                                     ) : (
