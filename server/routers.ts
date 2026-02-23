@@ -678,7 +678,8 @@ export const appRouter = router({
             lastStatus: log ? log.status : null,
             liveMotExpiryDate: motExpiryDate,
             liveTaxDueDate: taxDueDate,
-            liveTaxStatus: taxStatus
+            liveTaxStatus: taxStatus,
+            lastChecked: v?.lastChecked || null
           };
         }));
 

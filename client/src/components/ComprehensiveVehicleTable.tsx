@@ -41,6 +41,7 @@ interface Vehicle {
     customerOptedOut: number | null;
     taxStatus: string | null;
     taxDueDate: Date | string | null;
+    lastChecked?: Date | string | null;
     lastReminderSent: Date | string | null;
     lastReminderStatus: string | null;
 }
@@ -266,11 +267,18 @@ export function ComprehensiveVehicleTable({
                                         <div className="truncate text-slate-500">{vehicle.model || ""}</div>
                                     </TableCell>
                                     <TableCell className="text-sm whitespace-nowrap">
-                                        {vehicle.motExpiryDate ? (
-                                            new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")
-                                        ) : (
-                                            <span className="text-slate-400 italic">No data</span>
-                                        )}
+                                        <div className="flex flex-col">
+                                            {vehicle.motExpiryDate ? (
+                                                <span className="font-medium">{new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")}</span>
+                                            ) : (
+                                                <span className="text-slate-400 italic">No data</span>
+                                            )}
+                                            {vehicle.lastChecked && (
+                                                <span className="text-[10px] text-muted-foreground mt-0.5">
+                                                    Updated: {new Date(vehicle.lastChecked).toLocaleDateString("en-GB")}
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="text-sm font-medium">
                                         {daysLeft !== null ? (

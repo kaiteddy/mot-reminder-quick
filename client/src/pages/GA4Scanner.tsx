@@ -297,12 +297,19 @@ export default function GA4Scanner() {
                                                         </div>
                                                     ) : "-"}
                                                 </TableCell>
-                                                <TableCell className="text-xs">
-                                                    {motExpiry ? (
-                                                        motString
-                                                    ) : (
-                                                        <span className="text-slate-400">No data</span>
-                                                    )}
+                                                <TableCell className="text-xs whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        {motExpiry ? (
+                                                            <span className="font-medium">{motString}</span>
+                                                        ) : (
+                                                            <span className="text-slate-400 italic">No data</span>
+                                                        )}
+                                                        {item.lastChecked && (
+                                                            <span className="text-[10px] text-muted-foreground mt-0.5">
+                                                                Updated: {new Date(item.lastChecked).toLocaleDateString("en-GB")}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     {status === 'expired' && <Badge variant="destructive" className="bg-red-500">Expired {Math.abs(daysLeft!)}d ago</Badge>}

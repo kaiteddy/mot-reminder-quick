@@ -468,6 +468,7 @@ export async function getAllVehiclesWithCustomers() {
         engineCode: vehicles.engineCode,
         colour: vehicles.colour,
         fuelType: vehicles.fuelType,
+        lastChecked: vehicles.lastChecked,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -1005,8 +1006,8 @@ export async function getServiceHistoryPDF(vehicleId: number) {
     const total = Number(d.totalGross) || 0;
     cumulative += total;
     const dateObj = d.dateCreated ? new Date(d.dateCreated) : new Date();
-    const months = ['January','February','March','April','May','June',
-      'July','August','September','October','November','December'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
     const dateStr = `${String(dateObj.getDate()).padStart(2, '0')} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
     const mileage = d.mileage ? `${Number(d.mileage).toLocaleString()} MI` : null;
 
