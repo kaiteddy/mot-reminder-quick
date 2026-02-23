@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, Search, XCircle, Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Link } from "wouter";
+import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 
 
 function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () => void }) {
@@ -83,6 +86,25 @@ export default function GA4Scanner() {
         return saved ? JSON.parse(saved) : [];
     });
     const [isScanning, setIsScanning] = useState(false);
+    const [selectedRegs, setSelectedRegs] = useState<Set<string>>(new Set());
+
+    const toggleSelectAll = () => {
+        if (selectedRegs.size === results.length) {
+            setSelectedRegs(new Set());
+        } else {
+            setSelectedRegs(new Set(results.map(r => r.registration)));
+        }
+    };
+
+    const toggleSelectRow = (reg: string) => {
+        const next = new Set(selectedRegs);
+        if (next.has(reg)) {
+            next.delete(reg);
+        } else {
+            next.add(reg);
+        }
+        setSelectedRegs(next);
+    };
 
     const scanMutation = trpc.reminders.scanFromImage.useMutation({
         onSuccess: (data) => {
@@ -120,8 +142,14 @@ export default function GA4Scanner() {
     // Add clear results button/functionality if needed
     const clearResults = () => {
         setResults([]);
+        setSelectedRegs(new Set());
         localStorage.removeItem("ga4_scan_results");
     };
+
+    // Extract valid vehicle IDs for the bulk refresh action
+    const selectedVehicleIds = Array.from(selectedRegs)
+        .map(reg => results.find(r => r.registration === reg)?.vehicleId)
+        .filter((id): id is number => id !== null && id !== undefined);
 
     return (
         <DashboardLayout>
@@ -150,14 +178,37 @@ export default function GA4Scanner() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Scan Results ({results.length} found)</CardTitle>
-                            <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
-                                Clear Results
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <MOTRefreshButton
+                                    vehicleIds={selectedVehicleIds}
+                                    disabled={selectedVehicleIds.length === 0}
+                                    variant="outline"
+                                    size="sm"
+                                    label="Refresh MOT"
+                                    onComplete={() => {
+                                        if (file) {
+                                            handleScan();
+                                            setSelectedRegs(new Set());
+                                        } else {
+                                            alert("Please upload the file and scan again to see the updated results");
+                                        }
+                                    }}
+                                />
+                                <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
+                                    Clear Results
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead className="w-[40px]">
+                                            <Checkbox
+                                                checked={results.length > 0 && selectedRegs.size === results.length}
+                                                onCheckedChange={toggleSelectAll}
+                                            />
+                                        </TableHead>
                                         <TableHead className="w-[120px]">Reg</TableHead>
                                         <TableHead className="w-[150px]">Customer</TableHead>
                                         <TableHead className="w-[140px]">Contact</TableHead>
@@ -205,14 +256,34 @@ export default function GA4Scanner() {
                                                     status === "due" ? "bg-orange-50" :
                                                         ""
                                             }>
-                                                <TableCell className="font-mono font-semibold text-xs">
-                                                    {item.registration}
+                                                <TableCell>
+                                                    <Checkbox
+                                                        checked={selectedRegs.has(item.registration)}
+                                                        onCheckedChange={() => toggleSelectRow(item.registration)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="font-mono font-semibold text-xs text-blue-600 hover:underline">
+                                                    {item.vehicleId ? (
+                                                        <Link href={`/vehicles/${item.registration}`}>
+                                                            {item.registration}
+                                                        </Link>
+                                                    ) : (
+                                                        item.registration
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="text-xs">
-                                                        <span className="font-medium text-blue-600 truncate max-w-[140px]" title={item.customerName || ""}>
-                                                            {item.customerName || "Unknown"}
-                                                        </span>
+                                                        {item.customerId ? (
+                                                            <Link href={`/customers/${item.customerId}`}>
+                                                                <span className="font-medium text-blue-600 hover:underline truncate max-w-[140px]" title={item.customerName || ""}>
+                                                                    {item.customerName || "Unknown"}
+                                                                </span>
+                                                            </Link>
+                                                        ) : (
+                                                            <span className="font-medium text-blue-600 truncate max-w-[140px]" title={item.customerName || ""}>
+                                                                {item.customerName || "Unknown"}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>

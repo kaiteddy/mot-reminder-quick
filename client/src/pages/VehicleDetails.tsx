@@ -258,7 +258,7 @@ export default function VehicleDetails() {
                     </Card>
 
                     {/* Rich Vehicle Intelligence */}
-                    {vehicle.comprehensiveTechnicalData && (
+                    {!!vehicle.comprehensiveTechnicalData && (
                         <Card className="md:col-span-3 border-primary/20 bg-primary/5">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-primary">

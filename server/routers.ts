@@ -672,6 +672,8 @@ export const appRouter = router({
             vehicleMake: make,
             vehicleModel: model,
             existsInDb: !!v,
+            vehicleId: v?.id || null,
+            customerId: v?.customerId || null,
             lastSent: log ? log.sentAt : null,
             lastStatus: log ? log.status : null,
             liveMotExpiryDate: motExpiryDate,
