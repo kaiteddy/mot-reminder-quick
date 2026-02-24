@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 
 function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () => void }) {
@@ -89,9 +90,12 @@ export default function GA4Scanner() {
     const [isScanning, setIsScanning] = useState(false);
     const [selectedRegs, setSelectedRegs] = useState<Set<string>>(new Set());
     const [isSendingBatch, setIsSendingBatch] = useState(false);
+    const [bookedDate, setBookedDate] = useState<string>("");
+    const [showBookedDialog, setShowBookedDialog] = useState(false);
 
     const createMutation = trpc.reminders.createManualReminder.useMutation();
     const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
+    const markBookedMutation = trpc.database.markMOTBooked.useMutation();
 
     const toggleSelectAll = () => {
         if (selectedRegs.size === results.length) {
@@ -151,6 +155,45 @@ export default function GA4Scanner() {
         localStorage.removeItem("ga4_scan_results");
     };
 
+    const handleMarkBooked = async () => {
+        if (!bookedDate) {
+            toast.error("Please select a date");
+            return;
+        }
+
+        const vehicleIds = Array.from(selectedRegs)
+            .map(reg => results.find(r => r.registration === reg)?.vehicleId)
+            .filter((id): id is number => id !== null && id !== undefined);
+
+        if (vehicleIds.length === 0) {
+            toast.error("No valid databased vehicles selected. Only vehicles in the database can be marked as booked.");
+            return;
+        }
+
+        try {
+            await markBookedMutation.mutateAsync({
+                vehicleIds,
+                date: bookedDate
+            });
+
+            // Update local state temporarily
+            const newResults = results.map(r => {
+                if (selectedRegs.has(r.registration) && r.vehicleId) {
+                    return { ...r, liveMotBookedDate: bookedDate };
+                }
+                return r;
+            });
+            setResults(newResults);
+            localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
+            setSelectedRegs(new Set());
+            setShowBookedDialog(false);
+            setBookedDate("");
+            toast.success(`Marked ${vehicleIds.length} vehicle(s) as booked.`);
+        } catch (e: any) {
+            toast.error(`Failed to mark as booked: ${e.message}`);
+        }
+    };
+
     const handleBulkSend = async () => {
         if (selectedRegs.size === 0) return;
 
@@ -158,6 +201,7 @@ export default function GA4Scanner() {
         const itemsToSend = results.filter(r => {
             const isSelected = selectedRegs.has(r.registration);
             const isSent = !!r.lastSent;
+            const isBooked = !!r.liveMotBookedDate;
 
             // Check MOT calculation
             const motExpiry = r.liveMotExpiryDate ? new Date(r.liveMotExpiryDate) : null;
@@ -166,11 +210,11 @@ export default function GA4Scanner() {
             const daysLeft = motExpiry ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : null;
             const isValidToSend = motExpiry && (daysLeft! > -300);
 
-            return isSelected && !isSent && isValidToSend;
+            return isSelected && !isSent && !isBooked && isValidToSend;
         });
 
         if (itemsToSend.length === 0) {
-            toast.error("No valid unsent MOTs selected to send.");
+            toast.error("No valid unbooked/unsent MOTs selected to send.");
             return;
         }
 
@@ -272,6 +316,42 @@ export default function GA4Scanner() {
                                     {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                                     Send Selected ({selectedRegs.size})
                                 </Button>
+                                <Dialog open={showBookedDialog} onOpenChange={setShowBookedDialog}>
+                                    <DialogTrigger asChild>
+                                        <Button
+                                            disabled={selectedRegs.size === 0}
+                                            variant="secondary"
+                                            size="sm"
+                                        >
+                                            Mark Booked ({selectedRegs.size})
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Mark MOT Booked</DialogTitle>
+                                            <DialogDescription>
+                                                Select the date the MOT is booked for. We won't send MOT reminders for these vehicles for this cycle.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4 py-4">
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium">Booked Date</label>
+                                                <Input
+                                                    type="date"
+                                                    value={bookedDate}
+                                                    onChange={(e) => setBookedDate(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                                            <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                                                {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                                Save Booking
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
                                 <MOTRefreshButton
                                     vehicleIds={selectedVehicleIds}
                                     disabled={selectedVehicleIds.length === 0}
@@ -339,9 +419,10 @@ export default function GA4Scanner() {
                                         const motString = motExpiry ? motExpiry.toLocaleDateString("en-GB") : 'No data';
                                         const isMotValid = status === 'valid' || status === 'due'; // Valid enough to create a reminder for (even if due soon)
 
+                                        const isBooked = !!item.liveMotBookedDate;
                                         const taxStatus = item.liveTaxStatus || 'Unknown';
                                         const isTaxed = taxStatus.toLowerCase() === 'taxed';
-                                        const canCreate = !isSent && motExpiry && (daysLeft! > -300); // Allow creating if expired reasonably recently or valid
+                                        const canCreate = !isSent && !isBooked && motExpiry && (daysLeft! > -300); // Allow creating if expired reasonably recently or valid
 
                                         return (
                                             <TableRow key={i} className={
@@ -402,6 +483,11 @@ export default function GA4Scanner() {
                                                                 Updated: {new Date(item.lastChecked).toLocaleDateString("en-GB")}
                                                             </span>
                                                         )}
+                                                        {item.liveMotBookedDate && (
+                                                            <span className="text-[10px] text-green-600 font-semibold mt-0.5">
+                                                                Booked: {new Date(item.liveMotBookedDate).toLocaleDateString("en-GB")}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -447,8 +533,8 @@ export default function GA4Scanner() {
                                                                 }}
                                                             />
                                                         ) : (
-                                                            <Button size="icon" variant="ghost" disabled title="Cannot create reminder (No MOT data or too old)">
-                                                                <XCircle className="w-4 h-4 text-slate-300" />
+                                                            <Button size="icon" variant="ghost" disabled title={isBooked ? "MOT already booked" : "Cannot create reminder (No MOT data or too old)"}>
+                                                                {isBooked ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-slate-300" />}
                                                             </Button>
                                                         )
                                                     )}

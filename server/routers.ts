@@ -679,7 +679,8 @@ export const appRouter = router({
             liveMotExpiryDate: motExpiryDate,
             liveTaxDueDate: taxDueDate,
             liveTaxStatus: taxStatus,
-            lastChecked: v?.lastChecked || null
+            lastChecked: v?.lastChecked || null,
+            liveMotBookedDate: v?.motBookedDate || null
           };
         }));
 
@@ -1706,6 +1707,28 @@ export const appRouter = router({
           skipped,
           errors: errors.slice(0, 10), // Return first 10 errors
         };
+      }),
+
+    markMOTBooked: publicProcedure
+      .input(z.object({
+        vehicleIds: z.array(z.number()),
+        date: z.string().nullable(), // The booked date, or null to clear it
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { inArray } = await import("drizzle-orm");
+
+        const db = await getDb();
+        if (!db) throw new Error("Database not connected");
+
+        if (input.vehicleIds.length === 0) return { success: true };
+
+        await db.update(vehicles)
+          .set({ motBookedDate: input.date ? new Date(input.date) : null })
+          .where(inArray(vehicles.id, input.vehicleIds));
+
+        return { success: true };
       }),
 
     // Diagnostic endpoint to investigate vehicles without MOT data

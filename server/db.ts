@@ -454,6 +454,7 @@ export async function getAllVehiclesWithCustomers() {
         make: vehicles.make,
         model: vehicles.model,
         motExpiryDate: vehicles.motExpiryDate,
+        motBookedDate: vehicles.motBookedDate,
         dateOfRegistration: vehicles.dateOfRegistration,
         customerId: vehicles.customerId,
         customerName: customers.name,

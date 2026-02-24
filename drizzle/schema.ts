@@ -61,6 +61,7 @@ export const vehicles = mysqlTable("vehicles", {
   taxStatus: varchar("taxStatus", { length: 20 }), // Taxed, Untaxed, SORN
   taxDueDate: timestamp("taxDueDate"),
   lastChecked: timestamp("lastChecked"),
+  motBookedDate: timestamp("motBookedDate"),
   customerId: int("customerId"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
