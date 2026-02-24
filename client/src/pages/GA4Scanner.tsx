@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
+import { toast } from "sonner";
 
 
 function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () => void }) {
@@ -87,6 +88,10 @@ export default function GA4Scanner() {
     });
     const [isScanning, setIsScanning] = useState(false);
     const [selectedRegs, setSelectedRegs] = useState<Set<string>>(new Set());
+    const [isSendingBatch, setIsSendingBatch] = useState(false);
+
+    const createMutation = trpc.reminders.createManualReminder.useMutation();
+    const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
 
     const toggleSelectAll = () => {
         if (selectedRegs.size === results.length) {
@@ -146,6 +151,84 @@ export default function GA4Scanner() {
         localStorage.removeItem("ga4_scan_results");
     };
 
+    const handleBulkSend = async () => {
+        if (selectedRegs.size === 0) return;
+
+        // Filter out items that have already been sent or are invalid
+        const itemsToSend = results.filter(r => {
+            const isSelected = selectedRegs.has(r.registration);
+            const isSent = !!r.lastSent;
+
+            // Check MOT calculation
+            const motExpiry = r.liveMotExpiryDate ? new Date(r.liveMotExpiryDate) : null;
+            const today = new Date();
+            const diffTime = motExpiry ? motExpiry.getTime() - today.getTime() : 0;
+            const daysLeft = motExpiry ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : null;
+            const isValidToSend = motExpiry && (daysLeft! > -300);
+
+            return isSelected && !isSent && isValidToSend;
+        });
+
+        if (itemsToSend.length === 0) {
+            toast.error("No valid unsent MOTs selected to send.");
+            return;
+        }
+
+        if (!confirm(`Create and send reminders for ${itemsToSend.length} selected vehicles?`)) return;
+
+        setIsSendingBatch(true);
+        let successCount = 0;
+        let failedCount = 0;
+        const newResults = [...results];
+
+        for (const item of itemsToSend) {
+            try {
+                const result = await createMutation.mutateAsync({
+                    registration: item.registration,
+                    dueDate: item.liveMotExpiryDate || item.dueDate,
+                    type: "MOT",
+                    customerName: item.customerName,
+                    customerPhone: item.customerPhone
+                });
+
+                if (result.customerPhone) {
+                    await sendMutation.mutateAsync({
+                        id: Number(result.reminderId),
+                        phoneNumber: result.customerPhone,
+                        customerName: result.customerName,
+                        registration: item.registration,
+                        messageType: "MOT"
+                    });
+
+                    successCount++;
+
+                    // Update local state temporarily
+                    const index = newResults.findIndex(r => r.registration === item.registration);
+                    if (index !== -1) {
+                        newResults[index] = { ...item, lastSent: new Date().toISOString() };
+                    }
+                } else {
+                    failedCount++;
+                }
+            } catch (error) {
+                console.error(error);
+                failedCount++;
+            }
+        }
+
+        setResults(newResults);
+        localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
+        setSelectedRegs(new Set());
+        setIsSendingBatch(false);
+
+        if (successCount > 0) {
+            toast.success(`Bulk Send Complete: ${successCount} sent.`);
+        }
+        if (failedCount > 0) {
+            toast.error(`Verification Failed for ${failedCount} items.`);
+        }
+    };
+
     // Extract valid vehicle IDs for the bulk refresh action
     const selectedVehicleIds = Array.from(selectedRegs)
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
@@ -179,6 +262,16 @@ export default function GA4Scanner() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Scan Results ({results.length} found)</CardTitle>
                             <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={handleBulkSend}
+                                    disabled={selectedRegs.size === 0 || isSendingBatch}
+                                    variant="default"
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                                    Send Selected ({selectedRegs.size})
+                                </Button>
                                 <MOTRefreshButton
                                     vehicleIds={selectedVehicleIds}
                                     disabled={selectedVehicleIds.length === 0}
