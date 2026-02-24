@@ -23,7 +23,8 @@ import {
     Clock,
     XCircle,
     AlertTriangle,
-    History
+    History,
+    CalendarCheck
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -54,6 +55,7 @@ interface ComprehensiveVehicleTableProps {
     onSelectOne: (id: number, checked: boolean) => void;
     onSendReminder: (vehicle: Vehicle) => void;
     onBookMOT: (vehicle: Vehicle) => void;
+    onMarkBooked?: (vehicle: Vehicle) => void;
     onDelete: (id: number) => void;
     isSendingBatch?: boolean;
     isDeletingBatch?: boolean;
@@ -73,6 +75,7 @@ export function ComprehensiveVehicleTable({
     onSelectOne,
     onSendReminder,
     onBookMOT,
+    onMarkBooked,
     onDelete,
     isSendingBatch = false,
     isDeletingBatch = false,
@@ -333,6 +336,18 @@ export function ComprehensiveVehicleTable({
                                                     </span>
                                                 )}
                                             </Button>
+                                            {onMarkBooked && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                    onClick={() => onMarkBooked(vehicle)}
+                                                >
+                                                    <span title="Mark as Booked">
+                                                        <CalendarCheck className="h-4 w-4" />
+                                                    </span>
+                                                </Button>
+                                            )}
                                             <Button
                                                 size="icon"
                                                 variant="ghost"

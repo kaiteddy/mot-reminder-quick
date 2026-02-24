@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send } from "lucide-react";
+import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,6 +92,8 @@ export default function GA4Scanner() {
     const [isSendingBatch, setIsSendingBatch] = useState(false);
     const [bookedDate, setBookedDate] = useState<string>("");
     const [showBookedDialog, setShowBookedDialog] = useState(false);
+    const [bookingTargetRegs, setBookingTargetRegs] = useState<Set<string> | null>(null);
+    const [searchTerm, setSearchTerm] = useState("");
 
     const createMutation = trpc.reminders.createManualReminder.useMutation();
     const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
@@ -161,7 +163,8 @@ export default function GA4Scanner() {
             return;
         }
 
-        const vehicleIds = Array.from(selectedRegs)
+        const targetRegs = bookingTargetRegs || selectedRegs;
+        const vehicleIds = Array.from(targetRegs)
             .map(reg => results.find(r => r.registration === reg)?.vehicleId)
             .filter((id): id is number => id !== null && id !== undefined);
 
@@ -177,15 +180,17 @@ export default function GA4Scanner() {
             });
 
             // Update local state temporarily
+            const targetSet = bookingTargetRegs || selectedRegs;
             const newResults = results.map(r => {
-                if (selectedRegs.has(r.registration) && r.vehicleId) {
+                if (targetSet.has(r.registration) && r.vehicleId) {
                     return { ...r, liveMotBookedDate: bookedDate };
                 }
                 return r;
             });
             setResults(newResults);
             localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
-            setSelectedRegs(new Set());
+            if (!bookingTargetRegs) setSelectedRegs(new Set()); // Only clear bulk selection if it was a bulk action
+            setBookingTargetRegs(null);
             setShowBookedDialog(false);
             setBookedDate("");
             toast.success(`Marked ${vehicleIds.length} vehicle(s) as booked.`);
@@ -278,6 +283,11 @@ export default function GA4Scanner() {
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
         .filter((id): id is number => id !== null && id !== undefined);
 
+    const sortedFilteredResults = results.filter(item =>
+        item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -303,73 +313,88 @@ export default function GA4Scanner() {
 
                 {results.length > 0 && (
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Scan Results ({results.length} found)</CardTitle>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    onClick={handleBulkSend}
-                                    disabled={selectedRegs.size === 0 || isSendingBatch}
-                                    variant="default"
-                                    size="sm"
-                                    className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                                    Send Selected ({selectedRegs.size})
-                                </Button>
-                                <Dialog open={showBookedDialog} onOpenChange={setShowBookedDialog}>
-                                    <DialogTrigger asChild>
-                                        <Button
-                                            disabled={selectedRegs.size === 0}
-                                            variant="secondary"
-                                            size="sm"
-                                        >
-                                            Mark Booked ({selectedRegs.size})
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>Mark MOT Booked</DialogTitle>
-                                            <DialogDescription>
-                                                Select the date the MOT is booked for. We won't send MOT reminders for these vehicles for this cycle.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <div className="space-y-4 py-4">
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Booked Date</label>
-                                                <Input
-                                                    type="date"
-                                                    value={bookedDate}
-                                                    onChange={(e) => setBookedDate(e.target.value)}
-                                                />
-                                            </div>
-                                        </div>
-                                        <DialogFooter>
-                                            <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
-                                            <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
-                                                {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                                Save Booking
+                        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <CardTitle>Scan Results ({sortedFilteredResults.length} of {results.length} found)</CardTitle>
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                                <div className="relative w-full sm:w-64 max-w-sm">
+                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search reg or name"
+                                        className="pl-8"
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                                    <Button
+                                        onClick={handleBulkSend}
+                                        disabled={selectedRegs.size === 0 || isSendingBatch}
+                                        variant="default"
+                                        size="sm"
+                                        className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                                        Send Selected ({selectedRegs.size})
+                                    </Button>
+                                    <Dialog open={showBookedDialog} onOpenChange={(open) => {
+                                        setShowBookedDialog(open);
+                                        if (!open) setBookingTargetRegs(null);
+                                    }}>
+                                        <DialogTrigger asChild>
+                                            <Button
+                                                disabled={selectedRegs.size === 0}
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => setBookingTargetRegs(null)}
+                                            >
+                                                Mark Booked ({selectedRegs.size})
                                             </Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
-                                <MOTRefreshButton
-                                    vehicleIds={selectedVehicleIds}
-                                    disabled={selectedVehicleIds.length === 0}
-                                    variant="outline"
-                                    size="sm"
-                                    label="Refresh MOT"
-                                    onComplete={() => {
-                                        if (file) {
-                                            handleScan();
-                                            setSelectedRegs(new Set());
-                                        } else {
-                                            alert("Please upload the file and scan again to see the updated results");
-                                        }
-                                    }}
-                                />
-                                <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
-                                    Clear Results
-                                </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Mark MOT Booked</DialogTitle>
+                                                <DialogDescription>
+                                                    Select the date the MOT is booked for. We won't send MOT reminders for these vehicles for this cycle.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-4 py-4">
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-medium">Booked Date</label>
+                                                    <Input
+                                                        type="date"
+                                                        value={bookedDate}
+                                                        onChange={(e) => setBookedDate(e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                                                <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                                                    {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                                    Save Booking
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                    <MOTRefreshButton
+                                        vehicleIds={selectedVehicleIds}
+                                        disabled={selectedVehicleIds.length === 0}
+                                        variant="outline"
+                                        size="sm"
+                                        label="Refresh MOT"
+                                        onComplete={() => {
+                                            if (file) {
+                                                handleScan();
+                                                setSelectedRegs(new Set());
+                                            } else {
+                                                alert("Please upload the file and scan again to see the updated results");
+                                            }
+                                        }}
+                                    />
+                                    <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
+                                        Clear Results
+                                    </Button>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -394,7 +419,7 @@ export default function GA4Scanner() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {results.map((item, i) => {
+                                    {sortedFilteredResults.map((item, i) => {
                                         const isSent = !!item.lastSent;
                                         // Handle date parsing safely - lastSent comes as string from JSON
                                         const sentDateObj = item.lastSent ? new Date(item.lastSent) : null;
@@ -522,16 +547,33 @@ export default function GA4Scanner() {
                                                         </Button>
                                                     ) : (
                                                         canCreate ? (
-                                                            <CreateReminderButton
-                                                                item={item}
-                                                                onSuccess={() => {
-                                                                    // Update local state to show 'sent' for this item temporarily
-                                                                    const newResults = [...results];
-                                                                    newResults[i] = { ...item, lastSent: new Date().toISOString() };
-                                                                    setResults(newResults);
-                                                                    localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
-                                                                }}
-                                                            />
+                                                            <div className="flex items-center gap-1">
+                                                                <CreateReminderButton
+                                                                    item={item}
+                                                                    onSuccess={() => {
+                                                                        // Update local state to show 'sent' for this item temporarily
+                                                                        const newResults = [...results];
+                                                                        const index = newResults.findIndex(r => r.registration === item.registration);
+                                                                        if (index !== -1) {
+                                                                            newResults[index] = { ...item, lastSent: new Date().toISOString() };
+                                                                            setResults(newResults);
+                                                                            localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="outline"
+                                                                    title="Mark as Booked"
+                                                                    disabled={!item.vehicleId}
+                                                                    onClick={() => {
+                                                                        setBookingTargetRegs(new Set([item.registration]));
+                                                                        setShowBookedDialog(true);
+                                                                    }}
+                                                                >
+                                                                    <CalendarCheck className="w-4 h-4 text-green-600" />
+                                                                </Button>
+                                                            </div>
                                                         ) : (
                                                             <Button size="icon" variant="ghost" disabled title={isBooked ? "MOT already booked" : "Cannot create reminder (No MOT data or too old)"}>
                                                                 {isBooked ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-slate-300" />}

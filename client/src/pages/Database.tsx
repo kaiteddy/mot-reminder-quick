@@ -39,6 +39,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogTrigger,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -99,6 +100,11 @@ export default function Database() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"single" | "batch">("single");
   const [vehicleIdToDelete, setVehicleIdToDelete] = useState<number | null>(null);
+
+  // Mark Booked State
+  const [showBookedDialog, setShowBookedDialog] = useState(false);
+  const [bookedDate, setBookedDate] = useState<string>("");
+  const [bookingTargetIds, setBookingTargetIds] = useState<Set<number> | null>(null);
 
   // Debounced search term
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
@@ -368,6 +374,38 @@ export default function Database() {
   };
 
   const deleteVehicleMutation = trpc.database.delete.useMutation();
+
+  const markBookedMutation = trpc.database.markMOTBooked.useMutation();
+
+  const handleMarkBooked = async () => {
+    if (!bookedDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    const targetIds = bookingTargetIds || selectedVehicleIds;
+    const vehicleIds = Array.from(targetIds);
+
+    if (vehicleIds.length === 0) {
+      toast.error("No vehicles selected to mark as booked.");
+      return;
+    }
+
+    try {
+      await markBookedMutation.mutateAsync({
+        vehicleIds,
+        date: bookedDate
+      });
+      toast.success(`Marked ${vehicleIds.length} vehicle(s) as booked.`);
+      setShowBookedDialog(false);
+      setBookedDate("");
+      if (!bookingTargetIds) setSelectedVehicleIds(new Set());
+      setBookingTargetIds(null);
+      refetch();
+    } catch (error: any) {
+      toast.error(`Failed to mark as booked: ${error.message}`);
+    }
+  };
 
   const handleDelete = (vehicleId: number) => {
     setVehicleIdToDelete(vehicleId);
@@ -1051,6 +1089,49 @@ export default function Database() {
                   )}
                 </Button>
               )}
+
+              {selectedVehicleIds.size > 0 && (
+                <Dialog open={showBookedDialog} onOpenChange={(open) => {
+                  setShowBookedDialog(open);
+                  if (!open) setBookingTargetIds(null);
+                }}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setBookingTargetIds(null)}
+                      className="animate-in fade-in slide-in-from-bottom-2"
+                    >
+                      Mark Booked ({selectedVehicleIds.size})
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Mark MOT Booked</DialogTitle>
+                      <DialogDescription>
+                        Select the date the MOT is booked for. We won't send MOT reminders for these vehicles for this cycle.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Booked Date</label>
+                        <Input
+                          type="date"
+                          value={bookedDate}
+                          onChange={(e) => setBookedDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                      <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                        {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Save Booking
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
             {selectedVehicleIds.size > 0 && (
               <Button
@@ -1087,6 +1168,10 @@ export default function Database() {
               onSelectOne={handleSelectOne}
               onSendReminder={handleSendReminder}
               onBookMOT={handleBookMOTClick}
+              onMarkBooked={(vehicle) => {
+                setBookingTargetIds(new Set([vehicle.id]));
+                setShowBookedDialog(true);
+              }}
               onDelete={handleDelete}
               isSendingBatch={isSendingBatch}
               isDeletingBatch={deleteVehicleMutation.isPending}
