@@ -560,7 +560,21 @@ export const appRouter = router({
         const content = response.choices[0]?.message?.content;
         if (!content) throw new Error("No response from LLM");
 
-        const parsed = JSON.parse(content as string);
+        let parsed;
+        try {
+          let cleanContent = content as string;
+          // Attempt to strip out markdown code blocks if the LLM wraps the response
+          if (cleanContent.startsWith("```json")) {
+            cleanContent = cleanContent.replace(/^```json\n/, "").replace(/\n```$/, "");
+          } else if (cleanContent.startsWith("```")) {
+            cleanContent = cleanContent.replace(/^```\n/, "").replace(/\n```$/, "");
+          }
+          parsed = JSON.parse(cleanContent);
+        } catch (e: any) {
+          console.error("Failed to parse LLM JSON response:", content, e.message);
+          throw new Error("Failed to parse extracted data from screenshot.");
+        }
+
         const extracted = parsed.reminders || [];
 
         // Normalize registrations
