@@ -132,8 +132,9 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
           smsFormData.append('MessagingServiceSid', messagingServiceSid);
         } else {
           // In the UK, we can use an Alphanumeric Sender ID directly without registration!
-          // This avoids country mismatch errors if the WhatsApp number is an international Twilio number
-          smsFormData.append('From', 'EliMotors');
+          // Note: Twilio enforces a strict maximum of 11 characters for these IDs. "ELI MOTORS LTD" is 14. 
+          // So we use "ELI MOTORS" (10 chars).
+          smsFormData.append('From', 'ELI MOTORS');
         }
 
         try {

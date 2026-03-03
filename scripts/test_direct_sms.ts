@@ -14,7 +14,8 @@ async function testDirectSMS() {
     const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID?.trim();
 
     // Use an Alphanumeric sender ID for standard text messages in the UK
-    let fromNumber = "EliMotors";
+    // Max 11 characters allowed by Twilio.
+    let fromNumber = "ELI MOTORS";
 
     if (!accountSid || !authToken) {
         console.error("Twilio credentials not configured.");
