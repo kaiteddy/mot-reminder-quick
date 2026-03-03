@@ -1977,6 +1977,101 @@ export const appRouter = router({
         const { getReminderLogsByCustomerId } = await import("./db");
         return getReminderLogsByCustomerId(input.customerId);
       }),
+
+    resendFailed: publicProcedure
+      .input(z.object({ logIds: z.array(z.number()) }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { sendSMS, generateFullMOTTemplateContent, generateFullServiceTemplateContent } = await import("./smsService");
+        const { reminderLogs } = await import("../drizzle/schema");
+        const { inArray, eq } = await import("drizzle-orm");
+
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        if (input.logIds.length === 0) return { success: true, count: 0 };
+
+        // Fetch the logs to resend
+        const logsToResend = await db
+          .select()
+          .from(reminderLogs)
+          .where(inArray(reminderLogs.id, input.logIds));
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const log of logsToResend) {
+          try {
+            let messageContent = log.messageContent;
+
+            // Re-generate message content if missing, using the original standard SMS templates
+            if (!messageContent && log.customerName && log.registration && log.dueDate) {
+              const daysLeft = Math.ceil((new Date(log.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              const isExpired = new Date(log.dueDate) < new Date();
+
+              if (log.messageType === "Service") {
+                messageContent = generateFullServiceTemplateContent({
+                  customerName: log.customerName,
+                  registration: log.registration,
+                  serviceDueDate: new Date(log.dueDate),
+                  daysLeft
+                });
+              } else {
+                messageContent = generateFullMOTTemplateContent({
+                  customerName: log.customerName,
+                  registration: log.registration,
+                  motExpiryDate: new Date(log.dueDate),
+                  isExpired,
+                  daysLeft
+                });
+              }
+            }
+
+            if (!messageContent) {
+              throw new Error("Missing message content to send");
+            }
+
+            // Dispatch specifically as standard SMS (we are bypassing WhatsApp on explicitly failed retries)
+            const result = await sendSMS({
+              to: log.recipient,
+              message: messageContent
+            });
+
+            if (result.success) {
+              // Update status to sent, update messageSid
+              await db.update(reminderLogs)
+                .set({
+                  status: "sent",
+                  messageSid: result.messageId || null,
+                  errorMessage: null,
+                  sentAt: new Date()
+                })
+                .where(eq(reminderLogs.id, log.id));
+              successCount++;
+            } else {
+              // Update failed error
+              await db.update(reminderLogs)
+                .set({
+                  errorMessage: result.error || "SMS API Error",
+                  failedAt: new Date()
+                })
+                .where(eq(reminderLogs.id, log.id));
+              failCount++;
+            }
+          } catch (e) {
+            failCount++;
+            console.error(`Failed resending log id ${log.id}`, e);
+            await db.update(reminderLogs)
+              .set({
+                errorMessage: e instanceof Error ? e.message : "Unknown error",
+                failedAt: new Date()
+              })
+              .where(eq(reminderLogs.id, log.id));
+          }
+        }
+
+        return { success: true, count: successCount, failCount };
+      }),
   }),
 
   // Customer Messages

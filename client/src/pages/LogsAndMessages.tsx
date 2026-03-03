@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { APP_TITLE, getLoginRoute } from "@/const";
 import { trpc } from "@/lib/trpc";
-import { AlertCircle, CheckCircle2, Check, CheckCheck, Clock, Loader2, MessageSquare, Send, XCircle, Search, Filter, Download } from "lucide-react";
+import { AlertCircle, CheckCircle2, Check, CheckCheck, Clock, Loader2, MessageSquare, Send, XCircle, Search, Filter, Download, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatHistory } from "@/components/ChatHistory";
 import { MessageDetailDialog } from "@/components/MessageDetailDialog";
@@ -20,6 +22,8 @@ export default function LogsAndMessages() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
+  const [selectedLogIds, setSelectedLogIds] = useState<number[]>([]);
+  const [isResending, setIsResending] = useState(false);
 
   // Auto-refresh logs every 10 seconds to show updated delivery status
   const { data: logs, isLoading: logsLoading } = trpc.logs.list.useQuery(undefined, {
@@ -58,6 +62,59 @@ export default function LogsAndMessages() {
       utils.messages.getUnreadCount.invalidate();
     },
   });
+
+  const resendFailedMutation = trpc.logs.resendFailed.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Successfully resent ${data.count} messages via Standard SMS.`);
+      if (data.failCount > 0) {
+        toast.error(`Failed to resend ${data.failCount} messages.`);
+      }
+      setSelectedLogIds([]);
+      utils.logs.list.invalidate();
+    },
+    onError: (error) => {
+      toast.error(`Error resending messages: ${error.message}`);
+    },
+    onSettled: () => {
+      setIsResending(false);
+    }
+  });
+
+  const handleResendSelected = () => {
+    if (selectedLogIds.length === 0) return;
+    setIsResending(true);
+    resendFailedMutation.mutate({ logIds: selectedLogIds });
+  };
+
+  const toggleSelectLog = (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    setSelectedLogIds(prev =>
+      prev.includes(id) ? prev.filter(logId => logId !== id) : [...prev, id]
+    );
+  };
+
+  const failedLogsInView = logs?.filter(log => {
+    // Status filter
+    if (statusFilter !== "all" && log.status !== statusFilter) return false;
+    // Type filter
+    if (typeFilter !== "all" && log.messageType !== typeFilter) return false;
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      if (!log.customerName?.toLowerCase().includes(query) &&
+        !log.registration?.toLowerCase().includes(query) &&
+        !log.recipient?.toLowerCase().includes(query)) return false;
+    }
+    return log.status === 'failed' || log.status === 'undelivered';
+  }) || [];
+
+  const toggleSelectAllFailed = () => {
+    if (selectedLogIds.length === failedLogsInView.length && failedLogsInView.length > 0) {
+      setSelectedLogIds([]);
+    } else {
+      setSelectedLogIds(failedLogsInView.map(log => log.id));
+    }
+  };
 
   const isLoading = logsLoading || messagesLoading;
 
@@ -293,10 +350,28 @@ export default function LogsAndMessages() {
                   Track all sent WhatsApp reminders and their delivery status
                 </CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={exportToCSV} disabled={!filteredLogs || filteredLogs.length === 0}>
-                <Download className="w-4 h-4 mr-2" />
-                Export CSV
-              </Button>
+              <div className="flex gap-2">
+                {selectedLogIds.length > 0 && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleResendSelected}
+                    disabled={isResending}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isResending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Resend {selectedLogIds.length} via SMS
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={exportToCSV} disabled={!filteredLogs || filteredLogs.length === 0}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export CSV
+                </Button>
+              </div>
             </div>
 
             {/* Filters */}
@@ -352,6 +427,14 @@ export default function LogsAndMessages() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[50px]">
+                        <Checkbox
+                          checked={failedLogsInView.length > 0 && selectedLogIds.length === failedLogsInView.length}
+                          onCheckedChange={toggleSelectAllFailed}
+                          disabled={failedLogsInView.length === 0}
+                          aria-label="Select all failed logs"
+                        />
+                      </TableHead>
                       <TableHead>Sent At</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Vehicle</TableHead>
@@ -364,67 +447,81 @@ export default function LogsAndMessages() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredLogs.map((log) => (
-                      <TableRow
-                        key={log.id}
-                        className={`cursor-pointer hover:bg-slate-50 transition-colors ${log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''}`}
-                        onClick={() => setSelectedLog(log)}
-                      >
-                        <TableCell className="font-medium text-sm whitespace-nowrap">
-                          {new Date(log.sentAt).toLocaleString("en-GB", {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </TableCell>
-                        <TableCell>{log.customerName || "—"}</TableCell>
-                        <TableCell className="font-mono text-sm">{log.registration || "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{log.messageType}</Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm whitespace-nowrap">{log.recipient}</TableCell>
-                        <TableCell>{getStatusBadge(log.status, log.readAt, log.deliveredAt)}</TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          {log.deliveredAt ? (
-                            <span className="text-green-600 dark:text-green-400">
-                              {new Date(log.deliveredAt).toLocaleString("en-GB", {
-                                day: '2-digit',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          {log.readAt ? (
-                            <span className="text-blue-600 dark:text-blue-400">
-                              {new Date(log.readAt).toLocaleString("en-GB", {
-                                day: '2-digit',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {log.errorMessage ? (
-                            <div className="flex items-start gap-1 max-w-xs">
-                              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                              <span className="text-xs text-destructive line-clamp-2">{log.errorMessage}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredLogs.map((log) => {
+                      const isFailed = log.status === 'failed' || log.status === 'undelivered';
+                      return (
+                        <TableRow
+                          key={log.id}
+                          className={`cursor-pointer hover:bg-slate-50 transition-colors ${log.status === 'failed' ? 'bg-red-50 dark:bg-red-950/20' : ''} ${selectedLogIds.includes(log.id) ? 'bg-blue-50/50' : ''}`}
+                          onClick={() => setSelectedLog(log)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {isFailed ? (
+                              <Checkbox
+                                checked={selectedLogIds.includes(log.id)}
+                                onCheckedChange={() => { }}
+                                onClick={(e: React.MouseEvent) => toggleSelectLog(e, log.id)}
+                              />
+                            ) : (
+                              <span className="w-4 h-4 inline-block"></span>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium text-sm whitespace-nowrap">
+                            {new Date(log.sentAt).toLocaleString("en-GB", {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </TableCell>
+                          <TableCell>{log.customerName || "—"}</TableCell>
+                          <TableCell className="font-mono text-sm">{log.registration || "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{log.messageType}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm whitespace-nowrap">{log.recipient}</TableCell>
+                          <TableCell>{getStatusBadge(log.status, log.readAt, log.deliveredAt)}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">
+                            {log.deliveredAt ? (
+                              <span className="text-green-600 dark:text-green-400">
+                                {new Date(log.deliveredAt).toLocaleString("en-GB", {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">
+                            {log.readAt ? (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                {new Date(log.readAt).toLocaleString("en-GB", {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {log.errorMessage ? (
+                              <div className="flex items-start gap-1 max-w-xs">
+                                <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+                                <span className="text-xs text-destructive line-clamp-2">{log.errorMessage}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
