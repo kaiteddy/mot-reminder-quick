@@ -28,6 +28,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Smartphone, QrCode } from "lucide-react";
 
 export default function VehicleDetails() {
     // We try to get the registration from the URL parameter "registration"
@@ -98,6 +107,8 @@ export default function VehicleDetails() {
     const motInfo = formatMOTDate(vehicle.motExpiryDate);
     const motBadge = getMOTStatusBadge(motInfo);
 
+    const jobSummaryUrl = `${window.location.protocol}//${window.location.host}/mobile/job/${vehicle.id}`;
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -136,12 +147,60 @@ export default function VehicleDetails() {
                             Fetch Tech Specs
                         </Button>
                     </div>
-                    <Link href={`/mot-check?reg=${vehicle.registration}`}>
-                        <Button variant="outline">
-                            <ShieldCheck className="w-4 h-4 mr-2" />
-                            Live DVSA Check
-                        </Button>
-                    </Link>
+                    <div className="flex flex-col gap-2 min-w-[200px]">
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button className="bg-green-600 hover:bg-green-700 text-white font-bold">
+                                    <Smartphone className="w-4 h-4 mr-2" />
+                                    Send to Mobile
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md text-center flex flex-col items-center">
+                                <DialogHeader>
+                                    <DialogTitle className="text-center">Job Summary Mobile Link</DialogTitle>
+                                    <DialogDescription className="text-center">
+                                        Scan this QR code with your phone camera to instantly open the job summary and navigation directions.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="p-6 bg-white rounded-xl shadow-inner border border-slate-100 flex items-center justify-center">
+                                    {/* Using a widely available QR code generation API without needing explicit package install */}
+                                    <img
+                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(jobSummaryUrl)}`}
+                                        alt="QR Code"
+                                        className="w-48 h-48 pointer-events-none"
+                                    />
+                                </div>
+                                <div className="flex w-full gap-2 mt-4">
+                                    <Button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(jobSummaryUrl);
+                                            toast.success("Mobile link copied to clipboard");
+                                        }}
+                                        variant="outline"
+                                        className="flex-1"
+                                    >
+                                        <Copy className="w-4 h-4 mr-2" />
+                                        Copy Link
+                                    </Button>
+                                    <Button
+                                        onClick={() => {
+                                            window.open(`sms:?&body=${encodeURIComponent(`Job Summary: ${jobSummaryUrl}`)}`, '_blank');
+                                        }}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        <Smartphone className="w-4 h-4 mr-2" />
+                                        Send iMessage/SMS
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                        <Link href={`/mot-check?reg=${vehicle.registration}`}>
+                            <Button variant="outline" className="w-full">
+                                <ShieldCheck className="w-4 h-4 mr-2" />
+                                Live DVSA Check
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

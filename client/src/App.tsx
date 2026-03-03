@@ -25,6 +25,7 @@ import Login from "./pages/Login";
 import ReminderFollowUp from "./pages/ReminderFollowUp";
 import DocumentGenerator from "./pages/DocumentGenerator";
 import TechnicalHub from "./pages/TechnicalHub";
+import MobileJobSummary from "./pages/MobileJobSummary";
 
 function Router() {
   return (
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/generate-document" component={DocumentGenerator} />
       <Route path="/technical-hub" component={TechnicalHub} />
       <Route path="/system-status" component={SystemStatus} />
+      <Route path="/mobile/job/:id" component={MobileJobSummary} />
 
       {/* 404 Fallback */}
       <Route component={NotFound} />
