@@ -18,6 +18,7 @@ interface SendSMSParams {
   useTemplate?: boolean;
   templateSid?: string;
   templateVariables?: Record<string, string>;
+  fallbackMessage?: string;
 }
 
 interface SendSMSResult {
@@ -109,6 +110,64 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[SMS Service] Twilio API Error:', JSON.stringify(errorData, null, 2));
+
+      // Verify if it's a WhatsApp error (e.g. 63003 - Channel could not find route, 63016 - outside window)
+      const isWhatsAppRoutingError =
+        errorData.code === 63003 ||
+        errorData.code === 63016 ||
+        errorData.code === 63024 ||
+        (errorData.message && errorData.message.toLowerCase().includes('whatsapp')) ||
+        (errorData.message && errorData.message.toLowerCase().includes('channel could not find route'));
+
+      if (isWhatsAppRoutingError && params.useTemplate) {
+        console.log(`[SMS Service] Target number does not have WhatsApp or is unreachable via WhatsApp. Falling back to standard SMS...`);
+
+        const fallbackBody = params.fallbackMessage || params.message || 'You have a new message. Please contact Eli Motors.';
+        const smsFormData = new URLSearchParams({
+          To: normalizedTo, // SMS expects normal phone number without whatsapp: prefix
+          Body: fallbackBody,
+        });
+
+        if (messagingServiceSid) {
+          smsFormData.append('MessagingServiceSid', messagingServiceSid);
+        } else {
+          // Remove 'whatsapp:' from the From number to use standard SMS capability
+          smsFormData.append('From', config.whatsappNumber.replace('whatsapp:', ''));
+        }
+
+        try {
+          const smsResponse = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64")}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: smsFormData.toString(),
+          });
+
+          if (!smsResponse.ok) {
+            const smsErrorData = await smsResponse.json();
+            console.error('[SMS Service] Twilio Fallback SMS API Error:', JSON.stringify(smsErrorData, null, 2));
+            return {
+              success: false,
+              error: `Twilio Fallback Error: ${smsErrorData.message || smsResponse.statusText}`,
+            };
+          }
+
+          const smsData = await smsResponse.json();
+          return {
+            success: true,
+            messageId: smsData.sid,
+          };
+        } catch (smsError) {
+          console.error("Error sending Fallback SMS:", smsError);
+          return {
+            success: false,
+            error: smsError instanceof Error ? smsError.message : "Unknown error during fallback",
+          };
+        }
+      }
+
       const sidHint = config.accountSid ? `${config.accountSid.substring(0, 6)}...` : "missing";
       const tokenHint = config.authToken ? `${config.authToken.substring(0, 3)}...` : "missing";
       return {
@@ -243,11 +302,20 @@ export async function sendMOTReminderWithTemplate(params: {
     '4': daysLeft.toString(),
   };
 
+  const fallbackMessage = generateFullMOTTemplateContent({
+    customerName: params.customerName,
+    registration: params.registration,
+    motExpiryDate: params.motExpiryDate,
+    isExpired,
+    daysLeft,
+  });
+
   return sendSMS({
     to: params.to,
     useTemplate: true,
     templateSid,
     templateVariables,
+    fallbackMessage,
   });
 }
 
@@ -294,6 +362,13 @@ export async function sendServiceReminderWithTemplate(params: {
     year: "numeric",
   });
 
+  const fallbackMessage = generateFullServiceTemplateContent({
+    customerName: params.customerName,
+    registration: params.registration,
+    serviceDueDate: params.serviceDueDate,
+    daysLeft,
+  });
+
   return sendSMS({
     to: params.to,
     useTemplate: true,
@@ -304,6 +379,7 @@ export async function sendServiceReminderWithTemplate(params: {
       '3': formattedDate,
       '4': daysLeft.toString(),
     },
+    fallbackMessage,
   });
 }
 
