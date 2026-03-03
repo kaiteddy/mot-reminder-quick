@@ -309,19 +309,19 @@ export default function VehicleDetails() {
                                             </p>
                                         </Link>
                                     </div>
-                                    {customer.phone && (
+                                    {!!customer.phone && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
                                             <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
                                         </div>
                                     )}
-                                    {customer.email && (
+                                    {!!customer.email && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
                                             <p className="text-sm font-bold truncate">{customer.email as string}</p>
                                         </div>
                                     )}
-                                    {customer.optedOut && (
+                                    {!!customer.optedOut && (
                                         <Badge variant="destructive" className="w-full justify-center">
                                             <AlertCircle className="w-3 h-3 mr-2" />
                                             Opted Out
