@@ -1,5 +1,6 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
+import { generateFullMOTTemplateContent } from '../server/smsService';
 
 // Load environment variables
 const projectDir = resolve(process.cwd());
@@ -24,9 +25,20 @@ async function testDirectSMS() {
 
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
 
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 10);
+
+    const formattedBody = generateFullMOTTemplateContent({
+        customerName: "Mr Ahmad Rahman",
+        registration: "AB12 CDE",
+        motExpiryDate: expiryDate,
+        isExpired: false,
+        daysLeft: 10
+    });
+
     const formData = new URLSearchParams({
         To: testNumber,
-        Body: "Hello! This is a test standard SMS directly from the Eli Motors system. If you receive this as a normal text message (iMessage/SMS), the routing is working perfectly!",
+        Body: formattedBody,
     });
 
     if (messagingServiceSid) {
