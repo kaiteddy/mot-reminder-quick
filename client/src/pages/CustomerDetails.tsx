@@ -22,6 +22,43 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
+    const results: { type: 'phone' | 'email', value: string, tag: string, original: string }[] = [];
+
+    const processString = (input: string, defaultType: 'phone' | 'email') => {
+        // Split by common separators: comma, slash, semicolon, newline, or multiple spaces that might act as separators
+        const items = input.split(/[,/;\n]|\s{2,}/).map(s => s.trim()).filter(Boolean);
+
+        for (const item of items) {
+            // Check for email first
+            const emailMatch = item.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            if (emailMatch) {
+                let tag = item.replace(emailMatch[0], '').trim();
+                tag = tag.replace(/^[-()|:]+|[-()|:]+$/g, '').trim();
+                results.push({ type: 'email', value: emailMatch[0], tag, original: item });
+                continue;
+            }
+
+            // Check for phone (at least 8 contiguous-ish digits/spaces/plus/hyphens ending and starting with digit or plus)
+            const phoneMatch = item.match(/(\+?\d[\d\s\-\(\)]{6,}\d)/);
+            if (phoneMatch) {
+                let tag = item.replace(phoneMatch[0], '').trim();
+                tag = tag.replace(/^[-()|:]+|[-()|:]+$/g, '').trim();
+                results.push({ type: 'phone', value: phoneMatch[0].trim(), tag, original: item });
+                continue;
+            }
+
+            // Fallback
+            results.push({ type: defaultType, value: item, tag: "", original: item });
+        }
+    };
+
+    if (emailStr) processString(emailStr, 'email');
+    if (phoneStr) processString(phoneStr, 'phone');
+
+    return results;
+};
+
 export default function CustomerDetails() {
     const [match, params] = useRoute("/customers/:id");
     const id = params?.id ? parseInt(params.id) : 0;
@@ -117,6 +154,7 @@ export default function CustomerDetails() {
     }
 
     const { customer, vehicles, reminders } = data;
+    const parsedContacts = parseContacts(customer.email as string | null, customer.phone as string | null);
 
     return (
         <DashboardLayout>
@@ -211,21 +249,40 @@ export default function CustomerDetails() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {customer.email && (
-                                <div className="flex items-center gap-2 text-sm">
-                                    <Mail className="w-4 h-4 text-muted-foreground" />
-                                    <a href={`mailto:${customer.email}`} className="hover:underline">
-                                        {customer.email}
-                                    </a>
+                            {parsedContacts.length > 0 ? (
+                                <div className="space-y-4">
+                                    {parsedContacts.map((contact, idx) => (
+                                        <div key={idx} className="flex items-center gap-3 text-sm flex-wrap bg-slate-50/50 p-2 rounded-lg border border-slate-100">
+                                            {contact.type === 'email' ? (
+                                                <div className="bg-blue-100 p-1.5 rounded-md text-blue-600 shrink-0">
+                                                    <Mail className="w-4 h-4" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-green-100 p-1.5 rounded-md text-green-600 shrink-0">
+                                                    <Phone className="w-4 h-4" />
+                                                </div>
+                                            )}
+
+                                            <a
+                                                href={contact.type === 'email'
+                                                    ? `mailto:${contact.value}`
+                                                    : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
+                                                }
+                                                className="hover:underline font-medium text-slate-800"
+                                            >
+                                                {contact.value}
+                                            </a>
+
+                                            {contact.tag && (
+                                                <Badge variant="secondary" className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200/50 ml-auto">
+                                                    {contact.tag}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
-                            {customer.phone && (
-                                <div className="flex items-center gap-2 text-sm">
-                                    <Phone className="w-4 h-4 text-muted-foreground" />
-                                    <a href={`tel:${customer.phone}`} className="hover:underline font-mono">
-                                        {customer.phone}
-                                    </a>
-                                </div>
+                            ) : (
+                                <div className="text-sm text-muted-foreground italic">No contact information available</div>
                             )}
                             {(customer.address || customer.postcode) && (
                                 <div className="flex items-start gap-2 text-sm">
