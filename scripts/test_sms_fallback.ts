@@ -1,10 +1,10 @@
 import { sendMOTReminderWithTemplate } from '../server/smsService';
-import { loadEnvConfig } from '@next/env';
+import { config } from 'dotenv';
 import { resolve } from 'path';
 
 // Load environment variables
-const projectDir = resolve(__dirname, '..');
-loadEnvConfig(projectDir);
+const projectDir = resolve(process.cwd());
+config({ path: resolve(projectDir, '.env') });
 
 async function testSMSFallback() {
     console.log('Testing SMS Fallback feature...');
