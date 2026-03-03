@@ -274,23 +274,44 @@ export default function TechnicalHub() {
                                             </CardTitle>
                                             <CardDescription className="text-blue-700/70 font-medium">Original Manufacturer Specification</CardDescription>
                                         </CardHeader>
-                                        <CardContent className="p-6">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {techData.lubricants?.map?.((item: any, i: number) => (
-                                                    <div key={i} className="group bg-slate-50 p-4 rounded-xl border border-slate-200 hover:border-blue-300 transition-all hover:shadow-md">
-                                                        <p className="text-[10px] font-black uppercase text-slate-500 mb-1 group-hover:text-blue-600">{item.description || "Fluid Specification"}</p>
-                                                        <p className="font-bold text-slate-900 leading-tight">{item.specification || "See technical note"}</p>
-                                                        {item.capacity && (
-                                                            <div className="mt-3 inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-black">
-                                                                CAPACITY: {item.capacity} LITRES
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )) || (
-                                                        <div className="col-span-2 text-center py-8 italic text-muted-foreground">
-                                                            No lubricant data returned from API
-                                                        </div>
-                                                    )}
+                                        <CardContent className="p-0 overflow-hidden rounded-b-xl">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-blue-50/50 text-blue-900 uppercase text-[10px] font-black border-y border-blue-100">
+                                                        <tr>
+                                                            <th className="px-6 py-4">Component / System</th>
+                                                            <th className="px-6 py-4">Specification / Grade</th>
+                                                            <th className="px-6 py-4 text-right whitespace-nowrap">Capacity (Liters)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-blue-50">
+                                                        {techData.lubricants?.map?.((item: any, i: number) => (
+                                                            <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                                                                <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
+                                                                    {item.description || "Fluid Specification"}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-slate-600 font-medium min-w-[200px]">
+                                                                    {item.specification || "See technical note"}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                    {item.capacity ? (
+                                                                        <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-black">
+                                                                            {item.capacity} L
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 font-medium text-xs">N/A</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        )) || (
+                                                                <tr>
+                                                                    <td colSpan={3} className="text-center py-8 italic text-muted-foreground">
+                                                                        No lubricant data returned from API
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </CardContent>
                                     </Card>
