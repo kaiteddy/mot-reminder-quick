@@ -19,7 +19,8 @@ import {
     Wrench,
     AlertTriangle,
     Copy,
-    Check
+    Check,
+    ExternalLink
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -249,20 +250,39 @@ export default function VehicleDetails() {
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">VIN</p>
-                                    <div className="flex items-center gap-2 group">
-                                        <p className="font-mono text-xs font-bold truncate max-w-[120px]">{vehicle.vin || "-"}</p>
+                                    <div className="flex items-center gap-1 group">
+                                        <p className="font-mono text-xs font-bold truncate max-w-[120px]" title={vehicle.vin || ""}>{vehicle.vin || "-"}</p>
                                         {vehicle.vin && (
-                                            <button
-                                                onClick={() => {
-                                                    if (vehicle.vin) {
-                                                        navigator.clipboard.writeText(vehicle.vin);
-                                                        toast.success("VIN copied to clipboard");
-                                                    }
-                                                }}
-                                                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
-                                            >
-                                                <Copy className="w-3 h-3" />
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={() => {
+                                                        if (vehicle.vin) {
+                                                            navigator.clipboard.writeText(vehicle.vin);
+                                                            toast.success("VIN copied to clipboard");
+                                                        }
+                                                    }}
+                                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                                                    title="Copy VIN"
+                                                >
+                                                    <Copy className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (vehicle.vin) {
+                                                            navigator.clipboard.writeText(vehicle.vin);
+                                                            toast.success("VIN copied and opening PartSouq...");
+                                                            // Small delay to allow toast to render before opening tab
+                                                            setTimeout(() => {
+                                                                window.open(`https://partsouq.com/en/search/all?q=${vehicle.vin}`, "_blank");
+                                                            }, 300);
+                                                        }
+                                                    }}
+                                                    className="p-1 hover:bg-muted rounded text-blue-500 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                    title="Search on PartSouq"
+                                                >
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
