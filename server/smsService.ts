@@ -131,8 +131,9 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
         if (messagingServiceSid) {
           smsFormData.append('MessagingServiceSid', messagingServiceSid);
         } else {
-          // Remove 'whatsapp:' from the From number to use standard SMS capability
-          smsFormData.append('From', config.whatsappNumber.replace('whatsapp:', ''));
+          // In the UK, we can use an Alphanumeric Sender ID directly without registration!
+          // This avoids country mismatch errors if the WhatsApp number is an international Twilio number
+          smsFormData.append('From', 'EliMotors');
         }
 
         try {
