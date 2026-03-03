@@ -99,6 +99,19 @@ export default function TechnicalHub() {
 
     const techData = vehicle?.comprehensiveTechnicalData as any;
 
+    const uniqueLubricants = Array.isArray(techData?.lubricants)
+        ? techData.lubricants.filter(
+            (item: any, index: number, self: any[]) =>
+                index ===
+                self.findIndex(
+                    (t) =>
+                        t.description === item.description &&
+                        t.specification === item.specification &&
+                        t.capacity === item.capacity
+                )
+        )
+        : [];
+
     return (
         <DashboardLayout>
             <div className="space-y-6 max-w-6xl mx-auto">
@@ -285,31 +298,33 @@ export default function TechnicalHub() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-blue-50">
-                                                        {techData.lubricants?.map?.((item: any, i: number) => (
-                                                            <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                                                                <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
-                                                                    {item.description || "Fluid Specification"}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-slate-600 font-medium min-w-[200px]">
-                                                                    {item.specification || "See technical note"}
-                                                                </td>
-                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
-                                                                    {item.capacity ? (
-                                                                        <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-black">
-                                                                            {item.capacity} L
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-slate-400 font-medium text-xs">N/A</span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        )) || (
-                                                                <tr>
-                                                                    <td colSpan={3} className="text-center py-8 italic text-muted-foreground">
-                                                                        No lubricant data returned from API
+                                                        {uniqueLubricants.length > 0 ? (
+                                                            uniqueLubricants.map((item: any, i: number) => (
+                                                                <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                                                                    <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
+                                                                        {item.description || "Fluid Specification"}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-slate-600 font-medium min-w-[200px]">
+                                                                        {item.specification || "See technical note"}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                        {item.capacity ? (
+                                                                            <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-black">
+                                                                                {item.capacity} L
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 font-medium text-xs">N/A</span>
+                                                                        )}
                                                                     </td>
                                                                 </tr>
-                                                            )}
+                                                            ))
+                                                        ) : (
+                                                            <tr>
+                                                                <td colSpan={3} className="text-center py-8 italic text-muted-foreground">
+                                                                    No lubricant data returned from API
+                                                                </td>
+                                                            </tr>
+                                                        )}
                                                     </tbody>
                                                 </table>
                                             </div>
