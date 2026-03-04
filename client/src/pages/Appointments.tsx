@@ -48,7 +48,11 @@ export default function Appointments() {
         endTime: "09:45",
         notes: "",
         status: "scheduled",
-        appointmentDate: dateStr
+        appointmentDate: dateStr,
+        customerName: "",
+        customerPhone: "",
+        vehicleMake: "",
+        vehicleModel: ""
     });
 
     // State to hold optimistic drag-and-drop list state
@@ -108,7 +112,11 @@ export default function Appointments() {
             endTime: "09:45",
             notes: "",
             status: "scheduled",
-            appointmentDate: dateStr
+            appointmentDate: dateStr,
+            customerName: "",
+            customerPhone: "",
+            vehicleMake: "",
+            vehicleModel: ""
         });
         setSelectedAppointment(null);
     };
@@ -216,20 +224,20 @@ export default function Appointments() {
         }
         createMutation.mutate({
             ...formData,
-            appointmentDate: dateStr,
+            appointmentDate: formData.appointmentDate ? new Date(formData.appointmentDate).toISOString() : new Date().toISOString(),
             vehicleId: vehicleLookup?.vehicle?.id || undefined,
             customerId: vehicleLookup?.customer?.id || undefined,
+            customerName: formData.customerName,
+            customerPhone: formData.customerPhone,
+            vehicleMake: formData.vehicleMake,
+            vehicleModel: formData.vehicleModel,
         });
     };
 
     const handleSaveEdit = () => {
         if (!selectedAppointment) return;
 
-        // If the date is changed, adjust the Date object
-        let parsedDate = selectedAppointment.appointmentDate;
-        if (formData.appointmentDate !== format(new Date(selectedAppointment.appointmentDate), "yyyy-MM-dd")) {
-            parsedDate = new Date(formData.appointmentDate).toISOString();
-        }
+        const parsedDate = new Date(formData.appointmentDate || dateStr).toISOString();
 
         updateDetailsMutation.mutate({
             id: selectedAppointment.id,
@@ -238,7 +246,13 @@ export default function Appointments() {
             endTime: formData.endTime,
             notes: formData.notes,
             status: formData.status as any,
-            appointmentDate: parsedDate
+            appointmentDate: parsedDate,
+            vehicleId: vehicleLookup?.vehicle?.id || undefined,
+            customerId: vehicleLookup?.customer?.id || undefined,
+            customerName: formData.customerName,
+            customerPhone: formData.customerPhone,
+            vehicleMake: formData.vehicleMake,
+            vehicleModel: formData.vehicleModel,
         });
     };
 
@@ -267,7 +281,11 @@ export default function Appointments() {
             endTime: appt.endTime || "",
             notes: appt.notes || "",
             status: appt.status || "scheduled",
-            appointmentDate: appt.appointmentDate ? format(new Date(appt.appointmentDate), "yyyy-MM-dd") : dateStr
+            appointmentDate: appt.appointmentDate ? format(new Date(appt.appointmentDate), "yyyy-MM-dd") : dateStr,
+            customerName: appt.customer?.name || "",
+            customerPhone: appt.customer?.phone || "",
+            vehicleMake: appt.vehicle?.make || "",
+            vehicleModel: appt.vehicle?.model || ""
         });
         setIsEditOpen(true);
     };
@@ -347,8 +365,16 @@ export default function Appointments() {
                                                                             <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
                                                                                 <div className="flex items-center justify-between mb-1.5 cursor-pointer">
                                                                                     {appt.registration ? (
-                                                                                        <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm">
-                                                                                            {appt.registration}
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm flex items-center">
+                                                                                                {appt.registration}
+                                                                                            </div>
+                                                                                            {appt.vehicle?.make && (
+                                                                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center">
+                                                                                                    <Car className="w-3.5 h-3.5 mr-1 opacity-70" />
+                                                                                                    {appt.vehicle.make}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </div>
                                                                                     ) : (
                                                                                         <div className="font-medium text-sm italic text-muted-foreground">No Reg</div>
@@ -510,6 +536,38 @@ export default function Appointments() {
                             </div>
                         )}
 
+                        {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
+                            <div className="col-start-2 col-span-3 -mt-2 space-y-2 border border-slate-200 dark:border-slate-800 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1 col-span-2">New Vehicle Details</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                        placeholder="Make"
+                                        className="h-8 text-xs"
+                                        value={formData.vehicleMake}
+                                        onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Model"
+                                        className="h-8 text-xs"
+                                        value={formData.vehicleModel}
+                                        onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Customer Name"
+                                        className="h-8 text-xs col-span-2"
+                                        value={formData.customerName}
+                                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Customer Phone"
+                                        className="h-8 text-xs col-span-2"
+                                        value={formData.customerPhone}
+                                        onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="bay" className="text-right">Bay/Ramp</Label>
                             <Select value={formData.bayId} onValueChange={(v) => setFormData({ ...formData, bayId: v })}>
@@ -622,6 +680,38 @@ export default function Appointments() {
                                 onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
                             />
                         </div>
+
+                        {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
+                            <div className="col-start-2 col-span-3 -mt-2 space-y-2 border border-slate-200 dark:border-slate-800 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1 col-span-2">Link Vehicle Details</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                        placeholder="Make"
+                                        className="h-8 text-xs"
+                                        value={formData.vehicleMake}
+                                        onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Model"
+                                        className="h-8 text-xs"
+                                        value={formData.vehicleModel}
+                                        onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Customer Name"
+                                        className="h-8 text-xs col-span-2"
+                                        value={formData.customerName}
+                                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                    />
+                                    <Input
+                                        placeholder="Customer Phone"
+                                        className="h-8 text-xs col-span-2"
+                                        value={formData.customerPhone}
+                                        onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-time" className="text-right">Time</Label>
                             {formData.bayId === 'mot-bay' ? (

@@ -2336,17 +2336,50 @@ export const appRouter = router({
         startTime: z.string().optional(),
         endTime: z.string().optional(),
         notes: z.string().optional(),
-        orderIndex: z.number().default(0)
+        orderIndex: z.number().default(0),
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+        vehicleMake: z.string().optional(),
+        vehicleModel: z.string().optional()
       }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
-        const { appointments } = await import("../drizzle/schema");
+        const { appointments, vehicles, customers } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
+        let autogenCustomerId = input.customerId;
+        let autogenVehicleId = input.vehicleId;
+
+        // Auto-create customer if missing but data provided
+        if (!autogenCustomerId && input.customerName) {
+          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone });
+          autogenCustomerId = custRes[0].insertId;
+        }
+
+        // Auto-create vehicle if missing but data provided
+        if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
+          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          if (existingVehicles.length > 0) {
+            autogenVehicleId = existingVehicles[0].id;
+            if (autogenCustomerId && !existingVehicles[0].customerId) {
+              await db.update(vehicles).set({ customerId: autogenCustomerId }).where(eq(vehicles.id, autogenVehicleId));
+            }
+          } else {
+            const vehRes = await db.insert(vehicles).values({
+              registration: input.registration,
+              make: input.vehicleMake,
+              model: input.vehicleModel,
+              customerId: autogenCustomerId
+            });
+            autogenVehicleId = vehRes[0].insertId;
+          }
+        }
+
         const result = await db.insert(appointments).values({
-          vehicleId: input.vehicleId,
-          customerId: input.customerId,
+          vehicleId: autogenVehicleId,
+          customerId: autogenCustomerId,
           registration: input.registration,
           bayId: input.bayId,
           appointmentDate: new Date(input.appointmentDate),
@@ -2398,14 +2431,46 @@ export const appRouter = router({
         startTime: z.string().optional(),
         endTime: z.string().optional(),
         registration: z.string().optional(),
-        appointmentDate: z.string().optional()
+        appointmentDate: z.string().optional(),
+        vehicleId: z.number().optional(),
+        customerId: z.number().optional(),
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+        vehicleMake: z.string().optional(),
+        vehicleModel: z.string().optional()
       }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
-        const { appointments } = await import("../drizzle/schema");
+        const { appointments, vehicles, customers } = await import("../drizzle/schema");
         const { eq } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+
+        let autogenCustomerId = input.customerId;
+        let autogenVehicleId = input.vehicleId;
+
+        if (!autogenCustomerId && input.customerName) {
+          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone });
+          autogenCustomerId = custRes[0].insertId;
+        }
+
+        if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
+          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          if (existingVehicles.length > 0) {
+            autogenVehicleId = existingVehicles[0].id;
+            if (autogenCustomerId && !existingVehicles[0].customerId) {
+              await db.update(vehicles).set({ customerId: autogenCustomerId }).where(eq(vehicles.id, autogenVehicleId));
+            }
+          } else {
+            const vehRes = await db.insert(vehicles).values({
+              registration: input.registration,
+              make: input.vehicleMake,
+              model: input.vehicleModel,
+              customerId: autogenCustomerId
+            });
+            autogenVehicleId = vehRes[0].insertId;
+          }
+        }
 
         const updateData: any = {
           status: input.status,
@@ -2415,6 +2480,9 @@ export const appRouter = router({
           registration: input.registration,
           updatedAt: new Date()
         };
+
+        if (autogenVehicleId) updateData.vehicleId = autogenVehicleId;
+        if (autogenCustomerId) updateData.customerId = autogenCustomerId;
 
         if (input.appointmentDate) {
           updateData.appointmentDate = new Date(input.appointmentDate);
