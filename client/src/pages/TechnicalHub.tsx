@@ -156,8 +156,17 @@ export default function TechnicalHub() {
                                 <AlertCircle className="w-12 h-12 text-amber-500" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold uppercase">Vehicle Not Found In Database</h3>
-                                <p className="text-muted-foreground">Make sure the vehicle has been searched in the main system or MOT history first.</p>
+                                <h3 className="text-xl font-bold uppercase">Vehicle Not Yet In System</h3>
+                                <p className="text-muted-foreground mb-4">You can still fetch technical specs directly from the cloud.</p>
+                                <Button
+                                    size="lg"
+                                    className="bg-amber-600 hover:bg-amber-700 font-bold tracking-wide mt-2"
+                                    onClick={() => fetchTechData.mutate({ registration: searchQuery })}
+                                    disabled={fetchTechData.isPending}
+                                >
+                                    {fetchTechData.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Zap className="w-5 h-5 mr-2 fill-white" />}
+                                    PULL TECHNICAL INTELLIGENCE
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>

@@ -663,12 +663,28 @@ export async function updateVehicle(id: number, data: any) {
 export async function saveTechnicalData(registration: string, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(vehicles)
-    .set({
+
+  const existing = await db.select().from(vehicles).where(eq(vehicles.registration, registration)).limit(1);
+
+  if (existing.length > 0) {
+    await db.update(vehicles)
+      .set({
+        comprehensiveTechnicalData: data,
+        swsLastUpdated: new Date()
+      })
+      .where(eq(vehicles.registration, registration));
+  } else {
+    const make = data?.vehicleIdentity?.manufacturer || data?.basic?.make;
+    const model = data?.vehicleIdentity?.model || data?.basic?.model;
+
+    await db.insert(vehicles).values({
+      registration,
+      make: make || "Unknown",
+      model: model || "Unknown",
       comprehensiveTechnicalData: data,
       swsLastUpdated: new Date()
-    })
-    .where(eq(vehicles.registration, registration));
+    });
+  }
 }
 
 export async function getLatestVehicleMileage(vehicleId: number) {
