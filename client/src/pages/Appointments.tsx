@@ -24,6 +24,16 @@ const BAYS = [
     { id: "waitlist", name: "Waitlist / Unassigned" }
 ];
 
+const MOT_SLOTS = [
+    { id: "08:30", label: "08:30 - 09:30", start: "08:30", end: "09:30" },
+    { id: "09:30", label: "09:30 - 10:30", start: "09:30", end: "10:30" },
+    { id: "11:00", label: "11:00 - 12:00", start: "11:00", end: "12:00" },
+    { id: "12:00", label: "12:00 - 13:00", start: "12:00", end: "13:00" },
+    { id: "14:00", label: "14:00 - 15:00", start: "14:00", end: "15:00" },
+    { id: "15:00", label: "15:00 - 16:00", start: "15:00", end: "16:00" },
+    { id: "16:00", label: "16:00 - 17:00", start: "16:00", end: "17:00" }
+];
+
 export default function Appointments() {
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -115,6 +125,13 @@ export default function Appointments() {
             return;
         }
 
+        const getRealBayId = (dndId: string) => dndId.startsWith('mot-bay|') ? 'mot-bay' : dndId;
+        const getSlotTime = (dndId: string) => dndId.startsWith('mot-bay|') ? dndId.split('|')[1] : null;
+
+        const targetDroppableId = destination.droppableId;
+        const targetBayId = getRealBayId(targetDroppableId);
+        const slotTime = getSlotTime(targetDroppableId);
+
         // Optimistically update local array
         const draggedApptId = parseInt(draggableId.replace("appt-", ""));
         const draggedAppt = localAppointments.find(a => a.id === draggedApptId);
@@ -123,11 +140,32 @@ export default function Appointments() {
         // Remove from source array and mutate bay ID
         let newAppts = localAppointments.filter(a => a.id !== draggedApptId);
 
-        // Sort destination list to find insertion point
-        const destList = newAppts.filter(a => a.bayId === destination.droppableId).sort((a, b) => a.orderIndex - b.orderIndex);
+        const updatedAppt = { ...draggedAppt, bayId: targetBayId };
 
-        // Re-insert into full array with updated order
-        const updatedAppt = { ...draggedAppt, bayId: destination.droppableId };
+        // Auto-assign start and end times if dropped into a specific slot
+        if (slotTime && slotTime !== 'other') {
+            updatedAppt.startTime = slotTime;
+            const slotObj = MOT_SLOTS.find(s => s.start === slotTime);
+            if (slotObj) updatedAppt.endTime = slotObj.end;
+        }
+
+        // Determine destination list (filter by the exact sub-droppable if MOT)
+        let destList;
+        if (targetBayId === 'mot-bay') {
+            const destSlotTime = slotTime || 'other';
+            destList = newAppts.filter(a => {
+                if (a.bayId !== 'mot-bay') return false;
+                const matchesStandard = MOT_SLOTS.some(s => s.start === a.startTime);
+                return destSlotTime === 'other' ? !matchesStandard : a.startTime === destSlotTime;
+            });
+        } else {
+            destList = newAppts.filter(a => a.bayId === targetBayId);
+        }
+
+        // Sort it
+        destList.sort((a, b) => a.orderIndex - b.orderIndex);
+
+        // Re-insert into destList array with updated order
         destList.splice(destination.index, 0, updatedAppt);
 
         // Normalize order index
@@ -135,23 +173,34 @@ export default function Appointments() {
             item.orderIndex = index;
         });
 
-        // Reconstruct full list
-        const otherBaysList = newAppts.filter(a => a.bayId !== destination.droppableId);
-        setLocalAppointments([...otherBaysList, ...destList]);
+        // Reconstruct full list (careful not to duplicate items if they were in the same bay already)
+        const destItemIds = new Set(destList.map(a => a.id));
+        const remainingAppts = newAppts.filter(a => !destItemIds.has(a.id));
+        setLocalAppointments([...remainingAppts, ...destList]);
 
-        // Send backend mutation
+        // Send backend mutation for drag position
         updatePosMutation.mutate({
             id: draggedApptId,
-            bayId: destination.droppableId,
+            bayId: targetBayId,
             orderIndex: destination.index
         });
 
-        // Update all order indexes in backend to prevent desync
+        // If time changed, trigger updateDetails silently
+        if (slotTime && slotTime !== 'other') {
+            updateDetailsMutation.mutate({
+                id: draggedApptId,
+                startTime: updatedAppt.startTime,
+                endTime: updatedAppt.endTime,
+                status: updatedAppt.status
+            });
+        }
+
+        // Update other order indexes in destination list
         destList.forEach((item, index) => {
             if (item.id !== draggedApptId) {
                 updatePosMutation.mutate({
                     id: item.id,
-                    bayId: item.bayId,
+                    bayId: targetBayId,
                     orderIndex: index
                 });
             }
@@ -249,9 +298,79 @@ export default function Appointments() {
                                     .filter(a => a.bayId === bay.id)
                                     .sort((a, b) => a.orderIndex - b.orderIndex);
 
+                                const renderDraggableList = (droppableId: string, list: any[]) => (
+                                    <Droppable droppableId={droppableId}>
+                                        {(provided: any, snapshot: any) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.droppableProps}
+                                                className={`flex-1 p-2 overflow-y-auto min-h-[50px] transition-colors ${snapshot.isDraggingOver ? "bg-slate-100/80 dark:bg-slate-800/80 shadow-inner" : ""}`}
+                                            >
+                                                {list.map((appt, index) => (
+                                                    <Draggable key={`appt-${appt.id}`} draggableId={`appt-${appt.id}`} index={index}>
+                                                        {(provided: any, snapshot: any) => (
+                                                            <div
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                className={`mb-2 ${snapshot.isDragging ? "z-50 opacity-90 scale-105" : ""}`}
+                                                            >
+                                                                <Card className={`group cursor-default border shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 ${getStatusColor(appt.status)}`}>
+                                                                    <CardContent className="p-3">
+                                                                        <div className="flex items-start gap-2">
+                                                                            <div
+                                                                                {...provided.dragHandleProps}
+                                                                                className="mt-1 flex-shrink-0 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors"
+                                                                            >
+                                                                                <GripVertical className="w-4 h-4" />
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
+                                                                                <div className="flex items-center justify-between mb-1.5 cursor-pointer">
+                                                                                    {appt.registration ? (
+                                                                                        <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm">
+                                                                                            {appt.registration}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="font-medium text-sm italic text-muted-foreground">No Reg</div>
+                                                                                    )}
+                                                                                    {appt.startTime && (
+                                                                                        <div className="flex items-center text-xs font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1.5 py-0.5 rounded">
+                                                                                            <Clock className="w-3 h-3 mr-1 opacity-70" />
+                                                                                            {appt.startTime}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                {appt.notes && (
+                                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-2 leading-relaxed cursor-pointer">
+                                                                                        {appt.notes}
+                                                                                    </p>
+                                                                                )}
+                                                                                {appt.status !== 'scheduled' && (
+                                                                                    <Badge variant="outline" className="mt-2 text-[10px] uppercase tracking-wider py-0 px-1">
+                                                                                        {appt.status.replace("_", " ")}
+                                                                                    </Badge>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </CardContent>
+                                                                </Card>
+                                                            </div>
+                                                        )}
+                                                    </Draggable>
+                                                ))}
+                                                {provided.placeholder}
+                                                {list.length === 0 && !snapshot.isDraggingOver && (
+                                                    <div className="h-full flex items-center justify-center text-slate-400">
+                                                        <p className="text-[11px] font-medium px-4 text-center border-2 border-dashed border-transparent hover:border-slate-200 py-2 rounded-lg opacity-60">Drop here</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Droppable>
+                                );
+
                                 return (
                                     <div key={bay.id} className="flex-shrink-0 w-80 flex flex-col bg-slate-50/50 dark:bg-slate-900/50 border rounded-xl overflow-hidden">
-                                        <div className="px-4 py-3 bg-slate-100 dark:bg-slate-900 border-b flex items-center justify-between shadow-sm z-10">
+                                        <div className="px-4 py-3 bg-slate-100 dark:bg-slate-900 border-b flex items-center justify-between shadow-sm z-10 sticky top-0">
                                             <h3 className="font-semibold text-sm tracking-wide">{bay.name}</h3>
                                             <div className="flex items-center gap-2">
                                                 <Badge variant="secondary" className="px-1.5 min-w-6 justify-center bg-background/80 shadow-sm">{bayAppts.length}</Badge>
@@ -261,76 +380,30 @@ export default function Appointments() {
                                             </div>
                                         </div>
 
-                                        <Droppable droppableId={bay.id}>
-                                            {(provided: any, snapshot: any) => (
-                                                <div
-                                                    ref={provided.innerRef}
-                                                    {...provided.droppableProps}
-                                                    className={`flex-1 p-2 overflow-y-auto min-h-[150px] transition-colors ${snapshot.isDraggingOver ? "bg-slate-100/80 dark:bg-slate-800/80 shadow-inner" : ""
-                                                        }`}
-                                                >
-                                                    {bayAppts.map((appt, index) => (
-                                                        <Draggable key={`appt-${appt.id}`} draggableId={`appt-${appt.id}`} index={index}>
-                                                            {(provided: any, snapshot: any) => (
-                                                                <div
-                                                                    ref={provided.innerRef}
-                                                                    {...provided.draggableProps}
-                                                                    className={`mb-2 ${snapshot.isDragging ? "z-50 opacity-90 scale-105" : ""}`}
-                                                                >
-                                                                    <Card className={`group cursor-default border shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 ${getStatusColor(appt.status)}`}>
-                                                                        <CardContent className="p-3">
-                                                                            <div className="flex items-start gap-2">
-                                                                                <div
-                                                                                    {...provided.dragHandleProps}
-                                                                                    className="mt-1 flex-shrink-0 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors"
-                                                                                >
-                                                                                    <GripVertical className="w-4 h-4" />
-                                                                                </div>
-                                                                                <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
-                                                                                    <div className="flex items-center justify-between mb-1.5 cursor-pointer">
-                                                                                        {appt.registration ? (
-                                                                                            <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm">
-                                                                                                {appt.registration}
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            <div className="font-medium text-sm italic text-muted-foreground">No Reg</div>
-                                                                                        )}
-                                                                                        {appt.startTime && (
-                                                                                            <div className="flex items-center text-xs font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1.5 py-0.5 rounded">
-                                                                                                <Clock className="w-3 h-3 mr-1 opacity-70" />
-                                                                                                {appt.startTime}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
+                                        {bay.id === 'mot-bay' ? (
+                                            <div className="flex-1 overflow-y-auto p-2 space-y-3 pb-6">
+                                                {[...MOT_SLOTS, { id: "other", label: "Other / Manual Times", start: "other", end: "" }].map(slot => {
+                                                    const slotAppts = bayAppts.filter(a => {
+                                                        const isStandardSlot = MOT_SLOTS.some(s => s.start === a.startTime);
+                                                        return slot.id === "other" ? !isStandardSlot : a.startTime === slot.start;
+                                                    });
 
-                                                                                    {appt.notes && (
-                                                                                        <p className="text-xs text-muted-foreground line-clamp-2 mt-2 leading-relaxed cursor-pointer">
-                                                                                            {appt.notes}
-                                                                                        </p>
-                                                                                    )}
-
-                                                                                    {appt.status !== 'scheduled' && (
-                                                                                        <Badge variant="outline" className="mt-2 text-[10px] uppercase tracking-wider py-0 px-1">
-                                                                                            {appt.status.replace("_", " ")}
-                                                                                        </Badge>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        </CardContent>
-                                                                    </Card>
-                                                                </div>
-                                                            )}
-                                                        </Draggable>
-                                                    ))}
-                                                    {provided.placeholder}
-                                                    {bayAppts.length === 0 && !snapshot.isDraggingOver && (
-                                                        <div className="h-full flex items-center justify-center text-slate-400">
-                                                            <p className="text-xs font-medium px-4 text-center border border-dashed py-4 rounded-lg">Drop bookings here</p>
+                                                    return (
+                                                        <div key={`mot-bay|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-lg border shadow-sm pb-1 overflow-hidden">
+                                                            <div className="bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 uppercase tracking-widest px-3 py-1.5 border-b flex justify-between items-center">
+                                                                <span>{slot.label}</span>
+                                                                {slotAppts.length > 0 && <span className="text-[10px] bg-white dark:bg-slate-700 shadow-sm px-1.5 rounded">{slotAppts.length}</span>}
+                                                            </div>
+                                                            {renderDraggableList(`mot-bay|${slot.id}`, slotAppts)}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </Droppable>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="flex-1 overflow-y-auto">
+                                                {renderDraggableList(bay.id, bayAppts)}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -392,22 +465,39 @@ export default function Appointments() {
 
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="time" className="text-right">Time</Label>
-                            <div className="col-span-3 flex items-center gap-2">
-                                <Input
-                                    id="time"
-                                    type="time"
-                                    value={formData.startTime}
-                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                    className="w-full"
-                                />
-                                <span className="text-muted-foreground">to</span>
-                                <Input
-                                    type="time"
-                                    value={formData.endTime}
-                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                    className="w-full"
-                                />
-                            </div>
+                            {formData.bayId === 'mot-bay' ? (
+                                <Select
+                                    value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
+                                    onValueChange={(val) => {
+                                        const slot = MOT_SLOTS.find(s => s.id === val);
+                                        if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
+                                    }}
+                                >
+                                    <SelectTrigger className="col-span-3">
+                                        <SelectValue placeholder="Select MOT Slot" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="col-span-3 flex items-center gap-2">
+                                    <Input
+                                        id="time"
+                                        type="time"
+                                        value={formData.startTime}
+                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                        className="w-full"
+                                    />
+                                    <span className="text-muted-foreground">to</span>
+                                    <Input
+                                        type="time"
+                                        value={formData.endTime}
+                                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                        className="w-full"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-4 items-start gap-4">
@@ -463,21 +553,38 @@ export default function Appointments() {
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-time" className="text-right">Time</Label>
-                            <div className="col-span-3 flex items-center gap-2">
-                                <Input
-                                    type="time"
-                                    value={formData.startTime}
-                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                    className="w-full"
-                                />
-                                <span className="text-muted-foreground">-</span>
-                                <Input
-                                    type="time"
-                                    value={formData.endTime}
-                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                    className="w-full"
-                                />
-                            </div>
+                            {formData.bayId === 'mot-bay' ? (
+                                <Select
+                                    value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
+                                    onValueChange={(val) => {
+                                        const slot = MOT_SLOTS.find(s => s.id === val);
+                                        if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
+                                    }}
+                                >
+                                    <SelectTrigger className="col-span-3">
+                                        <SelectValue placeholder="Select MOT Slot" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="col-span-3 flex items-center gap-2">
+                                    <Input
+                                        type="time"
+                                        value={formData.startTime}
+                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                        className="w-full"
+                                    />
+                                    <span className="text-muted-foreground">-</span>
+                                    <Input
+                                        type="time"
+                                        value={formData.endTime}
+                                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                        className="w-full"
+                                    />
+                                </div>
+                            )}
                         </div>
                         <div className="grid grid-cols-4 items-start gap-4">
                             <Label htmlFor="edit-notes" className="text-right mt-2">Notes</Label>
