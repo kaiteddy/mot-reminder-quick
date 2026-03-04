@@ -501,7 +501,7 @@ export default function Appointments() {
 
             {/* CREATE BOOKING DIALOG */}
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent className="sm:max-w-[425px]">
+                <DialogContent className="sm:max-w-[550px]">
                     <DialogHeader>
                         <DialogTitle>Quick Booking</DialogTitle>
                         <DialogDescription>
@@ -642,7 +642,7 @@ export default function Appointments() {
 
             {/* EDIT BOOKING DIALOG */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent className="sm:max-w-[425px]">
+                <DialogContent className="sm:max-w-[550px]">
                     <DialogHeader>
                         <DialogTitle>Booking Details</DialogTitle>
                     </DialogHeader>
