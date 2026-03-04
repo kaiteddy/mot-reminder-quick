@@ -126,6 +126,13 @@ export const appRouter = router({
           }
         };
       }),
+    lookupExternal: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { fetchUKVDData } = await import("./ukvd");
+        const data = await fetchUKVDData(input.registration);
+        return data ? { make: data.make, model: data.model } : null;
+      }),
     search: publicProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {

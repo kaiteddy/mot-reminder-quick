@@ -99,10 +99,31 @@ export default function Appointments() {
     });
 
     // Vehicle Lookup for quick populate
-    const { data: vehicleLookup } = trpc.vehicles.getByRegistration.useQuery(
+    const { data: vehicleLookup, isFetched: isLocalFetched } = trpc.vehicles.getByRegistration.useQuery(
         { registration: formData.registration.replace(/\s+/g, "") },
         { enabled: formData.registration.length >= 2, retry: false }
     );
+
+    // Fallback external lookup (DVLA/UKVD) if local not found
+    const strippedReg = formData.registration.replace(/\s+/g, "");
+    const { data: externalLookup, isLoading: isExternalLoading } = trpc.vehicles.lookupExternal.useQuery(
+        { registration: strippedReg },
+        {
+            enabled: strippedReg.length >= 5 && isLocalFetched && vehicleLookup === null,
+            retry: false
+        }
+    );
+
+    // Populate new vehicle details automatically from external DVLA match
+    useEffect(() => {
+        if (externalLookup && !vehicleLookup) {
+            setFormData(prev => ({
+                ...prev,
+                vehicleMake: prev.vehicleMake || externalLookup.make || "",
+                vehicleModel: prev.vehicleModel || externalLookup.model || ""
+            }));
+        }
+    }, [externalLookup, vehicleLookup]);
 
     const resetForm = () => {
         setFormData({
@@ -533,7 +554,10 @@ export default function Appointments() {
                         {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
                             <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">New Vehicle Details</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">New Vehicle Details</p>
+                                        {isExternalLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                                    </div>
                                     <Badge variant="outline" className="text-[9px] bg-background">Required</Badge>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -697,7 +721,10 @@ export default function Appointments() {
                         {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
                             <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Link Vehicle Details</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Link Vehicle Details</p>
+                                        {isExternalLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                                    </div>
                                     <Badge variant="outline" className="text-[9px] bg-background">Required</Badge>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
