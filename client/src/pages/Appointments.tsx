@@ -508,123 +508,133 @@ export default function Appointments() {
                             Create an appointment for {format(currentDate, "do MMM yyyy")}.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="reg" className="text-right">Reg No.</Label>
-                            <div className="col-span-3 flex gap-2">
-                                <Input
-                                    id="reg"
-                                    className="font-mono uppercase transition-colors"
-                                    placeholder="XX12 XXX"
-                                    value={formData.registration}
-                                    onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
-                                />
-                            </div>
+                    <div className="grid gap-5 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="reg" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Registration Number</Label>
+                            <Input
+                                id="reg"
+                                className="font-mono uppercase transition-colors h-11 text-lg"
+                                placeholder="e.g. XX12 XXX"
+                                value={formData.registration}
+                                onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
+                            />
                         </div>
 
                         {/* Auto-fill details if known */}
                         {vehicleLookup?.vehicle?.registration && (
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <div className="col-start-2 col-span-3 -mt-2">
-                                    <div className="bg-green-50 text-green-800 text-xs px-2 py-1.5 rounded flex items-center justify-between border border-green-200">
-                                        <span className="font-medium truncate mr-2">
-                                            {vehicleLookup.customer?.name || 'Unknown Cust.'} • {vehicleLookup.vehicle?.make || ''} {vehicleLookup.vehicle?.model || ''}
-                                        </span>
-                                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                            <div className="bg-green-50 text-green-800 px-3 py-2.5 rounded-lg flex items-center justify-between border border-green-200">
+                                <span className="font-medium text-sm truncate mr-2">
+                                    {vehicleLookup.customer?.name || 'Unknown Cust.'} • {vehicleLookup.vehicle?.make || ''} {vehicleLookup.vehicle?.model || ''}
+                                </span>
+                                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            </div>
+                        )}
+
+                        {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
+                            <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">New Vehicle Details</p>
+                                    <Badge variant="outline" className="text-[9px] bg-background">Required</Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Make</Label>
+                                        <Input
+                                            placeholder="e.g. Ford"
+                                            className="h-9 text-sm"
+                                            value={formData.vehicleMake}
+                                            onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Model</Label>
+                                        <Input
+                                            placeholder="e.g. Focus"
+                                            className="h-9 text-sm"
+                                            value={formData.vehicleModel}
+                                            onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Customer Name</Label>
+                                        <Input
+                                            placeholder="Full Name"
+                                            className="h-9 text-sm"
+                                            value={formData.customerName}
+                                            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Contact Number</Label>
+                                        <Input
+                                            placeholder="Phone Number"
+                                            className="h-9 text-sm"
+                                            value={formData.customerPhone}
+                                            onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                        />
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
-                            <div className="col-start-2 col-span-3 -mt-2 space-y-2 border border-slate-200 dark:border-slate-800 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1 col-span-2">New Vehicle Details</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Input
-                                        placeholder="Make"
-                                        className="h-8 text-xs"
-                                        value={formData.vehicleMake}
-                                        onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Model"
-                                        className="h-8 text-xs"
-                                        value={formData.vehicleModel}
-                                        onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Customer Name"
-                                        className="h-8 text-xs col-span-2"
-                                        value={formData.customerName}
-                                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Customer Phone"
-                                        className="h-8 text-xs col-span-2"
-                                        value={formData.customerPhone}
-                                        onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="bay" className="text-right">Bay/Ramp</Label>
-                            <Select value={formData.bayId} onValueChange={(v) => setFormData({ ...formData, bayId: v })}>
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {BAYS.map(b => (
-                                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="time" className="text-right">Time</Label>
-                            {formData.bayId === 'mot-bay' ? (
-                                <Select
-                                    value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
-                                    onValueChange={(val) => {
-                                        const slot = MOT_SLOTS.find(s => s.id === val);
-                                        if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
-                                    }}
-                                >
-                                    <SelectTrigger className="col-span-3">
-                                        <SelectValue placeholder="Select MOT Slot" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="bay" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Bay / Ramp</Label>
+                                <Select value={formData.bayId} onValueChange={(v) => setFormData({ ...formData, bayId: v })}>
+                                    <SelectTrigger className="h-10">
+                                        <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                        {BAYS.map(b => (
+                                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
-                            ) : (
-                                <div className="col-span-3 flex items-center gap-2">
-                                    <Input
-                                        id="time"
-                                        type="time"
-                                        value={formData.startTime}
-                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                        className="w-full"
-                                    />
-                                    <span className="text-muted-foreground">to</span>
-                                    <Input
-                                        type="time"
-                                        value={formData.endTime}
-                                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                        className="w-full"
-                                    />
-                                </div>
-                            )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="time" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Time</Label>
+                                {formData.bayId === 'mot-bay' ? (
+                                    <Select
+                                        value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
+                                        onValueChange={(val) => {
+                                            const slot = MOT_SLOTS.find(s => s.id === val);
+                                            if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
+                                        }}
+                                    >
+                                        <SelectTrigger className="h-10">
+                                            <SelectValue placeholder="Select Slot" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="time"
+                                            value={formData.startTime}
+                                            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                            className="w-full h-10 text-center"
+                                        />
+                                        <span className="text-muted-foreground font-medium">-</span>
+                                        <Input
+                                            type="time"
+                                            value={formData.endTime}
+                                            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                            className="w-full h-10 text-center"
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-4 items-start gap-4">
-                            <Label htmlFor="notes" className="text-right mt-2">Notes & Job</Label>
+                        <div className="space-y-2">
+                            <Label htmlFor="notes" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Notes & Job Details</Label>
                             <Textarea
                                 id="notes"
-                                placeholder="Job description, contact details..."
-                                className="col-span-3 resize-none h-20"
+                                placeholder="Describe the work required, contact instructions, etc..."
+                                className="resize-none h-24 text-sm"
                                 value={formData.notes}
                                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                             />
@@ -646,74 +656,93 @@ export default function Appointments() {
                     <DialogHeader>
                         <DialogTitle>Booking Details</DialogTitle>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-date" className="text-right">Date</Label>
-                            <Input
-                                type="date"
-                                id="edit-date"
-                                value={formData.appointmentDate}
-                                onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
-                                className="col-span-3"
-                            />
+                    <div className="grid gap-5 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-date" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Date</Label>
+                                <Input
+                                    type="date"
+                                    id="edit-date"
+                                    value={formData.appointmentDate}
+                                    onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                                    className="h-10 text-sm"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Status</Label>
+                                <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                                    <SelectTrigger className="h-10 text-sm">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="scheduled">Scheduled (Blue)</SelectItem>
+                                        <SelectItem value="in_progress">In Progress (Orange)</SelectItem>
+                                        <SelectItem value="completed">Completed (Green)</SelectItem>
+                                        <SelectItem value="cancelled">Cancelled (Red)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right">Status</Label>
-                            <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="scheduled">Scheduled (Blue)</SelectItem>
-                                    <SelectItem value="in_progress">In Progress (Orange)</SelectItem>
-                                    <SelectItem value="completed">Completed (Green)</SelectItem>
-                                    <SelectItem value="cancelled">Cancelled (Red)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-reg" className="text-right">Reg No.</Label>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-reg" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Registration Number</Label>
                             <Input
                                 id="edit-reg"
-                                className="col-span-3 font-mono uppercase"
+                                className="font-mono uppercase transition-colors h-11 text-lg"
                                 value={formData.registration}
                                 onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
                             />
                         </div>
 
                         {formData.registration.length >= 2 && !vehicleLookup?.vehicle && (
-                            <div className="col-start-2 col-span-3 -mt-2 space-y-2 border border-slate-200 dark:border-slate-800 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1 col-span-2">Link Vehicle Details</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Input
-                                        placeholder="Make"
-                                        className="h-8 text-xs"
-                                        value={formData.vehicleMake}
-                                        onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Model"
-                                        className="h-8 text-xs"
-                                        value={formData.vehicleModel}
-                                        onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Customer Name"
-                                        className="h-8 text-xs col-span-2"
-                                        value={formData.customerName}
-                                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                                    />
-                                    <Input
-                                        placeholder="Customer Phone"
-                                        className="h-8 text-xs col-span-2"
-                                        value={formData.customerPhone}
-                                        onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                                    />
+                            <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Link Vehicle Details</p>
+                                    <Badge variant="outline" className="text-[9px] bg-background">Required</Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Make</Label>
+                                        <Input
+                                            placeholder="e.g. Ford"
+                                            className="h-9 text-sm"
+                                            value={formData.vehicleMake}
+                                            onChange={(e) => setFormData({ ...formData, vehicleMake: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Model</Label>
+                                        <Input
+                                            placeholder="e.g. Focus"
+                                            className="h-9 text-sm"
+                                            value={formData.vehicleModel}
+                                            onChange={(e) => setFormData({ ...formData, vehicleModel: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Customer Name</Label>
+                                        <Input
+                                            placeholder="Full Name"
+                                            className="h-9 text-sm"
+                                            value={formData.customerName}
+                                            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5 col-span-2">
+                                        <Label className="text-[11px] text-muted-foreground uppercase">Contact Number</Label>
+                                        <Input
+                                            placeholder="Phone Number"
+                                            className="h-9 text-sm"
+                                            value={formData.customerPhone}
+                                            onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )}
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="edit-time" className="text-right">Time</Label>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-time" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Time Allocation</Label>
                             {formData.bayId === 'mot-bay' ? (
                                 <Select
                                     value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
@@ -722,7 +751,7 @@ export default function Appointments() {
                                         if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
                                     }}
                                 >
-                                    <SelectTrigger className="col-span-3">
+                                    <SelectTrigger className="h-10 text-sm">
                                         <SelectValue placeholder="Select MOT Slot" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -730,28 +759,30 @@ export default function Appointments() {
                                     </SelectContent>
                                 </Select>
                             ) : (
-                                <div className="col-span-3 flex items-center gap-2">
+                                <div className="flex items-center gap-3">
                                     <Input
                                         type="time"
                                         value={formData.startTime}
                                         onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                        className="w-full"
+                                        className="h-10 text-center text-sm w-full"
                                     />
-                                    <span className="text-muted-foreground">-</span>
+                                    <span className="text-muted-foreground font-medium">-</span>
                                     <Input
                                         type="time"
                                         value={formData.endTime}
                                         onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                        className="w-full"
+                                        className="h-10 text-center text-sm w-full"
                                     />
                                 </div>
                             )}
                         </div>
-                        <div className="grid grid-cols-4 items-start gap-4">
-                            <Label htmlFor="edit-notes" className="text-right mt-2">Notes</Label>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="edit-notes" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Notes & Job Details</Label>
                             <Textarea
                                 id="edit-notes"
-                                className="col-span-3 h-24"
+                                className="resize-none h-28 text-sm"
+                                placeholder="Describe the work required, contact instructions, etc..."
                                 value={formData.notes}
                                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                             />
