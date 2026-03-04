@@ -14,6 +14,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { trpc } from "@/lib/trpc";
 import { APP_TITLE } from "@/const";
 import { Badge } from "@/components/ui/badge";
+import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 
 // Define our resource columns (bays/ramps)
 const BAYS = [
@@ -391,10 +392,9 @@ export default function Appointments() {
                                                                                                 {appt.registration}
                                                                                             </div>
                                                                                             {appt.vehicle?.make && (
-                                                                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center">
-                                                                                                    <Car className="w-3.5 h-3.5 mr-1 opacity-70" />
-                                                                                                    {appt.vehicle.make}
-                                                                                                </span>
+                                                                                                <div className="flex items-center">
+                                                                                                    <ManufacturerLogo make={appt.vehicle.make} size="sm" showName className="text-[11px]" />
+                                                                                                </div>
                                                                                             )}
                                                                                         </div>
                                                                                     ) : (
@@ -410,7 +410,7 @@ export default function Appointments() {
                                                                                 {appt.vehicle && (
                                                                                     <div className="flex items-center text-[11px] text-muted-foreground mt-1 mb-0.5 font-medium truncate">
                                                                                         <Car className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
-                                                                                        <span className="truncate">{appt.vehicle.make} {appt.vehicle.model}</span>
+                                                                                        <span className="truncate">{appt.vehicle.model || "Unknown Model"}</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {appt.customer && (
