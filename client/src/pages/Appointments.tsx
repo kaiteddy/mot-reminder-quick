@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, GripVertical, CheckCircle2, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, GripVertical, CheckCircle2, Loader2, User, Phone, Car } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { APP_TITLE } from "@/const";
@@ -360,8 +360,28 @@ export default function Appointments() {
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
+                                                                                {appt.vehicle && (
+                                                                                    <div className="flex items-center text-[11px] text-muted-foreground mt-1 mb-0.5 font-medium truncate">
+                                                                                        <Car className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                        <span className="truncate">{appt.vehicle.make} {appt.vehicle.model}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {appt.customer && (
+                                                                                    <div className="flex flex-col gap-0.5 mt-1 border-t pt-1.5 border-slate-100 dark:border-slate-800">
+                                                                                        <div className="flex items-center text-[10px] text-slate-500 font-medium truncate">
+                                                                                            <User className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                            <span className="truncate">{appt.customer.name}</span>
+                                                                                        </div>
+                                                                                        {appt.customer.phone && (
+                                                                                            <div className="flex items-center text-[10px] text-slate-500 font-medium truncate">
+                                                                                                <Phone className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                                <span className="truncate">{appt.customer.phone}</span>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                )}
                                                                                 {appt.notes && (
-                                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-2 leading-relaxed cursor-pointer">
+                                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1.5 leading-relaxed cursor-pointer bg-slate-50/50 dark:bg-slate-900/50 rounded px-1.5 py-1">
                                                                                         {appt.notes}
                                                                                     </p>
                                                                                 )}

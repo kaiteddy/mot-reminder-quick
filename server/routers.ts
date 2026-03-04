@@ -2296,7 +2296,7 @@ export const appRouter = router({
       .input(z.object({ date: z.string() })) // ISO string YYYY-MM-DD format
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
-        const { appointments } = await import("../drizzle/schema");
+        const { appointments, vehicles, customers } = await import("../drizzle/schema");
         const { eq, between, asc } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) return [];
@@ -2308,12 +2308,22 @@ export const appRouter = router({
         endOfDay.setHours(23, 59, 59, 999);
 
         const results = await db
-          .select()
+          .select({
+            appointment: appointments,
+            vehicle: vehicles,
+            customer: customers
+          })
           .from(appointments)
+          .leftJoin(vehicles, eq(appointments.vehicleId, vehicles.id))
+          .leftJoin(customers, eq(appointments.customerId, customers.id))
           .where(between(appointments.appointmentDate, startOfDay, endOfDay))
           .orderBy(asc(appointments.orderIndex));
 
-        return results;
+        return results.map(r => ({
+          ...r.appointment,
+          vehicle: r.vehicle,
+          customer: r.customer
+        }));
       }),
 
     create: publicProcedure
