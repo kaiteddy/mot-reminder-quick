@@ -2387,7 +2387,8 @@ export const appRouter = router({
         notes: z.string().optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
-        registration: z.string().optional()
+        registration: z.string().optional(),
+        appointmentDate: z.string().optional()
       }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -2396,11 +2397,21 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
+        const updateData: any = {
+          status: input.status,
+          notes: input.notes,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          registration: input.registration,
+          updatedAt: new Date()
+        };
+
+        if (input.appointmentDate) {
+          updateData.appointmentDate = new Date(input.appointmentDate);
+        }
+
         await db.update(appointments)
-          .set({
-            ...input,
-            updatedAt: new Date()
-          })
+          .set(updateData)
           .where(eq(appointments.id, input.id));
 
         return { success: true };

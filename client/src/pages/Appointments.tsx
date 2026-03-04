@@ -39,21 +39,22 @@ export default function Appointments() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+    const dateStr = format(currentDate, "yyyy-MM-dd");
+
     const [formData, setFormData] = useState({
         registration: "",
         bayId: "mot-bay",
         startTime: "09:00",
         endTime: "09:45",
         notes: "",
-        status: "scheduled"
+        status: "scheduled",
+        appointmentDate: dateStr
     });
 
     // State to hold optimistic drag-and-drop list state
     const [localAppointments, setLocalAppointments] = useState<any[]>([]);
 
     const utils = trpc.useUtils();
-
-    const dateStr = format(currentDate, "yyyy-MM-dd");
     const { data: serverAppointments, isLoading } = trpc.appointments.listByDate.useQuery({ date: dateStr });
 
     // Update local state when server data changes (but not while dragging ideally)
@@ -106,7 +107,8 @@ export default function Appointments() {
             startTime: "09:00",
             endTime: "09:45",
             notes: "",
-            status: "scheduled"
+            status: "scheduled",
+            appointmentDate: dateStr
         });
         setSelectedAppointment(null);
     };
@@ -222,19 +224,37 @@ export default function Appointments() {
 
     const handleSaveEdit = () => {
         if (!selectedAppointment) return;
+
+        // If the date is changed, adjust the Date object
+        let parsedDate = selectedAppointment.appointmentDate;
+        if (formData.appointmentDate !== format(new Date(selectedAppointment.appointmentDate), "yyyy-MM-dd")) {
+            parsedDate = new Date(formData.appointmentDate).toISOString();
+        }
+
         updateDetailsMutation.mutate({
             id: selectedAppointment.id,
             registration: formData.registration,
             startTime: formData.startTime,
             endTime: formData.endTime,
             notes: formData.notes,
-            status: formData.status as any
+            status: formData.status as any,
+            appointmentDate: parsedDate
         });
     };
 
-    const openCreateDialog = (bayId: string = "mot-bay") => {
+    const openCreateDialog = (bayId: string = "mot-bay", slotStart?: string) => {
         resetForm();
-        setFormData(prev => ({ ...prev, bayId }));
+        setFormData(prev => {
+            const updates: any = { bayId };
+            if (slotStart && slotStart !== "other") {
+                const slot = MOT_SLOTS.find(s => s.start === slotStart);
+                if (slot) {
+                    updates.startTime = slot.start;
+                    updates.endTime = slot.end;
+                }
+            }
+            return { ...prev, ...updates };
+        });
         setIsCreateOpen(true);
     };
 
@@ -246,7 +266,8 @@ export default function Appointments() {
             startTime: appt.startTime || "",
             endTime: appt.endTime || "",
             notes: appt.notes || "",
-            status: appt.status || "scheduled"
+            status: appt.status || "scheduled",
+            appointmentDate: appt.appointmentDate ? format(new Date(appt.appointmentDate), "yyyy-MM-dd") : dateStr
         });
         setIsEditOpen(true);
     };
@@ -359,8 +380,18 @@ export default function Appointments() {
                                                 ))}
                                                 {provided.placeholder}
                                                 {list.length === 0 && !snapshot.isDraggingOver && (
-                                                    <div className="h-full flex items-center justify-center text-slate-400">
-                                                        <p className="text-[11px] font-medium px-4 text-center border-2 border-dashed border-transparent hover:border-slate-200 py-2 rounded-lg opacity-60">Drop here</p>
+                                                    <div
+                                                        className="h-full min-h-[50px] flex items-center justify-center text-slate-400 cursor-pointer group"
+                                                        onClick={() => {
+                                                            const isMot = droppableId.startsWith('mot-bay|');
+                                                            openCreateDialog(isMot ? 'mot-bay' : droppableId, isMot ? droppableId.split('|')[1] : undefined);
+                                                        }}
+                                                    >
+                                                        <p className="text-[11px] font-medium px-4 text-center border-2 border-dashed border-transparent group-hover:border-slate-300 py-2 rounded-lg opacity-60">
+                                                            {droppableId.startsWith('mot-bay|') && droppableId.split('|')[1] !== 'other'
+                                                                ? "Click to book this slot"
+                                                                : "Drop or click to book"}
+                                                        </p>
                                                     </div>
                                                 )}
                                             </div>
@@ -390,7 +421,16 @@ export default function Appointments() {
 
                                                     return (
                                                         <div key={`mot-bay|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-lg border shadow-sm pb-1 overflow-hidden">
-                                                            <div className="bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 uppercase tracking-widest px-3 py-1.5 border-b flex justify-between items-center">
+                                                            <div
+                                                                className="bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 uppercase tracking-widest px-3 py-1.5 border-b flex justify-between items-center cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors"
+                                                                onClick={() => {
+                                                                    if (slotAppts.length === 1) {
+                                                                        openApptEdit(slotAppts[0]);
+                                                                    } else {
+                                                                        openCreateDialog("mot-bay", slot.start);
+                                                                    }
+                                                                }}
+                                                            >
                                                                 <span>{slot.label}</span>
                                                                 {slotAppts.length > 0 && <span className="text-[10px] bg-white dark:bg-slate-700 shadow-sm px-1.5 rounded">{slotAppts.length}</span>}
                                                             </div>
@@ -528,6 +568,16 @@ export default function Appointments() {
                         <DialogTitle>Booking Details</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-date" className="text-right">Date</Label>
+                            <Input
+                                type="date"
+                                id="edit-date"
+                                value={formData.appointmentDate}
+                                onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
+                                className="col-span-3"
+                            />
+                        </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label className="text-right">Status</Label>
                             <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
