@@ -94,11 +94,7 @@ export default function Appointments() {
     });
 
     const updatePosMutation = trpc.appointments.updatePosition.useMutation();
-    const silentUpdateMutation = trpc.appointments.updateDetails.useMutation({
-        onSuccess: () => {
-            utils.appointments.listByDate.invalidate({ date: dateStr });
-        }
-    });
+    const updateManyDetailsMutation = trpc.appointments.updateManyDetails.useMutation();
     const updateDetailsMutation = trpc.appointments.updateDetails.useMutation({
         onSuccess: () => {
             toast.success("Appointment updated!");
@@ -201,13 +197,6 @@ export default function Appointments() {
                 if (targetIdx !== -1) {
                     updatedAppts[targetIdx] = { ...updatedAppts[targetIdx], startTime: newStartStr, endTime: newEndStr };
                 }
-
-                silentUpdateMutation.mutate({
-                    id: appt.id,
-                    startTime: newStartStr,
-                    endTime: newEndStr,
-                    status: appt.status
-                });
             }
         });
 
@@ -312,22 +301,25 @@ export default function Appointments() {
             orderIndex: destination.index
         });
 
-        // If time changed, trigger updateDetails silently
-        if (slotTime && slotTime !== 'other') {
-            silentUpdateMutation.mutate({
-                id: draggedApptId,
-                startTime: updatedAppt.startTime,
-                endTime: updatedAppt.endTime,
-                status: updatedAppt.status
-            });
-        }
-
         // Apply automatic schedule packing downstream
-        if (targetBayId !== 'waitlist') {
-            updatedLocal = runBayPacking(targetBayId, updatedLocal);
-        }
+        let finalLocal = targetBayId !== 'waitlist' ? runBayPacking(targetBayId, updatedLocal) : updatedLocal;
+        setLocalAppointments(finalLocal);
+        utils.appointments.listByDate.setData({ date: dateStr }, finalLocal);
 
-        setLocalAppointments(updatedLocal);
+        // Find what times actually changed to batch update the server
+        const changedAppts = finalLocal.filter(p => {
+            const old = localAppointments.find(a => a.id === p.id);
+            return old && (old.startTime !== p.startTime || old.endTime !== p.endTime || old.status !== p.status);
+        });
+
+        if (changedAppts.length > 0) {
+            updateManyDetailsMutation.mutate(changedAppts.map(a => ({
+                id: a.id,
+                startTime: a.startTime,
+                endTime: a.endTime,
+                status: a.status
+            })));
+        }
 
         // Update other order indexes in destination list
         destList.forEach((item, index) => {
@@ -387,7 +379,26 @@ export default function Appointments() {
                         updated[idx] = { ...updated[idx], ...formData, appointmentDate: parsedDate };
                     }
                     const packed = runBayPacking(targetBayId, updated);
+
+                    // Don't wait for server refetch—visually snap to packed!
                     setLocalAppointments(packed);
+                    utils.appointments.listByDate.setData({ date: dateStr }, packed);
+
+                    // Sync the downstream bumped items
+                    const changedAppts = packed.filter(p => {
+                        if (p.id === selectedAppointment.id) return false; // already updated above
+                        const old = localAppointments.find(a => a.id === p.id);
+                        return old && (old.startTime !== p.startTime || old.endTime !== p.endTime || old.status !== p.status);
+                    });
+
+                    if (changedAppts.length > 0) {
+                        updateManyDetailsMutation.mutate(changedAppts.map(a => ({
+                            id: a.id,
+                            startTime: a.startTime,
+                            endTime: a.endTime,
+                            status: a.status
+                        })));
+                    }
                 }
             }
         });

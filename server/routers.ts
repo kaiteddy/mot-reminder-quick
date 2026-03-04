@@ -2498,8 +2498,36 @@ export const appRouter = router({
         await db.update(appointments)
           .set(updateData)
           .where(eq(appointments.id, input.id));
-
         return { success: true };
+      }),
+
+    updateManyDetails: publicProcedure
+      .input(z.array(z.object({
+        id: z.number(),
+        startTime: z.string().optional().nullable(),
+        endTime: z.string().optional().nullable(),
+        status: z.string().optional().nullable(),
+      })))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const results = [];
+        for (const item of input) {
+          const updateData: any = { updatedAt: new Date() };
+          if (item.startTime !== undefined) updateData.startTime = item.startTime;
+          if (item.endTime !== undefined) updateData.endTime = item.endTime;
+          if (item.status !== undefined) updateData.status = item.status;
+
+          const updated = await db.update(appointments)
+            .set(updateData)
+            .where(eq(appointments.id, item.id));
+          results.push(updated);
+        }
+        return { success: true, count: results.length };
       }),
 
     delete: publicProcedure
