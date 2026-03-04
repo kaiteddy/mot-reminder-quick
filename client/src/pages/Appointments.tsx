@@ -35,6 +35,19 @@ const MOT_SLOTS = [
     { id: "16:00", label: "16:00 - 17:00", start: "16:00", end: "17:00" }
 ];
 
+const RAMP_SLOTS: { id: string; label: string; start: string; end: string }[] = [];
+for (let h = 8; h <= 17; h++) {
+    for (let m = (h === 8 ? 30 : 0); m < 60; m += 15) {
+        if (h === 17 && m > 30) continue;
+        const start = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        let nextH = h, nextM = m + 15;
+        if (nextM === 60) { nextM = 0; nextH++; }
+        const end = `${nextH.toString().padStart(2, '0')}:${nextM.toString().padStart(2, '0')}`;
+        RAMP_SLOTS.push({ id: start, label: start, start, end });
+    }
+}
+
+
 export default function Appointments() {
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -157,8 +170,8 @@ export default function Appointments() {
             return;
         }
 
-        const getRealBayId = (dndId: string) => dndId.startsWith('mot-bay|') ? 'mot-bay' : dndId;
-        const getSlotTime = (dndId: string) => dndId.startsWith('mot-bay|') ? dndId.split('|')[1] : null;
+        const getRealBayId = (dndId: string) => dndId.includes('|') ? dndId.split('|')[0] : dndId;
+        const getSlotTime = (dndId: string) => dndId.includes('|') ? dndId.split('|')[1] : null;
 
         const targetDroppableId = destination.droppableId;
         const targetBayId = getRealBayId(targetDroppableId);
@@ -177,17 +190,41 @@ export default function Appointments() {
         // Auto-assign start and end times if dropped into a specific slot
         if (slotTime && slotTime !== 'other') {
             updatedAppt.startTime = slotTime;
-            const slotObj = MOT_SLOTS.find(s => s.start === slotTime);
-            if (slotObj) updatedAppt.endTime = slotObj.end;
+            const isMot = targetBayId === 'mot-bay';
+            const slotObj = isMot ? MOT_SLOTS.find(s => s.start === slotTime) : RAMP_SLOTS.find(s => s.start === slotTime);
+
+            if (isMot && slotObj) {
+                updatedAppt.endTime = slotObj.end;
+            } else if (!isMot && slotObj) {
+                if (!draggedAppt.startTime || !draggedAppt.endTime) {
+                    updatedAppt.endTime = slotObj.end; // default 15min block if dragging unassigned
+                } else {
+                    // try to keep previous duration
+                    const startMins = parseInt(draggedAppt.startTime.split(':')[0]) * 60 + parseInt(draggedAppt.startTime.split(':')[1]);
+                    const endMins = parseInt(draggedAppt.endTime.split(':')[0]) * 60 + parseInt(draggedAppt.endTime.split(':')[1]);
+                    const diff = endMins - startMins > 0 ? endMins - startMins : 60;
+
+                    let newStartMins = parseInt(slotTime.split(':')[0]) * 60 + parseInt(slotTime.split(':')[1]);
+                    let newEndMins = Math.min(newStartMins + diff, 18 * 60);
+                    updatedAppt.endTime = `${Math.floor(newEndMins / 60).toString().padStart(2, '0')}:${(newEndMins % 60).toString().padStart(2, '0')}`;
+                }
+            }
         }
 
-        // Determine destination list (filter by the exact sub-droppable if MOT based)
+        // Determine destination list (filter by the exact sub-droppable)
         let destList;
         if (targetBayId === 'mot-bay') {
             const destSlotTime = slotTime || 'other';
             destList = newAppts.filter(a => {
                 if (a.bayId !== targetBayId) return false;
                 const matchesStandard = MOT_SLOTS.some(s => s.start === a.startTime);
+                return destSlotTime === 'other' ? !matchesStandard : a.startTime === destSlotTime;
+            });
+        } else if (targetBayId.startsWith('ramp')) {
+            const destSlotTime = slotTime || 'other';
+            destList = newAppts.filter(a => {
+                if (a.bayId !== targetBayId) return false;
+                const matchesStandard = RAMP_SLOTS.some(s => s.start === a.startTime);
                 return destSlotTime === 'other' ? !matchesStandard : a.startTime === destSlotTime;
             });
         } else {
@@ -376,64 +413,64 @@ export default function Appointments() {
                                                                 className={`mb-2 ${snapshot.isDragging ? "z-50 opacity-90 scale-105" : ""}`}
                                                             >
                                                                 <Card className={`group cursor-default border shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 ${getStatusColor(appt.status)}`}>
-                                                                    <CardContent className="p-3">
-                                                                        <div className="flex items-start gap-2">
+                                                                    <CardContent className="p-1.5">
+                                                                        <div className="flex items-start gap-1">
                                                                             <div
                                                                                 {...provided.dragHandleProps}
-                                                                                className="mt-1 flex-shrink-0 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors"
+                                                                                className="mt-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors"
                                                                             >
-                                                                                <GripVertical className="w-4 h-4" />
+                                                                                <GripVertical className="w-3.5 h-3.5" />
                                                                             </div>
                                                                             <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
-                                                                                <div className="flex items-center justify-between mb-1.5 cursor-pointer">
+                                                                                <div className="flex items-center justify-between mb-0.5 cursor-pointer">
                                                                                     {appt.registration ? (
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm flex items-center">
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <div className="font-mono font-bold text-xs tracking-wide bg-yellow-400 text-black px-1 py-0 rounded-sm shadow-sm flex items-center">
                                                                                                 {appt.registration}
                                                                                             </div>
                                                                                             {appt.vehicle?.make && (
                                                                                                 <div className="flex items-center">
-                                                                                                    <ManufacturerLogo make={appt.vehicle.make} size="sm" showName className="text-[11px]" />
+                                                                                                    <ManufacturerLogo make={appt.vehicle.make} size="sm" showName className="text-[10px]" />
                                                                                                 </div>
                                                                                             )}
                                                                                         </div>
                                                                                     ) : (
-                                                                                        <div className="font-medium text-sm italic text-muted-foreground">No Reg</div>
+                                                                                        <div className="font-medium text-xs italic text-muted-foreground">No Reg</div>
                                                                                     )}
                                                                                     {appt.startTime && (
-                                                                                        <div className="flex items-center text-xs font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1.5 py-0.5 rounded">
-                                                                                            <Clock className="w-3 h-3 mr-1 opacity-70" />
+                                                                                        <div className="flex items-center text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1 py-0.5 rounded">
+                                                                                            <Clock className="w-2.5 h-2.5 mr-1 opacity-70" />
                                                                                             {appt.startTime}
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
                                                                                 {appt.vehicle && (
-                                                                                    <div className="flex items-center text-[11px] text-muted-foreground mt-1 mb-0.5 font-medium truncate">
-                                                                                        <Car className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                    <div className="flex items-center text-[10px] text-muted-foreground mt-0.5 mb-0 font-medium truncate">
+                                                                                        <Car className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
                                                                                         <span className="truncate">{appt.vehicle.model || "Unknown Model"}</span>
                                                                                     </div>
                                                                                 )}
                                                                                 {appt.customer && (
-                                                                                    <div className="flex flex-col gap-0.5 mt-1 border-t pt-1.5 border-slate-100 dark:border-slate-800">
-                                                                                        <div className="flex items-center text-[10px] text-slate-500 font-medium truncate">
-                                                                                            <User className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                    <div className="flex flex-col gap-0 mt-0.5 border-t pt-0.5 border-slate-100 dark:border-slate-800">
+                                                                                        <div className="flex items-center text-[9px] text-slate-500 font-medium truncate">
+                                                                                            <User className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
                                                                                             <span className="truncate">{appt.customer.name}</span>
                                                                                         </div>
                                                                                         {appt.customer.phone && (
-                                                                                            <div className="flex items-center text-[10px] text-slate-500 font-medium truncate">
-                                                                                                <Phone className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                            <div className="flex items-center text-[9px] text-slate-500 font-medium truncate">
+                                                                                                <Phone className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
                                                                                                 <span className="truncate">{appt.customer.phone}</span>
                                                                                             </div>
                                                                                         )}
                                                                                     </div>
                                                                                 )}
                                                                                 {appt.notes && (
-                                                                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1.5 leading-relaxed cursor-pointer bg-slate-50/50 dark:bg-slate-900/50 rounded px-1.5 py-1">
+                                                                                    <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5 leading-tight cursor-pointer bg-slate-50/50 dark:bg-slate-900/50 rounded px-1 py-0.5">
                                                                                         {appt.notes}
                                                                                     </p>
                                                                                 )}
                                                                                 {appt.status !== 'scheduled' && (
-                                                                                    <Badge variant="outline" className="mt-2 text-[10px] uppercase tracking-wider py-0 px-1">
+                                                                                    <Badge variant="outline" className="mt-1 text-[8px] uppercase tracking-wider py-0 px-1 leading-none shadow-none">
                                                                                         {appt.status.replace("_", " ")}
                                                                                     </Badge>
                                                                                 )}
@@ -448,17 +485,15 @@ export default function Appointments() {
                                                 {provided.placeholder}
                                                 {list.length === 0 && !snapshot.isDraggingOver && (
                                                     <div
-                                                        className="h-full min-h-[50px] flex items-center justify-center text-slate-400 cursor-pointer group"
+                                                        className="h-full min-h-[30px] flex items-center justify-center text-slate-400 cursor-pointer group hover:bg-slate-50 dark:hover:bg-slate-900/40 rounded transition-colors"
                                                         onClick={() => {
-                                                            const isMot = droppableId.startsWith('mot-bay|');
-                                                            const actualBayId = isMot ? 'mot-bay' : droppableId;
-                                                            openCreateDialog(actualBayId, isMot ? droppableId.split('|')[1] : undefined);
+                                                            const isSlot = droppableId.includes('|');
+                                                            const actualBayId = isSlot ? droppableId.split('|')[0] : droppableId;
+                                                            openCreateDialog(actualBayId, isSlot ? droppableId.split('|')[1] : undefined);
                                                         }}
                                                     >
-                                                        <p className="text-[11px] font-medium px-4 text-center border-2 border-dashed border-transparent group-hover:border-slate-300 py-2 rounded-lg opacity-60">
-                                                            {droppableId.startsWith('mot-bay|') && droppableId.split('|')[1] !== 'other'
-                                                                ? "Click to book this slot"
-                                                                : "Drop or click to book"}
+                                                        <p className="text-[10px] font-medium px-2 text-center border border-dashed border-transparent group-hover:border-slate-300 dark:group-hover:border-slate-700 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            + Book
                                                         </p>
                                                     </div>
                                                 )}
@@ -479,30 +514,31 @@ export default function Appointments() {
                                             </div>
                                         </div>
 
-                                        {bay.id === 'mot-bay' ? (
-                                            <div className="flex-1 overflow-y-auto p-2 space-y-3 pb-6">
-                                                {[...MOT_SLOTS, { id: "other", label: "Other / Manual Times", start: "other", end: "" }].map(slot => {
+                                        {bay.id === 'mot-bay' || bay.id.startsWith('ramp') ? (
+                                            <div className="flex-1 overflow-y-auto p-1.5 space-y-2 pb-6">
+                                                {[...(bay.id === 'mot-bay' ? MOT_SLOTS : RAMP_SLOTS), { id: "other", label: "Other / Manual Times", start: "other", end: "" }].map(slot => {
                                                     const slotAppts = bayAppts.filter(a => {
-                                                        const isStandardSlot = MOT_SLOTS.some(s => s.start === a.startTime);
+                                                        const slotArray = bay.id === 'mot-bay' ? MOT_SLOTS : RAMP_SLOTS;
+                                                        const isStandardSlot = slotArray.some(s => s.start === a.startTime);
                                                         return slot.id === "other" ? !isStandardSlot : a.startTime === slot.start;
                                                     });
 
                                                     return (
-                                                        <div key={`mot-bay|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-lg border shadow-sm pb-1 overflow-hidden">
+                                                        <div key={`${bay.id}|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-md border shadow-sm pb-1 overflow-hidden">
                                                             <div
-                                                                className="bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 uppercase tracking-widest px-3 py-1.5 border-b flex justify-between items-center cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors"
+                                                                className="bg-slate-100/80 dark:bg-slate-800/80 text-[10px] font-semibold text-slate-500 tracking-wider px-2 py-1 border-b flex justify-between items-center cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors"
                                                                 onClick={() => {
                                                                     if (slotAppts.length === 1) {
                                                                         openApptEdit(slotAppts[0]);
                                                                     } else {
-                                                                        openCreateDialog("mot-bay", slot.start);
+                                                                        openCreateDialog(bay.id, slot.start);
                                                                     }
                                                                 }}
                                                             >
-                                                                <span>{slot.label}</span>
-                                                                {slotAppts.length > 0 && <span className="text-[10px] bg-white dark:bg-slate-700 shadow-sm px-1.5 rounded">{slotAppts.length}</span>}
+                                                                <span>{bay.id === 'mot-bay' ? slot.label : slot.label === "Other / Manual Times" ? slot.label : slot.start}</span>
+                                                                {slotAppts.length > 0 && <span className="text-[9px] bg-white dark:bg-slate-700 shadow-sm px-1.5 rounded-sm">{slotAppts.length}</span>}
                                                             </div>
-                                                            {renderDraggableList(`mot-bay|${slot.id}`, slotAppts)}
+                                                            {renderDraggableList(`${bay.id}|${slot.id}`, slotAppts)}
                                                         </div>
                                                     );
                                                 })}
