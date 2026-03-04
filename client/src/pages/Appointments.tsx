@@ -24,7 +24,7 @@ const BAYS = [
     { id: "waitlist", name: "Waitlist / Unassigned" }
 ];
 
-const MOT_SLOTS = [
+const TIME_SLOTS = [
     { id: "08:30", label: "08:30 - 09:30", start: "08:30", end: "09:30" },
     { id: "09:30", label: "09:30 - 10:30", start: "09:30", end: "10:30" },
     { id: "11:00", label: "11:00 - 12:00", start: "11:00", end: "12:00" },
@@ -127,8 +127,8 @@ export default function Appointments() {
             return;
         }
 
-        const getRealBayId = (dndId: string) => dndId.startsWith('mot-bay|') ? 'mot-bay' : dndId;
-        const getSlotTime = (dndId: string) => dndId.startsWith('mot-bay|') ? dndId.split('|')[1] : null;
+        const getRealBayId = (dndId: string) => dndId.includes('|') ? dndId.split('|')[0] : dndId;
+        const getSlotTime = (dndId: string) => dndId.includes('|') ? dndId.split('|')[1] : null;
 
         const targetDroppableId = destination.droppableId;
         const targetBayId = getRealBayId(targetDroppableId);
@@ -147,17 +147,17 @@ export default function Appointments() {
         // Auto-assign start and end times if dropped into a specific slot
         if (slotTime && slotTime !== 'other') {
             updatedAppt.startTime = slotTime;
-            const slotObj = MOT_SLOTS.find(s => s.start === slotTime);
+            const slotObj = TIME_SLOTS.find(s => s.start === slotTime);
             if (slotObj) updatedAppt.endTime = slotObj.end;
         }
 
-        // Determine destination list (filter by the exact sub-droppable if MOT)
+        // Determine destination list (filter by the exact sub-droppable if slot based)
         let destList;
-        if (targetBayId === 'mot-bay') {
+        if (targetBayId !== 'waitlist') {
             const destSlotTime = slotTime || 'other';
             destList = newAppts.filter(a => {
-                if (a.bayId !== 'mot-bay') return false;
-                const matchesStandard = MOT_SLOTS.some(s => s.start === a.startTime);
+                if (a.bayId !== targetBayId) return false;
+                const matchesStandard = TIME_SLOTS.some(s => s.start === a.startTime);
                 return destSlotTime === 'other' ? !matchesStandard : a.startTime === destSlotTime;
             });
         } else {
@@ -247,7 +247,7 @@ export default function Appointments() {
         setFormData(prev => {
             const updates: any = { bayId };
             if (slotStart && slotStart !== "other") {
-                const slot = MOT_SLOTS.find(s => s.start === slotStart);
+                const slot = TIME_SLOTS.find(s => s.start === slotStart);
                 if (slot) {
                     updates.startTime = slot.start;
                     updates.endTime = slot.end;
@@ -403,12 +403,13 @@ export default function Appointments() {
                                                     <div
                                                         className="h-full min-h-[50px] flex items-center justify-center text-slate-400 cursor-pointer group"
                                                         onClick={() => {
-                                                            const isMot = droppableId.startsWith('mot-bay|');
-                                                            openCreateDialog(isMot ? 'mot-bay' : droppableId, isMot ? droppableId.split('|')[1] : undefined);
+                                                            const isSlot = droppableId.includes('|');
+                                                            const actualBayId = isSlot ? droppableId.split('|')[0] : droppableId;
+                                                            openCreateDialog(actualBayId, isSlot ? droppableId.split('|')[1] : undefined);
                                                         }}
                                                     >
                                                         <p className="text-[11px] font-medium px-4 text-center border-2 border-dashed border-transparent group-hover:border-slate-300 py-2 rounded-lg opacity-60">
-                                                            {droppableId.startsWith('mot-bay|') && droppableId.split('|')[1] !== 'other'
+                                                            {droppableId.includes('|') && droppableId.split('|')[1] !== 'other'
                                                                 ? "Click to book this slot"
                                                                 : "Drop or click to book"}
                                                         </p>
@@ -431,30 +432,30 @@ export default function Appointments() {
                                             </div>
                                         </div>
 
-                                        {bay.id === 'mot-bay' ? (
+                                        {bay.id !== 'waitlist' ? (
                                             <div className="flex-1 overflow-y-auto p-2 space-y-3 pb-6">
-                                                {[...MOT_SLOTS, { id: "other", label: "Other / Manual Times", start: "other", end: "" }].map(slot => {
+                                                {[...TIME_SLOTS, { id: "other", label: "Other / Manual Times", start: "other", end: "" }].map(slot => {
                                                     const slotAppts = bayAppts.filter(a => {
-                                                        const isStandardSlot = MOT_SLOTS.some(s => s.start === a.startTime);
+                                                        const isStandardSlot = TIME_SLOTS.some(s => s.start === a.startTime);
                                                         return slot.id === "other" ? !isStandardSlot : a.startTime === slot.start;
                                                     });
 
                                                     return (
-                                                        <div key={`mot-bay|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-lg border shadow-sm pb-1 overflow-hidden">
+                                                        <div key={`${bay.id}|${slot.id}`} className="bg-white/40 dark:bg-black/20 rounded-lg border shadow-sm pb-1 overflow-hidden">
                                                             <div
                                                                 className="bg-slate-100/80 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-500 uppercase tracking-widest px-3 py-1.5 border-b flex justify-between items-center cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors"
                                                                 onClick={() => {
                                                                     if (slotAppts.length === 1) {
                                                                         openApptEdit(slotAppts[0]);
                                                                     } else {
-                                                                        openCreateDialog("mot-bay", slot.start);
+                                                                        openCreateDialog(bay.id, slot.start);
                                                                     }
                                                                 }}
                                                             >
                                                                 <span>{slot.label}</span>
                                                                 {slotAppts.length > 0 && <span className="text-[10px] bg-white dark:bg-slate-700 shadow-sm px-1.5 rounded">{slotAppts.length}</span>}
                                                             </div>
-                                                            {renderDraggableList(`mot-bay|${slot.id}`, slotAppts)}
+                                                            {renderDraggableList(`${bay.id}|${slot.id}`, slotAppts)}
                                                         </div>
                                                     );
                                                 })}
@@ -525,19 +526,19 @@ export default function Appointments() {
 
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="time" className="text-right">Time</Label>
-                            {formData.bayId === 'mot-bay' ? (
+                            {formData.bayId !== 'waitlist' ? (
                                 <Select
-                                    value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
+                                    value={TIME_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
                                     onValueChange={(val) => {
-                                        const slot = MOT_SLOTS.find(s => s.id === val);
+                                        const slot = TIME_SLOTS.find(s => s.id === val);
                                         if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
                                     }}
                                 >
                                     <SelectTrigger className="col-span-3">
-                                        <SelectValue placeholder="Select MOT Slot" />
+                                        <SelectValue placeholder="Select Time Slot" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                        {TIME_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             ) : (
@@ -623,19 +624,19 @@ export default function Appointments() {
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="edit-time" className="text-right">Time</Label>
-                            {formData.bayId === 'mot-bay' ? (
+                            {formData.bayId !== 'waitlist' ? (
                                 <Select
-                                    value={MOT_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
+                                    value={TIME_SLOTS.find(s => s.start === formData.startTime)?.id || ""}
                                     onValueChange={(val) => {
-                                        const slot = MOT_SLOTS.find(s => s.id === val);
+                                        const slot = TIME_SLOTS.find(s => s.id === val);
                                         if (slot) setFormData(prev => ({ ...prev, startTime: slot.start, endTime: slot.end }));
                                     }}
                                 >
                                     <SelectTrigger className="col-span-3">
-                                        <SelectValue placeholder="Select MOT Slot" />
+                                        <SelectValue placeholder="Select Time Slot" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {MOT_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                                        {TIME_SLOTS.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             ) : (
