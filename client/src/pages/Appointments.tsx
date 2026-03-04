@@ -94,6 +94,11 @@ export default function Appointments() {
     });
 
     const updatePosMutation = trpc.appointments.updatePosition.useMutation();
+    const silentUpdateMutation = trpc.appointments.updateDetails.useMutation({
+        onSuccess: () => {
+            utils.appointments.listByDate.invalidate({ date: dateStr });
+        }
+    });
     const updateDetailsMutation = trpc.appointments.updateDetails.useMutation({
         onSuccess: () => {
             toast.success("Appointment updated!");
@@ -154,6 +159,59 @@ export default function Appointments() {
             vehicleModel: ""
         });
         setSelectedAppointment(null);
+    };
+
+    const runBayPacking = (bayId: string, currentAppts: any[]) => {
+        if (bayId === 'waitlist') return currentAppts;
+
+        let updatedAppts = [...currentAppts];
+        const bayAppts = updatedAppts.filter(a => a.bayId === bayId && a.startTime && a.endTime);
+
+        bayAppts.sort((a, b) => {
+            const getMins = (t: string) => t ? parseInt(t.split(':')[0]) * 60 + parseInt(t.split(':')[1]) : 0;
+            const startMinsA = getMins(a.startTime);
+            const startMinsB = getMins(b.startTime);
+            if (startMinsA !== startMinsB) return startMinsA - startMinsB;
+            return a.orderIndex - b.orderIndex;
+        });
+
+        let currentEndMins = 0;
+
+        bayAppts.forEach(appt => {
+            const getMins = (t: string) => t ? parseInt(t.split(':')[0]) * 60 + parseInt(t.split(':')[1]) : 0;
+            const toStr = (m: number) => `${Math.floor(m / 60).toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}`;
+
+            const start = getMins(appt.startTime);
+            const end = getMins(appt.endTime);
+            const duration = end > start ? end - start : (bayId === 'mot-bay' ? 60 : 15);
+
+            let newStart = start;
+            if (newStart < currentEndMins) {
+                newStart = currentEndMins;
+            }
+
+            const newEnd = newStart + duration;
+            currentEndMins = newEnd;
+
+            const newStartStr = toStr(newStart);
+            const newEndStr = toStr(newEnd);
+
+            if (appt.startTime !== newStartStr || appt.endTime !== newEndStr) {
+                const targetIdx = updatedAppts.findIndex(a => a.id === appt.id);
+                if (targetIdx !== -1) {
+                    updatedAppts[targetIdx] = { ...updatedAppts[targetIdx], startTime: newStartStr, endTime: newEndStr };
+                }
+
+                silentUpdateMutation.mutate({
+                    id: appt.id,
+                    startTime: newStartStr,
+                    endTime: newEndStr,
+                    status: appt.status
+                });
+            }
+        });
+
+        return updatedAppts;
     };
 
     const nextDay = () => setCurrentDate(addDays(currentDate, 1));
@@ -245,7 +303,7 @@ export default function Appointments() {
         // Reconstruct full list (careful not to duplicate items if they were in the same bay already)
         const destItemIds = new Set(destList.map(a => a.id));
         const remainingAppts = newAppts.filter(a => !destItemIds.has(a.id));
-        setLocalAppointments([...remainingAppts, ...destList]);
+        let updatedLocal = [...remainingAppts, ...destList];
 
         // Send backend mutation for drag position
         updatePosMutation.mutate({
@@ -256,13 +314,20 @@ export default function Appointments() {
 
         // If time changed, trigger updateDetails silently
         if (slotTime && slotTime !== 'other') {
-            updateDetailsMutation.mutate({
+            silentUpdateMutation.mutate({
                 id: draggedApptId,
                 startTime: updatedAppt.startTime,
                 endTime: updatedAppt.endTime,
                 status: updatedAppt.status
             });
         }
+
+        // Apply automatic schedule packing downstream
+        if (targetBayId !== 'waitlist') {
+            updatedLocal = runBayPacking(targetBayId, updatedLocal);
+        }
+
+        setLocalAppointments(updatedLocal);
 
         // Update other order indexes in destination list
         destList.forEach((item, index) => {
@@ -312,6 +377,19 @@ export default function Appointments() {
             customerPhone: formData.customerPhone,
             vehicleMake: formData.vehicleMake,
             vehicleModel: formData.vehicleModel,
+        }, {
+            onSuccess: () => {
+                const targetBayId = selectedAppointment.bayId;
+                if (targetBayId !== 'waitlist') {
+                    const updated = [...localAppointments];
+                    const idx = updated.findIndex(a => a.id === selectedAppointment.id);
+                    if (idx !== -1) {
+                        updated[idx] = { ...updated[idx], ...formData, appointmentDate: parsedDate };
+                    }
+                    const packed = runBayPacking(targetBayId, updated);
+                    setLocalAppointments(packed);
+                }
+            }
         });
     };
 
