@@ -128,7 +128,7 @@ export const reminderLogs = mysqlTable("reminderLogs", {
   messageType: mysqlEnum("messageType", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
   recipient: varchar("recipient", { length: 20 }).notNull(), // phone number
   messageSid: varchar("messageSid", { length: 100 }), // Twilio message ID
-  status: mysqlEnum("status", ["queued", "sent", "delivered", "read", "failed"]).default("queued").notNull(),
+  status: mysqlEnum("status", ["queued", "sent", "delivered", "read", "failed", "undelivered"]).default("queued").notNull(),
   templateUsed: varchar("templateUsed", { length: 255 }), // template SID or name
   customerName: text("customerName"),
   registration: varchar("registration", { length: 20 }),
@@ -216,3 +216,28 @@ export const serviceLineItems = mysqlTable("serviceLineItems", {
 
 export type ServiceLineItem = typeof serviceLineItems.$inferSelect;
 export type InsertServiceLineItem = typeof serviceLineItems.$inferInsert;
+
+/**
+ * Appointments table - stores Kanban calendar appointments
+ */
+export const appointments = mysqlTable("appointments", {
+  id: int("id").autoincrement().primaryKey(),
+  vehicleId: int("vehicleId"),
+  customerId: int("customerId"),
+  registration: varchar("registration", { length: 20 }),
+  bayId: varchar("bayId", { length: 50 }).notNull(), // e.g., 'mot-bay', 'ramp-1'
+  appointmentDate: datetime("appointmentDate").notNull(), // The day of the appointment
+  startTime: varchar("startTime", { length: 10 }), // e.g., "09:00"
+  endTime: varchar("endTime", { length: 10 }),
+  status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
+  notes: text("notes"),
+  orderIndex: int("orderIndex").default(0).notNull(), // For dragging and dropping order
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+}, (table) => ({
+  dateIdx: index("appointments_date_idx").on(table.appointmentDate),
+  bayIdx: index("appointments_bay_idx").on(table.bayId),
+}));
+
+export type Appointment = typeof appointments.$inferSelect;
+export type InsertAppointment = typeof appointments.$inferInsert;

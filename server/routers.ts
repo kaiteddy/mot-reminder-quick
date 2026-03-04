@@ -1989,7 +1989,7 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        if (input.logIds.length === 0) return { success: true, count: 0 };
+        if (input.logIds.length === 0) return { success: true, count: 0, failCount: 0 };
 
         // Fetch the logs to resend
         const logsToResend = await db
@@ -2288,6 +2288,136 @@ export const appRouter = router({
         const { deleteServiceDocument } = await import("./db");
         return deleteServiceDocument(input.id);
       }),
+  }),
+
+  // Appointments Router
+  appointments: router({
+    listByDate: publicProcedure
+      .input(z.object({ date: z.string() })) // ISO string YYYY-MM-DD format
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const { eq, between, asc } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return [];
+
+        const startOfDay = new Date(input.date);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(input.date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const results = await db
+          .select()
+          .from(appointments)
+          .where(between(appointments.appointmentDate, startOfDay, endOfDay))
+          .orderBy(asc(appointments.orderIndex));
+
+        return results;
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        vehicleId: z.number().optional(),
+        customerId: z.number().optional(),
+        registration: z.string().optional(),
+        bayId: z.string(),
+        appointmentDate: z.string(), // ISO string date
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        notes: z.string().optional(),
+        orderIndex: z.number().default(0)
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const result = await db.insert(appointments).values({
+          vehicleId: input.vehicleId,
+          customerId: input.customerId,
+          registration: input.registration,
+          bayId: input.bayId,
+          appointmentDate: new Date(input.appointmentDate),
+          startTime: input.startTime,
+          endTime: input.endTime,
+          notes: input.notes,
+          orderIndex: input.orderIndex,
+        });
+
+        return { success: true, id: result[0].insertId };
+      }),
+
+    updatePosition: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        bayId: z.string(),
+        orderIndex: z.number(),
+        appointmentDate: z.string().optional()
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        const updateData: any = {
+          bayId: input.bayId,
+          orderIndex: input.orderIndex,
+          updatedAt: new Date()
+        };
+
+        if (input.appointmentDate) {
+          updateData.appointmentDate = new Date(input.appointmentDate);
+        }
+
+        await db.update(appointments)
+          .set(updateData)
+          .where(eq(appointments.id, input.id));
+
+        return { success: true };
+      }),
+
+    updateDetails: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).optional(),
+        notes: z.string().optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        registration: z.string().optional()
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.update(appointments)
+          .set({
+            ...input,
+            updatedAt: new Date()
+          })
+          .where(eq(appointments.id, input.id));
+
+        return { success: true };
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { appointments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        await db.delete(appointments).where(eq(appointments.id, input.id));
+        return { success: true };
+      })
   }),
 });
 

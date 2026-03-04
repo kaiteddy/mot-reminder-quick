@@ -1,0 +1,515 @@
+import { useState, useMemo, useEffect } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
+import { format, addDays, subDays } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, GripVertical, CheckCircle2, Loader2 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import { trpc } from "@/lib/trpc";
+import { APP_TITLE } from "@/const";
+import { Badge } from "@/components/ui/badge";
+
+// Define our resource columns (bays/ramps)
+const BAYS = [
+    { id: "mot-bay", name: "MOT Bay", },
+    { id: "ramp-1", name: "Ramp 1", },
+    { id: "ramp-2", name: "Ramp 2", },
+    { id: "ramp-3", name: "Ramp 3", },
+    { id: "waitlist", name: "Waitlist / Unassigned" }
+];
+
+export default function Appointments() {
+    const [currentDate, setCurrentDate] = useState<Date>(new Date());
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+    const [formData, setFormData] = useState({
+        registration: "",
+        bayId: "mot-bay",
+        startTime: "09:00",
+        endTime: "09:45",
+        notes: "",
+        status: "scheduled"
+    });
+
+    // State to hold optimistic drag-and-drop list state
+    const [localAppointments, setLocalAppointments] = useState<any[]>([]);
+
+    const utils = trpc.useUtils();
+
+    const dateStr = format(currentDate, "yyyy-MM-dd");
+    const { data: serverAppointments, isLoading } = trpc.appointments.listByDate.useQuery({ date: dateStr });
+
+    // Update local state when server data changes (but not while dragging ideally)
+    useEffect(() => {
+        if (serverAppointments) {
+            setLocalAppointments(serverAppointments);
+        }
+    }, [serverAppointments]);
+
+    // Mutations
+    const createMutation = trpc.appointments.create.useMutation({
+        onSuccess: () => {
+            toast.success("Appointment created!");
+            setIsCreateOpen(false);
+            resetForm();
+            utils.appointments.listByDate.invalidate({ date: dateStr });
+        },
+        onError: (e) => toast.error(`Failed to create: ${e.message}`)
+    });
+
+    const updatePosMutation = trpc.appointments.updatePosition.useMutation();
+    const updateDetailsMutation = trpc.appointments.updateDetails.useMutation({
+        onSuccess: () => {
+            toast.success("Appointment updated!");
+            setIsEditOpen(false);
+            resetForm();
+            utils.appointments.listByDate.invalidate({ date: dateStr });
+        },
+        onError: (e) => toast.error(`Failed to update: ${e.message}`)
+    });
+
+    const deleteMutation = trpc.appointments.delete.useMutation({
+        onSuccess: () => {
+            toast.success("Appointment deleted!");
+            setIsEditOpen(false);
+            utils.appointments.listByDate.invalidate({ date: dateStr });
+        }
+    });
+
+    // Vehicle Lookup for quick populate
+    const { data: vehicleLookup } = trpc.vehicles.getByRegistration.useQuery(
+        { registration: formData.registration.replace(/\s+/g, "") },
+        { enabled: formData.registration.length >= 2, retry: false }
+    );
+
+    const resetForm = () => {
+        setFormData({
+            registration: "",
+            bayId: "mot-bay",
+            startTime: "09:00",
+            endTime: "09:45",
+            notes: "",
+            status: "scheduled"
+        });
+        setSelectedAppointment(null);
+    };
+
+    const nextDay = () => setCurrentDate(addDays(currentDate, 1));
+    const prevDay = () => setCurrentDate(subDays(currentDate, 1));
+    const today = () => setCurrentDate(new Date());
+
+    const handleDragEnd = (result: DropResult) => {
+        const { source, destination, draggableId } = result;
+
+        if (!destination) return; // Dropped outside a list
+
+        // If dropped in the same place
+        if (source.droppableId === destination.droppableId && source.index === destination.index) {
+            return;
+        }
+
+        // Optimistically update local array
+        const draggedApptId = parseInt(draggableId.replace("appt-", ""));
+        const draggedAppt = localAppointments.find(a => a.id === draggedApptId);
+        if (!draggedAppt) return;
+
+        // Remove from source array and mutate bay ID
+        let newAppts = localAppointments.filter(a => a.id !== draggedApptId);
+
+        // Sort destination list to find insertion point
+        const destList = newAppts.filter(a => a.bayId === destination.droppableId).sort((a, b) => a.orderIndex - b.orderIndex);
+
+        // Re-insert into full array with updated order
+        const updatedAppt = { ...draggedAppt, bayId: destination.droppableId };
+        destList.splice(destination.index, 0, updatedAppt);
+
+        // Normalize order index
+        destList.forEach((item, index) => {
+            item.orderIndex = index;
+        });
+
+        // Reconstruct full list
+        const otherBaysList = newAppts.filter(a => a.bayId !== destination.droppableId);
+        setLocalAppointments([...otherBaysList, ...destList]);
+
+        // Send backend mutation
+        updatePosMutation.mutate({
+            id: draggedApptId,
+            bayId: destination.droppableId,
+            orderIndex: destination.index
+        });
+
+        // Update all order indexes in backend to prevent desync
+        destList.forEach((item, index) => {
+            if (item.id !== draggedApptId) {
+                updatePosMutation.mutate({
+                    id: item.id,
+                    bayId: item.bayId,
+                    orderIndex: index
+                });
+            }
+        });
+    };
+
+    const handleSaveCreate = () => {
+        if (!formData.registration && !formData.notes) {
+            toast.error("Please provide at least a registration or notes");
+            return;
+        }
+        createMutation.mutate({
+            ...formData,
+            appointmentDate: dateStr,
+            vehicleId: vehicleLookup?.vehicle?.id || undefined,
+            customerId: vehicleLookup?.customer?.id || undefined,
+        });
+    };
+
+    const handleSaveEdit = () => {
+        if (!selectedAppointment) return;
+        updateDetailsMutation.mutate({
+            id: selectedAppointment.id,
+            registration: formData.registration,
+            startTime: formData.startTime,
+            endTime: formData.endTime,
+            notes: formData.notes,
+            status: formData.status as any
+        });
+    };
+
+    const openCreateDialog = (bayId: string = "mot-bay") => {
+        resetForm();
+        setFormData(prev => ({ ...prev, bayId }));
+        setIsCreateOpen(true);
+    };
+
+    const openApptEdit = (appt: any) => {
+        setSelectedAppointment(appt);
+        setFormData({
+            registration: appt.registration || "",
+            bayId: appt.bayId,
+            startTime: appt.startTime || "",
+            endTime: appt.endTime || "",
+            notes: appt.notes || "",
+            status: appt.status || "scheduled"
+        });
+        setIsEditOpen(true);
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'in_progress': return "bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300";
+            case 'completed': return "bg-green-100 border-green-300 text-green-800 dark:bg-green-900/40 dark:border-green-700 dark:text-green-300";
+            case 'cancelled': return "bg-red-100 border-red-300 text-red-800 dark:bg-red-900/40 dark:border-red-700 dark:text-red-300";
+            default: return "";
+        }
+    };
+
+    return (
+        <DashboardLayout>
+            <div className="flex flex-col h-[calc(100vh-6rem)]">
+                {/* Header Options */}
+                <div className="flex-shrink-0 flex items-center justify-between mb-4">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Calendar & Kanban</h1>
+                        <p className="text-muted-foreground">Manage bookings seamlessly across your ramps and bays.</p>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                        <div className="flex items-center bg-background border rounded-md shadow-sm">
+                            <Button variant="ghost" size="icon" onClick={prevDay}>
+                                <ChevronLeft className="w-5 h-5" />
+                            </Button>
+                            <div className="flex items-center px-4 py-2 text-sm font-medium border-x select-none cursor-pointer hover:bg-accent hover:text-accent-foreground" onClick={today}>
+                                <CalendarIcon className="w-4 h-4 mr-2" />
+                                {format(currentDate, "EEEE, do MMM yyyy")}
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={nextDay}>
+                                <ChevronRight className="w-5 h-5" />
+                            </Button>
+                        </div>
+                        <Button onClick={() => openCreateDialog("waitlist")}>
+                            <Plus className="w-4 h-4 mr-2" />
+                            New Booking
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Drag and drop Container */}
+                <div className="flex-1 min-h-0 relative">
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                        <div className="flex h-full gap-4 overflow-x-auto pb-2">
+                            {BAYS.map((bay) => {
+                                const bayAppts = localAppointments
+                                    .filter(a => a.bayId === bay.id)
+                                    .sort((a, b) => a.orderIndex - b.orderIndex);
+
+                                return (
+                                    <div key={bay.id} className="flex-shrink-0 w-80 flex flex-col bg-slate-50/50 dark:bg-slate-900/50 border rounded-xl overflow-hidden">
+                                        <div className="px-4 py-3 bg-slate-100 dark:bg-slate-900 border-b flex items-center justify-between shadow-sm z-10">
+                                            <h3 className="font-semibold text-sm tracking-wide">{bay.name}</h3>
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="secondary" className="px-1.5 min-w-6 justify-center bg-background/80 shadow-sm">{bayAppts.length}</Badge>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 -mr-1 text-slate-500 hover:text-slate-900" onClick={() => openCreateDialog(bay.id)}>
+                                                    <Plus className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <Droppable droppableId={bay.id}>
+                                            {(provided: any, snapshot: any) => (
+                                                <div
+                                                    ref={provided.innerRef}
+                                                    {...provided.droppableProps}
+                                                    className={`flex-1 p-2 overflow-y-auto min-h-[150px] transition-colors ${snapshot.isDraggingOver ? "bg-slate-100/80 dark:bg-slate-800/80 shadow-inner" : ""
+                                                        }`}
+                                                >
+                                                    {bayAppts.map((appt, index) => (
+                                                        <Draggable key={`appt-${appt.id}`} draggableId={`appt-${appt.id}`} index={index}>
+                                                            {(provided: any, snapshot: any) => (
+                                                                <div
+                                                                    ref={provided.innerRef}
+                                                                    {...provided.draggableProps}
+                                                                    className={`mb-2 ${snapshot.isDragging ? "z-50 opacity-90 scale-105" : ""}`}
+                                                                >
+                                                                    <Card className={`group cursor-default border shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700 ${getStatusColor(appt.status)}`}>
+                                                                        <CardContent className="p-3">
+                                                                            <div className="flex items-start gap-2">
+                                                                                <div
+                                                                                    {...provided.dragHandleProps}
+                                                                                    className="mt-1 flex-shrink-0 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors"
+                                                                                >
+                                                                                    <GripVertical className="w-4 h-4" />
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
+                                                                                    <div className="flex items-center justify-between mb-1.5 cursor-pointer">
+                                                                                        {appt.registration ? (
+                                                                                            <div className="font-mono font-bold text-sm tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded shadow-sm">
+                                                                                                {appt.registration}
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <div className="font-medium text-sm italic text-muted-foreground">No Reg</div>
+                                                                                        )}
+                                                                                        {appt.startTime && (
+                                                                                            <div className="flex items-center text-xs font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1.5 py-0.5 rounded">
+                                                                                                <Clock className="w-3 h-3 mr-1 opacity-70" />
+                                                                                                {appt.startTime}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+
+                                                                                    {appt.notes && (
+                                                                                        <p className="text-xs text-muted-foreground line-clamp-2 mt-2 leading-relaxed cursor-pointer">
+                                                                                            {appt.notes}
+                                                                                        </p>
+                                                                                    )}
+
+                                                                                    {appt.status !== 'scheduled' && (
+                                                                                        <Badge variant="outline" className="mt-2 text-[10px] uppercase tracking-wider py-0 px-1">
+                                                                                            {appt.status.replace("_", " ")}
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </CardContent>
+                                                                    </Card>
+                                                                </div>
+                                                            )}
+                                                        </Draggable>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                    {bayAppts.length === 0 && !snapshot.isDraggingOver && (
+                                                        <div className="h-full flex items-center justify-center text-slate-400">
+                                                            <p className="text-xs font-medium px-4 text-center border border-dashed py-4 rounded-lg">Drop bookings here</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </Droppable>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </DragDropContext>
+                </div>
+            </div>
+
+            {/* CREATE BOOKING DIALOG */}
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Quick Booking</DialogTitle>
+                        <DialogDescription>
+                            Create an appointment for {format(currentDate, "do MMM yyyy")}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="reg" className="text-right">Reg No.</Label>
+                            <div className="col-span-3 flex gap-2">
+                                <Input
+                                    id="reg"
+                                    className="font-mono uppercase transition-colors"
+                                    placeholder="XX12 XXX"
+                                    value={formData.registration}
+                                    onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Auto-fill details if known */}
+                        {vehicleLookup?.vehicle?.registration && (
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <div className="col-start-2 col-span-3 -mt-2">
+                                    <div className="bg-green-50 text-green-800 text-xs px-2 py-1.5 rounded flex items-center justify-between border border-green-200">
+                                        <span className="font-medium truncate mr-2">
+                                            {vehicleLookup.customer?.name || 'Unknown Cust.'} • {vehicleLookup.vehicle?.make || ''} {vehicleLookup.vehicle?.model || ''}
+                                        </span>
+                                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="bay" className="text-right">Bay/Ramp</Label>
+                            <Select value={formData.bayId} onValueChange={(v) => setFormData({ ...formData, bayId: v })}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {BAYS.map(b => (
+                                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="time" className="text-right">Time</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Input
+                                    id="time"
+                                    type="time"
+                                    value={formData.startTime}
+                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                    className="w-full"
+                                />
+                                <span className="text-muted-foreground">to</span>
+                                <Input
+                                    type="time"
+                                    value={formData.endTime}
+                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                    className="w-full"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 items-start gap-4">
+                            <Label htmlFor="notes" className="text-right mt-2">Notes & Job</Label>
+                            <Textarea
+                                id="notes"
+                                placeholder="Job description, contact details..."
+                                className="col-span-3 resize-none h-20"
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSaveCreate} disabled={createMutation.isPending}>
+                            {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Booking
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* EDIT BOOKING DIALOG */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Booking Details</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Status</Label>
+                            <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="scheduled">Scheduled (Blue)</SelectItem>
+                                    <SelectItem value="in_progress">In Progress (Orange)</SelectItem>
+                                    <SelectItem value="completed">Completed (Green)</SelectItem>
+                                    <SelectItem value="cancelled">Cancelled (Red)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-reg" className="text-right">Reg No.</Label>
+                            <Input
+                                id="edit-reg"
+                                className="col-span-3 font-mono uppercase"
+                                value={formData.registration}
+                                onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
+                            />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-time" className="text-right">Time</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Input
+                                    type="time"
+                                    value={formData.startTime}
+                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                    className="w-full"
+                                />
+                                <span className="text-muted-foreground">-</span>
+                                <Input
+                                    type="time"
+                                    value={formData.endTime}
+                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                    className="w-full"
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-start gap-4">
+                            <Label htmlFor="edit-notes" className="text-right mt-2">Notes</Label>
+                            <Textarea
+                                id="edit-notes"
+                                className="col-span-3 h-24"
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="flex justify-between w-full sm:justify-between">
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => {
+                                if (window.confirm("Delete this appointment completely?")) {
+                                    deleteMutation.mutate({ id: selectedAppointment?.id });
+                                }
+                            }}
+                        >
+                            Delete
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+                            <Button onClick={handleSaveEdit} disabled={updateDetailsMutation.isPending}>
+                                Save Changes
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </DashboardLayout>
+    );
+}

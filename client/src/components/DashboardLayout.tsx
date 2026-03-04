@@ -39,7 +39,8 @@ import {
   Smartphone,
   BarChart,
   ScanLine,
-  History
+  History,
+  Calendar as CalendarIcon
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -57,6 +58,7 @@ const menuItems = [
   { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
   { icon: FileText, label: "Generate Doc", path: "/generate-document" },
   { icon: FileText, label: "Logs & Messages", path: "/logs" },
+  { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
