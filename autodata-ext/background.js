@@ -31,14 +31,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ---- BROWSER DRONE POLLING LOGIC ----
+const DRONE_API_BASE = "https://mot-reminder-quick.vercel.app";
+const DRONE_SECRET_STORAGE_KEY = "autodataDroneSecret";
 let isPolling = false;
+
+function getDroneSecret() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get([DRONE_SECRET_STORAGE_KEY], (items) => {
+            resolve(items[DRONE_SECRET_STORAGE_KEY] || "");
+        });
+    });
+}
 
 async function pollForJobs() {
     if (isPolling) return;
     isPolling = true;
 
     try {
-        const res = await fetch("https://mot-reminder-quick.vercel.app/api/webhooks/autodata/poll");
+        const droneSecret = await getDroneSecret();
+        if (!droneSecret) {
+            console.warn("Browser Drone polling is disabled until autodataDroneSecret is set in chrome.storage.local.");
+            return;
+        }
+
+        const res = await fetch(`${DRONE_API_BASE}/api/webhooks/autodata/poll`, {
+            headers: {
+                "x-autodata-drone-secret": droneSecret
+            }
+        });
         const data = await res.json();
 
         if (data.success && data.job) {
@@ -55,6 +75,7 @@ async function pollForJobs() {
 async function executeJob(job) {
     let resultData = null;
     let errorMessage = null;
+    const droneSecret = await getDroneSecret();
 
     try {
         // We do a Native Fetch directly to Autodata!
@@ -82,9 +103,12 @@ async function executeJob(job) {
 
     // Submit the result back to Vercel
     try {
-        await fetch("https://mot-reminder-quick.vercel.app/api/webhooks/autodata/result", {
+        await fetch(`${DRONE_API_BASE}/api/webhooks/autodata/result`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "x-autodata-drone-secret": droneSecret
+            },
             body: JSON.stringify({
                 id: job.id,
                 resultData,
@@ -97,8 +121,8 @@ async function executeJob(job) {
     }
 }
 
-// Check for jobs every 5 seconds using Chrome alarms to keep the service worker alive
-chrome.alarms.create("dronePoll", { periodInMinutes: 0.1 }); // ~6 seconds
+// Chrome enforces a minimum 30-second alarm interval.
+chrome.alarms.create("dronePoll", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "dronePoll") {
         pollForJobs();

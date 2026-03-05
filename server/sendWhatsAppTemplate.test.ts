@@ -16,6 +16,8 @@ vi.mock("./smsService", () => ({
     success: true,
     messageId: "TEST_CUSTOM_MESSAGE_ID",
   }),
+  generateFullMOTTemplateContent: vi.fn().mockReturnValue("Generated MOT template"),
+  generateFullServiceTemplateContent: vi.fn().mockReturnValue("Generated service template"),
   generateServiceReminderMessage: vi.fn(),
 }));
 

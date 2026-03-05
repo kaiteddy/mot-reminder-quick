@@ -11,9 +11,20 @@ import { saveAppSetting } from "../db";
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import path from 'path';
+import { ENV } from "./env";
 
 export const app = express();
 export const server = createServer(app);
+
+function isAuthorizedDroneRequest(req: express.Request) {
+  const configuredSecret = ENV.autodataDroneSecret.trim();
+  if (!configuredSecret) {
+    return false;
+  }
+
+  const providedSecret = req.header("x-autodata-drone-secret")?.trim();
+  return providedSecret === configuredSecret;
+}
 
 // Shared setup function
 function setupApp(app: Express) {
@@ -85,6 +96,15 @@ function setupApp(app: Express) {
     app.get("/api/webhooks/autodata/poll", async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Autodata-Drone-Secret');
+
+      if (!ENV.autodataDroneSecret.trim()) {
+        return res.status(503).json({ success: false, error: "Browser Drone is not configured" });
+      }
+
+      if (!isAuthorizedDroneRequest(req)) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
 
       try {
         const dbOptions = await import("../db");
@@ -117,7 +137,7 @@ function setupApp(app: Express) {
     app.options("/api/webhooks/autodata/poll", (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Autodata-Drone-Secret');
       res.status(200).end();
     });
 
@@ -125,7 +145,15 @@ function setupApp(app: Express) {
     app.post("/api/webhooks/autodata/result", async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Autodata-Drone-Secret');
+
+      if (!ENV.autodataDroneSecret.trim()) {
+        return res.status(503).json({ success: false, error: "Browser Drone is not configured" });
+      }
+
+      if (!isAuthorizedDroneRequest(req)) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
 
       try {
         const { id, resultData, errorMessage } = req.body;
@@ -156,7 +184,7 @@ function setupApp(app: Express) {
     app.options("/api/webhooks/autodata/result", (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Autodata-Drone-Secret');
       res.status(200).end();
     });
   } catch (e) {

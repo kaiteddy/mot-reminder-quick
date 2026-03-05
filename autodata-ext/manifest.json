@@ -5,7 +5,8 @@
     "description": "Extracts Autodata session keys from LocalStorage and syncs them.",
     "permissions": [
         "storage",
-        "cookies"
+        "cookies",
+        "alarms"
     ],
     "host_permissions": [
         "https://workshop.autodata-group.com/*",
