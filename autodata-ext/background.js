@@ -4,10 +4,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.cookies.getAll({ domain: "autodata-group.com" }, (cookies) => {
             const backgroundRawCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
 
-            // Overwrite the limited `rawCookies` mapped by content.js with the God-mode HttpOnly ones
+            // Combine the cookies from content.js (document.cookie) with HttpOnly background cookies
+            let combinedCookies = message.data.rawCookies || "";
+            if (backgroundRawCookies) {
+                // Merge without duplicates is better, but string concat is fine for now
+                combinedCookies = combinedCookies ? `${combinedCookies}; ${backgroundRawCookies}` : backgroundRawCookies;
+            }
+
             const payload = {
                 ...message.data,
-                rawCookies: backgroundRawCookies
+                rawCookies: combinedCookies
             };
 
             fetch("https://mot-reminder-quick.vercel.app/api/webhooks/autodata", {
