@@ -5,9 +5,9 @@ import os from "os";
 import fs from "fs";
 import path from "path";
 import {
-  InsertUser, users, InsertReminder, InsertCustomer, InsertReminderLog,
-  reminders, reminderLogs, customers, customerMessages, vehicles,
-  serviceHistory, serviceLineItems
+  users, customers, vehicles, reminders, reminderLogs,
+  customerMessages, serviceHistory, serviceLineItems, appointments, appSettings,
+  InsertUser, InsertReminder, InsertCustomer, InsertReminderLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1081,3 +1081,22 @@ export async function deleteServiceDocument(id: number) {
     return { success: true };
   });
 }
+
+export async function getAppSetting(keyName: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(appSettings).where(eq(appSettings.keyName, keyName)).limit(1);
+  return result[0]?.value || null;
+}
+
+export async function saveAppSetting(keyName: string, value: any) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(appSettings).where(eq(appSettings.keyName, keyName)).limit(1);
+  if (existing.length > 0) {
+    await db.update(appSettings).set({ value }).where(eq(appSettings.keyName, keyName));
+  } else {
+    await db.insert(appSettings).values({ keyName, value });
+  }
+}
+

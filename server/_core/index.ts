@@ -7,6 +7,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./serve-static";
 import { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } from "../webhooks/twilio";
+import { saveAppSetting } from "../db";
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import path from 'path';
@@ -32,7 +33,7 @@ function setupApp(app: Express) {
     app.get("/api/webhooks/twilio/status", handleWebhookTest);
 
     // Autodata Extension Harvester endpoint
-    app.post("/api/webhooks/autodata", (req, res) => {
+    app.post("/api/webhooks/autodata", async (req, res) => {
       // Allow CORS for the extension
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -40,6 +41,14 @@ function setupApp(app: Express) {
 
       console.log("\n[AUTODATA HARVESTER] Received new session tokens:");
       console.log(JSON.stringify(req.body, null, 2));
+
+      // Save to database permanently
+      try {
+        await saveAppSetting('autodata_tokens', req.body);
+        console.log("[AUTODATA HARVESTER] Saved tokens to appSettings database table.");
+      } catch (err: any) {
+        console.error("[AUTODATA HARVESTER] Database save failed:", err.message);
+      }
 
       // Optional: Save to a file so server can read it locally
       try {

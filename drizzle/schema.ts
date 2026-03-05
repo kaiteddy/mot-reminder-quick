@@ -241,3 +241,16 @@ export const appointments = mysqlTable("appointments", {
 
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = typeof appointments.$inferInsert;
+
+/**
+ * App Settings table - stores single-row global settings (like Autodata tokens)
+ */
+export const appSettings = mysqlTable("appSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  keyName: varchar("keyName", { length: 100 }).notNull().unique(), // e.g., 'autodata_tokens'
+  value: json("value"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;
