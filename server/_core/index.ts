@@ -31,10 +31,15 @@ function setupApp(app: Express) {
 
     // Autodata Extension Harvester endpoint
     app.post("/api/webhooks/autodata", (req, res) => {
+      // Allow CORS for the extension
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
       console.log("\n[AUTODATA HARVESTER] Received new session tokens:");
       console.log(JSON.stringify(req.body, null, 2));
 
-      // Optional: Save to a file so server can read it
+      // Optional: Save to a file so server can read it locally
       const fs = require('fs');
       const path = require('path');
       try {
@@ -42,6 +47,14 @@ function setupApp(app: Express) {
       } catch (e) { /* ignore */ }
 
       res.json({ success: true, received: true });
+    });
+
+    // Handle OPTIONS preflight for Autodata
+    app.options("/api/webhooks/autodata", (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.sendStatus(200);
     });
   } catch (e) {
     console.warn("Failed to register Twilio webhooks", e);
