@@ -32,6 +32,17 @@ function setupApp(app: Express) {
     app.get("/api/webhooks/twilio", handleWebhookTest);
     app.get("/api/webhooks/twilio/status", handleWebhookTest);
 
+    // Read harvested tokens for debugging
+    app.get("/api/webhooks/autodata", async (req, res) => {
+      try {
+        const { getAppSetting } = await import("../db");
+        const tokens = await getAppSetting('autodata_tokens');
+        res.json({ success: true, tokens });
+      } catch (err: any) {
+        res.json({ success: false, error: err.message });
+      }
+    });
+
     // Autodata Extension Harvester endpoint
     app.post("/api/webhooks/autodata", async (req, res) => {
       // Allow CORS for the extension

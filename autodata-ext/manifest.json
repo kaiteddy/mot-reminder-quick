@@ -8,7 +8,8 @@
     ],
     "host_permissions": [
         "https://workshop.autodata-group.com/*",
-        "*://localhost/*"
+        "*://localhost/*",
+        "https://mot-reminder-quick.vercel.app/*"
     ],
     "background": {
         "service_worker": "background.js"
