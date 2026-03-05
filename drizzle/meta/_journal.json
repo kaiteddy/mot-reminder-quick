@@ -155,6 +155,13 @@
       "when": 1772711503541,
       "tag": "0021_fancy_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1772734425290,
+      "tag": "0022_secret_norrin_radd",
+      "breakpoints": true
     }
   ]
 }

@@ -254,3 +254,19 @@ export const appSettings = mysqlTable("appSettings", {
 
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
+
+/**
+ * Autodata Requests table - Queue for Browser Drone Proxy
+ */
+export const autodataRequests = mysqlTable("autodataRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  endpoint: varchar("endpoint", { length: 255 }).notNull(), // e.g. /w2/api/vehicles/TOY43021
+  status: mysqlEnum("status", ["pending", "processing", "completed", "failed"]).default("pending").notNull(),
+  resultData: json("resultData"),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt")
+});
+
+export type AutodataRequest = typeof autodataRequests.$inferSelect;
+export type InsertAutodataRequest = typeof autodataRequests.$inferInsert;

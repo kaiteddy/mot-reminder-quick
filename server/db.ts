@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
-  customerMessages, serviceHistory, serviceLineItems, appointments, appSettings,
+  customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';

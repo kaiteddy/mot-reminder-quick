@@ -78,7 +78,86 @@ function setupApp(app: Express) {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      res.sendStatus(200);
+      res.status(200).end();
+    });
+
+    // Browser Drone Poll Endpoint
+    app.get("/api/webhooks/autodata/poll", async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+      try {
+        const dbOptions = await import("../db");
+        const db = await dbOptions.getDb();
+        if (!db) return res.json({ success: false, error: "No DB" });
+
+        const { autodataRequests } = await import("../../drizzle/schema");
+        const { eq, asc } = await import("drizzle-orm");
+
+        // Find oldest pending request
+        const pending = await db.select()
+          .from(autodataRequests)
+          .where(eq(autodataRequests.status, "pending"))
+          .orderBy(asc(autodataRequests.createdAt))
+          .limit(1);
+
+        if (pending.length > 0) {
+          // Mark as processing
+          await db.update(autodataRequests)
+            .set({ status: "processing" })
+            .where(eq(autodataRequests.id, pending[0].id));
+          return res.json({ success: true, job: pending[0] });
+        }
+        res.json({ success: true, job: null });
+      } catch (err: any) {
+        res.json({ success: false, error: err.message });
+      }
+    });
+
+    app.options("/api/webhooks/autodata/poll", (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.status(200).end();
+    });
+
+    // Browser Drone Result Endpoint
+    app.post("/api/webhooks/autodata/result", async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      try {
+        const { id, resultData, errorMessage } = req.body;
+        if (!id) return res.json({ success: false, error: "Missing job ID" });
+
+        const dbOptions = await import("../db");
+        const db = await dbOptions.getDb();
+        if (!db) return res.json({ success: false, error: "No DB" });
+
+        const { autodataRequests } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+
+        await db.update(autodataRequests)
+          .set({
+            status: errorMessage ? "failed" : "completed",
+            resultData: resultData,
+            errorMessage: errorMessage || null,
+            completedAt: new Date()
+          })
+          .where(eq(autodataRequests.id, id));
+
+        res.json({ success: true });
+      } catch (err: any) {
+        res.json({ success: false, error: err.message });
+      }
+    });
+
+    app.options("/api/webhooks/autodata/result", (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.status(200).end();
     });
   } catch (e) {
     console.warn("Failed to register Twilio webhooks", e);
