@@ -8,6 +8,8 @@ import { createContext } from "./context";
 import { serveStatic } from "./serve-static";
 import { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } from "../webhooks/twilio";
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import path from 'path';
 
 export const app = express();
 export const server = createServer(app);
@@ -40,11 +42,13 @@ function setupApp(app: Express) {
       console.log(JSON.stringify(req.body, null, 2));
 
       // Optional: Save to a file so server can read it locally
-      const fs = require('fs');
-      const path = require('path');
       try {
-        fs.writeFileSync(path.join(process.cwd(), 'server', 'autodata_session.json'), JSON.stringify(req.body, null, 2));
-      } catch (e) { /* ignore */ }
+        if (process.env.NODE_ENV === "development") {
+          fs.writeFileSync(path.join(process.cwd(), 'server', 'autodata_session.json'), JSON.stringify(req.body, null, 2));
+        }
+      } catch (e: any) {
+        console.warn("Could not write session file (expected in Vercel):", e.message);
+      }
 
       res.json({ success: true, received: true });
     });
