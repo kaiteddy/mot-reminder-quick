@@ -7,7 +7,7 @@ const SWS_CONFIG = {
 };
 
 async function testRaw() {
-    const vrm = "YM14NFL";
+    const vrm = process.argv[2] || "YM14NFL";
     const commonHeaders = {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': SWS_CONFIG.authHeader,

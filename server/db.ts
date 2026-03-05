@@ -666,21 +666,39 @@ export async function saveTechnicalData(registration: string, data: any) {
 
   const existing = await db.select().from(vehicles).where(eq(vehicles.registration, registration)).limit(1);
 
+  const make = data?.ukvd?.make || data?.specs?.make || (data?.specs?.fullName ? data?.specs?.fullName.split(' ')[0] : null) || "Unknown";
+  const model = data?.ukvd?.model || data?.specs?.model || (data?.specs?.fullName ? data?.specs?.fullName.split(' ').slice(1).join(' ') : null) || "Unknown";
+  const fuelType = data?.ukvd?.fuelType || data?.specs?.fuelType || null;
+  const colour = data?.ukvd?.colour || data?.specs?.colour || null;
+  const engineCC = data?.ukvd?.engineSize || data?.specs?.engineSize || null;
+  const vin = data?.ukvd?.vin || data?.specs?.vin || data?.raw?.vinNumber || null;
+  const engineCode = data?.specs?.engineCode || data?.raw?.engineCode || null;
+
   if (existing.length > 0) {
+    const v = existing[0];
     await db.update(vehicles)
       .set({
+        make: v.make && v.make !== "Unknown" ? v.make : make,
+        model: v.model && v.model !== "Unknown" ? v.model : model,
+        fuelType: v.fuelType || fuelType,
+        colour: v.colour || colour,
+        engineCC: v.engineCC || engineCC,
+        vin: v.vin || vin,
+        engineCode: v.engineCode || engineCode,
         comprehensiveTechnicalData: data,
         swsLastUpdated: new Date()
       })
       .where(eq(vehicles.registration, registration));
   } else {
-    const make = data?.vehicleIdentity?.manufacturer || data?.basic?.make;
-    const model = data?.vehicleIdentity?.model || data?.basic?.model;
-
     await db.insert(vehicles).values({
       registration,
-      make: make || "Unknown",
-      model: model || "Unknown",
+      make: make,
+      model: model,
+      fuelType: fuelType,
+      colour: colour,
+      engineCC: engineCC,
+      vin: vin,
+      engineCode: engineCode,
       comprehensiveTechnicalData: data,
       swsLastUpdated: new Date()
     });

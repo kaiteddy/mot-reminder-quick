@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "Autodata Session Harvester",
+    "version": "1.0",
+    "description": "Extracts Autodata session keys from LocalStorage and syncs them.",
+    "permissions": [
+        "storage"
+    ],
+    "host_permissions": [
+        "https://workshop.autodata-group.com/*",
+        "*://localhost/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://workshop.autodata-group.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ]
+}

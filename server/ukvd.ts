@@ -13,6 +13,7 @@ export interface UKVDResponse {
     model?: string;
     engineSize?: number;
     fuelType?: string;
+    colour?: string;
     imageUrl?: string;
     dimensions?: {
         height?: number;
@@ -90,6 +91,7 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
             model: modelId?.Model,
             engineSize: dvlaTech?.EngineCapacityCc || modelDetails?.Powertrain?.IceDetails?.EngineCapacityCc,
             fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType || modelDetails?.Powertrain?.FuelType,
+            colour: vehicleDetails?.VehicleIdentification?.Colour,
             imageUrl: foundImageUrl,
             dimensions: {
                 height: dimensions?.HeightMm,
