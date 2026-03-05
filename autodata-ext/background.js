@@ -2,7 +2,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "SEND_TOKENS") {
         // Here we send it to your local dev app.
         // For production, change to: https://your-production-url.com/api/webhooks/autodata
-        fetch("http://localhost:3000/api/webhooks/autodata", {
+        fetch("https://mot-reminder-quick.vercel.app/api/webhooks/autodata", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
