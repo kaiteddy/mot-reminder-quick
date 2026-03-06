@@ -40,7 +40,8 @@ import {
   BarChart,
   ScanLine,
   History,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Wrench
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -62,6 +63,7 @@ const menuItems = [
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
+  { icon: Wrench, label: "Technical Data", path: "/technical-data" },
   { icon: DatabaseIcon, label: "Database", path: "/database" },
 ];
 

@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import path from 'path';
 import { ENV } from "./env";
+import { autodataRouter } from "../routes/autodata";
 
 export const app = express();
 export const server = createServer(app);

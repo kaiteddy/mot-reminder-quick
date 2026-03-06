@@ -25,6 +25,7 @@ import Login from "./pages/Login";
 import ReminderFollowUp from "./pages/ReminderFollowUp";
 import DocumentGenerator from "./pages/DocumentGenerator";
 import TechnicalHub from "./pages/TechnicalHub";
+import TechnicalData from "./pages/TechnicalData";
 import MobileJobSummary from "./pages/MobileJobSummary";
 import Appointments from "./pages/Appointments";
 
@@ -59,6 +60,7 @@ function Router() {
       <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/generate-document" component={DocumentGenerator} />
       <Route path="/technical-hub" component={TechnicalHub} />
+      <Route path="/technical-data" component={TechnicalData} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
 
