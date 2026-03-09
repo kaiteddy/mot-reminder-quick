@@ -140,10 +140,15 @@ export function AutodataMini({ vrm }: { vrm: string }) {
               </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center border-l pl-6 border-dashed opacity-50">
-              <Wrench className="h-8 w-8 text-muted-foreground mb-2" />
-              <p className="text-sm font-medium">Service Schedules</p>
-              <p className="text-xs text-muted-foreground text-center mt-1">Coming dynamically soon</p>
+            <div className="flex flex-col items-center justify-center p-6 border rounded-xl bg-primary/5">
+              <Wrench className="h-8 w-8 text-primary mb-2" />
+              <p className="font-bold text-center mb-1">Deep Technical Specs</p>
+              <p className="text-xs text-muted-foreground text-center mb-4 leading-tight">
+                Live interactive Service Schedules, Repair Times, and Component Layouts are now available in the dedicated Technical Workspace.
+              </p>
+              <Button onClick={() => window.location.href = `/technical-data?vrm=${encodeURIComponent(vrm)}`} className="w-full">
+                Open Technical Workspace
+              </Button>
             </div>
           </div>
         )}

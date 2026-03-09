@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,19 @@ export default function TechnicalData() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"specs" | "service" | "repair">("specs");
+    const initialLoadDone = useRef(false);
+
+    useEffect(() => {
+        if (initialLoadDone.current) return;
+        const params = new URLSearchParams(window.location.search);
+        const urlVrm = params.get("vrm");
+        if (urlVrm) {
+            setVrm(urlVrm);
+            // Trigger automatic search
+            handleSearch("specs", urlVrm);
+        }
+        initialLoadDone.current = true;
+    }, []);
 
     // Extracted Data
     const [vehicleSpecs, setVehicleSpecs] = useState<any>(null);
@@ -35,8 +48,9 @@ export default function TechnicalData() {
         throw new Error("Drone proxy timed out waiting for browser extension");
     };
 
-    const handleSearch = async (tab: "specs" | "service" | "repair") => {
-        if (!vrm.trim()) return;
+    const handleSearch = async (tab: "specs" | "service" | "repair", overrideVrm?: string) => {
+        const targetVrm = overrideVrm || vrm;
+        if (!targetVrm.trim()) return;
 
         setIsLoading(true);
         setError(null);
@@ -46,7 +60,7 @@ export default function TechnicalData() {
 
         try {
             // Wait for VRM Resolution 
-            const resolveRes = await fetch(`/api/autodata/resolve-vrm?vrm=${encodeURIComponent(vrm)}`);
+            const resolveRes = await fetch(`/api/autodata/resolve-vrm?vrm=${encodeURIComponent(targetVrm)}`);
             const resolveData = await resolveRes.json();
 
             if (!resolveData.success || !resolveData.jobId) {

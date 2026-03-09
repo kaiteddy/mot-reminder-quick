@@ -968,6 +968,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { getVehicleDetails } = await import("./dvlaApi");
+        const { fetchUKVDData } = await import("./ukvd");
 
         // Use mock data for testing if registration is TEST123
         if (input.registration.toUpperCase() === "TEST123") {
@@ -998,13 +999,17 @@ export const appRouter = router({
         }
 
         // Fetch from both APIs
-        const [motData, dvlaData] = await Promise.all([
+        const [motData, dvlaData, ukvdData] = await Promise.all([
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
             return null;
           }),
           getVehicleDetails(input.registration).catch((err) => {
             console.error("DVLA API Error:", err.message);
+            return null;
+          }),
+          fetchUKVDData(input.registration).catch((err) => {
+            console.error("UKVD API Error:", err.message);
             return null;
           }),
         ]);
@@ -1020,8 +1025,9 @@ export const appRouter = router({
 
         return {
           registration: input.registration,
-          make: motData?.make || dvlaData?.make,
-          model: motData?.model || dvlaData?.model,
+          make: ukvdData?.make || motData?.make || dvlaData?.make,
+          model: ukvdData?.model || motData?.model || dvlaData?.model,
+          vin: ukvdData?.vin,
           motExpiryDate: finalExpiry,
           colour: motData?.primaryColour || dvlaData?.colour,
           fuelType: motData?.fuelType || dvlaData?.fuelType,

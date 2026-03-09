@@ -62,6 +62,7 @@ interface VehicleData {
   wheelplan?: string;
   revenueWeight?: number;
   artEndDate?: string;
+  vin?: string;
   // Additional MOT fields
   primaryColour?: string;
   secondaryColour?: string;
@@ -298,6 +299,20 @@ export default function MOTCheck() {
                       <div>
                         <div className="text-xs text-slate-500">Year</div>
                         <div className="font-medium">{vehicleData.yearOfManufacture}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.vin && (
+                    <div className="flex items-center gap-2 lg:col-span-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">VIN</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold uppercase">{vehicleData.vin}</span>
+                          <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                            Search on PartSouq
+                          </a>
+                        </div>
                       </div>
                     </div>
                   )}
