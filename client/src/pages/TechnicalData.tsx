@@ -7,6 +7,61 @@ import { Search, Loader2, Wrench, Droplets, AlertTriangle, ChevronRight, Clock, 
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
+interface ParsedServiceData {
+    vehicleDetails: string;
+    engineDetails: string;
+    mainServiceInterval: string;
+    additionalItems: { name: string, time: string }[];
+    groups: { title: string, items: string[] }[];
+    totalTime: string;
+}
+
+const parseServiceSchedules = (html: string): ParsedServiceData => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const vehicleDetails = doc.querySelector('.vehicle-details .print-manufacturer-model')?.textContent?.trim().replace(/\s+/g, ' ') ||
+        doc.querySelector('.vehicle-info .displayModel')?.textContent?.trim() || "Vehicle";
+
+    const engineDetails = doc.querySelector('.vehicle-details .print-other-details')?.textContent?.trim().replace(/\s+/g, ' ') ||
+        doc.querySelector('.vehicle-info .engine-size')?.textContent?.trim() || "Engine";
+
+    // Default service items (e.g. "Standard workshop operations")
+    const mainServiceInterval = doc.querySelector('#main-service-interval .main-service-tag[data-name]')?.getAttribute('data-name') || "Standard workshop operations";
+
+    const additionalItems: any[] = [];
+    doc.querySelectorAll('li[additonal-service-nid]').forEach(li => {
+        const nameNode = li.querySelector('label span');
+        const name = nameNode?.textContent?.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const timeField = li.querySelector('.sub label')?.textContent?.trim();
+        if (name) {
+            additionalItems.push({ name, time: timeField?.replace('Service time ', '') || "N/A" });
+        }
+    });
+
+    const groups: any[] = [];
+    doc.querySelectorAll('.accordian-module').forEach(module => {
+        const titleRaw = module.querySelector('.accordian-head h3')?.textContent || "";
+        const title = titleRaw.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        const items: string[] = [];
+        module.querySelectorAll('.operation-item').forEach(item => {
+            let itemName = item.querySelector('span[id^="additional-list-name"]')?.textContent ||
+                item.querySelector('.op_illus')?.textContent || "";
+            itemName = itemName.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+            if (itemName) items.push(itemName);
+        });
+
+        if (title && items.length > 0) {
+            groups.push({ title, items });
+        }
+    });
+
+    const totalTime = doc.querySelector('.calculated-time')?.textContent?.trim() || "0.00";
+
+    return { vehicleDetails, engineDetails, mainServiceInterval, additionalItems, groups, totalTime };
+};
+
 export default function TechnicalData() {
     const [vrm, setVrm] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +84,7 @@ export default function TechnicalData() {
     // Extracted Data
     const [vehicleSpecs, setVehicleSpecs] = useState<any>(null);
     const [htmlContent, setHtmlContent] = useState<string | null>(null);
+    const [parsedServiceData, setParsedServiceData] = useState<ParsedServiceData | null>(null);
 
     const pollJob = async (jobId: number, retries = 20): Promise<any> => {
         let attempts = 0;
@@ -55,6 +111,7 @@ export default function TechnicalData() {
         setIsLoading(true);
         setError(null);
         setHtmlContent(null);
+        setParsedServiceData(null);
 
         if (tab === "specs") setVehicleSpecs(null);
 
@@ -93,9 +150,16 @@ export default function TechnicalData() {
 
                 const resData = await pollJob(data.jobId, 60);
                 if (resData?.rawHtml) {
-                    const styledHtml = resData.rawHtml.replace(/<head>/i, '<head><base target="_blank" href="https://workshop.autodata-group.com/">');
-                    setHtmlContent(styledHtml);
-                    toast.success("Captured Service Schedules UI");
+                    const parsed = parseServiceSchedules(resData.rawHtml);
+                    if (parsed.groups.length > 0) {
+                        setParsedServiceData(parsed);
+                        toast.success("Successfully parsed Service Schedules natively");
+                    } else {
+                        // Fallback to iframe
+                        const styledHtml = resData.rawHtml.replace(/<head>/i, '<head><base target="_blank" href="https://workshop.autodata-group.com/">');
+                        setHtmlContent(styledHtml);
+                        toast.success("Captured Service Schedules UI");
+                    }
                 }
             }
             else if (tab === "repair") {
@@ -253,8 +317,78 @@ export default function TechnicalData() {
                             </Card>
                         )}
 
-                        {/* Interactive UI Proxy View */}
-                        {htmlContent && !isLoading && (activeTab === 'service' || activeTab === 'repair') && (
+                        {/* Parsed Service UI View */}
+                        {parsedServiceData && !isLoading && activeTab === 'service' && (
+                            <div className="flex flex-col gap-6">
+                                <Card className="border-t-4 border-t-primary shadow-xl">
+                                    <CardHeader className="bg-primary/5 pb-4">
+                                        <CardTitle className="text-2xl flex items-center gap-2">
+                                            <CalendarHeart className="h-6 w-6 text-primary" />
+                                            {parsedServiceData.vehicleDetails}
+                                        </CardTitle>
+                                        <CardDescription className="text-base text-foreground font-medium">
+                                            {parsedServiceData.engineDetails}
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="pt-6">
+                                        <div className="flex justify-between items-center mb-6 p-4 rounded-xl border bg-card shadow-sm">
+                                            <div className="flex flex-col gap-1">
+                                                <h3 className="font-semibold text-muted-foreground uppercase tracking-widest text-sm">Main Service Operation</h3>
+                                                <span className="font-bold text-lg">{parsedServiceData.mainServiceInterval}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <h3 className="font-semibold text-muted-foreground uppercase tracking-widest text-sm">Base Time</h3>
+                                                <span className="font-bold text-lg text-primary">{parsedServiceData.totalTime} hrs</span>
+                                            </div>
+                                        </div>
+
+                                        {parsedServiceData.additionalItems.length > 0 && (
+                                            <div className="mb-8">
+                                                <h3 className="text-lg font-bold mb-3 border-b pb-2 flex items-center gap-2">
+                                                    <Wrench className="h-5 w-5 text-slate-500" />
+                                                    Available Additional Services
+                                                </h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                    {parsedServiceData.additionalItems.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between items-center bg-secondary/30 p-3 rounded-md border">
+                                                            <span className="font-medium text-sm text-muted-foreground">{item.name}</span>
+                                                            <Badge variant="secondary" className="font-mono">{item.time}</Badge>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-6">
+                                            <h3 className="text-lg font-bold flex items-center gap-2">
+                                                <Clock className="h-5 w-5 text-slate-500" />
+                                                Core Operations List
+                                            </h3>
+                                            {parsedServiceData.groups.map((group, idx) => (
+                                                <Card key={idx} className="shadow-sm border-l-4 border-l-slate-400">
+                                                    <CardHeader className="p-4 py-3 bg-muted/40">
+                                                        <CardTitle className="text-md capitalize">{group.title.toLowerCase()}</CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent className="p-4">
+                                                        <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-4 gap-y-2">
+                                                            {group.items.map((item, idxx) => (
+                                                                <li key={idxx} className="flex items-start gap-2 text-sm text-foreground">
+                                                                    <div className="h-1.5 w-1.5 rounded-full bg-slate-400 mt-1.5 shrink-0" />
+                                                                    <span>{item}</span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+
+                        {/* Interactive UI Proxy View Fallback */}
+                        {htmlContent && !isLoading && !parsedServiceData && (activeTab === 'service' || activeTab === 'repair') && (
                             <Card className="shadow-xl overflow-hidden h-[800px] border-secondary/50 relative">
                                 {/* The magic! Render the Autodata DOM purely isolated via data URI so css isn't bled */}
                                 <iframe
@@ -265,7 +399,7 @@ export default function TechnicalData() {
                             </Card>
                         )}
 
-                        {!isLoading && !vehicleSpecs && !htmlContent && !error && (
+                        {!isLoading && !vehicleSpecs && !htmlContent && !parsedServiceData && !error && (
                             <div className="flex flex-col items-center justify-center p-24 text-muted-foreground border-2 border-dashed rounded-xl bg-card/30">
                                 <Wrench className="h-16 w-16 mb-6 opacity-20" />
                                 <p className="text-xl font-medium">Ready to fetch live specifications</p>
