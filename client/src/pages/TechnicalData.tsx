@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2, Wrench, Droplets, AlertTriangle, ChevronRight } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
 export default function TechnicalData() {
@@ -12,7 +12,7 @@ export default function TechnicalData() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [vehicleData, setVehicleData] = useState<any>(null);
-    const { toast } = useToast();
+
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,18 +38,11 @@ export default function TechnicalData() {
 
             setVehicleData(data.data);
 
-            toast({
-                title: "Data Retrieved",
-                description: "Successfully fetched technical data from Autodata via Drone",
-            });
+            toast.success("Successfully fetched technical data from Autodata via Drone");
 
         } catch (err: any) {
             setError(err.message);
-            toast({
-                title: "Error",
-                description: err.message,
-                variant: "destructive"
-            });
+            toast.error(err.message);
         } finally {
             setIsLoading(false);
         }
