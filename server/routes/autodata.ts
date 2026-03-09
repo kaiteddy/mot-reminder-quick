@@ -62,9 +62,9 @@ autodataRouter.get("/resolve-vrm", async (req, res) => {
     if (!db) throw new Error("Database not available");
 
     // We do a Native Fetch directly to Autodata via the drone polling proxy to lookup by VRM
-    // Example: /w2/api/vehicles?vrm=RE71VOD
+    // Example: /w2/api/vehicles/search/gb/RE71VOD?v=...
     const [insertRes] = await db.insert(autodataRequests).values({
-      endpoint: `/w2/api/vehicles?vrm=${encodeURIComponent(vrm as string)}`,
+      endpoint: `/w2/api/vehicles/search/gb/${encodeURIComponent(vrm as string)}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
       status: "pending"
     });
 
