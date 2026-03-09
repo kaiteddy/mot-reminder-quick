@@ -62,6 +62,90 @@ const parseServiceSchedules = (html: string): ParsedServiceData => {
     return { vehicleDetails, engineDetails, mainServiceInterval, additionalItems, groups, totalTime };
 };
 
+interface ParsedRepairData {
+    vehicleDetails: string;
+    engineDetails: string;
+    groups: {
+        title: string;
+        items: {
+            action?: string;
+            description: string;
+            time: string;
+        }[];
+    }[];
+}
+
+const parseRepairTimes = (html: string): ParsedRepairData => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    const vehicleDetails = doc.querySelector('.vehicle-details .print-manufacturer-model')?.textContent?.trim().replace(/\s+/g, ' ') ||
+        doc.querySelector('.vehicle-info .displayModel')?.textContent?.trim() || "Vehicle";
+
+    const engineDetails = doc.querySelector('.vehicle-details .print-other-details')?.textContent?.trim().replace(/\s+/g, ' ') ||
+        doc.querySelector('.vehicle-info .engine-size')?.textContent?.trim() || "Engine";
+
+    const groups: any[] = [];
+    doc.querySelectorAll('.accordian-module').forEach(module => {
+        const titleRaw = module.querySelector('.accordian-head h3, .accordian-head')?.textContent || "";
+        const title = titleRaw.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        const items: any[] = [];
+
+        // Method 1: Tables
+        module.querySelectorAll('tr').forEach(tr => {
+            const tds = Array.from(tr.querySelectorAll('td'));
+            if (tds.length >= 2) {
+                let action = "";
+                let description = "";
+                let time = "0.00";
+
+                if (tds.length === 2) {
+                    description = tds[0].textContent?.trim() || "";
+                    time = tds[1].textContent?.trim() || "0.00";
+                } else if (tds.length >= 3) {
+                    action = tds[0].textContent?.trim() || "";
+                    description = tds[1].textContent?.trim() || "";
+                    time = tr.querySelector('.data-adjuster-initialized')?.textContent?.trim() || tds[tds.length - 1].textContent?.trim() || "0.00";
+                }
+
+                description = description.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                action = action.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+                const matchTime = time.match(/[\d.]+/);
+                if (description && matchTime) {
+                    items.push({ action, description, time: matchTime[0] });
+                }
+            }
+        });
+
+        // Method 2: Lists
+        if (items.length === 0) {
+            module.querySelectorAll('.operation-item, li').forEach(item => {
+                // Ignore items lacking an explicit time field
+                const timeEl = item.querySelector('.data-adjuster-initialized, .time');
+                if (timeEl) {
+                    let itemName = item.querySelector('span[id^="additional-list-name"]')?.textContent ||
+                        item.querySelector('.op_illus')?.textContent || item.textContent || "";
+                    itemName = itemName.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    let time = timeEl.textContent?.trim() || "0.00";
+                    const matchTime = time.match(/[\d.]+/);
+                    if (itemName && matchTime) items.push({ action: "", description: itemName, time: matchTime[0] });
+                }
+            });
+        }
+
+        const uniqueItems = items.filter((v, i, a) => a.findIndex(t => (t.description === v.description && t.time === v.time)) === i);
+
+        if (title && uniqueItems.length > 0) {
+            groups.push({ title, items: uniqueItems });
+        }
+    });
+
+    return { vehicleDetails, engineDetails, groups };
+};
+
 export default function TechnicalData() {
     const [vrm, setVrm] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -85,6 +169,7 @@ export default function TechnicalData() {
     const [vehicleSpecs, setVehicleSpecs] = useState<any>(null);
     const [htmlContent, setHtmlContent] = useState<string | null>(null);
     const [parsedServiceData, setParsedServiceData] = useState<ParsedServiceData | null>(null);
+    const [parsedRepairData, setParsedRepairData] = useState<ParsedRepairData | null>(null);
 
     const pollJob = async (jobId: number, retries = 20): Promise<any> => {
         let attempts = 0;
@@ -112,6 +197,7 @@ export default function TechnicalData() {
         setError(null);
         setHtmlContent(null);
         setParsedServiceData(null);
+        setParsedRepairData(null);
 
         if (tab === "specs") setVehicleSpecs(null);
 
@@ -173,9 +259,15 @@ export default function TechnicalData() {
 
                 const resData = await pollJob(data.jobId, 60);
                 if (resData?.rawHtml) {
-                    const styledHtml = resData.rawHtml.replace(/<head>/i, '<head><base target="_blank" href="https://workshop.autodata-group.com/">');
-                    setHtmlContent(styledHtml);
-                    toast.success("Captured Repair Times UI");
+                    const parsed = parseRepairTimes(resData.rawHtml);
+                    if (parsed.groups.length > 0) {
+                        setParsedRepairData(parsed);
+                        toast.success("Successfully parsed Repair Times natively");
+                    } else {
+                        const styledHtml = resData.rawHtml.replace(/<head>/i, '<head><base target="_blank" href="https://workshop.autodata-group.com/">');
+                        setHtmlContent(styledHtml);
+                        toast.success("Captured Repair Times UI");
+                    }
                 }
             }
 
@@ -387,8 +479,55 @@ export default function TechnicalData() {
                             </div>
                         )}
 
+                        {/* Parsed Repair UI View */}
+                        {parsedRepairData && !isLoading && activeTab === 'repair' && (
+                            <div className="flex flex-col gap-6">
+                                <Card className="border-t-4 border-t-primary shadow-xl">
+                                    <CardHeader className="bg-primary/5 pb-4">
+                                        <CardTitle className="text-2xl flex items-center gap-2">
+                                            <Clock className="h-6 w-6 text-primary" />
+                                            {parsedRepairData.vehicleDetails}
+                                        </CardTitle>
+                                        <CardDescription className="text-base text-foreground font-medium">
+                                            {parsedRepairData.engineDetails}
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="pt-6">
+                                        <div className="space-y-6">
+                                            {parsedRepairData.groups.map((group, idx) => (
+                                                <Card key={idx} className="shadow-sm border-l-4 border-l-slate-400">
+                                                    <CardHeader className="p-4 py-3 bg-muted/40 flex flex-row items-center justify-between">
+                                                        <CardTitle className="text-md capitalize">{group.title.toLowerCase()}</CardTitle>
+                                                        <Badge variant="outline">{group.items.length} records</Badge>
+                                                    </CardHeader>
+                                                    <CardContent className="p-0">
+                                                        <div className="divide-y max-h-[600px] overflow-y-auto">
+                                                            {group.items.map((item, idxx) => (
+                                                                <div key={idxx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 hover:bg-muted/30 transition-colors gap-4">
+                                                                    <div className="flex flex-col">
+                                                                        {item.action && (
+                                                                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{item.action}</span>
+                                                                        )}
+                                                                        <span className="text-sm font-medium text-foreground">{item.description}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 shrink-0">
+                                                                        <span className="text-xs text-muted-foreground font-medium uppercase min-w-[30px] text-right">Hrs</span>
+                                                                        <Badge variant="secondary" className="font-mono text-base font-bold bg-primary/10 text-primary px-3 py-1">{item.time}</Badge>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
+
                         {/* Interactive UI Proxy View Fallback */}
-                        {htmlContent && !isLoading && !parsedServiceData && (activeTab === 'service' || activeTab === 'repair') && (
+                        {htmlContent && !isLoading && !parsedServiceData && !parsedRepairData && (activeTab === 'service' || activeTab === 'repair') && (
                             <Card className="shadow-xl overflow-hidden h-[800px] border-secondary/50 relative">
                                 {/* The magic! Render the Autodata DOM purely isolated via data URI so css isn't bled */}
                                 <iframe
@@ -399,7 +538,7 @@ export default function TechnicalData() {
                             </Card>
                         )}
 
-                        {!isLoading && !vehicleSpecs && !htmlContent && !parsedServiceData && !error && (
+                        {!isLoading && !vehicleSpecs && !htmlContent && !parsedServiceData && !parsedRepairData && !error && (
                             <div className="flex flex-col items-center justify-center p-24 text-muted-foreground border-2 border-dashed rounded-xl bg-card/30">
                                 <Wrench className="h-16 w-16 mb-6 opacity-20" />
                                 <p className="text-xl font-medium">Ready to fetch live specifications</p>
