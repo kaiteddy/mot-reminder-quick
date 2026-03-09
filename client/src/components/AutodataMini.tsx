@@ -9,34 +9,59 @@ export function AutodataMini({ vrm }: { vrm: string }) {
   const [error, setError] = useState<string | null>(null);
   const [vehicleData, setVehicleData] = useState<any>(null);
 
+  const pollJob = async (jobId: number): Promise<any> => {
+    let attempts = 0;
+    while (attempts < 20) {
+      const res = await fetch(`/api/autodata/job/${jobId}`);
+      const data = await res.json();
+
+      if (data.status === "completed") {
+        return data.data; // Return the actual successful JSON payload
+      } else if (data.status === "failed") {
+        throw new Error(data.error || "Drone failed fetching data");
+      }
+
+      // Still pending
+      attempts++;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    throw new Error("Drone proxy timed out waiting for browser extension");
+  };
+
   const fetchAutodata = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Step 1: Use Drone to resolve VRM -> MID
+      // Step 1: Request VRM -> MID Job
       const resolveRes = await fetch(`/api/autodata/resolve-vrm?vrm=${encodeURIComponent(vrm)}`);
       const resolveData = await resolveRes.json();
 
-      if (!resolveData.success) {
-        throw new Error(resolveData.error || "Failed to resolve VRM via Autodata");
+      if (!resolveData.success || !resolveData.jobId) {
+        throw new Error(resolveData.error || "Failed to create VRM resolution job");
       }
 
-      if (!resolveData.data?.[0]?.mid) {
+      // Step 1a: Poll for resolve result
+      const vrmResult = await pollJob(resolveData.jobId);
+
+      if (!vrmResult?.[0]?.mid) {
         throw new Error("No vehicle found in Autodata for this VRM");
       }
 
-      const mid = resolveData.data[0].mid;
+      const mid = vrmResult[0].mid;
 
-      // Step 2: Use Drone to fetch Engine Oils using the MID
+      // Step 2: Request Engine Oils Job
       const oilRes = await fetch(`/api/autodata/engine-oils?vrm=${encodeURIComponent(vrm)}&mid=${mid}`);
       const oilData = await oilRes.json();
 
-      if (!oilData.success) {
-        throw new Error(oilData.error || "Failed to fetch engine oils");
+      if (!oilData.success || !oilData.jobId) {
+        throw new Error(oilData.error || "Failed to create engine oils job");
       }
 
-      setVehicleData(oilData.data);
+      // Step 2a: Poll for oil result
+      const oilResult = await pollJob(oilData.jobId);
+
+      setVehicleData(oilResult);
     } catch (err: any) {
       setError(err.message);
     } finally {

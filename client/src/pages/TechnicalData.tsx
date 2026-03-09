@@ -14,6 +14,24 @@ export default function TechnicalData() {
     const [vehicleData, setVehicleData] = useState<any>(null);
 
 
+    const pollJob = async (jobId: number): Promise<any> => {
+        let attempts = 0;
+        while (attempts < 20) {
+            const res = await fetch(`/api/autodata/job/${jobId}`);
+            const data = await res.json();
+
+            if (data.status === "completed") {
+                return data.data;
+            } else if (data.status === "failed") {
+                throw new Error(data.error || "Drone failed fetching data");
+            }
+
+            attempts++;
+            await new Promise(r => setTimeout(r, 1500));
+        }
+        throw new Error("Drone proxy timed out waiting for browser extension");
+    };
+
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!vrm.trim()) return;
@@ -32,11 +50,13 @@ export default function TechnicalData() {
             const res = await fetch(`/api/autodata/engine-oils?vrm=${encodeURIComponent(vrm)}&mid=${testMid}`);
             const data = await res.json();
 
-            if (!data.success) {
-                throw new Error(data.error || "Failed to fetch technical data");
+            if (!data.success || !data.jobId) {
+                throw new Error(data.error || "Failed to create technical data job");
             }
 
-            setVehicleData(data.data);
+            const oilResult = await pollJob(data.jobId);
+
+            setVehicleData(oilResult);
 
             toast.success("Successfully fetched technical data from Autodata via Drone");
 

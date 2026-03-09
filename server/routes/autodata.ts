@@ -23,27 +23,8 @@ autodataRouter.get("/engine-oils", async (req, res) => {
 
     const jobId = insertRes.insertId;
 
-    // 2. Poll Database for Completion (Max 15 seconds)
-    let attempts = 0;
-    while (attempts < 15) {
-      const row = await db.select()
-        .from(autodataRequests)
-        .where(eq(autodataRequests.id, jobId));
-
-      if (row.length === 0) break;
-
-      const job = row[0];
-      if (job.status === "completed") {
-        return res.json({ success: true, data: job.resultData });
-      } else if (job.status === "failed") {
-        return res.status(500).json({ success: false, error: job.errorMessage || "Drone failed fetching data" });
-      }
-
-      attempts++;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    res.status(504).json({ success: false, error: "Drone proxy timed out waiting for browser extension." });
+    // Immediately return the job ID so the frontend can poll without hitting Vercel's 10s Serverless timeout
+    return res.json({ success: true, jobId });
 
   } catch (err: any) {
     console.error("Autodata drone request failed:", err);
@@ -70,30 +51,45 @@ autodataRouter.get("/resolve-vrm", async (req, res) => {
 
     const jobId = insertRes.insertId;
 
-    // 2. Poll Database for Completion (Max 15 seconds)
-    let attempts = 0;
-    while (attempts < 15) {
-      const row = await db.select()
-        .from(autodataRequests)
-        .where(eq(autodataRequests.id, jobId));
-
-      if (row.length === 0) break;
-
-      const job = row[0];
-      if (job.status === "completed") {
-        return res.json({ success: true, data: job.resultData });
-      } else if (job.status === "failed") {
-        return res.status(500).json({ success: false, error: job.errorMessage || "Drone failed fetching VRM resolution" });
-      }
-
-      attempts++;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-
-    res.status(504).json({ success: false, error: "Drone proxy timed out waiting for browser extension." });
+    // Immediately return the job ID so the frontend can poll without hitting Vercel's 10s Serverless timeout
+    return res.json({ success: true, jobId });
 
   } catch (err: any) {
     console.error("Autodata drone VRM request failed:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint for the React frontend to poll the database for Drone completion
+autodataRouter.get("/job/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    const row = await db.select()
+      .from(autodataRequests)
+      .where(eq(autodataRequests.id, Number(id)));
+
+    if (row.length === 0) {
+      return res.status(404).json({ success: false, error: "Job not found in queue" });
+    }
+
+    const job = row[0];
+
+    if (job.status === "completed") {
+      return res.json({ success: true, status: "completed", data: job.resultData });
+    } else if (job.status === "failed") {
+      // Send 200 OK but success=false so the frontend can parse the exact error message gracefully
+      return res.json({ success: false, status: "failed", error: job.errorMessage || "Drone failed fetching Autodata" });
+    } else {
+      // Pending
+      return res.json({ success: true, status: job.status });
+    }
+
+  } catch (err: any) {
+    console.error("Autodata job poll failed:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
