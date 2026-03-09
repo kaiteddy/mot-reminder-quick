@@ -176,7 +176,7 @@ export default function MOTCheck() {
         {/* Vehicle Details */}
         {vehicleData && (
           <div className="space-y-6">
-            <CustomerInfoCard customer={customerData?.customer} />
+            <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
             {/* MOT Status Card */}
             <Card className="border-2">

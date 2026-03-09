@@ -5,6 +5,30 @@ import { eq } from "drizzle-orm";
 
 export const autodataRouter = Router();
 
+autodataRouter.post("/scrape", async (req, res) => {
+  const { path } = req.body;
+  if (!path) {
+    return res.status(400).json({ success: false, error: "Missing path" });
+  }
+
+  try {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+
+    const endpoint = path.startsWith('/') ? path : `/${path}`;
+
+    const [insertRes] = await db.insert(autodataRequests).values({
+      endpoint,
+      status: "pending"
+    });
+
+    return res.json({ success: true, jobId: insertRes.insertId });
+  } catch (err: any) {
+    console.error("Autodata drone scrape request failed:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 autodataRouter.get("/engine-oils", async (req, res) => {
   const { vrm, mid } = req.query;
   if (!vrm || !mid) {

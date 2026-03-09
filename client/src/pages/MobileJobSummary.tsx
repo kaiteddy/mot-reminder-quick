@@ -146,9 +146,33 @@ export default function MobileJobSummary() {
                             </p>
                         </div>
                         <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tax Status</p>
+                            <p className="font-bold text-slate-800 text-sm">
+                                {vehicle.taxStatus || 'N/A'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tax Due</p>
+                            <p className="font-bold text-slate-800 text-sm">
+                                {vehicle.taxDueDate ? new Date(vehicle.taxDueDate).toLocaleDateString() : 'N/A'}
+                            </p>
+                        </div>
+                        <div>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">VIN Number</p>
                             <p className="font-mono font-medium text-slate-800 text-xs">
                                 {vehicle.vin || 'N/A'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Engine Size</p>
+                            <p className="font-bold text-slate-800 text-sm">
+                                {vehicle.engineCC ? `${vehicle.engineCC}cc` : 'N/A'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Registered</p>
+                            <p className="font-bold text-slate-800 text-sm">
+                                {vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).toLocaleDateString() : 'N/A'}
                             </p>
                         </div>
                         <div className="col-span-2">

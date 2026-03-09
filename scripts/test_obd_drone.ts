@@ -19,7 +19,7 @@ async function runJob(endpoint: string) {
     const jobId = insertRes.insertId;
 
     let attempts = 0;
-    while (attempts < 20) {
+    while (attempts < 45) {
         const row = await db.select()
             .from(autodataRequests)
             .where(eq(autodataRequests.id, jobId));
@@ -28,8 +28,15 @@ async function runJob(endpoint: string) {
         const job = row[0];
 
         if (job.status === "completed") {
-            console.log("SUCCESS! Got data:");
-            console.log(JSON.stringify(job.resultData, null, 2));
+            console.log("SUCCESS!");
+            const out = typeof job.resultData === 'string' ? JSON.parse(job.resultData) : job.resultData;
+            if (out && out.rawHtml) {
+                console.log("Returned HTML. Printing first 1000 chars:");
+                console.log(out.rawHtml.substring(0, 1000));
+            } else {
+                console.log("Returned JSON:");
+                console.log(JSON.stringify(out, null, 2));
+            }
             return true;
         } else if (job.status === "failed") {
             console.log("FAILED:", job.errorMessage);
@@ -43,15 +50,20 @@ async function runJob(endpoint: string) {
 }
 
 async function run() {
-    const vrm1 = "RE71VOD";
-    const vrm2 = "ESZ4908";
+    const mid = "OPL16080";
     const endpointsToTry = [
-        `/w2/api/vehicles/search/gb/${vrm1}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
-        `/w2/api/vehicles/search/gb/${vrm2}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`
+        `/w2/api/vehicles/${mid}/obd-location?v=5c1542c&language=en-gb`,
+        `/w2/api/vehicles/${mid}/obd-locations?v=5c1542c&language=en-gb`,
+        `/w2/api/vehicles/${mid}/diagnostic-sockets?v=5c1542c&language=en-gb`,
+        `/w2/api/diagnostic-sockets/${mid}?v=5c1542c&language=en-gb`,
+        `/w2/api/obd-locations/${mid}?v=5c1542c&language=en-gb`,
     ];
 
     for (const ep of endpointsToTry) {
-        await runJob(ep);
+        const success = await runJob(ep);
+        if (success) {
+            console.log(`Endpoint ${ep} worked!`);
+        }
     }
     process.exit(0);
 }
