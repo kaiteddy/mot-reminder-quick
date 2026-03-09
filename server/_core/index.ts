@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { ENV } from "./env";
 import { autodataRouter } from "../routes/autodata";
+import { customerLookupRouter } from "../routes/customerLookup";
 
 export const app = express();
 export const server = createServer(app);
@@ -200,6 +201,12 @@ function setupApp(app: Express) {
       createContext,
     })
   );
+
+  // Expose our new Drone-powered Autodata APIs
+  app.use("/api/autodata", autodataRouter);
+
+  // Custom Customer Lookup API
+  app.use("/api/customer-lookup", customerLookupRouter);
 }
 
 // Initial setup

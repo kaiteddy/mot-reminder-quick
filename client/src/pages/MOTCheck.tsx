@@ -22,6 +22,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
 import DashboardLayout from "@/components/DashboardLayout";
+import { CustomerInfoCard } from "@/components/CustomerInfoCard";
+import { AutodataMini } from "@/components/AutodataMini";
 
 interface MOTTest {
   completedDate: string;
@@ -73,11 +75,26 @@ interface VehicleData {
 export default function MOTCheck() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
+  const [customerData, setCustomerData] = useState<any>(null);
 
   const lookupMutation = trpc.reminders.lookupMOT.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setVehicleData(data as VehicleData);
       toast.success("Vehicle found!");
+
+      // Try to fetch customer profile data
+      try {
+        const res = await fetch(`/api/customer-lookup/${data.registration}`);
+        const cData = await res.json();
+        if (cData.success && cData.customer) {
+          setCustomerData(cData);
+        } else {
+          setCustomerData(null);
+        }
+      } catch (e) {
+        console.error("Customer lookup failed", e);
+        setCustomerData(null);
+      }
     },
     onError: (error: any) => {
       toast.error(error.message || "Vehicle not found");
@@ -158,7 +175,9 @@ export default function MOTCheck() {
 
         {/* Vehicle Details */}
         {vehicleData && (
-          <>
+          <div className="space-y-6">
+            <CustomerInfoCard customer={customerData?.customer} />
+
             {/* MOT Status Card */}
             <Card className="border-2">
               <CardHeader>
@@ -322,7 +341,10 @@ export default function MOTCheck() {
                 </CardContent>
               </Card>
             )}
-          </>
+
+            {/* Embedded Drone Technical Data */}
+            <AutodataMini vrm={vehicleData.registration} />
+          </div>
         )}
 
         {/* Empty State */}
