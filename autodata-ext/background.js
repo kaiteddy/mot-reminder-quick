@@ -83,12 +83,16 @@ async function executeJob(job) {
         const url = "https://workshop.autodata-group.com" + job.endpoint;
         console.log("Drone executing fetch:", url);
 
-        const res = await fetch(url, {
-            headers: {
-                "accept": "application/json, text/html, */*",
-                "xhr-request-from": "workshop"
-            }
-        });
+        const headers = {
+            "accept": "application/json, text/html, */*"
+        };
+
+        // Only send XHR header if it is an API request, otherwise standard HTML 302 redirects fail
+        if (job.isApi !== false && (job.endpoint.includes('/api/') || job.endpoint.includes('/lubricants'))) {
+            headers["xhr-request-from"] = "workshop";
+        }
+
+        const res = await fetch(url, { headers });
 
         const contentType = res.headers.get("content-type") || "";
         const rawText = await res.text();
