@@ -85,17 +85,25 @@ async function executeJob(job) {
 
         const res = await fetch(url, {
             headers: {
-                "accept": "application/json",
+                "accept": "application/json, text/html, */*",
                 "xhr-request-from": "workshop"
             }
         });
 
+        const contentType = res.headers.get("content-type") || "";
+        const rawText = await res.text();
+
         if (!res.ok) {
-            throw new Error(`Autodata returned status: ${res.status}`);
+            throw new Error(`Autodata returned status: ${res.status}. Body: ${rawText.substring(0, 100)}`);
         }
 
-        resultData = await res.json();
-        console.log("Drone successfully fetched JSON from Autodata!");
+        try {
+            resultData = JSON.parse(rawText);
+            console.log("Drone successfully fetched JSON from Autodata!");
+        } catch (e) {
+            console.log("Drone received non-JSON response from Autodata, sending as raw text.");
+            resultData = { rawHtml: rawText, contentType };
+        }
     } catch (e) {
         console.error("Drone failed to execute job:", e);
         errorMessage = e.message;
