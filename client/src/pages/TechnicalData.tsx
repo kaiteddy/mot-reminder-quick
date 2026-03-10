@@ -226,7 +226,7 @@ export default function TechnicalData() {
                 toast.success("Successfully fetched specs via Drone");
             }
             else if (tab === "service") {
-                const path = `/w1/vehicles/variants/service-schedules/${mid}?route_name=service-schedules&module=SG&vrm=${encodeURIComponent(targetVrm)}`;
+                const path = `/w1/service-schedules/${mid}?vrm=${encodeURIComponent(targetVrm)}`;
                 const res = await fetch(`/api/autodata/scrape`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path })
