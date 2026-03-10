@@ -217,7 +217,7 @@ export default function TechnicalData() {
             }
 
             if (tab === "specs") {
-                const res = await fetch(`/api/autodata/engine-oils?vrm=${encodeURIComponent(vrm)}&mid=${mid}`);
+                const res = await fetch(`/api/autodata/engine-oils?vrm=${encodeURIComponent(targetVrm)}&mid=${mid}`);
                 const data = await res.json();
                 if (!data.success || !data.jobId) throw new Error(data.error);
 
