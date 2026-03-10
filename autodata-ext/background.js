@@ -92,21 +92,41 @@ async function executeJob(job) {
             headers["xhr-request-from"] = "workshop";
         }
 
-        const res = await fetch(url, { headers });
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const res = await fetch(url, { headers });
 
-        const contentType = res.headers.get("content-type") || "";
-        const rawText = await res.text();
+                const contentType = res.headers.get("content-type") || "";
+                const rawText = await res.text();
 
-        if (!res.ok) {
-            throw new Error(`Autodata returned status: ${res.status}. Body: ${rawText.substring(0, 100)}`);
-        }
+                if (!res.ok) {
+                    if ((res.status >= 500 || res.status === 408 || res.status === 429) && retries > 1) {
+                        console.warn(`Autodata returned ${res.status}. Retrying... (${retries - 1} left)`);
+                        retries--;
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+                    throw new Error(`Autodata returned status: ${res.status} on final attempt. Body: ${rawText.substring(0, 100)}`);
+                }
 
-        try {
-            resultData = JSON.parse(rawText);
-            console.log("Drone successfully fetched JSON from Autodata!");
-        } catch (e) {
-            console.log("Drone received non-JSON response from Autodata, sending as raw text.");
-            resultData = { rawHtml: rawText, contentType };
+                try {
+                    resultData = JSON.parse(rawText);
+                    console.log("Drone successfully fetched JSON from Autodata!");
+                } catch (e) {
+                    console.log("Drone received non-JSON response from Autodata, sending as raw text.");
+                    resultData = { rawHtml: rawText, contentType };
+                }
+                break; // Success, break out of retry loop
+            } catch (err) {
+                if (retries > 1 && err.message !== "Manual abort" && !err.message.includes("Autodata returned status: 4")) {
+                    console.warn(`Fetch error: ${err.message}. Retrying... (${retries - 1} left)`);
+                    retries--;
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+                throw err;
+            }
         }
     } catch (e) {
         console.error("Drone failed to execute job:", e);
