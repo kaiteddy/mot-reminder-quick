@@ -133,13 +133,31 @@ async function executeJob(job) {
     }
 }
 
-// Chrome enforces a minimum 30-second alarm interval.
-chrome.alarms.create("dronePoll", { periodInMinutes: 0.5 });
+let loopRunning = false;
+
+async function startPollingLoop() {
+    if (loopRunning) return;
+    loopRunning = true;
+
+    while (true) {
+        try {
+            await pollForJobs();
+        } catch (e) {
+            console.error("Error in polling loop:", e);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+    }
+}
+
+// Chrome enforces a minimum 1-minute alarm interval for Service Workers.
+// We use this strictly as a heartbeat to resurrect the service worker if Chrome kills it after 5 minutes.
+chrome.alarms.create("dronePollHeartbeat", { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === "dronePoll") {
-        pollForJobs();
+    if (alarm.name === "dronePollHeartbeat") {
+        console.log("Heartbeat alarm fired. Ensuring polling loop is running.");
+        startPollingLoop();
     }
 });
 
-// Run once immediately on startup
-pollForJobs();
+// Start aggressive 2-second polling loop immediately on startup or wake
+startPollingLoop();
