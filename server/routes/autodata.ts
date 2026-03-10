@@ -62,6 +62,9 @@ autodataRouter.get("/resolve-vrm", async (req, res) => {
     return res.status(400).json({ success: false, error: "Missing vrm" });
   }
 
+  // Strip spaces from VRM as Autodata backend throws 500 Server Error if it contains spaces
+  const cleanVrm = (vrm as string).replace(/\s+/g, "");
+
   try {
     const db = await getDb();
     if (!db) throw new Error("Database not available");
@@ -69,7 +72,7 @@ autodataRouter.get("/resolve-vrm", async (req, res) => {
     // We do a Native Fetch directly to Autodata via the drone polling proxy to lookup by VRM
     // Example: /w2/api/vehicles/search/gb/RE71VOD?v=...
     const [insertRes] = await db.insert(autodataRequests).values({
-      endpoint: `/w2/api/vehicles/search/gb/${encodeURIComponent(vrm as string)}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
+      endpoint: `/w2/api/vehicles/search/gb/${encodeURIComponent(cleanVrm)}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
       status: "pending"
     });
 
