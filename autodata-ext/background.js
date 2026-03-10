@@ -88,7 +88,7 @@ async function executeJob(job) {
         };
 
         // Only send XHR header if it is an API request, otherwise standard HTML 302 redirects fail
-        if (job.isApi !== false && (job.endpoint.includes('/api/') || job.endpoint.includes('/lubricants'))) {
+        if (job.isApi !== false && (job.endpoint.includes('/api/') || job.endpoint.includes('/lubricants') || job.endpoint.includes('/w1/'))) {
             headers["xhr-request-from"] = "workshop";
         }
 
