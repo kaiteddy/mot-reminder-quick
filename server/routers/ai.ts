@@ -82,4 +82,37 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
         throw new Error("Failed to generate estimate: " + e.message);
       }
     }),
+
+  explainDefect: publicProcedure
+    .input(z.object({
+      defect: z.string(),
+      make: z.string().optional(),
+      model: z.string().optional(),
+      year: z.number().optional()
+    }))
+    .mutation(async ({ input }) => {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error("OPENAI_API_KEY is not configured.");
+      }
+
+      const prompt = `You are an expert UK mechanic. A customer doesn't understand this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
+
+Defect: "${input.defect}"
+
+Explain this issue simply for an everyday person who doesn't know much about cars.
+Keep the explanation short (2-3 sentences max). Don't mention prices. Make it friendly and simple.`;
+
+      try {
+        const { text } = await generateText({
+          model: openai('gpt-4o-mini'),
+          system: "You are a helpful, friendly UK mechanic.",
+          prompt: prompt,
+        });
+
+        return { explanation: text };
+      } catch (e: any) {
+        console.error("AI Generation Error:", e);
+        throw new Error("Failed to generate explanation: " + e.message);
+      }
+    }),
 });
