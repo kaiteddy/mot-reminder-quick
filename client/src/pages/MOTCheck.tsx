@@ -468,22 +468,39 @@ function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: Vehic
             <span>Advisories & Defects ({test.defects.length})</span>
           </div>
           <div className="space-y-1 pl-6">
-            {test.defects.map((defect, idx) => (
-              <div
-                key={idx}
-                className={`text-sm p-2 rounded ${defect.dangerous
-                  ? "bg-red-50 text-red-900 border border-red-200"
-                  : defect.type === "FAIL"
-                    ? "bg-orange-50 text-orange-900 border border-orange-200"
-                    : "bg-slate-50 text-slate-700"
-                  }`}
-              >
-                <span className="font-medium text-xs uppercase mr-2">
-                  {defect.dangerous ? "DANGEROUS" : defect.type}
-                </span>
-                {defect.text}
-              </div>
-            ))}
+            {test.defects.map((defect, idx) => {
+              const isDangerous = defect.dangerous || defect.type === "DANGEROUS";
+              const isMajor = defect.type === "MAJOR" || defect.type === "FAIL";
+              const isMinor = defect.type === "MINOR" || defect.type === "PRS";
+              const isAdvisory = defect.type === "ADVISORY";
+              
+              let baseClasses = "text-sm p-2.5 rounded mb-1.5 flex items-start gap-2 ";
+              if (isDangerous) {
+                baseClasses += "bg-red-600 text-white shadow-sm font-medium";
+              } else if (isMajor) {
+                baseClasses += "bg-red-50 text-red-900 border border-red-200";
+              } else if (isMinor) {
+                baseClasses += "bg-orange-50 text-orange-900 border border-orange-200";
+              } else if (isAdvisory) {
+                baseClasses += "bg-yellow-50 text-yellow-900 border border-yellow-200";
+              } else {
+                baseClasses += "bg-slate-50 text-slate-700 border border-slate-200";
+              }
+
+              return (
+                <div key={idx} className={baseClasses}>
+                  <span className={`font-bold text-[11px] uppercase tracking-wide shrink-0 mt-0.5 ${
+                    isDangerous ? "text-red-100" : 
+                    isMajor ? "text-red-600" : 
+                    isMinor ? "text-orange-600" : 
+                    isAdvisory ? "text-yellow-600" : "text-slate-500"
+                  }`}>
+                    {isDangerous ? "DANGEROUS" : defect.type}
+                  </span>
+                  <span className={isDangerous ? "text-white" : ""}>{defect.text}</span>
+                </div>
+              );
+            })}
           </div>
           
           {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
