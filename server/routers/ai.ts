@@ -95,12 +95,17 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
         throw new Error("OPENAI_API_KEY is not configured.");
       }
 
-      const prompt = `You are an expert UK mechanic. A customer doesn't understand this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
+      const prompt = `You are a friendly, helpful UK mechanic talking to a customer who knows absolutely nothing about cars. They received this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
 
 Defect: "${input.defect}"
 
-Explain this issue simply for an everyday person who doesn't know much about cars.
-Keep the explanation short (2-3 sentences max). Don't mention prices. Make it friendly and simple.`;
+Your job is to translate this into plain English. 
+CRITICAL INSTRUCTIONS:
+1. Explain what the car part actually DOES in the simplest terms possible (e.g., if it says "drive shaft", explain that it's the metal bar that spins the wheels to make the car move).
+2. Explain WHY it is bad or dangerous that it's broken or worn out.
+3. Absolutely NO mechanic jargon. Use simple analogies if helpful.
+4. Keep it very short (3 sentences maximum). 
+5. Do not mention prices.`;
 
       try {
         const { text } = await generateText({
