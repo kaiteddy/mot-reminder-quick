@@ -105,7 +105,7 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
     const accessToken = await getAccessToken(config);
 
     const response = await fetch(
-      `https://beta.check-mot.service.gov.uk/trade/vehicles/mot-tests?registration=${cleanReg}`,
+      `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${cleanReg}`,
       {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
@@ -119,16 +119,15 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
       if (response.status === 404) {
         return null; // Vehicle not found
       }
-      throw new Error(`MOT API error: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`DVSA returned ${response.status}: ${errorText}`);
+      throw new Error(`MOT API error: ${response.status} - ${errorText}`);
     }
 
-    const data: any[] = await response.json();
+    const data = await response.json();
+    if (!data) return null;
 
-    if (!data || data.length === 0) {
-      return null;
-    }
-
-    const vehicle = data[0];
+    const vehicle = Array.isArray(data) ? data[0] : data;
 
     // Transform MOT tests to include defects
     if (vehicle.motTests) {
@@ -139,11 +138,11 @@ export async function getMOTHistory(registration: string): Promise<MOTHistory | 
         odometerValue: test.odometerValue,
         odometerUnit: test.odometerUnit,
         motTestNumber: test.motTestNumber,
-        defects: test.rfrAndComments?.map((item: any) => ({
+        defects: (test.defects || test.rfrAndComments || []).map((item: any) => ({
           text: item.text,
           type: item.type,
           dangerous: item.dangerous || false,
-        })) || [],
+        })),
       }));
     }
 
