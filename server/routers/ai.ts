@@ -65,7 +65,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
               partsCost: z.number(),
               labourCost: z.number(),
               estimatedTotal: z.number(),
-              notes: z.string().optional(),
+              notes: z.string(),
             })),
             summary: z.object({
               minimumToPass: z.string(),
