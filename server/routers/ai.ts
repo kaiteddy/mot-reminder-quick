@@ -54,7 +54,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
 
       try {
         const { object } = await generateObject({
-          model: openai('gpt-4o'),
+          model: openai('gpt-4o-mini'),
           system: "You are an expert UK mechanic and garage manager.",
           prompt: prompt,
           schema: z.object({
