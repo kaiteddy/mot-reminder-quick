@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,7 @@ export default function MOTCheck() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
   const [customerData, setCustomerData] = useState<any>(null);
+  const hasSearched = useRef(false);
 
   const lookupMutation = trpc.reminders.lookupMOT.useMutation({
     onSuccess: async (data) => {
@@ -112,6 +113,17 @@ export default function MOTCheck() {
     }
     lookupMutation.mutate({ registration: registration.toUpperCase() });
   };
+
+  useEffect(() => {
+    if (hasSearched.current) return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const regParam = searchParams.get('reg');
+    if (regParam) {
+      setRegistration(regParam.toUpperCase());
+      lookupMutation.mutate({ registration: regParam.toUpperCase() });
+      hasSearched.current = true;
+    }
+  }, []);
 
   const getDaysUntilExpiry = (expiryDate?: Date) => {
     if (!expiryDate) return null;
