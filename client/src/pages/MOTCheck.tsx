@@ -24,6 +24,7 @@ import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/m
 import DashboardLayout from "@/components/DashboardLayout";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
+import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 
 interface MOTTest {
   completedDate: string;
@@ -350,7 +351,7 @@ export default function MOTCheck() {
                 <CardContent>
                   <div className="space-y-4">
                     {vehicleData.motTests.map((test, index) => (
-                      <MOTTestCard key={index} test={test} />
+                      <MOTTestCard key={index} test={test} vehicleData={vehicleData} />
                     ))}
                   </div>
                 </CardContent>
@@ -378,7 +379,7 @@ export default function MOTCheck() {
   );
 }
 
-function MOTTestCard({ test }: { test: MOTTest }) {
+function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: VehicleData }) {
   const isPassed = test.testResult === "PASSED";
   const testDate = new Date(test.completedDate);
 
@@ -454,6 +455,20 @@ function MOTTestCard({ test }: { test: MOTTest }) {
               </div>
             ))}
           </div>
+          
+          {/* Estimate Creator specifically for Failed tests with actual defects */}
+          {test.defects.length > 0 && vehicleData && !isPassed && (
+            <div className="pt-4 border-t mt-4">
+              <MOTEstimateCreator 
+                vehicleDetails={{
+                  make: vehicleData.make,
+                  model: vehicleData.model,
+                  year: vehicleData.yearOfManufacture
+                }} 
+                defects={test.defects} 
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

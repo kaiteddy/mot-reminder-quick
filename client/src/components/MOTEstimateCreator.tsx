@@ -1,0 +1,220 @@
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Loader2, Calculator, Edit2, FileText, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+
+interface MOTEstimateCreatorProps {
+  vehicleDetails: {
+    make?: string;
+    model?: string;
+    year?: number;
+  };
+  defects: Array<{
+    text: string;
+    type: string;
+    dangerous?: boolean;
+  }>;
+}
+
+export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreatorProps) {
+  const [estimate, setEstimate] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const generateMutation = trpc.ai.generateMOTEstimate.useMutation({
+    onSuccess: (data) => {
+      setEstimate(data);
+    },
+  });
+
+  const handleGenerate = () => {
+    generateMutation.mutate({
+      make: vehicleDetails.make,
+      model: vehicleDetails.model,
+      year: vehicleDetails.year,
+      defects,
+    });
+  };
+
+  const updateCost = (index: number, field: 'partsCost' | 'labourCost', value: string) => {
+    if (!estimate) return;
+    const numValue = parseFloat(value) || 0;
+    const updatedRepairs = [...estimate.repairs];
+    updatedRepairs[index][field] = numValue;
+    updatedRepairs[index].estimatedTotal = updatedRepairs[index].partsCost + updatedRepairs[index].labourCost;
+    
+    setEstimate({
+      ...estimate,
+      repairs: updatedRepairs,
+      summary: {
+        ...estimate.summary,
+        minimumToPass: calculateNewTotal(updatedRepairs, true),
+        withAdvisories: calculateNewTotal(updatedRepairs, false),
+      }
+    });
+  };
+
+  const calculateNewTotal = (repairs: any[], onlyRequired: boolean) => {
+    const total = repairs
+      .filter(r => onlyRequired ? ['DANGEROUS', 'MAJOR'].includes(r.classification) : true)
+      .reduce((sum, r) => sum + r.estimatedTotal, 0);
+    return `£${total.toFixed(2)}`;
+  };
+
+  if (!estimate && !generateMutation.isPending) {
+    return (
+      <Card className="mt-4 border-dashed bg-slate-50">
+        <CardContent className="flex flex-col items-center justify-center p-6 space-y-4">
+          <Calculator className="w-10 h-10 text-slate-400" />
+          <div className="text-center">
+            <h3 className="font-semibold text-slate-700">Need to quote for these repairs?</h3>
+            <p className="text-sm text-slate-500 max-w-sm mt-1">
+              Use AI to automatically estimate parts and labour costs based on these MOT failures and advisories.
+            </p>
+          </div>
+          <Button onClick={handleGenerate} className="gap-2">
+            <Calculator className="w-4 h-4" />
+            Generate Repair Estimate
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (generateMutation.isPending) {
+    return (
+      <Card className="mt-4 border-dashed bg-blue-50/50">
+        <CardContent className="flex flex-col items-center justify-center p-12 space-y-4">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          <p className="text-blue-700 font-medium">Analyzing defects & calculating UK garage estimates...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!estimate) return null;
+
+  return (
+    <Card className="mt-6 border-blue-200 shadow-sm">
+      <CardHeader className="bg-blue-50/50 border-b border-blue-100 pb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-blue-900">
+              <FileText className="w-5 h-5" />
+              MOT Repair Estimate
+            </CardTitle>
+            <CardDescription className="text-blue-700/70 mt-1">
+              Estimated costs for parts and labour. You can edit the numbers to match your actual garage pricing.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)} className="gap-2 bg-white">
+            {isEditing ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Edit2 className="w-4 h-4" />}
+            {isEditing ? "Save Adjustments" : "Edit Pricing"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-slate-50/50">
+              <TableRow>
+                <TableHead className="w-[120px]">Classification</TableHead>
+                <TableHead>Repair Item</TableHead>
+                <TableHead className="w-[100px] text-right">Parts</TableHead>
+                <TableHead className="w-[100px] text-right">Labour</TableHead>
+                <TableHead className="w-[120px] text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {estimate.repairs.map((repair: any, index: number) => {
+                const isRequired = ["DANGEROUS", "MAJOR"].includes(repair.classification);
+                return (
+                  <TableRow key={index} className={isRequired ? "bg-red-50/20" : ""}>
+                    <TableCell>
+                      <Badge variant={
+                        repair.classification === "DANGEROUS" ? "destructive" :
+                        repair.classification === "MAJOR" ? "destructive" :
+                        "secondary"
+                      } className={
+                        repair.classification === "MAJOR" ? "bg-orange-500 hover:bg-orange-600" : ""
+                      }>
+                        {repair.classification}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{repair.item}</div>
+                      <div className="text-xs text-slate-500">{repair.issue}</div>
+                      {repair.notes && <div className="text-xs text-blue-600 mt-1 italic">{repair.notes}</div>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-slate-500 text-sm">£</span>
+                          <Input 
+                            type="number" 
+                            className="w-20 h-8 text-right px-2" 
+                            value={repair.partsCost}
+                            onChange={(e) => updateCost(index, 'partsCost', e.target.value)}
+                          />
+                        </div>
+                      ) : (
+                        `£${repair.partsCost.toFixed(2)}`
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-slate-500 text-sm">£</span>
+                          <Input 
+                            type="number" 
+                            className="w-20 h-8 text-right px-2" 
+                            value={repair.labourCost}
+                            onChange={(e) => updateCost(index, 'labourCost', e.target.value)}
+                          />
+                        </div>
+                      ) : (
+                        `£${repair.labourCost.toFixed(2)}`
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      £{repair.estimatedTotal.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+      <CardFooter className="bg-slate-50 rounded-b-lg p-6 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
+        <div className="space-y-2 max-w-md">
+          <h4 className="font-medium text-slate-700 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            Mechanic Notes
+          </h4>
+          <ul className="text-sm text-slate-600 space-y-1 list-disc list-inside">
+            {estimate.mechanicNotes.map((note: string, idx: number) => (
+              <li key={idx}>{note}</li>
+            ))}
+          </ul>
+        </div>
+        
+        <div className="bg-white border rounded-lg p-4 shadow-sm w-full md:w-auto">
+          <div className="space-y-3">
+            <div className="flex justify-between gap-8 items-center border-b pb-2">
+              <span className="text-sm font-medium text-slate-600">Minimum to Pass MOT</span>
+              <span className="text-lg font-bold text-red-600">{estimate.summary.minimumToPass}</span>
+            </div>
+            <div className="flex justify-between gap-8 items-center">
+              <span className="text-sm font-medium text-slate-600">Including Advisories</span>
+              <span className="text-lg font-bold text-slate-900">{estimate.summary.withAdvisories}</span>
+            </div>
+          </div>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}
