@@ -351,12 +351,12 @@ export default function MOTCheck() {
               </CardContent>
             </Card>
 
-            {/* Quick Estimate for Latest Failed Test */}
-            {vehicleData.motTests && vehicleData.motTests[0]?.testResult === "FAILED" && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
+            {/* Quick Estimate for Latest Test (if it has defects/advisories) */}
+            {vehicleData.motTests && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
               <div className="mb-6">
-                <h3 className="text-xl font-bold text-red-600 mb-3 flex items-center gap-2">
+                <h3 className={`text-xl font-bold mb-3 flex items-center gap-2 ${vehicleData.motTests[0].testResult === 'PASSED' ? 'text-orange-600' : 'text-red-600'}`}>
                   <AlertTriangle className="w-6 h-6" />
-                  Latest MOT Failed – Quick Estimate
+                  {vehicleData.motTests[0].testResult === 'PASSED' ? 'Mot Advisories – Quick Estimate' : 'Latest MOT Failed – Quick Estimate'}
                 </h3>
                 <MOTEstimateCreator 
                   vehicleDetails={{
@@ -486,8 +486,8 @@ function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: Vehic
             ))}
           </div>
           
-          {/* Estimate Creator specifically for Failed tests with actual defects */}
-          {test.defects.length > 0 && vehicleData && !isPassed && (
+          {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
+          {test.defects.length > 0 && vehicleData && (
             <div className="pt-4 border-t mt-4">
               <MOTEstimateCreator 
                 vehicleDetails={{
