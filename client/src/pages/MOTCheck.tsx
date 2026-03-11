@@ -351,6 +351,24 @@ export default function MOTCheck() {
               </CardContent>
             </Card>
 
+            {/* Quick Estimate for Latest Failed Test */}
+            {vehicleData.motTests && vehicleData.motTests[0]?.testResult === "FAILED" && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-xl font-bold text-red-600 mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-6 h-6" />
+                  Latest MOT Failed – Quick Estimate
+                </h3>
+                <MOTEstimateCreator 
+                  vehicleDetails={{
+                    make: vehicleData.make,
+                    model: vehicleData.model,
+                    year: vehicleData.yearOfManufacture
+                  }} 
+                  defects={vehicleData.motTests[0].defects} 
+                />
+              </div>
+            )}
+
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <Card>
