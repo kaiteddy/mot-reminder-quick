@@ -994,7 +994,10 @@ export const appRouter = router({
                 odometerValue: "45000",
                 odometerUnit: "mi",
                 motTestNumber: "123456789",
-                defects: [],
+                defects: [
+                  { text: 'Offside Front Tyre slightly damaged/cracking or perishing', type: 'ADVISORY', dangerous: false },
+                  { text: 'Nearside Front Tyre has ply or cords exposed', type: 'FAIL', dangerous: true }
+                ],
               },
             ],
           };
