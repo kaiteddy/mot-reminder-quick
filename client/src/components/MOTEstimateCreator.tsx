@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { Loader2, Calculator, Edit2, FileText, CheckCircle2, Printer } from "lucide-react";
+import { Loader2, Calculator, Edit2, FileText, CheckCircle2, Printer, CheckSquare, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface MOTEstimateCreatorProps {
@@ -23,10 +23,12 @@ interface MOTEstimateCreatorProps {
 export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreatorProps) {
   const [estimate, setEstimate] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedRepairs, setSelectedRepairs] = useState<boolean[]>([]);
 
   const generateMutation = trpc.ai.generateMOTEstimate.useMutation({
     onSuccess: (data) => {
       setEstimate(data);
+      setSelectedRepairs(new Array(data.repairs.length).fill(true));
     },
   });
 
@@ -51,15 +53,31 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
       repairs: updatedRepairs,
       summary: {
         ...estimate.summary,
-        minimumToPass: calculateNewTotal(updatedRepairs, true),
-        withAdvisories: calculateNewTotal(updatedRepairs, false),
+        minimumToPass: calculateNewTotal(updatedRepairs, selectedRepairs, true),
+        withAdvisories: calculateNewTotal(updatedRepairs, selectedRepairs, false),
       }
     });
   };
 
-  const calculateNewTotal = (repairs: any[], onlyRequired: boolean) => {
+  const toggleRepairSelection = (index: number) => {
+    if (!estimate) return;
+    const newSelected = [...selectedRepairs];
+    newSelected[index] = !newSelected[index];
+    setSelectedRepairs(newSelected);
+    
+    setEstimate({
+      ...estimate,
+      summary: {
+        ...estimate.summary,
+        minimumToPass: calculateNewTotal(estimate.repairs, newSelected, true),
+        withAdvisories: calculateNewTotal(estimate.repairs, newSelected, false),
+      }
+    });
+  };
+
+  const calculateNewTotal = (repairs: any[], selected: boolean[], onlyRequired: boolean) => {
     const total = repairs
-      .filter(r => onlyRequired ? ['DANGEROUS', 'MAJOR'].includes(r.classification) : true)
+      .filter((r, idx) => selected[idx] && (onlyRequired ? ['DANGEROUS', 'MAJOR'].includes(r.classification) : true))
       .reduce((sum, r) => sum + r.estimatedTotal, 0);
     return `£${total.toFixed(2)}`;
   };
@@ -127,6 +145,7 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
           <Table className="print:border-collapse print:border-spacing-0">
             <TableHeader className="bg-slate-50/50 print:bg-slate-100">
               <TableRow className="print:border-none">
+                <TableHead className="w-[40px] print:hidden"></TableHead>
                 <TableHead className="w-[120px] print:w-[100px] print:text-black">Classification</TableHead>
                 <TableHead className="print:text-black">Repair Item</TableHead>
                 <TableHead className="w-[100px] text-right print:w-[80px] print:text-black">Parts</TableHead>
@@ -140,8 +159,18 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
             <TableBody>
               {estimate.repairs.map((repair: any, index: number) => {
                 const isRequired = ["DANGEROUS", "MAJOR"].includes(repair.classification);
+                const isSelected = selectedRepairs[index];
                 return (
-                  <TableRow key={index} className={`${isRequired ? "bg-red-50/20" : ""} print:bg-white print:border-b print:border-slate-200`}>
+                  <TableRow key={index} className={`${isRequired ? "bg-red-50/20" : ""} print:bg-white print:border-b print:border-slate-200 ${!isSelected ? "opacity-40 grayscale" : ""}`}>
+                    <TableCell className="print:hidden">
+                      <button 
+                        onClick={() => toggleRepairSelection(index)}
+                        className="text-slate-400 hover:text-primary transition-colors flex items-center justify-center p-1"
+                        title={isSelected ? "Exclude from total" : "Include in total"}
+                      >
+                        {isSelected ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5" />}
+                      </button>
+                    </TableCell>
                     <TableCell className="print:py-3 cursor-default">
                       <Badge variant={
                         repair.classification === "DANGEROUS" ? "destructive" :
