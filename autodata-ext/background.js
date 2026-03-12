@@ -3,6 +3,7 @@ chrome.webRequest.onSendHeaders.addListener(
         if (!details.requestHeaders) return;
         for (let header of details.requestHeaders) {
             if (header.name.toLowerCase() === 'authorization' && header.value.toLowerCase().startsWith('bearer ')) {
+                console.log("Omnipart Token Intercepted!", header.value.substring(0, 15) + "...");
                 fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -13,7 +14,7 @@ chrome.webRequest.onSendHeaders.addListener(
         }
     },
     { urls: ["https://api.omnipart.eurocarparts.com/*"] },
-    ["requestHeaders"]
+    ["requestHeaders", "extraHeaders"]
 );
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

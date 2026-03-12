@@ -86,7 +86,7 @@ function setupApp(app: Express) {
       res.json({ success: true, received: true });
     });
 
-    // Handle OPTIONS preflight for Autodata
+        // Handle OPTIONS preflight for Autodata
     app.options("/api/webhooks/autodata", (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -95,6 +95,16 @@ function setupApp(app: Express) {
     });
 
     // Omnipart Harvester Endpoint
+    app.get("/api/webhooks/omnipart", async (req, res) => {
+      try {
+        const { getAppSetting } = await import("../db");
+        const tokens = await getAppSetting('omnipart_jwt_token');
+        res.json({ success: true, token: tokens });
+      } catch (err: any) {
+        res.json({ success: false, error: err.message });
+      }
+    });
+
     app.post("/api/webhooks/omnipart", async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
