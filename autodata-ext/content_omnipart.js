@@ -33,3 +33,10 @@ chrome.runtime.onMessage.addListener((msg) => {
         }
     }
 });
+
+// Since Omnipart hides tokens in HttpOnly cookies, request a deep cookie scan
+setInterval(() => {
+    if (!window._omnipart_sync_sent) {
+        chrome.runtime.sendMessage({ action: "SCAN_OMNIPART" });
+    }
+}, 3000);
