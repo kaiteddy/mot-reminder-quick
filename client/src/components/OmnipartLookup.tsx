@@ -114,9 +114,18 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
 
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Failed to communicate with Euro Car Parts");
-      if (err.message && err.message.toLowerCase().includes("auth") || err.message.toLowerCase().includes("token")) {
+      
+      const msg = err.message || "Failed to communicate with Euro Car Parts";
+      
+      if (msg.toLowerCase().includes("auth") || msg.toLowerCase().includes("token")) {
+        // Automatically purge broken local tokens
+        localStorage.removeItem("omnipart_jwt_token");
+        setSessionToken("auto");
+        
+        toast.error(`Omnipart Error: ${msg}. Your saved token was invalid/expired and has been wiped. Trying to fall back to the Auto Harvester...`);
         setIsConfiguring(true);
+      } else {
+        toast.error(msg);
       }
     }
   };
@@ -180,6 +189,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
               <div className="flex gap-2">
                 <Input 
                   type="text"
+                  autoComplete="off"
+                  spellCheck="false"
+                  data-1p-ignore="true" 
+                  data-lpignore="true"
                   value={sessionToken === "auto" ? "" : sessionToken} 
                   onChange={(e) => setSessionToken(e.target.value.trim() === "" ? "auto" : e.target.value)}
                   placeholder={sessionToken === "auto" ? "Using Autodata Harvester automatically..." : "Paste your eyJ... token here"}
