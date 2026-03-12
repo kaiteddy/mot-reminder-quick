@@ -3,8 +3,8 @@ import { z } from "zod";
 import { generateText, generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { getDb } from "../db";
-import { appSettings } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
+import { eq, like, desc } from "drizzle-orm";
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -25,6 +25,8 @@ export const aiRouter = router({
 
       const db = await getDb();
       let pricingRules = "";
+      let historicalContext = "";
+
       if (db) {
         const settings = await db.select().from(appSettings).where(eq(appSettings.keyName, 'pricing_knowledge')).limit(1);
         if (settings.length > 0 && settings[0].value) {
@@ -37,6 +39,35 @@ CRITICAL PRICING RULES TO USE (DO NOT DEVIATE):
 ${rules.customKnowledge ? `\nADDITIONAL PRICING KNOWLEDGE:\n${rules.customKnowledge}` : ''}
 `;
         }
+
+        // Fetch historical pricing intelligence
+        if (input.make) {
+          try {
+            const recentHistory = await db.select({
+              desc: serviceLineItems.description,
+              price: serviceLineItems.unitPrice,
+              type: serviceLineItems.itemType,
+              date: serviceHistory.dateIssued,
+              model: vehicles.model
+            })
+            .from(serviceLineItems)
+            .innerJoin(serviceHistory, eq(serviceLineItems.documentId, serviceHistory.id))
+            .innerJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+            .where(like(vehicles.make, `%${input.make}%`))
+            .orderBy(desc(serviceHistory.createdAt))
+            .limit(30);
+
+            if (recentHistory.length > 0) {
+              historicalContext = `
+HISTORICAL PRICING INTELLIGENCE FOR ${input.make.toUpperCase()}:
+You MUST use these actual past invoices from our system to accurately price similar items for this estimate:
+${recentHistory.filter(h => h.desc && h.price).map(h => `- ${h.model || 'Vehicle'}: ${h.desc} - £${Number(h.price).toFixed(2)} (${h.type || 'Parts/Labour'})`).join("\n")}
+`;
+            }
+          } catch (e) {
+            console.error("[AI] Failed to fetch historical invoice context", e);
+          }
+        }
       }
 
       const prompt = `You are an expert UK mechanic and garage owner.
@@ -46,6 +77,7 @@ ${input.defects.map(d => `- [${d.type}${d.dangerous ? " - DANGEROUS" : ""}] ${d.
 
 Your task is to provide a breakdown of the items that need to be replaced or fixed to pass the MOT, along with sensible advisory repairs. Provide realistic estimated costs for this specific UK independent garage based on their pricing rules context.
 ${pricingRules}
+${historicalContext}
 
 Please format the response strictly as a JSON object matching this structure:
 {
