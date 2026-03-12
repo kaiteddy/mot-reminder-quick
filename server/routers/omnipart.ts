@@ -93,7 +93,25 @@ export const omnipartRouter = router({
           apiHeaders,
           JSON.stringify({ vrm: input.vrm, saveToCache: false })
         );
-        return resData; // Includes vehicleId, make, model, etc.
+
+        if (!resData || !resData.searchResults) {
+            throw new Error("No vehicle details returned.");
+        }
+
+        const details = resData.searchResults.vehicleDetails || [];
+        const props = resData.searchResults.properties || [];
+
+        const findVal = (arr: any[], name: string) => arr.find(x => x.Name === name)?.Value || null;
+
+        return {
+            vehicleId: findVal(props, "VehicleId"),
+            make: findVal(details, "Make"),
+            model: findVal(details, "Model"),
+            engineCode: findVal(details, "EngineCode"),
+            bhp: findVal(details, "BHP"),
+            fuel: findVal(details, "FuelType"),
+            year: findVal(details, "Year")
+        };
       } catch (error: any) {
         const message = error.message || "Failed to look up VRM on Omnipart";
         console.error("Omnipart VRM Error:", error.message);
