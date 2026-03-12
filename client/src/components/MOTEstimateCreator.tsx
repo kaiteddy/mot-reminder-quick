@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Calculator, Edit2, FileText, CheckCircle2, Printer, CheckSquare, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useReactToPrint } from "react-to-print";
+import { toast } from "sonner";
 
 interface MOTEstimateCreatorProps {
   vehicleDetails: {
@@ -27,6 +28,17 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRepairs, setSelectedRepairs] = useState<boolean[]>([]);
   const componentRef = useRef<HTMLDivElement>(null);
+  const [preSelectedDefects, setPreSelectedDefects] = useState<boolean[]>([]);
+
+  useEffect(() => {
+    setPreSelectedDefects(new Array(defects.length).fill(true));
+  }, [defects]);
+
+  const togglePreSelection = (index: number) => {
+    const newSelected = [...preSelectedDefects];
+    newSelected[index] = !newSelected[index];
+    setPreSelectedDefects(newSelected);
+  };
 
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
@@ -41,11 +53,17 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
   });
 
   const handleGenerate = () => {
+    const selectedDefectsToEstimate = defects.filter((_, idx) => preSelectedDefects[idx]);
+    if (selectedDefectsToEstimate.length === 0) {
+      toast.error("Please select at least one defect to estimate.");
+      return;
+    }
+    
     generateMutation.mutate({
       make: vehicleDetails.make,
       model: vehicleDetails.model,
       year: vehicleDetails.year,
-      defects,
+      defects: selectedDefectsToEstimate,
     });
   };
 
@@ -94,15 +112,31 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
     return (
       <Card className="mt-4 border-dashed bg-slate-50">
         <CardContent className="flex flex-col items-center justify-center p-6 space-y-4">
-          <Calculator className="w-10 h-10 text-slate-400" />
-          <div className="text-center">
-            <h3 className="font-semibold text-slate-700">Need to quote for these repairs?</h3>
-            <p className="text-sm text-slate-500 max-w-sm mt-1">
-              Use AI to automatically estimate parts and labour costs based on these MOT failures and advisories.
+          <div className="text-center mt-2">
+            <h3 className="font-semibold text-slate-700 text-lg">Select items to include in the estimate</h3>
+            <p className="text-sm text-slate-500 max-w-md mt-1 mb-4">
+              Choose which MOT failures and advisories you want the AI to calculate pricing for.
             </p>
           </div>
-          <Button onClick={handleGenerate} className="gap-2">
-            <Calculator className="w-4 h-4" />
+          
+          <div className="w-full max-w-2xl text-left border rounded-lg overflow-hidden bg-white shadow-sm mb-2 max-h-[300px] overflow-y-auto">
+            {defects.map((defect, idx) => (
+               <div key={idx} className={`flex items-start gap-3 p-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors ${!preSelectedDefects[idx] ? 'opacity-60 bg-slate-50/50 grayscale' : ''}`} onClick={() => togglePreSelection(idx)}>
+                 <button className="text-slate-400 mt-1" tabIndex={-1}>
+                    {preSelectedDefects[idx] ? <CheckSquare className="w-5 h-5 text-primary" /> : <Square className="w-5 h-5" />}
+                 </button>
+                 <div>
+                    <Badge variant={defect.type === "FAIL" ? "destructive" : "secondary"} className="mb-1 text-[10px] leading-tight px-1.5 py-0 uppercase shadow-none font-bold">
+                      {defect.dangerous ? "DANGEROUS" : defect.type}
+                    </Badge>
+                    <p className={`text-sm font-medium leading-snug ${preSelectedDefects[idx] ? 'text-slate-800' : 'text-slate-500'}`}>{defect.text}</p>
+                 </div>
+               </div>
+            ))}
+          </div>
+
+          <Button onClick={handleGenerate} className="gap-2 mt-2 w-full max-w-sm" disabled={!preSelectedDefects.some(Boolean) || defects.length === 0}>
+            <Calculator className="w-4 h-4 mr-1" />
             Generate Repair Estimate
           </Button>
         </CardContent>
