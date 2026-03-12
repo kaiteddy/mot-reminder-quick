@@ -28,8 +28,9 @@ export const omnipartRouter = router({
         );
         return res.data; // Includes vehicleId, make, model, etc.
       } catch (error: any) {
+        const message = error.response?.data?.message || error.message || "Failed to look up VRM on Omnipart";
         console.error("Omnipart VRM Error:", error.response?.data || error.message);
-        throw new Error("Failed to look up VRM on Omnipart.");
+        throw new Error(message);
       }
     }),
 
@@ -78,8 +79,9 @@ export const omnipartRouter = router({
 
         return { products: priceRes.data };
       } catch (error: any) {
+        const message = error.response?.data?.message || error.message || "Failed to search for parts on Omnipart";
         console.error("Omnipart Parts Error:", error.response?.data || error.message);
-        throw new Error("Failed to search for parts on Omnipart.");
+        throw new Error(message);
       }
     })
 });
