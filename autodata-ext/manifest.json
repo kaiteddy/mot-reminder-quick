@@ -28,6 +28,15 @@
                 "content.js"
             ],
             "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://omnipart.eurocarparts.com/*"
+            ],
+            "js": [
+                "content_omnipart.js"
+            ],
+            "run_at": "document_start"
         }
     ]
 }
