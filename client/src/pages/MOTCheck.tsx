@@ -27,6 +27,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
+import { OmnipartIntegration } from "@/components/OmnipartLookup";
 
 interface MOTTest {
   completedDate: string;
@@ -390,8 +391,13 @@ export default function MOTCheck() {
               </Card>
             )}
 
+            {/* Omnipart Trade Lookup Integration */}
+            <OmnipartIntegration />
+
             {/* Embedded Drone Technical Data */}
-            <AutodataMini vrm={vehicleData.registration} />
+            <AutodataMini 
+              vrm={vehicleData.registration}
+            />
           </div>
         )}
 
