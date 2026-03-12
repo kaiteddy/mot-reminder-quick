@@ -158,7 +158,8 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
   if (!estimate) return null;
 
   return (
-    <Card ref={componentRef} className="mt-6 border-blue-200 shadow-sm print:shadow-none print:border-none">
+    <div ref={componentRef} className="mt-6">
+      <Card className="border-blue-200 shadow-sm print:shadow-none print:border-none print:mb-8">
       <CardHeader className="bg-blue-50/50 border-b border-blue-100 pb-4 print:bg-transparent print:border-b-2 print:border-slate-800">
         <div className="flex items-center justify-between">
           <div>
@@ -298,5 +299,54 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
         </div>
       </CardFooter>
     </Card>
+      {/* Print-only: Raw MOT Items List - Page 2 */}
+      <div className="hidden print:block print:break-before-page w-full text-black">
+        <div className="mb-6 border-b-2 border-slate-800 pb-4">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <FileText className="w-6 h-6" />
+            MOT Inspection Items - Full List
+          </h2>
+          <p className="text-slate-600 mt-1 font-medium text-lg">Vehicle: {vehicleDetails.registration || "Unknown"} {vehicleDetails.make ? `(${vehicleDetails.make} ${vehicleDetails.model})` : ''}</p>
+        </div>
+
+        <table className="w-full border-collapse border-spacing-0 text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-800">
+              <th className="text-left py-2 px-3 border border-slate-300 w-[120px] font-bold">Severity</th>
+              <th className="text-left py-2 px-3 border border-slate-300 font-bold">MOT Item & Description</th>
+              <th className="text-left py-2 px-3 border border-slate-300 w-[200px] font-bold">Part Number / Supplier</th>
+              <th className="text-right py-2 px-3 border border-slate-300 w-[120px] font-bold">Cost £</th>
+            </tr>
+          </thead>
+          <tbody>
+            {defects.map((defect, idx) => {
+              const getBadgeColours = (type: string, dangerous: boolean | undefined) => {
+                if (dangerous) return 'bg-red-600 text-white border-red-800';
+                if (type === 'FAIL' || type === 'MAJOR') return 'bg-orange-500 text-white border-orange-700';
+                if (type === 'PRS') return 'bg-blue-500 text-white border-blue-700';
+                return 'bg-amber-100 text-amber-800 border-amber-300';
+              };
+
+              const label = defect.dangerous ? "DANGEROUS" : (defect.type === "FAIL" ? "MAJOR" : defect.type);
+
+              return (
+                <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
+                  <td className="border border-slate-300 py-3 px-3 align-top">
+                    <span className={`inline-block px-2 py-1 text-[11px] font-bold uppercase rounded border ${getBadgeColours(defect.type, defect.dangerous)}`}>
+                      {label}
+                    </span>
+                  </td>
+                  <td className="border border-slate-300 py-3 px-3 align-top">
+                    <p className="font-medium text-sm leading-snug">{defect.text}</p>
+                  </td>
+                  <td className="border border-slate-300 py-3 px-3 align-top text-slate-300"></td>
+                  <td className="border border-slate-300 py-3 px-3 align-top text-right text-slate-300">£</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
