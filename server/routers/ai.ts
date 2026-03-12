@@ -2,6 +2,9 @@ import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateText, generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { getDb } from "../db";
+import { appSettings } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -20,12 +23,29 @@ export const aiRouter = router({
         throw new Error("OPENAI_API_KEY is not configured.");
       }
 
+      const db = await getDb();
+      let pricingRules = "";
+      if (db) {
+        const settings = await db.select().from(appSettings).where(eq(appSettings.keyName, 'pricing_knowledge')).limit(1);
+        if (settings.length > 0 && settings[0].value) {
+          const rules = settings[0].value as any;
+          pricingRules = `
+CRITICAL PRICING RULES TO USE (DO NOT DEVIATE):
+- Hourly Labour Rate: £${rules.labourRate || "70"}
+- Fixed MOT Cost: £${rules.motCost || "45"}
+- Fixed Service Labour (Small/Medium): £${rules.serviceMedium || "124"}
+${rules.customKnowledge ? `\nADDITIONAL PRICING KNOWLEDGE:\n${rules.customKnowledge}` : ''}
+`;
+        }
+      }
+
       const prompt = `You are an expert UK mechanic and garage owner.
 A customer has brought in a ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""} that just failed its MOT test.
 Here are the exact MOT defects from the test history:
 ${input.defects.map(d => `- [${d.type}${d.dangerous ? " - DANGEROUS" : ""}] ${d.text}`).join("\n")}
 
-Your task is to provide a breakdown of the items that need to be replaced or fixed to pass the MOT, along with sensible advisory repairs. Provide realistic estimated costs for a typical UK independent garage.
+Your task is to provide a breakdown of the items that need to be replaced or fixed to pass the MOT, along with sensible advisory repairs. Provide realistic estimated costs for this specific UK independent garage based on their pricing rules context.
+${pricingRules}
 
 Please format the response strictly as a JSON object matching this structure:
 {
@@ -119,5 +139,51 @@ CRITICAL INSTRUCTIONS:
         console.error("AI Generation Error:", e);
         throw new Error("Failed to generate explanation: " + e.message);
       }
+    }),
+
+  getPricingKnowledge: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) return null;
+      const settings = await db.select().from(appSettings).where(eq(appSettings.keyName, 'pricing_knowledge')).limit(1);
+      if (settings.length > 0) {
+        return settings[0].value;
+      }
+      return {
+        labourRate: 70,
+        motCost: 45,
+        serviceSmall: 124,
+        serviceMedium: 124,
+        serviceLarge: 154,
+        customKnowledge: ""
+      };
+    }),
+
+  savePricingKnowledge: publicProcedure
+    .input(z.object({
+      labourRate: z.number(),
+      motCost: z.number(),
+      serviceSmall: z.number(),
+      serviceMedium: z.number(),
+      serviceLarge: z.number(),
+      customKnowledge: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database error");
+      
+      const existing = await db.select().from(appSettings).where(eq(appSettings.keyName, 'pricing_knowledge')).limit(1);
+      
+      if (existing.length > 0) {
+        await db.update(appSettings)
+          .set({ value: input })
+          .where(eq(appSettings.keyName, 'pricing_knowledge'));
+      } else {
+        await db.insert(appSettings).values({
+          keyName: 'pricing_knowledge',
+          value: input
+        });
+      }
+      return { success: true };
     }),
 });

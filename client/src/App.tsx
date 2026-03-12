@@ -28,6 +28,7 @@ import TechnicalHub from "./pages/TechnicalHub";
 import TechnicalData from "./pages/TechnicalData";
 import MobileJobSummary from "./pages/MobileJobSummary";
 import Appointments from "./pages/Appointments";
+import PricingIntelligence from "./pages/PricingIntelligence";
 
 function Router() {
   return (
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/generate-document" component={DocumentGenerator} />
       <Route path="/technical-hub" component={TechnicalHub} />
       <Route path="/technical-data" component={TechnicalData} />
+      <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
 
