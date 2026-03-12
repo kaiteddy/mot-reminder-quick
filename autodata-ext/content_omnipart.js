@@ -9,17 +9,13 @@ script.onload = function() {
 // Listen for the stolen token from the injected script and send it to our backend
 window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'OMNIPART_TOKEN_INTERCEPT') {
-        const token = event.data.token.trim();
         if (!window._omnipart_sync_sent) {
             window._omnipart_sync_sent = true;
-            console.log("Omnipart Extractor caught token! Syncing...");
-            fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token })
-            }).then(() => {
-                alert("✨ BINGO! Autodata Extension successfully intercepted your Euro Car Parts Token via Page Hijack!\n\nYou can now switch to the MOT App and it will automatically use your live session.");
-            }).catch(err => console.error("Ext sync failed", err));
+            console.log("Omnipart Extractor caught token! Native Scanner will beam it up.");
+            // We NO LONGER POST right here, because we want the Native Background Script
+            // to send the full COOKIE_JAR payload instead of just the bare JWT string.
+            // But we will still show the alert!
+            alert("✨ BINGO! Autodata Extension successfully intercepted your Euro Car Parts Token!\n\nYou can now switch to the MOT App and it will automatically use your live session.");
         }
     }
 });
