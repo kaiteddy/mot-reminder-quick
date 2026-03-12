@@ -12,7 +12,7 @@ window.fetch = async function(...args) {
                 }
             }
         }
-        if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+        if (authHeader && authHeader.toLowerCase().includes('eyJ')) {
             window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: authHeader }, '*');
         }
     }
@@ -29,7 +29,7 @@ XMLHttpRequest.prototype.open = function() {
 
 XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
     this._requestHeaders[header] = value;
-    if (header.toLowerCase() === 'authorization' && value.toLowerCase().startsWith('bearer ')) {
+    if (header.toLowerCase() === 'authorization' && value.toLowerCase().includes('eyJ')) {
         window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: value }, '*');
     }
     return originalSetRequestHeader.apply(this, arguments);
