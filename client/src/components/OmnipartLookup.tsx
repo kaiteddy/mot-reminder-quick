@@ -7,8 +7,8 @@ import { Loader2, Search, ShoppingCart, Wrench, Key, Lock, TerminalSquare } from
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
-export function OmnipartIntegration() {
-  const [vrm, setVrm] = useState("");
+export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }) {
+  const [vrm, setVrm] = useState(defaultVrm);
   const [partQuery, setPartQuery] = useState("");
   
   const [sessionToken, setSessionToken] = useState(""); // Bearer token
@@ -30,6 +30,26 @@ export function OmnipartIntegration() {
       setIsConfiguring(false); // don't force them open immediately, let "auto" try first
     }
   }, []);
+
+  useEffect(() => {
+    if (defaultVrm) setVrm(defaultVrm);
+  }, [defaultVrm]);
+
+  const commonCategories = [
+    { label: "-- Select a Part --", value: "" },
+    { label: "Engine Oil", value: "engine-oil" },
+    { label: "Oil Filter", value: "oil-filter" },
+    { label: "Air Filter", value: "air-filter" },
+    { label: "Cabin / Pollen Filter", value: "cabin-filter" },
+    { label: "Fuel Filter", value: "fuel-filter" },
+    { label: "Spark Plugs", value: "spark-plugs" },
+    { label: "Brake Pads", value: "brake-pads" },
+    { label: "Brake Discs", value: "brake-discs" },
+    { label: "Car Battery", value: "car-batteries" },
+    { label: "Wiper Blades", value: "wiper-blades" },
+    { label: "Timing Belt", value: "timing-belt-kit" },
+    { label: "Water Pump", value: "water-pump" }
+  ];
 
   const saveToken = () => {
     if (!sessionToken || sessionToken.length < 50) {
@@ -175,12 +195,16 @@ export function OmnipartIntegration() {
               />
             </div>
             <div className="flex-1">
-              <Input 
-                placeholder="Part Category (e.g. brake-pads)" 
-                value={partQuery} onChange={e => setPartQuery(e.target.value)} 
+              <select
+                value={partQuery} 
+                onChange={e => setPartQuery(e.target.value)} 
                 disabled={isWorking || isConfiguring}
-                className="bg-white"
-              />
+                className="w-full h-10 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {commonCategories.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
             </div>
             <Button type="submit" disabled={isWorking || !vrm || isConfiguring} className="bg-blue-600 hover:bg-blue-700">
               {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}

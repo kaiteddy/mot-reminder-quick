@@ -354,6 +354,11 @@ export default function MOTCheck() {
               </CardContent>
             </Card>
 
+            {/* Omnipart Trade Lookup Integration */}
+            <div className="mb-6">
+              <OmnipartIntegration defaultVrm={vehicleData.registration} />
+            </div>
+
             {/* Quick Estimate for Latest Test (if it has defects/advisories) */}
             {vehicleData.motTests && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
               <div className="mb-6">
@@ -391,9 +396,6 @@ export default function MOTCheck() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Omnipart Trade Lookup Integration */}
-            <OmnipartIntegration />
 
             {/* Embedded Drone Technical Data */}
             <AutodataMini 
