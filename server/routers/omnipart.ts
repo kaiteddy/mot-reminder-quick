@@ -19,37 +19,52 @@ export const omnipartRouter = router({
             rawToken = dbToken as string;
         }
 
-        let clean = rawToken.replace(/^["']|["']$/g, '').trim();
-        clean = clean.replace(/[\n\r]| /g, ''); // Remove all spaces and newlines
-        
-        const lowerClean = clean.toLowerCase();
-        if (lowerClean.startsWith("authorization:bearer")) {
-            clean = clean.substring(20);
-        } else if (lowerClean.startsWith("bearer")) {
-            clean = clean.substring(6);
-        }
-        
-        if (clean.endsWith('...')) {
-            throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
-        }
-        if (!clean.startsWith('ey')) {
-            throw new Error("Invalid token format! A valid token must start with 'ey'.");
+        let clean = rawToken;
+        let authHeader = "";
+        let cookieHeader = "";
+
+        if (clean.startsWith("COOKIE_JAR:")) {
+            cookieHeader = clean.substring(11).trim();
+            // Try to extract the JWT just in case they still accept it in the Authorization header too
+            let match = cookieHeader.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+            if (match) {
+                authHeader = `Bearer ${match[1]}`;
+            }
+        } else {
+            clean = clean.replace(/^["']|["']$/g, '').trim();
+            clean = clean.replace(/[\n\r]| /g, ''); // Remove all spaces and newlines
+            
+            const lowerClean = clean.toLowerCase();
+            if (lowerClean.startsWith("authorization:bearer")) {
+                clean = clean.substring(20);
+            } else if (lowerClean.startsWith("bearer")) {
+                clean = clean.substring(6);
+            }
+            
+            if (clean.endsWith('...')) {
+                throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
+            }
+            if (!clean.startsWith('ey')) {
+                throw new Error("Invalid token format! A valid token must start with 'ey'.");
+            }
+            authHeader = `Bearer ${clean}`;
         }
 
-        const cleanToken = clean;
+        const apiHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          "Origin": "https://omnipart.eurocarparts.com",
+          "Referer": "https://omnipart.eurocarparts.com/"
+        };
+
+        if (authHeader) apiHeaders["Authorization"] = authHeader;
+        if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
+
         const res = await axios.post(
           "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
           { vrm: input.vrm, saveToCache: true },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${cleanToken}`,
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept": "application/json, text/plain, */*",
-              "Origin": "https://omnipart.eurocarparts.com",
-              "Referer": "https://omnipart.eurocarparts.com/"
-            }
-          }
+          { headers: apiHeaders }
         );
         return res.data; // Includes vehicleId, make, model, etc.
       } catch (error: any) {
@@ -80,30 +95,41 @@ export const omnipartRouter = router({
             rawToken = dbToken as string;
         }
 
-        let clean = rawToken.replace(/^["']|["']$/g, '').trim();
-        clean = clean.replace(/[\n\r]| /g, '');
-        
-        const lowerClean = clean.toLowerCase();
-        if (lowerClean.startsWith("authorization:bearer")) {
-            clean = clean.substring(20);
-        } else if (lowerClean.startsWith("bearer")) {
-            clean = clean.substring(6);
-        }
-        if (clean.endsWith('...')) {
-            throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
-        }
-        if (!clean.startsWith('ey')) {
-            throw new Error("Invalid token format! A valid token must start with 'ey'.");
+        let clean = rawToken;
+        let authHeader = "";
+        let cookieHeader = "";
+
+        if (clean.startsWith("COOKIE_JAR:")) {
+            cookieHeader = clean.substring(11).trim();
+            let match = cookieHeader.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+            if (match) authHeader = `Bearer ${match[1]}`;
+        } else {
+            clean = clean.replace(/^["']|["']$/g, '').trim();
+            clean = clean.replace(/[\n\r]| /g, '');
+            
+            const lowerClean = clean.toLowerCase();
+            if (lowerClean.startsWith("authorization:bearer")) {
+                clean = clean.substring(20);
+            } else if (lowerClean.startsWith("bearer")) {
+                clean = clean.substring(6);
+            }
+            if (clean.endsWith('...')) {
+                throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
+            }
+            if (!clean.startsWith('ey')) {
+                throw new Error("Invalid token format! A valid token must start with 'ey'.");
+            }
+            authHeader = `Bearer ${clean}`;
         }
 
-        const cleanToken = clean;
-        const apiHeaders = {
-            "Authorization": `Bearer ${cleanToken}`,
+        const apiHeaders: Record<string, string> = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Origin": "https://omnipart.eurocarparts.com",
             "Referer": "https://omnipart.eurocarparts.com/"
         };
+        if (authHeader) apiHeaders["Authorization"] = authHeader;
+        if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
         if (!input.skus && input.vehicleId && input.categorySlug) {
           const categoryRes = await axios.get(
