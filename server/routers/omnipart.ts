@@ -26,7 +26,7 @@ export const omnipartRouter = router({
         if (clean.startsWith("COOKIE_JAR:")) {
             cookieHeader = clean.substring(11).trim();
             // Try to extract the JWT just in case they still accept it in the Authorization header too
-            let match = cookieHeader.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+            let match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
             if (match) {
                 authHeader = `Bearer ${match[1]}`;
             }
@@ -101,7 +101,7 @@ export const omnipartRouter = router({
 
         if (clean.startsWith("COOKIE_JAR:")) {
             cookieHeader = clean.substring(11).trim();
-            let match = cookieHeader.match(/(eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+)/);
+            let match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
             if (match) authHeader = `Bearer ${match[1]}`;
         } else {
             clean = clean.replace(/^["']|["']$/g, '').trim();
