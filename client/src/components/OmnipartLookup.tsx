@@ -134,12 +134,12 @@ export function OmnipartIntegration() {
                   <p className="text-white font-bold flex items-center gap-2 mb-2"><TerminalSquare className="w-4 h-4 text-emerald-400" /> How to get your Token:</p>
                   <p>1. Open <a href="https://omnipart.eurocarparts.com" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">omnipart.eurocarparts.com</a> and log in normally.</p>
                   <p>2. Right-click anywhere and click <b>Inspect</b>.</p>
-                  <p>3. Click the <b>Console</b> tab at the top of the inspector.</p>
-                  <p>4. Paste this exact command and hit Enter:</p>
-                  <code className="block bg-black p-2 mt-2 text-emerald-400 rounded cursor-all-scroll select-all">
-                    copy(JSON.parse(localStorage.getItem('persist:auth')).token)
-                  </code>
-                  <p className="mt-2">5. Your token is now copied! Paste it into the box below.</p>
+                  <p>3. Click the <b>Network</b> tab (you may need to click &gt;&gt; to find it).</p>
+                  <p>4. Type a number plate into their search and click Get Parts.</p>
+                  <p>5. In the Network tab, look for a request named <b>vrm</b>, click it, and look at the <b>Headers</b> section.</p>
+                  <p>6. Scroll down to <b>Request Headers</b> and look for <b>Authorization: Bearer eyJhbG...</b></p>
+                  <p>7. Copy the enormously long string of text starting with <b>eyJ...</b> (Do not copy the word "Bearer ").</p>
+                  <p className="mt-2 text-emerald-400 font-bold">Paste that token into the box below!</p>
                 </div>
               </div>
 
