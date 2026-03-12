@@ -94,23 +94,30 @@ export const omnipartRouter = router({
           JSON.stringify({ vrm: input.vrm, saveToCache: false })
         );
 
+        if (resData["@type"] === "hydra:Error" || resData["hydra:description"]) {
+            throw new Error(resData["hydra:description"] || "Euro Car Parts rejected this vehicle search.");
+        }
+        if (resData.message) {
+            throw new Error(`Euro Car Parts API: ${resData.message}`);
+        }
+
         if (!resData || !resData.searchResults) {
-            throw new Error("No vehicle details returned.");
+            console.error("Raw ECP Response:", JSON.stringify(resData).substring(0, 500));
+            throw new Error("No vehicle details returned. ECP API may have blocked the request.");
         }
 
         const details = resData.searchResults.vehicleDetails || [];
-        const props = resData.searchResults.properties || [];
 
         const findVal = (arr: any[], name: string) => arr.find(x => x.Name === name)?.Value || null;
 
         return {
-            vehicleId: findVal(props, "VehicleId"),
+            vehicleId: findVal(details, "VehicleId"),
             make: findVal(details, "Make"),
             model: findVal(details, "Model"),
             engineCode: findVal(details, "EngineCode"),
             bhp: findVal(details, "BHP"),
-            fuel: findVal(details, "FuelType"),
-            year: findVal(details, "Year")
+            fuel: findVal(details, "Fuel") || findVal(details, "FuelType"),
+            year: findVal(details, "VehicleYear") || findVal(details, "Year")
         };
       } catch (error: any) {
         const message = error.message || "Failed to look up VRM on Omnipart";
@@ -177,9 +184,10 @@ export const omnipartRouter = router({
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
         if (!input.skus && input.vehicleId && input.categorySlug) {
+          const keywords = encodeURIComponent(input.categorySlug.replace(/-/g, ' '));
           const categoryResData = await crawlWithCurl(
             "GET",
-             `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?category=${input.categorySlug}`,
+             `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${keywords}&vehicleId=${input.vehicleId}`,
              apiHeaders
           );
           // Assuming the category endpoint returns an array of SKUs or product objects
