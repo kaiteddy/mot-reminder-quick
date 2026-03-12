@@ -91,7 +91,7 @@ export const omnipartRouter = router({
           "POST",
           "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
           apiHeaders,
-          JSON.stringify({ vrm: input.vrm, saveToCache: true })
+          JSON.stringify({ vrm: input.vrm, saveToCache: false })
         );
         return resData; // Includes vehicleId, make, model, etc.
       } catch (error: any) {
