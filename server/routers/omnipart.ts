@@ -1,6 +1,32 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
-import axios from "axios";
+import * as cp from "child_process";
+import { promisify } from "util";
+
+const exec = promisify(cp.exec);
+
+async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, bodyStr: string | null = null) {
+    let cmd = `curl -s -X ${method} '${url}'`;
+    for (const [k, v] of Object.entries(headers)) {
+        cmd += ` -H '${k}: ${v.replace(/'/g, "")}'`;
+    }
+    if (bodyStr) {
+        cmd += ` --data '${bodyStr.replace(/'/g, "")}'`;
+    }
+    
+    // Add insecure just in case
+    cmd += " -k";
+
+    try {
+        const { stdout, stderr } = await exec(cmd);
+        if (stdout.trim().startsWith("<html")) {
+             throw new Error("WAF Blocked Request: " + stdout.substring(0, 100));
+        }
+        return JSON.parse(stdout);
+    } catch (e: any) {
+        throw new Error("Curl wrapper failed: " + e.message);
+    }
+}
 
 export const omnipartRouter = router({
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
@@ -61,15 +87,16 @@ export const omnipartRouter = router({
         if (authHeader) apiHeaders["Authorization"] = authHeader;
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
-        const res = await axios.post(
+        const resData = await crawlWithCurl(
+          "POST",
           "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
-          { vrm: input.vrm, saveToCache: true },
-          { headers: apiHeaders }
+          apiHeaders,
+          JSON.stringify({ vrm: input.vrm, saveToCache: true })
         );
-        return res.data; // Includes vehicleId, make, model, etc.
+        return resData; // Includes vehicleId, make, model, etc.
       } catch (error: any) {
-        const message = error.response?.data?.message || error.message || "Failed to look up VRM on Omnipart";
-        console.error("Omnipart VRM Error:", error.response?.data || error.message);
+        const message = error.message || "Failed to look up VRM on Omnipart";
+        console.error("Omnipart VRM Error:", error.message);
         throw new Error(message);
       }
     }),
@@ -132,12 +159,13 @@ export const omnipartRouter = router({
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
         if (!input.skus && input.vehicleId && input.categorySlug) {
-          const categoryRes = await axios.get(
-            `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?category=${input.categorySlug}`,
-            { headers: apiHeaders }
+          const categoryResData = await crawlWithCurl(
+            "GET",
+             `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?category=${input.categorySlug}`,
+             apiHeaders
           );
           // Assuming the category endpoint returns an array of SKUs or product objects
-          skusToLookup = (categoryRes.data.products || categoryRes.data || []).map((p: any) => p.sku || p).slice(0, 5);
+          skusToLookup = (categoryResData.products || categoryResData || []).map((p: any) => p.sku || p).slice(0, 5);
         }
 
         if (skusToLookup.length === 0) {
@@ -146,15 +174,16 @@ export const omnipartRouter = router({
 
         // Step 2: Get detailed pricing and stock for the SKUs
         const queryParams = skusToLookup.map((s: string) => `skus[]=${s}`).join('&');
-        const priceRes = await axios.get(
+        const priceResData = await crawlWithCurl(
+          "GET",
           `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
-          { headers: apiHeaders }
+          apiHeaders
         );
 
-        return { products: priceRes.data };
+        return { products: priceResData };
       } catch (error: any) {
-        const message = error.response?.data?.message || error.message || "Failed to search for parts on Omnipart";
-        console.error("Omnipart Parts Error:", error.response?.data || error.message);
+        const message = error.message || "Failed to search for parts on Omnipart";
+        console.error("Omnipart Parts Error:", error.message);
         throw new Error(message);
       }
     })
