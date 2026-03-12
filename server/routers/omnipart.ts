@@ -3,46 +3,6 @@ import { z } from "zod";
 import axios from "axios";
 
 export const omnipartRouter = router({
-  // Helper to login and get Bearer token for Omnipart
-  loginOmnipart: publicProcedure
-    .input(z.object({
-      recaptchaToken: z.string()
-    }))
-    .mutation(async ({ input }) => {
-      try {
-        // 1. Send recaptcha verification (requires frontend token)
-        const recaptchaRes = await axios.post(
-          "https://omnipart.eurocarparts.com/api/recaptcha",
-          { token: input.recaptchaToken },
-          { headers: { "Content-Type": "application/json" } }
-        );
-
-        if (!recaptchaRes.data.success) {
-          throw new Error("ReCaptcha validation failed on Omnipart backend.");
-        }
-
-        // 2. Perform authentication login
-        const loginRes = await axios.post(
-          "https://api.omnipart.eurocarparts.com/auth",
-          {
-            email: process.env.OMNIPART_EMAIL || "eli@elimotors.co.uk",
-            password: process.env.OMNIPART_PASSWORD || "Rutstein8029"
-          },
-          { headers: { "Content-Type": "application/json" } }
-        );
-
-        return {
-          success: true,
-          token: loginRes.data.token,
-          refreshToken: loginRes.data.refresh_token
-        };
-
-      } catch (error: any) {
-        console.error("Omnipart Login Error:", error.response?.data || error.message);
-        throw new Error("Failed to authenticate with Omnipart. Ensure ReCaptcha token is valid.");
-      }
-    }),
-
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
   lookupVrm: publicProcedure
     .input(z.object({

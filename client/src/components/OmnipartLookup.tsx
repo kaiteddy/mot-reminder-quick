@@ -1,85 +1,79 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, ShoppingCart, AlertCircle, Wrench, Key } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useGoogleReCaptcha, GoogleReCaptchaProvider } from 'react-google-recaptcha-v3';
+import { Loader2, Search, ShoppingCart, Wrench, Key, Lock, TerminalSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
-// Provide your actual Euro Car Parts Recaptcha V3 Site Key here
-// Usually starts with '6L'
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_OMNIPART_RECAPTCHA_KEY || "";
-
-function OmnipartSearch() {
-  const { executeRecaptcha } = useGoogleReCaptcha();
+export function OmnipartIntegration() {
   const [vrm, setVrm] = useState("");
   const [partQuery, setPartQuery] = useState("");
   
-  const [authStatus, setAuthStatus] = useState<"idle" | "authenticating" | "success" | "error">("idle");
   const [sessionToken, setSessionToken] = useState(""); // Bearer token
+  const [isConfiguring, setIsConfiguring] = useState(false);
   
   const [vehicle, setVehicle] = useState<any>(null);
   const [parts, setParts] = useState<any[]>([]);
 
-  const loginMutation = trpc.omnipart.loginOmnipart.useMutation();
   const vrmMutation = trpc.omnipart.lookupVrm.useMutation();
   const partsMutation = trpc.omnipart.getPartsInfo.useMutation();
+
+  useEffect(() => {
+    // Load saved token from localStorage if it exists
+    const savedToken = localStorage.getItem("omnipart_jwt_token");
+    if (savedToken) {
+      setSessionToken(savedToken);
+    } else {
+      setIsConfiguring(true);
+    }
+  }, []);
+
+  const saveToken = () => {
+    if (!sessionToken || sessionToken.length < 50) {
+      toast.error("Please enter a valid JWT Bearer token.");
+      return;
+    }
+    localStorage.setItem("omnipart_jwt_token", sessionToken);
+    toast.success("Omnipart Token saved successfully!");
+    setIsConfiguring(false);
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vrm) return;
 
-    if (!executeRecaptcha) {
-      toast.error("ReCaptcha is not ready yet");
+    if (!sessionToken) {
+      toast.error("Please configure your Omnipart Token first.");
+      setIsConfiguring(true);
       return;
     }
 
     try {
-      let tokenToUse = sessionToken;
-      
-      // Step 1: Authenticate if we don't have a session
-      if (!sessionToken) {
-        setAuthStatus("authenticating");
-        toast.info("Generating secure ReCaptcha token...");
-        const recaptchaToken = await executeRecaptcha("login");
-        
-        if (!recaptchaToken) throw new Error("Failed to generate ReCaptcha token");
-        
-        toast.info("Logging into Epic/Omnipart securely...");
-        const loginRes = await loginMutation.mutateAsync({ recaptchaToken });
-        tokenToUse = loginRes.token;
-        setSessionToken(loginRes.token);
-        setAuthStatus("success");
-      }
-
-      // Step 2: Lookup VRM
+      // Step 1: Lookup VRM
       toast.info(`Looking up vehicle ${vrm.toUpperCase()}...`);
       const vrmRes = await vrmMutation.mutateAsync({ 
         vrm: vrm.replace(/\s+/g, '').toUpperCase(), 
-        token: tokenToUse 
+        token: sessionToken 
       });
       
       setVehicle(vrmRes);
       setParts([]);
 
-      // Step 3: Lookup Parts if requested
+      // Step 2: Lookup Parts if requested
       if (partQuery && vrmRes.vehicleId) {
         toast.info(`Finding ${partQuery} for ${vrmRes.make}...`);
         
-        // Let's assume partQuery could be mapped to a category slug, or we just pass it as category slug for now
-        // In reality, Omnipart maps categories via slugs like "brake-pads"
         const slug = partQuery.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId,
           categorySlug: slug,
-          token: tokenToUse
+          token: sessionToken
         });
 
-        if (partsRes.products && Array.isArray(partsRes.products)) {
+        if (partsRes.products && Array.isArray(partsRes.products) && partsRes.products.length > 0) {
           setParts(partsRes.products);
           toast.success(`Found ${partsRes.products.length} parts!`);
         } else {
@@ -92,54 +86,101 @@ function OmnipartSearch() {
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Failed to communicate with Euro Car Parts");
-      setAuthStatus("error");
+      if (err.message && err.message.toLowerCase().includes("auth") || err.message.toLowerCase().includes("token")) {
+        setIsConfiguring(true);
+      }
     }
   };
 
-  const isWorking = loginMutation.isPending || vrmMutation.isPending || partsMutation.isPending;
+  const isWorking = vrmMutation.isPending || partsMutation.isPending;
 
   return (
     <div className="space-y-6">
       <Card className="border-blue-200">
-        <CardHeader className="bg-blue-50/50 pb-4 border-b border-blue-100">
-          <CardTitle className="text-blue-900 flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-blue-600" />
-            Omnipart Trade Portal Integration
-          </CardTitle>
-          <CardDescription className="text-blue-700/80">
-            Automatically log in and fetch live trade prices and stock from Euro Car Parts.
-          </CardDescription>
+        <CardHeader className="bg-blue-50/50 pb-4 border-b border-blue-100 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-blue-900 flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-blue-600" />
+              Omnipart Trade Portal Integration
+            </CardTitle>
+            <CardDescription className="text-blue-700/80 mt-1">
+              Fetch live trade prices and stock from Euro Car Parts.
+            </CardDescription>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setIsConfiguring(!isConfiguring)}
+            className="gap-2 shrink-0 bg-white"
+          >
+            <Lock className="w-4 h-4" />
+            {isConfiguring ? "Close Config" : "Update Token"}
+          </Button>
         </CardHeader>
         <CardContent className="pt-6">
+          
+          {isConfiguring && (
+            <div className="mb-8 p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+              <div>
+                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-2">
+                  <Key className="w-5 h-5 text-amber-500" />
+                  Omnipart Connection Required
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                  Euro Car Parts bot protection blocks automated logins. To connect your live prices, you must copy your active session token directly from the Omnipart website. Your token is saved securely in your browser.
+                </p>
+                
+                <div className="bg-slate-900 text-slate-300 p-4 rounded-lg font-mono text-xs space-y-2 mb-4">
+                  <p className="text-white font-bold flex items-center gap-2 mb-2"><TerminalSquare className="w-4 h-4 text-emerald-400" /> How to get your Token:</p>
+                  <p>1. Open <a href="https://omnipart.eurocarparts.com" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">omnipart.eurocarparts.com</a> and log in normally.</p>
+                  <p>2. Right-click anywhere and click <b>Inspect</b>.</p>
+                  <p>3. Click the <b>Console</b> tab at the top of the inspector.</p>
+                  <p>4. Paste this exact command and hit Enter:</p>
+                  <code className="block bg-black p-2 mt-2 text-emerald-400 rounded cursor-all-scroll select-all">
+                    copy(JSON.parse(localStorage.getItem('persist:auth')).token)
+                  </code>
+                  <p className="mt-2">5. Your token is now copied! Paste it into the box below.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Input 
+                  type="password"
+                  value={sessionToken} 
+                  onChange={(e) => setSessionToken(e.target.value)}
+                  placeholder="Paste your eyJhbG... token here"
+                  className="font-mono text-xs"
+                />
+                <Button onClick={saveToken} className="bg-slate-800 hover:bg-slate-900 text-white shrink-0">
+                  Save Token
+                </Button>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <Input 
                 placeholder="Registration (e.g. RE16 RWP)" 
                 value={vrm} onChange={e => setVrm(e.target.value)} 
-                className="font-mono text-lg uppercase"
+                className="font-mono text-lg uppercase bg-white"
                 maxLength={8}
-                disabled={isWorking}
+                disabled={isWorking || isConfiguring}
               />
             </div>
             <div className="flex-1">
               <Input 
                 placeholder="Part Category (e.g. brake-pads)" 
                 value={partQuery} onChange={e => setPartQuery(e.target.value)} 
-                disabled={isWorking}
+                disabled={isWorking || isConfiguring}
+                className="bg-white"
               />
             </div>
-            <Button type="submit" disabled={isWorking || !vrm} className="bg-blue-600 hover:bg-blue-700">
+            <Button type="submit" disabled={isWorking || !vrm || isConfiguring} className="bg-blue-600 hover:bg-blue-700">
               {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              {authStatus === 'authenticating' ? 'Authenticating...' : 'Lookup Vehicle & Parts'}
+              Lookup Vehicle & Parts
             </Button>
           </form>
-
-          {authStatus === "success" && (
-            <div className="mt-4 flex items-center gap-2 text-sm text-green-600 font-medium bg-green-50 p-3 rounded-lg border border-green-200">
-              <Key className="w-4 h-4" />
-              Secure session established with Omnipart
-            </div>
-          )}
 
           {vehicle && (
             <div className="mt-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -173,8 +214,8 @@ function OmnipartSearch() {
               <h3 className="font-semibold text-slate-800">Trade Pricing Results:</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {parts.map((p: any, i) => (
-                  <Card key={i} className="overflow-hidden">
-                    <div className="p-4 flex flex-col h-full bg-white">
+                  <Card key={i} className="overflow-hidden bg-white">
+                    <div className="p-4 flex flex-col h-full">
                       <div className="flex justify-between items-start mb-2">
                         <span className="font-bold text-sm text-slate-700">{p.brandName || "Part"}</span>
                         <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
@@ -202,27 +243,5 @@ function OmnipartSearch() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-// Wrapper component to provide Recaptcha context
-export function OmnipartIntegration() {
-  if (!RECAPTCHA_SITE_KEY) {
-    return (
-      <Alert variant="destructive" className="border-red-300 bg-red-50 text-red-900 shadow-sm">
-        <AlertCircle className="w-5 h-5 text-red-600" />
-        <AlertTitle className="text-red-800 font-bold mb-1">Omnipart Configuration Required</AlertTitle>
-        <AlertDescription className="text-sm">
-          To use the live Euro Car Parts integration, you must provide your Recaptcha Site Key.<br/><br/>
-          <b>Action Required:</b> Set the <code>VITE_OMNIPART_RECAPTCHA_KEY</code> environment variable in Vercel to activate this module.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  return (
-    <GoogleReCaptchaProvider reCaptchaKey={RECAPTCHA_SITE_KEY}>
-      <OmnipartSearch />
-    </GoogleReCaptchaProvider>
   );
 }
