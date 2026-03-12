@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -6,12 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Loader2, Calculator, Edit2, FileText, CheckCircle2, Printer, CheckSquare, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useReactToPrint } from "react-to-print";
 
 interface MOTEstimateCreatorProps {
   vehicleDetails: {
     make?: string;
     model?: string;
     year?: number;
+    registration?: string;
   };
   defects: Array<{
     text: string;
@@ -24,6 +26,12 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
   const [estimate, setEstimate] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRepairs, setSelectedRepairs] = useState<boolean[]>([]);
+  const componentRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `MOT_Estimate_${vehicleDetails.make || "Garage"}_${vehicleDetails.registration || ""}`,
+  });
 
   const generateMutation = trpc.ai.generateMOTEstimate.useMutation({
     onSuccess: (data) => {
@@ -116,8 +124,8 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
   if (!estimate) return null;
 
   return (
-    <Card className="mt-6 border-blue-200 shadow-sm">
-      <CardHeader className="bg-blue-50/50 border-b border-blue-100 pb-4">
+    <Card ref={componentRef} className="mt-6 border-blue-200 shadow-sm print:shadow-none print:border-none">
+      <CardHeader className="bg-blue-50/50 border-b border-blue-100 pb-4 print:bg-transparent print:border-b-2 print:border-slate-800">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-blue-900">
@@ -129,7 +137,7 @@ export function MOTEstimateCreator({ vehicleDetails, defects }: MOTEstimateCreat
             </CardDescription>
           </div>
           <div className="flex gap-2 print:hidden">
-            <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2 bg-white text-slate-700 hover:text-slate-900">
+            <Button variant="outline" size="sm" onClick={() => handlePrint()} className="gap-2 bg-white text-slate-700 hover:text-slate-900">
               <Printer className="w-4 h-4" />
               Print Worksheet
             </Button>

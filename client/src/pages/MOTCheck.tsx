@@ -365,7 +365,8 @@ export default function MOTCheck() {
                   vehicleDetails={{
                     make: vehicleData.make,
                     model: vehicleData.model,
-                    year: vehicleData.yearOfManufacture
+                    year: vehicleData.yearOfManufacture,
+                    registration: vehicleData.registration
                   }} 
                   defects={vehicleData.motTests[0].defects} 
                 />
