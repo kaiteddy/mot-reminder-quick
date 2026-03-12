@@ -11,7 +11,24 @@ export const omnipartRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
-        const cleanToken = input.token.replace(/^"|"$/g, '').trim();
+        let clean = input.token.replace(/^["']|["']$/g, '').trim();
+        clean = clean.replace(/[\n\r]| /g, ''); // Remove all spaces and newlines
+        
+        const lowerClean = clean.toLowerCase();
+        if (lowerClean.startsWith("authorization:bearer")) {
+            clean = clean.substring(20);
+        } else if (lowerClean.startsWith("bearer")) {
+            clean = clean.substring(6);
+        }
+        
+        if (clean.endsWith('...')) {
+            throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
+        }
+        if (!clean.startsWith('ey')) {
+            throw new Error("Invalid token format! A valid token must start with 'ey'.");
+        }
+
+        const cleanToken = clean;
         const res = await axios.post(
           "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
           { vrm: input.vrm, saveToCache: true },
@@ -46,8 +63,24 @@ export const omnipartRouter = router({
       try {
         // Step 1: Find SKUs for the vehicle if they only provided a category
         let skusToLookup = input.skus || [];
+
+        let clean = input.token.replace(/^["']|["']$/g, '').trim();
+        clean = clean.replace(/[\n\r]| /g, '');
         
-        const cleanToken = input.token.replace(/^"|"$/g, '').trim();
+        const lowerClean = clean.toLowerCase();
+        if (lowerClean.startsWith("authorization:bearer")) {
+            clean = clean.substring(20);
+        } else if (lowerClean.startsWith("bearer")) {
+            clean = clean.substring(6);
+        }
+        if (clean.endsWith('...')) {
+            throw new Error("Token is incomplete! You accidentally copied the abbreviation '...'. Please click the network property to expand it completely before copying the eyJ... string.");
+        }
+        if (!clean.startsWith('ey')) {
+            throw new Error("Invalid token format! A valid token must start with 'ey'.");
+        }
+
+        const cleanToken = clean;
         const apiHeaders = {
             "Authorization": `Bearer ${cleanToken}`,
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -62,7 +95,6 @@ export const omnipartRouter = router({
             { headers: apiHeaders }
           );
           // Assuming the category endpoint returns an array of SKUs or product objects
-          // We extract up to 5 SKUs for demo
           skusToLookup = (categoryRes.data.products || categoryRes.data || []).map((p: any) => p.sku || p).slice(0, 5);
         }
 
@@ -71,7 +103,7 @@ export const omnipartRouter = router({
         }
 
         // Step 2: Get detailed pricing and stock for the SKUs
-        const queryParams = skusToLookup.map(s => `skus[]=${s}`).join('&');
+        const queryParams = skusToLookup.map((s: string) => `skus[]=${s}`).join('&');
         const priceRes = await axios.get(
           `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
           { headers: apiHeaders }
