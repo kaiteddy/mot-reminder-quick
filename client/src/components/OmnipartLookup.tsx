@@ -52,8 +52,16 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   ];
 
   const saveToken = () => {
+    if (sessionToken === "auto" || sessionToken.trim() === "") {
+        localStorage.removeItem("omnipart_jwt_token");
+        setSessionToken("auto");
+        toast.success("Switched to fully automated Harvester mode!");
+        setIsConfiguring(false);
+        return;
+    }
+    
     if (!sessionToken || sessionToken.length < 50) {
-      toast.error("Please enter a valid JWT Bearer token.");
+      toast.error("Please enter a valid JWT Bearer token or completely clear the box to use the Auto Harvester.");
       return;
     }
     localStorage.setItem("omnipart_jwt_token", sessionToken);
@@ -171,42 +179,42 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
 
               <div className="flex gap-2">
                 <Input 
-                  type="password"
-                  value={sessionToken} 
-                  onChange={(e) => setSessionToken(e.target.value)}
-                  placeholder="Paste your eyJhbG... token here"
+                  type="text"
+                  value={sessionToken === "auto" ? "" : sessionToken} 
+                  onChange={(e) => setSessionToken(e.target.value.trim() === "" ? "auto" : e.target.value)}
+                  placeholder={sessionToken === "auto" ? "Using Autodata Harvester automatically..." : "Paste your eyJ... token here"}
                   className="font-mono text-xs"
                 />
                 <Button onClick={saveToken} className="bg-slate-800 hover:bg-slate-900 text-white shrink-0">
-                  Save Token
+                  Save Setup
                 </Button>
               </div>
             </div>
           )}
 
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="flex-1">
               <Input 
                 placeholder="Registration (e.g. RE16 RWP)" 
                 value={vrm} onChange={e => setVrm(e.target.value)} 
-                className="font-mono text-lg uppercase bg-white"
+                className="font-mono text-lg uppercase bg-white border-slate-300"
                 maxLength={8}
-                disabled={isWorking || isConfiguring}
+                disabled={isWorking}
               />
             </div>
             <div className="flex-1">
               <select
                 value={partQuery} 
                 onChange={e => setPartQuery(e.target.value)} 
-                disabled={isWorking || isConfiguring}
-                className="w-full h-10 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isWorking}
+                className="w-full h-10 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {commonCategories.map(cat => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={isWorking || !vrm || isConfiguring} className="bg-blue-600 hover:bg-blue-700">
+            <Button type="submit" disabled={isWorking || !vrm} className="bg-blue-600 hover:bg-blue-700 text-white">
               {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
               Lookup Vehicle & Parts
             </Button>
