@@ -11,13 +11,18 @@ export const omnipartRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
+        const cleanToken = input.token.replace(/^"|"$/g, '').trim();
         const res = await axios.post(
           "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
           { vrm: input.vrm, saveToCache: true },
           {
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${input.token}`
+              "Authorization": `Bearer ${cleanToken}`,
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json, text/plain, */*",
+              "Origin": "https://omnipart.eurocarparts.com",
+              "Referer": "https://omnipart.eurocarparts.com/"
             }
           }
         );
@@ -41,12 +46,19 @@ export const omnipartRouter = router({
         // Step 1: Find SKUs for the vehicle if they only provided a category
         let skusToLookup = input.skus || [];
         
+        const cleanToken = input.token.replace(/^"|"$/g, '').trim();
+        const apiHeaders = {
+            "Authorization": `Bearer ${cleanToken}`,
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://omnipart.eurocarparts.com",
+            "Referer": "https://omnipart.eurocarparts.com/"
+        };
+
         if (!input.skus && input.vehicleId && input.categorySlug) {
           const categoryRes = await axios.get(
             `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?category=${input.categorySlug}`,
-            {
-              headers: { "Authorization": `Bearer ${input.token}` }
-            }
+            { headers: apiHeaders }
           );
           // Assuming the category endpoint returns an array of SKUs or product objects
           // We extract up to 5 SKUs for demo
@@ -61,9 +73,7 @@ export const omnipartRouter = router({
         const queryParams = skusToLookup.map(s => `skus[]=${s}`).join('&');
         const priceRes = await axios.get(
           `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
-          {
-            headers: { "Authorization": `Bearer ${input.token}` }
-          }
+          { headers: apiHeaders }
         );
 
         return { products: priceRes.data };
