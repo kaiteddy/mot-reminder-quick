@@ -10,11 +10,26 @@ script.onload = function() {
 window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'OMNIPART_TOKEN_INTERCEPT') {
         const token = event.data.token.trim();
-        console.log("Omnipart Extractor caught token!");
-        fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token })
-        }).catch(err => console.error("Ext sync failed", err));
+        if (!window._omnipart_sync_sent) {
+            window._omnipart_sync_sent = true;
+            console.log("Omnipart Extractor caught token! Syncing...");
+            fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token })
+            }).then(() => {
+                alert("✨ BINGO! Autodata Extension successfully intercepted your Euro Car Parts Token via Page Hijack!\n\nYou can now switch to the MOT App and it will automatically use your live session.");
+            }).catch(err => console.error("Ext sync failed", err));
+        }
+    }
+});
+
+// Listen from background.js
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === "TOKEN_CAUGHT") {
+        if (!window._omnipart_sync_sent) {
+            window._omnipart_sync_sent = true;
+            alert("🔒 SECURE INTERCEPT! Autodata Extension bypassed encryption and retrieved your Euro Car Parts Token via Chrome Network Monitoring.\n\nYou can now switch to the MOT App and it will automatically use your live session.");
+        }
     }
 });

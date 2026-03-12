@@ -2,8 +2,13 @@ chrome.webRequest.onSendHeaders.addListener(
     (details) => {
         if (!details.requestHeaders) return;
         for (let header of details.requestHeaders) {
-            if (header.name.toLowerCase() === 'authorization' && header.value.toLowerCase().startsWith('bearer ')) {
+            if (header.name.toLowerCase() === 'authorization' && header.value.toLowerCase().includes('eyj')) {
                 console.log("Omnipart Token Intercepted!", header.value.substring(0, 15) + "...");
+                
+                if (details.tabId >= 0) {
+                    chrome.tabs.sendMessage(details.tabId, { action: "TOKEN_CAUGHT" }).catch(() => {});
+                }
+
                 fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -13,7 +18,7 @@ chrome.webRequest.onSendHeaders.addListener(
             }
         }
     },
-    { urls: ["https://api.omnipart.eurocarparts.com/*"] },
+    { urls: ["*://*.eurocarparts.com/*", "*://*.omnipart.com/*"] },
     ["requestHeaders", "extraHeaders"]
 );
 
