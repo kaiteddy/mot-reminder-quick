@@ -38,5 +38,11 @@
             ],
             "run_at": "document_start"
         }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["inject_omnipart.js"],
+            "matches": ["https://omnipart.eurocarparts.com/*"]
+        }
     ]
 }
