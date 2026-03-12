@@ -21,12 +21,13 @@ export function OmnipartIntegration() {
   const partsMutation = trpc.omnipart.getPartsInfo.useMutation();
 
   useEffect(() => {
-    // Load saved token from localStorage if it exists
+    // Load saved token from localStorage if it exists or default to "auto" which triggers the database
     const savedToken = localStorage.getItem("omnipart_jwt_token");
     if (savedToken) {
       setSessionToken(savedToken);
     } else {
-      setIsConfiguring(true);
+      setSessionToken("auto");
+      setIsConfiguring(false); // don't force them open immediately, let "auto" try first
     }
   }, []);
 
@@ -140,6 +141,11 @@ export function OmnipartIntegration() {
                   <p>6. Scroll down to <b>Request Headers</b> and look for <b>Authorization: Bearer eyJhbG...</b></p>
                   <p>7. Copy the enormously long string of text starting with <b>eyJ...</b> (Do not copy the word "Bearer ").</p>
                   <p className="mt-2 text-emerald-400 font-bold">Paste that token into the box below!</p>
+                </div>
+
+                <div className="bg-blue-900/10 border border-blue-900/20 text-blue-900 p-4 rounded-lg text-sm space-y-2 mb-4">
+                    <p className="font-bold flex items-center gap-2">💡 Pro Tip: Automate This!</p>
+                    <p>You can completely eliminate this manual copy-pasting step by installing the <b>Autodata Session Harvester</b> Chrome Extension. It runs silently in the background and instantly sends your login token to the application anytime you use Euro Car Parts.</p>
                 </div>
               </div>
 

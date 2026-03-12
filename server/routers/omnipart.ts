@@ -11,7 +11,15 @@ export const omnipartRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
-        let clean = input.token.replace(/^["']|["']$/g, '').trim();
+        let rawToken = input.token;
+        if (!rawToken || rawToken === "auto") {
+            const { getAppSetting } = await import("../db");
+            const dbToken = await getAppSetting('omnipart_jwt_token');
+            if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
+            rawToken = dbToken as string;
+        }
+
+        let clean = rawToken.replace(/^["']|["']$/g, '').trim();
         clean = clean.replace(/[\n\r]| /g, ''); // Remove all spaces and newlines
         
         const lowerClean = clean.toLowerCase();
@@ -64,7 +72,15 @@ export const omnipartRouter = router({
         // Step 1: Find SKUs for the vehicle if they only provided a category
         let skusToLookup = input.skus || [];
 
-        let clean = input.token.replace(/^["']|["']$/g, '').trim();
+        let rawToken = input.token;
+        if (!rawToken || rawToken === "auto") {
+            const { getAppSetting } = await import("../db");
+            const dbToken = await getAppSetting('omnipart_jwt_token');
+            if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
+            rawToken = dbToken as string;
+        }
+
+        let clean = rawToken.replace(/^["']|["']$/g, '').trim();
         clean = clean.replace(/[\n\r]| /g, '');
         
         const lowerClean = clean.toLowerCase();

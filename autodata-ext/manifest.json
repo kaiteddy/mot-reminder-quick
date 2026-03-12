@@ -6,12 +6,15 @@
     "permissions": [
         "storage",
         "cookies",
-        "alarms"
+        "alarms",
+        "webRequest"
     ],
     "host_permissions": [
         "https://workshop.autodata-group.com/*",
         "*://localhost/*",
-        "https://mot-reminder-quick.vercel.app/*"
+        "https://mot-reminder-quick.vercel.app/*",
+        "https://api.omnipart.eurocarparts.com/*",
+        "https://omnipart.eurocarparts.com/*"
     ],
     "background": {
         "service_worker": "background.js"
