@@ -137,6 +137,7 @@ export const omnipartRouter = router({
       vehicleId: z.string().optional(),
       vrm: z.string().optional(),
       categorySlug: z.string().optional(),
+      isCustomSearch: z.boolean().optional(),
       skus: z.array(z.string()).optional(),
       token: z.string()
     }))
@@ -207,34 +208,43 @@ export const omnipartRouter = router({
                 );
             }
 
-            // STEP 2: Lookup the precise category ID
-            const catUrl = `https://api.omnipart.eurocarparts.com/storefront/categories/${input.categorySlug}`;
-            const catData = await crawlWithCurl("GET", catUrl, apiHeaders);
-            
-            // Extract trailing ID, e.g. "/categories/196" -> "196"
-            let categoryId = "";
-            const rawId = catData['@id'] || catData.id;
-            if (rawId && typeof rawId === 'string') {
-                const parts = rawId.split('/');
-                categoryId = parts[parts.length - 1];
-            }
-
-            if (!categoryId) {
-                console.warn("Could not determine category ID for", input.categorySlug);
-                return { products: [] };
-            }
-
-            // STEP 3: Fetch purely vehicle-specific products for that category using session
-            const specUrl = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${categoryId}?`;
-            const baseResData = await crawlWithCurl("GET", specUrl, apiHeaders);
-            
-            // The structure is nested: hydra:member[0].products[baseSku][subSku]
-            const productGroups = baseResData['hydra:member']?.[0]?.products || {};
             let baseProducts: any[] = [];
-            
-            for (const baseSku in productGroups) {
-                for (const subSku in productGroups[baseSku]) {
-                    baseProducts.push(productGroups[baseSku][subSku]);
+
+            if (input.isCustomSearch) {
+                // Free text search mapped to vehicle
+                const urlKeywords = encodeURIComponent(input.categorySlug || "");
+                const searchUrl = `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${urlKeywords}&vehicleId=${input.vehicleId || ""}`;
+                const searchData = await crawlWithCurl("GET", searchUrl, apiHeaders);
+                baseProducts = searchData.products || [];
+            } else {
+                // STEP 2: Lookup the precise category ID via slug
+                const catUrl = `https://api.omnipart.eurocarparts.com/storefront/categories/${input.categorySlug}`;
+                const catData = await crawlWithCurl("GET", catUrl, apiHeaders);
+                
+                // Extract trailing ID, e.g. "/categories/196" -> "196"
+                let categoryId = "";
+                const rawId = catData['@id'] || catData.id;
+                if (rawId && typeof rawId === 'string') {
+                    const parts = rawId.split('/');
+                    categoryId = parts[parts.length - 1];
+                }
+
+                if (!categoryId) {
+                    console.warn("Could not determine category ID for", input.categorySlug);
+                    return { products: [] };
+                }
+
+                // STEP 3: Fetch purely vehicle-specific products for that category using session
+                const specUrl = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${categoryId}?`;
+                const baseResData = await crawlWithCurl("GET", specUrl, apiHeaders);
+                
+                // The structure is nested: hydra:member[0].products[baseSku][subSku]
+                const productGroups = baseResData['hydra:member']?.[0]?.products || {};
+                
+                for (const baseSku in productGroups) {
+                    for (const subSku in productGroups[baseSku]) {
+                        baseProducts.push(productGroups[baseSku][subSku]);
+                    }
                 }
             }
 

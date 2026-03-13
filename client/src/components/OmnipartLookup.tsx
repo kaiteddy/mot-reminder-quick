@@ -128,9 +128,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
            : partQuery.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
-          vehicleId: vrmRes.vehicleId,
+          vehicleId: vrmRes.vehicleId.toString(),
           vrm: vrm, // Provide VRM to help set the active session
-          categorySlug: slug,
+          categorySlug: partQuery === "custom" ? customQuery : slug,
+          isCustomSearch: partQuery === "custom",
           token: sessionToken
         });
 
