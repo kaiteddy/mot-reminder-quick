@@ -6,7 +6,7 @@ import { promisify } from "util";
 
 const exec = promisify(cp.exec);
 
-async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, bodyStr: string | null = null, cookieJar: string | null = null) {
+async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, bodyStr: string | null = null, cookieJar: string | null = null, parseJson: boolean = true) {
     let cmd = `curl -s -X ${method} '${url}'`;
     for (const [k, v] of Object.entries(headers)) {
         cmd += ` -H '${k}: ${v.replace(/'/g, "")}'`;
@@ -23,8 +23,10 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
 
     try {
         const { stdout, stderr } = await exec(cmd);
-        if (stdout.trim().startsWith("<html")) {
-             throw new Error("WAF Blocked Request: " + stdout.substring(0, 100));
+        if (!parseJson) return stdout;
+        
+        if (stdout.trim().toLowerCase().startsWith("<html") || stdout.trim().toLowerCase().startsWith("<!doctype")) {
+             throw new Error("WAF Blocked Request (HTML response): " + stdout.substring(0, 100));
         }
         return JSON.parse(stdout);
     } catch (e: any) {
@@ -127,7 +129,11 @@ export const omnipartRouter = router({
         const message = error.message || "Failed to look up VRM on Omnipart";
         console.error("Omnipart VRM Error:", message);
         
-        if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired")) {
+        const isAuthError = message.toLowerCase().includes("auth") || 
+            (message.toLowerCase().includes("token") && !message.toLowerCase().includes("unexpected token")) || 
+            message.toLowerCase().includes("expired");
+            
+        if (isAuthError) {
             throw new TRPCError({ code: "UNAUTHORIZED", message });
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
@@ -197,7 +203,7 @@ export const omnipartRouter = router({
         const cookieJar = `/tmp/op_cookies_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`;
         
         // Emulate initial visit to establish basic session vars
-        await crawlWithCurl("GET", "https://omnipart.eurocarparts.com/", apiHeaders, null, cookieJar);
+        await crawlWithCurl("GET", "https://omnipart.eurocarparts.com/", apiHeaders, null, cookieJar, false);
 
         if (!input.skus && input.categorySlug) {
             // STEP 1: Set the session context if VRM was provided
@@ -309,7 +315,11 @@ export const omnipartRouter = router({
         const message = error.message || "Failed to search for parts on Omnipart";
         console.error("Omnipart Parts Error:", message);
         
-        if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired")) {
+        const isAuthError = message.toLowerCase().includes("auth") || 
+            (message.toLowerCase().includes("token") && !message.toLowerCase().includes("unexpected token")) || 
+            message.toLowerCase().includes("expired");
+
+        if (isAuthError) {
             throw new TRPCError({ code: "UNAUTHORIZED", message });
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
