@@ -264,44 +264,62 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
           {parts.length > 0 && (
             <div className="mt-6 space-y-4">
               <h3 className="font-semibold text-slate-800">Trade Pricing Results:</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {parts.map((p: any, i) => (
-                  <Card key={i} className="overflow-hidden bg-white">
-                    <div className="p-4 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-2 gap-2">
-                        {p.brandImageUrl ? (
-                          <div className="h-6 flex items-center justify-center bg-white px-1">
-                            <img src={p.brandImageUrl} alt={p.brandName || "Brand"} className="max-h-full max-w-full object-contain mix-blend-multiply" />
-                          </div>
-                        ) : (
-                          <span className="font-bold text-sm text-slate-700">{p.brandName || "Part"}</span>
-                        )}
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 whitespace-nowrap">
-                          {p.branchStock || 0} In Local Store
-                        </Badge>
-                      </div>
-                      
-                      <p className="text-xs text-slate-500 mb-2">{p.sku || "Unknown SKU"}</p>
-                      
-                      {p.imageUrl && (
-                        <div className="flex-grow flex items-center justify-center py-2 h-24">
-                          <img src={p.imageUrl} alt={p.name} className="h-full object-contain mix-blend-multiply" />
-                        </div>
-                      )}
-                      
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-end">
-                        <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Retail Price</p>
-                          <p className="text-slate-500 line-through text-sm">£{(p.rrp || 0).toFixed(2)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[10px] text-green-600 uppercase font-bold tracking-wider">Your Trade Price</p>
-                          <p className="text-xl font-bold text-green-700">£{(p.netPrice || 0).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm text-left text-slate-600">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 w-32">Brand</th>
+                      <th scope="col" className="px-4 py-3 w-24">Image</th>
+                      <th scope="col" className="px-4 py-3 min-w-[200px]">SKU & Details</th>
+                      <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">Local Stock</th>
+                      <th scope="col" className="px-4 py-3 text-right">Retail</th>
+                      <th scope="col" className="px-4 py-3 text-right">Trade Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parts.map((p: any, i) => (
+                      <tr key={i} className="bg-white border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 align-middle">
+                          {p.brandImageUrl ? (
+                            <div className="h-8 flex items-center justify-start">
+                              <img src={p.brandImageUrl} alt={p.brandName || "Brand"} className="max-h-full max-w-[80px] object-contain mix-blend-multiply" />
+                            </div>
+                          ) : (
+                            <span className="font-bold text-slate-700">{p.brandName || "Part"}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          {p.imageUrl ? (
+                            <div className="relative group flex items-center h-12 w-16">
+                              <img 
+                                src={p.imageUrl} 
+                                alt={p.name} 
+                                className="h-full w-full object-contain mix-blend-multiply cursor-zoom-in transition-transform duration-200 ease-out sm:group-hover:scale-[3.5] group-hover:scale-150 relative z-10 sm:group-hover:z-50 origin-left bg-white rounded-sm shadow-sm group-hover:shadow-lg p-0.5" 
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[10px]">No image</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <div className="font-medium text-slate-800">{p.name || "Unknown Part"}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{p.sku || "Unknown SKU"}</div>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 whitespace-nowrap">
+                            {p.branchStock || 0}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-right">
+                          <span className="text-slate-400 line-through text-xs">£{(p.rrp || 0).toFixed(2)}</span>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-right">
+                          <span className="text-lg font-bold text-green-700">£{(p.netPrice || 0).toFixed(2)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
