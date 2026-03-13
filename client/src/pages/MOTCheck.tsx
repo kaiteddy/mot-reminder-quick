@@ -18,7 +18,8 @@ import {
   Droplet,
   Palette,
   FileText,
-  Sparkles
+  Sparkles,
+  ChevronDown
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -415,7 +416,7 @@ export default function MOTCheck() {
                 <CardContent>
                   <div className="space-y-4">
                     {vehicleData.motTests.map((test, index) => (
-                      <MOTTestCard key={index} test={test} vehicleData={vehicleData} />
+                      <MOTTestCard key={index} test={test} vehicleData={vehicleData} isLatest={index === 0} />
                     ))}
                   </div>
                 </CardContent>
@@ -445,13 +446,17 @@ export default function MOTCheck() {
   );
 }
 
-function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: VehicleData }) {
+function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; vehicleData?: VehicleData; isLatest?: boolean }) {
   const isPassed = test.testResult === "PASSED";
   const testDate = new Date(test.completedDate);
+  const [isOpen, setIsOpen] = useState(isLatest);
 
   return (
-    <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-start justify-between">
+    <div className="border rounded-lg p-4 space-y-3 bg-white">
+      <div 
+        className="flex items-start justify-between cursor-pointer group"
+        onClick={() => setIsOpen(!isOpen)}
+      >
         <div className="flex items-center gap-3">
           {isPassed ? (
             <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -459,51 +464,61 @@ function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: Vehic
             <XCircle className="w-6 h-6 text-red-600" />
           )}
           <div>
-            <div className="font-semibold text-lg">
+            <div className="font-semibold text-lg flex items-center gap-2">
               {testDate.toLocaleDateString("en-GB", {
                 day: "2-digit",
                 month: "long",
                 year: "numeric",
               })}
+              {!isLatest && (
+                 <Badge variant="outline" className="text-xs bg-slate-50">Historical</Badge>
+              )}
             </div>
             <div className="text-sm text-slate-500">
               Test Number: {test.motTestNumber || "N/A"}
             </div>
           </div>
         </div>
-        <Badge variant={isPassed ? "default" : "destructive"}>
-          {test.testResult}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant={isPassed ? "default" : "destructive"}>
+            {test.testResult}
+          </Badge>
+          <div className="bg-slate-100 p-1 rounded-full group-hover:bg-slate-200 transition-colors">
+            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </div>
+        </div>
       </div>
 
-      {/* Mileage */}
-      {test.odometerValue && (
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <Gauge className="w-4 h-4" />
-          <span>
-            {parseInt(test.odometerValue).toLocaleString()} {test.odometerUnit?.toLowerCase() || "miles"}
-          </span>
-        </div>
-      )}
+      {isOpen && (
+        <div className="pt-2 animate-in slide-in-from-top-2 duration-300 space-y-3 border-t mt-3">
+          {/* Mileage */}
+          {test.odometerValue && (
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Gauge className="w-4 h-4" />
+              <span>
+                {parseInt(test.odometerValue).toLocaleString()} {test.odometerUnit?.toLowerCase() || "miles"}
+              </span>
+            </div>
+          )}
 
-      {/* Expiry Date */}
-      {test.expiryDate && (
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <Calendar className="w-4 h-4" />
-          <span>
-            Valid until: {new Date(test.expiryDate).toLocaleDateString("en-GB")}
-          </span>
-        </div>
-      )}
+          {/* Expiry Date */}
+          {test.expiryDate && (
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Calendar className="w-4 h-4" />
+              <span>
+                Valid until: {new Date(test.expiryDate).toLocaleDateString("en-GB")}
+              </span>
+            </div>
+          )}
 
-      {/* Defects */}
-      {test.defects && test.defects.length > 0 && (
-        <div className="mt-3 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Advisories & Defects ({test.defects.length})</span>
-          </div>
-          <div className="space-y-1 pl-6">
+          {/* Defects */}
+          {test.defects && test.defects.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Advisories & Defects ({test.defects.length})</span>
+              </div>
+              <div className="space-y-1 pl-6">
             {test.defects.map((defect, idx) => {
               const isDangerous = defect.dangerous || defect.type === "DANGEROUS";
               const isMajor = defect.type === "MAJOR" || defect.type === "FAIL";
@@ -541,7 +556,7 @@ function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: Vehic
           </div>
           
           {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
-          {test.defects.length > 0 && vehicleData && (
+          {test.defects.length > 0 && vehicleData && isLatest && (
             <div className="pt-4 border-t mt-4">
               <MOTEstimateCreator 
                 vehicleDetails={{
@@ -553,6 +568,10 @@ function MOTTestCard({ test, vehicleData }: { test: MOTTest; vehicleData?: Vehic
               />
             </div>
           )}
+        </div>
+      )}
+      
+      {/* End of content collapse wrapper */}
         </div>
       )}
     </div>
