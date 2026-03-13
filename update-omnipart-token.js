@@ -1,17 +1,31 @@
-import { chromium } from 'playwright';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteer.use(StealthPlugin());
 
 async function run() {
     console.log("=========================================");
     console.log("   Omnipart Automated Token Harvester");
     console.log("=========================================\n");
-    console.log("Booting up headless browser to bypass ECP Firewalls...");
+    console.log("Booting up invisible stealth drone to bypass ECP Firewalls...");
 
-    const browser = await chromium.launch({ headless: false }); // Needs to be false to bypass Cloudflare
+    // We can run entirely headless using the new Chrome Headless mode that mimics a real display buffer
+    const browser = await puppeteer.launch({ 
+        headless: false, // "new" headless mode often bypasses Cloudflare automatically
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox', 
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled'
+        ] 
+    });
     const page = await browser.newPage();
     
-    // Set realistic User-Agent
+    // Set realistic Viewport & User-Agent
+    await page.setViewport({ width: 1920, height: 1080 });
     await page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8'
+        'Accept-Language': 'en-GB,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8'
     });
 
     let harvestedToken = null;
@@ -20,11 +34,10 @@ async function run() {
     page.on('request', async request => {
         try {
             const url = request.url();
-            const headers = await request.allHeaders();
+            const headers = request.headers();
             const auth = headers['authorization'];
             if (auth && auth.toLowerCase().startsWith('bearer ey')) {
                 const token = auth.substring(7).trim();
-                // A valid JWT is reasonably long
                 if (token.length > 50 && !harvestedToken) {
                     let isTradeToken = false;
                     try {
@@ -46,7 +59,7 @@ async function run() {
 
     page.on('response', async response => {
         try {
-            const headers = await response.allHeaders();
+            const headers = response.headers();
             const setCookie = headers['set-cookie'] || '';
             if (setCookie.includes('eyJ')) {
                 const result = setCookie.match(/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
@@ -69,99 +82,99 @@ async function run() {
     });
 
     try {
-        await page.goto('https://omnipart.eurocarparts.com/');
+        await page.goto('https://omnipart.eurocarparts.com/', { waitUntil: 'networkidle2' });
         console.log("Navigated to Euro Car Parts!");
         console.log("Locating the sign in button...");
         
         // Wait for cookie banner
         try {
-            const cookieBtn = await page.waitForSelector('#onetrust-accept-btn-handler', { timeout: 3000 });
-            if (cookieBtn) await cookieBtn.click();
+            await page.waitForSelector('#onetrust-accept-btn-handler', { timeout: 3000 });
+            await page.click('#onetrust-accept-btn-handler');
+            await new Promise(r => setTimeout(r, 1000));
         } catch(e) {}
         
+        await page.waitForSelector('a[href="/account/login"]');
         await page.click('a[href="/account/login"]');
         
-        console.log("\nLogging in automatically with your credentials...");
+        console.log("\nInjecting stealth credentials securely...");
         
         const emailSelector = 'input#email';
         const passSelector = 'input#password';
         
         await page.waitForSelector(emailSelector, { timeout: 10000 });
         
-        await page.type(emailSelector, 'eli@elimotors.co.uk', { delay: 50 });
-        await page.type(passSelector, 'Rutstein8029', { delay: 50 });
+        // Type like a slow deliberate human (Stealth bypass)
+        await page.type(emailSelector, 'eli@elimotors.co.uk', { delay: 110 });
+        await new Promise(r => setTimeout(r, 450));
+        await page.type(passSelector, 'Rutstein8029', { delay: 90 });
+        await new Promise(r => setTimeout(r, 700));
         
-        console.log("\n⚠️ Please complete the 'I'm not a robot' CAPTCHA and manually click 'Sign In'!");
-        console.log("Waiting for the JWT Token to appear in your session... (Timeout is 3 minutes)");
+        // Force the invisible recaptcha / trigger standard login process by clicking submit directly
+        // We use evaluate since puppeteer click sometimes holds hovering flags
+        await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const submitBtn = buttons.find(b => b.textContent && b.textContent.toLowerCase().includes('sign in'));
+            if (submitBtn) submitBtn.click();
+        });
 
-        // Wait up to 3 minutes for the user to log in and the token to be captured
-        for (let i = 0; i < 90; i++) {
-            await page.waitForTimeout(2000);
+        console.log("Submitting login form directly... Tracking API layer...");
+
+        // Wait up to 3 minutes for the token to arrive from the auto-login.
+        // It might be blocked by Cloudflare turnstile/captcha — giving user time to solve it in the visual window.
+        for (let i = 0; i < 120; i++) {
+            await new Promise(r => setTimeout(r, 1500));
             
             if (harvestedToken) {
                 break;
             }
             
-            // Scan ALL localStorage and sessionStorage keys for JWTs
+            // Re-harvest LocalStorage internally since we're in Puppeteer
             try {
-                const lsRaw = await page.evaluate(() => JSON.stringify(localStorage));
+                const lsRaw = await page.evaluate(() => JSON.stringify(window.localStorage));
                 const ls = JSON.parse(lsRaw || "{}");
                 for (let key in ls) {
                     if (ls[key] && ls[key].includes('eyJ')) {
                         const match = ls[key].match(/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
                         if (match && !harvestedToken) {
-                            let isTradeToken = false;
                             try {
                                 const payload = JSON.parse(Buffer.from(match[0].split('.')[1], 'base64').toString());
                                 if (payload.username && payload.username.includes('@') && !payload.guest_user) {
-                                    isTradeToken = true;
+                                    harvestedToken = match[0];
+                                    console.log("\n✅ SUCCESS! Token extracted instantly from raw local storage!");
+                                    break;
                                 }
                             } catch(e) {}
-                            
-                            if (isTradeToken) {
-                                harvestedToken = match[0];
-                                console.log("\n✅ SUCCESS! Found Token hidden in browser storage under key: " + key);
-                                break;
-                            }
                         }
                     }
                 }
             } catch(e) {}
             
-            // Check cookies!
+            // Check cookies internally
             try {
-                const cookies = await page.context().cookies();
+                const cookies = await page.cookies();
                 for (let c of cookies) {
                     if (c.value.includes('eyJ')) {
                         const result = c.value.match(/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/);
                         if (result && !harvestedToken) {
-                            let isTradeToken = false;
                             try {
                                 const payload = JSON.parse(Buffer.from(result[0].split('.')[1], 'base64').toString());
                                 if (payload.username && payload.username.includes('@') && !payload.guest_user) {
-                                    isTradeToken = true;
+                                    harvestedToken = result[0];
+                                    console.log("\n✅ SUCCESS! Token discovered floating in stealth session cookies!");
+                                    break;
                                 }
                             } catch(e) {}
-                            
-                            if (isTradeToken) {
-                                harvestedToken = result[0];
-                                console.log("\n✅ SUCCESS! Found token hidden inside a session cookie!");
-                                break;
-                            }
                         }
                     }
                 }
             } catch(e) {}
             
-            // If we are logged in but haven't made an API call yet, let's force an API call by going to the dashboard
             try {
                 const url = page.url();
                 if (!url.includes('login') && !harvestedToken && i > 5) {
-                    console.log("Looks like we logged in! Please wait, browsing to force token generation...");
-                    
                     // Let's actually navigate the page to trigger an API call correctly
                     await page.click('a[href="/store/basket"]').catch(e=>e);
-                    await page.waitForTimeout(2000);
+                    await new Promise(r => setTimeout(r, 2000));
                     await page.goto('https://omnipart.eurocarparts.com/omnihub').catch(e=>e);
                 }
             } catch(e) {}
