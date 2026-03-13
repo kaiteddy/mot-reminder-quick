@@ -233,8 +233,8 @@ export const omnipartRouter = router({
                 }
             }
 
-            // Process the first 15 mapped items
-            skusToLookup = baseProducts.map((p: any) => p.sku || p).slice(0, 15);
+            // Process the first 20 mapped items
+            skusToLookup = baseProducts.map((p: any) => p.sku || p).slice(0, 20);
             
             if (skusToLookup.length === 0) {
                 return { products: [] };
@@ -265,6 +265,8 @@ export const omnipartRouter = router({
                     sku,
                     name: baseInfo.name || "Unknown Part",
                     brandName: baseInfo.brand?.name || baseInfo.brandName || "Unknown Brand",
+                    imageUrl: baseInfo.image || null,
+                    brandImageUrl: baseInfo.brand?.image || null,
                     netPrice: pricingInfo.price?.excTax ? pricingInfo.price.excTax / 100 : 0,
                     rrp: pricingInfo.wasPrice?.excTax ? pricingInfo.wasPrice.excTax / 100 : 0,
                     branchStock: pricingInfo.stock?.reduce((acc: number, val: any) => acc + (val.stock || 0), 0) || 0

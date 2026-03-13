@@ -268,13 +268,26 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                 {parts.map((p: any, i) => (
                   <Card key={i} className="overflow-hidden bg-white">
                     <div className="p-4 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-bold text-sm text-slate-700">{p.brandName || "Part"}</span>
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
+                      <div className="flex justify-between items-start mb-2 gap-2">
+                        {p.brandImageUrl ? (
+                          <div className="h-6 flex items-center justify-center bg-white px-1">
+                            <img src={p.brandImageUrl} alt={p.brandName || "Brand"} className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                          </div>
+                        ) : (
+                          <span className="font-bold text-sm text-slate-700">{p.brandName || "Part"}</span>
+                        )}
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 whitespace-nowrap">
                           {p.branchStock || 0} In Local Store
                         </Badge>
                       </div>
-                      <p className="text-xs text-slate-500 mb-4">{p.sku || "Unknown SKU"}</p>
+                      
+                      <p className="text-xs text-slate-500 mb-2">{p.sku || "Unknown SKU"}</p>
+                      
+                      {p.imageUrl && (
+                        <div className="flex-grow flex items-center justify-center py-2 h-24">
+                          <img src={p.imageUrl} alt={p.name} className="h-full object-contain mix-blend-multiply" />
+                        </div>
+                      )}
                       
                       <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-end">
                         <div>
