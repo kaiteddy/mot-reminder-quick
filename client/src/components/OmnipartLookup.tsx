@@ -19,18 +19,29 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
 
   const [estimateItems, setEstimateItems] = useState<any[]>([]);
   const [customQuery, setCustomQuery] = useState("");
+  const [labourRate, setLabourRate] = useState<number | string>("");
 
   const addToEstimate = (part: any) => {
-    setEstimateItems(prev => [...prev, part]);
+    // Default retail to RRP, or if RRP is missing/zero, provide a 40% margin on netPrice.
+    // Then safely add 20% VAT on top for the final inc-VAT retail recommendation.
+    const baseRetail = (part.rrp && part.rrp > part.netPrice) ? part.rrp : (part.netPrice || 0) * 1.4;
+    const retailIncVat = baseRetail * 1.2;
+    
+    setEstimateItems(prev => [...prev, { ...part, customRetail: retailIncVat }]);
     toast.success(`Added ${part.name} to estimate`);
   };
 
   const removeFromEstimate = (index: number) => {
     setEstimateItems(prev => prev.filter((_, i) => i !== index));
   };
+
+  const updateEstimateRetail = (index: number, newRetail: string | number) => {
+    setEstimateItems(prev => prev.map((item, i) => i === index ? { ...item, customRetail: newRetail } : item));
+  };
   
   const estimateTotal = estimateItems.reduce((sum, item) => sum + (item.netPrice || 0), 0);
-  const estimateRetailTotal = estimateItems.reduce((sum, item) => sum + (item.rrp || 0), 0);
+  const estimateRetailTotal = estimateItems.reduce((sum, item) => sum + (parseFloat(item.customRetail as string) || 0), 0);
+  const totalCustomerQuote = estimateRetailTotal + (parseFloat(labourRate as string) || 0);
 
   const vrmMutation = trpc.omnipart.lookupVrm.useMutation();
   const partsMutation = trpc.omnipart.getPartsInfo.useMutation();
@@ -309,27 +320,60 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
               </div>
               <div className="space-y-2 mb-4">
                 {estimateItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center bg-slate-700 print:bg-gray-50 p-2 rounded-md">
-                    <div>
+                  <div key={idx} className="flex flex-col sm:flex-row justify-between sm:items-center bg-slate-700 print:bg-gray-50 p-2 sm:p-3 rounded-md gap-4">
+                    <div className="flex-1">
                       <div className="font-semibold text-sm">{item.name}</div>
                       <div className="text-xs text-slate-300 print:text-gray-500">{item.brandName} • {item.sku}</div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 self-end sm:self-auto">
                       <div className="text-right">
-                        <div className="font-medium text-green-400 print:text-green-700">£{(item.netPrice || 0).toFixed(2)}</div>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Trade (Ex VAT)</div>
+                        <div className="font-medium text-slate-200 print:text-slate-700">£{(item.netPrice || 0).toFixed(2)}</div>
                       </div>
-                      <button onClick={() => removeFromEstimate(idx)} className="text-slate-400 hover:text-red-400 print:hidden text-lg p-1">&times;</button>
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5" title="Includes 20% VAT">Retail (Inc VAT)</div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-300 print:text-slate-600">£</span>
+                          <Input 
+                            type="number" 
+                            step="0.01"
+                            value={item.customRetail !== undefined ? item.customRetail : ""} 
+                            onChange={(e) => updateEstimateRetail(idx, e.target.value)}
+                            className="w-24 h-8 px-1.5 text-right font-medium text-green-400 bg-slate-800 border-slate-600 print:bg-white print:text-green-700 print:border-slate-300 focus-visible:ring-1 focus-visible:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <button onClick={() => removeFromEstimate(idx)} className="text-slate-400 hover:text-red-400 print:hidden text-lg p-1" title="Remove part">&times;</button>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between items-end border-t border-slate-600 print:border-gray-300 pt-4 mt-4">
-                <div className="text-sm text-slate-300 print:text-gray-600">
-                  Retail Value: <span className="line-through">£{estimateRetailTotal.toFixed(2)}</span>
+              <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center border-t border-slate-600 print:border-gray-300 pt-4 mt-4 gap-4">
+                <div className="flex items-center gap-3 bg-slate-700/50 print:bg-transparent p-2 sm:p-0 rounded-md w-full sm:w-auto">
+                  <div className="text-sm text-slate-300 print:text-gray-600 whitespace-nowrap">
+                    Labour Rate: <span className="text-[10px] uppercase text-slate-400">(Inc VAT)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                     <span className="text-slate-300 text-sm print:text-slate-600">£</span>
+                     <Input 
+                        type="number" 
+                        step="0.01" 
+                        value={labourRate} 
+                        onChange={(e) => setLabourRate(e.target.value)} 
+                        placeholder="0.00"
+                        className="w-24 h-9 px-2 text-right bg-slate-700 border-slate-600 print:bg-gray-50 focus-visible:ring-blue-500 text-white print:text-black font-medium"
+                     />
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Total Trade Cost</div>
-                  <div className="text-2xl font-bold text-green-400 print:text-green-700">£{estimateTotal.toFixed(2)}</div>
+                <div className="flex items-end gap-6 text-right">
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Total Trade Cost</div>
+                    <div className="text-lg font-semibold text-slate-300 print:text-slate-600">£{estimateTotal.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-blue-300 uppercase tracking-widest mb-1">Customer Quote <span className="lowercase text-[10px] opacity-80">(Inc VAT & Labour)</span></div>
+                    <div className="text-3xl font-bold text-green-400 print:text-green-700">£{totalCustomerQuote.toFixed(2)}</div>
+                  </div>
                 </div>
               </div>
             </div>
