@@ -130,6 +130,7 @@ export const omnipartRouter = router({
   getPartsInfo: publicProcedure
     .input(z.object({
       vehicleId: z.string().optional(),
+      vrm: z.string().optional(),
       categorySlug: z.string().optional(),
       skus: z.array(z.string()).optional(),
       token: z.string()
@@ -183,44 +184,57 @@ export const omnipartRouter = router({
         if (authHeader) apiHeaders["Authorization"] = authHeader;
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
-        if (!input.skus && input.vehicleId && input.categorySlug) {
-            // Step 1: Query the storefront for the category
-            // Based on HAR, they load all products for the vehicle using this endpoint
-            const url = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?`;
-            const baseResData = await crawlWithCurl("GET", url, apiHeaders);
+        if (!input.skus && input.categorySlug) {
+            // STEP 1: Set the session context if VRM was provided
+            if (input.vrm) {
+                await crawlWithCurl(
+                    "POST",
+                    "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
+                    apiHeaders,
+                    JSON.stringify({ vrm: input.vrm, saveToCache: false })
+                );
+            } else if (input.vehicleId) {
+                await crawlWithCurl(
+                    "POST",
+                    "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vehicle-id",
+                    apiHeaders,
+                    JSON.stringify({ vehicleId: parseInt(input.vehicleId), saveToCache: false })
+                );
+            }
+
+            // STEP 2: Lookup the precise category ID
+            const catUrl = `https://api.omnipart.eurocarparts.com/storefront/categories/${input.categorySlug}`;
+            const catData = await crawlWithCurl("GET", catUrl, apiHeaders);
+            
+            // Extract trailing ID, e.g. "/categories/196" -> "196"
+            let categoryId = "";
+            const rawId = catData['@id'] || catData.id;
+            if (rawId && typeof rawId === 'string') {
+                const parts = rawId.split('/');
+                categoryId = parts[parts.length - 1];
+            }
+
+            if (!categoryId) {
+                console.warn("Could not determine category ID for", input.categorySlug);
+                return { products: [] };
+            }
+
+            // STEP 3: Fetch purely vehicle-specific products for that category using session
+            const specUrl = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${categoryId}?`;
+            const baseResData = await crawlWithCurl("GET", specUrl, apiHeaders);
             
             // The structure is nested: hydra:member[0].products[baseSku][subSku]
             const productGroups = baseResData['hydra:member']?.[0]?.products || {};
             let baseProducts: any[] = [];
             
-            // To properly filter by category, we should ideally check the category, but for now 
-            // since the user only queried for 'brake pads' we might just take the first N products 
-            // from the result. A better way is to do the search first to get SKUs, OR just parse the base products.
-            // Wait, the search endpoint DID work earlier, but let's just make sure we get the full product details.
-            
-            // Actually, querying the search endpoint to get the specific SKUs for the category is safer:
-            const keywords = encodeURIComponent(input.categorySlug.replace(/-/g, ' '));
-            const categoryResData = await crawlWithCurl(
-                "GET",
-                 `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${keywords}&vehicleId=${input.vehicleId}`,
-                 apiHeaders
-            );
-            
-            const searchProducts = categoryResData.products || [];
-            if (searchProducts.length === 0) {
-                return { products: [] };
-            }
-            // Use search endpoint to find the matched products, but get full details from the 
-            // vehicle-specific-products endpoint to get brands etc.
-            
-            // Collect all sub-SKUs from the vehicle-specific endpoint
             for (const baseSku in productGroups) {
                 for (const subSku in productGroups[baseSku]) {
                     baseProducts.push(productGroups[baseSku][subSku]);
                 }
             }
 
-            skusToLookup = searchProducts.map((p: any) => p.sku || p).slice(0, 15);
+            // Process the first 15 mapped items
+            skusToLookup = baseProducts.map((p: any) => p.sku || p).slice(0, 15);
             
             if (skusToLookup.length === 0) {
                 return { products: [] };
@@ -244,7 +258,7 @@ export const omnipartRouter = router({
 
             // Step 3: Mix the base product info with the detailed pricing
             const finalProducts = skusToLookup.map((sku: string) => {
-                const baseInfo = baseProducts.find((p: any) => p.sku === sku) || searchProducts.find((p: any) => p.sku === sku) || {};
+                const baseInfo = baseProducts.find((p: any) => p.sku === sku) || {};
                 const pricingInfo = detailedPricing.find((p: any) => p.sku === sku) || {};
                 
                 return {
@@ -260,7 +274,7 @@ export const omnipartRouter = router({
             return { products: finalProducts };
         }
 
-        return { products: priceResData };
+        return { products: [] };
       } catch (error: any) {
         const message = error.message || "Failed to search for parts on Omnipart";
         console.error("Omnipart Parts Error:", error.message);

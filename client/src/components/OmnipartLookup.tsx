@@ -98,6 +98,7 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId,
+          vrm: vrm, // Provide VRM to help set the active session
           categorySlug: slug,
           token: sessionToken
         });
