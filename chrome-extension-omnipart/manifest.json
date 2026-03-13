@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Autodata Session Harvester",
+  "version": "1.0",
+  "description": "Silently harvests the Omnipart Trade Login token and posts it directly to your MOT Reminder App.",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "cookies",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.eurocarparts.com/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Omnipart Integration Server"
+  }
+}
