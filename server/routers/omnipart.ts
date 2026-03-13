@@ -1,4 +1,5 @@
 import { publicProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as cp from "child_process";
 import { promisify } from "util";
@@ -121,8 +122,12 @@ export const omnipartRouter = router({
         };
       } catch (error: any) {
         const message = error.message || "Failed to look up VRM on Omnipart";
-        console.error("Omnipart VRM Error:", error.message);
-        throw new Error(message);
+        console.error("Omnipart VRM Error:", message);
+        
+        if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired")) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }
     }),
 
@@ -279,8 +284,12 @@ export const omnipartRouter = router({
         return { products: [] };
       } catch (error: any) {
         const message = error.message || "Failed to search for parts on Omnipart";
-        console.error("Omnipart Parts Error:", error.message);
-        throw new Error(message);
+        console.error("Omnipart Parts Error:", message);
+        
+        if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired")) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }
     })
 });
