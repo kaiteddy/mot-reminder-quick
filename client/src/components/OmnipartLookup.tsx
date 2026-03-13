@@ -18,11 +18,32 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   
   const [vehicle, setVehicle] = useState<any>(null);
   const [parts, setParts] = useState<any[]>([]);
-
   const [estimateItems, setEstimateItems] = useState<any[]>([]);
   const [customQuery, setCustomQuery] = useState("");
   const [labourRate, setLabourRate] = useState<number | string>("");
   const [selectedDepartment, setSelectedDepartment] = useState<{name:string, slug:string, image:string} | null>(null);
+  
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [hasAutoSearched, setHasAutoSearched] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("omnipart_recent_vrms");
+    if (saved) {
+      try {
+        setRecentSearches(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    if (defaultVrm && sessionToken && sessionToken !== "auto" && !hasAutoSearched) {
+      setHasAutoSearched(true);
+      // Wait a tick for states to settle
+      setTimeout(() => {
+        executeSearch("", false, "");
+      }, 500);
+    }
+  }, [defaultVrm, sessionToken, hasAutoSearched]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToEstimate = (part: any) => {
     // Default retail to RRP, or if RRP is missing/zero, provide a 40% margin on netPrice.
@@ -140,9 +161,16 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
     try {
       // Step 1: Lookup VRM
       toast.info(`Looking up vehicle ${vrm.toUpperCase()}...`);
+      const cleanVrm = vrm.replace(/\s+/g, '').toUpperCase();
       const vrmRes = await vrmMutation.mutateAsync({ 
-        vrm: vrm.replace(/\s+/g, '').toUpperCase(), 
+        vrm: cleanVrm, 
         token: sessionToken 
+      });
+      
+      setRecentSearches(prev => {
+         const newSearches = [cleanVrm, ...prev.filter(v => v !== cleanVrm)].slice(0, 5);
+         localStorage.setItem("omnipart_recent_vrms", JSON.stringify(newSearches));
+         return newSearches;
       });
       
       setVehicle(vrmRes);
@@ -280,9 +308,9 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1 relative">
                 <Input 
-                  placeholder="Registration (e.g. RE16 RWP)" 
+                  placeholder="ENTER REG" 
                   value={vrm} onChange={e => setVrm(e.target.value)} 
-                  className="font-mono text-xl uppercase bg-white border-slate-300 h-14 pl-4 shadow-sm"
+                  className="font-mono text-2xl uppercase h-14 text-center font-bold tracking-widest text-black border-2 border-slate-800 bg-yellow-400 focus-visible:ring-yellow-500 shadow-inner rounded-md placeholder:text-black/30 placeholder:font-normal"
                   maxLength={8}
                   disabled={isWorking}
                 />
@@ -292,6 +320,34 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                   Identify Vehicle
               </Button>
             </div>
+
+            {recentSearches.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Recent history:</span>
+                {recentSearches.map(r => (
+                  <button 
+                    key={r}
+                    type="button"
+                    onClick={() => { 
+                       setVrm(r); 
+                       setTimeout(() => {
+                           // Trigger identify logic directly
+                           vrmMutation.mutateAsync({ vrm: r, token: sessionToken }).then(vrmRes => {
+                               setVehicle(vrmRes);
+                               setParts([]);
+                               toast.success(`Vehicle identified: ${vrmRes.make} ${vrmRes.model}`);
+                           }).catch(err => {
+                               toast.error(err.message || "Failed to identify vehicle");
+                           });
+                       }, 100); 
+                    }}
+                    className="text-xs px-2.5 py-1 bg-white hover:bg-yellow-100 border border-slate-200 hover:border-yellow-400 rounded-md text-slate-700 font-mono shadow-sm transition-colors"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <Tabs defaultValue="departments" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
