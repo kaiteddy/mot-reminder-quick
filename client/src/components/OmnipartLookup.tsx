@@ -7,6 +7,7 @@ import { Loader2, Search, ShoppingCart, Wrench, Key, Lock, TerminalSquare } from
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import omnipartSubcategories from "@/lib/data/omnipart_categories.json";
 
 export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }) {
   const [vrm, setVrm] = useState(defaultVrm);
@@ -21,6 +22,7 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   const [estimateItems, setEstimateItems] = useState<any[]>([]);
   const [customQuery, setCustomQuery] = useState("");
   const [labourRate, setLabourRate] = useState<number | string>("");
+  const [selectedDepartment, setSelectedDepartment] = useState<{name:string, slug:string, image:string} | null>(null);
 
   const addToEstimate = (part: any) => {
     // Default retail to RRP, or if RRP is missing/zero, provide a 40% margin on netPrice.
@@ -151,10 +153,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         const queryLabel = isCustom ? customValue : targetSlug;
         toast.info(`Finding ${queryLabel} for ${vrmRes.make}...`);
         
-        // For custom text searches, pass the raw keywords. For typical mapped categories, convert to a strict slug.
+        // For custom text searches, pass the raw keywords. For typical mapped categories, use the deep category slug.
         const passedSlug = isCustom 
            ? customValue 
-           : targetSlug.toLowerCase().replace(/\s+/g, '-');
+           : targetSlug;
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId.toString(),
@@ -298,24 +300,61 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
               </TabsList>
               
               <TabsContent value="departments" className="mt-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                  {departments.map((dep, i) => (
-                    <button 
-                      key={i} 
-                      type="button"
-                      disabled={isWorking}
-                      onClick={() => executeSearch(dep.slug, true, dep.name)}
-                      className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
-                    >
-                      <div className="h-14 w-14 relative flex-shrink-0 flex items-center justify-center">
-                         <img src={dep.image} alt={dep.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out drop-shadow-sm" />
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 text-center leading-tight line-clamp-2">
-                        {dep.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                {!selectedDepartment ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {departments.map((dep, i) => (
+                      <button 
+                        key={i} 
+                        type="button"
+                        onClick={() => setSelectedDepartment(dep)}
+                        className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group h-full"
+                      >
+                        <div className="h-14 w-14 relative flex-shrink-0 flex items-center justify-center">
+                           <img src={dep.image} alt={dep.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out drop-shadow-sm" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700 text-center leading-tight line-clamp-2">
+                          {dep.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-6 bg-slate-50/50 p-4 rounded-xl border border-slate-200 relative">
+                    <div className="flex items-center gap-3">
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedDepartment(null)} className="h-8 px-2 -ml-2 text-slate-500 hover:text-slate-900">
+                          <Search className="w-4 h-4 mr-1 rotate-90" /> Back
+                        </Button>
+                        <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                          <img src={selectedDepartment.image} className="w-6 h-6 mix-blend-multiply" alt="" />
+                          {selectedDepartment.name}
+                        </h3>
+                    </div>
+                    
+                    {Array.from(new Set(omnipartSubcategories.filter(s => s.topLevelSlug === selectedDepartment.slug).map(s => s.subgroupTitle))).map(subgroup => (
+                       <div key={subgroup} className="space-y-3">
+                          <h4 className="text-sm font-semibold text-slate-500 border-b pb-1">{subgroup}</h4>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {omnipartSubcategories.filter(s => s.topLevelSlug === selectedDepartment.slug && s.subgroupTitle === subgroup).map((sub, j) => (
+                               <button 
+                                 key={j} 
+                                 type="button"
+                                 disabled={isWorking}
+                                 onClick={() => executeSearch(sub.slug, false, sub.name)}
+                                 className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
+                               >
+                                 <div className="h-10 w-10 relative flex-shrink-0 flex items-center justify-center">
+                                    <img src={sub.image || selectedDepartment.image} alt={sub.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out" />
+                                 </div>
+                                 <span className="text-xs font-medium text-slate-700 text-center leading-tight line-clamp-2">
+                                   {sub.name}
+                                 </span>
+                               </button>
+                            ))}
+                          </div>
+                       </div>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
               
               <TabsContent value="list" className="mt-4">
