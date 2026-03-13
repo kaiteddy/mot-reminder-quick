@@ -17,6 +17,21 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   const [vehicle, setVehicle] = useState<any>(null);
   const [parts, setParts] = useState<any[]>([]);
 
+  const [estimateItems, setEstimateItems] = useState<any[]>([]);
+  const [customQuery, setCustomQuery] = useState("");
+
+  const addToEstimate = (part: any) => {
+    setEstimateItems(prev => [...prev, part]);
+    toast.success(`Added ${part.name} to estimate`);
+  };
+
+  const removeFromEstimate = (index: number) => {
+    setEstimateItems(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const estimateTotal = estimateItems.reduce((sum, item) => sum + (item.netPrice || 0), 0);
+  const estimateRetailTotal = estimateItems.reduce((sum, item) => sum + (item.rrp || 0), 0);
+
   const vrmMutation = trpc.omnipart.lookupVrm.useMutation();
   const partsMutation = trpc.omnipart.getPartsInfo.useMutation();
 
@@ -48,7 +63,8 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
     { label: "Car Battery", value: "car-batteries" },
     { label: "Wiper Blades", value: "wiper-blades" },
     { label: "Timing Belt", value: "timing-belt-kit" },
-    { label: "Water Pump", value: "water-pump" }
+    { label: "Water Pump", value: "water-pump" },
+    { label: "Other (Type manually)", value: "custom" }
   ];
 
   const saveToken = () => {
@@ -91,10 +107,14 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
       setParts([]);
 
       // Step 2: Lookup Parts if requested
-      if (partQuery && vrmRes.vehicleId) {
-        toast.info(`Finding ${partQuery} for ${vrmRes.make}...`);
+      if ((partQuery || (partQuery === "custom" && customQuery)) && vrmRes.vehicleId) {
+        const queryLabel = partQuery === "custom" ? customQuery : partQuery;
+        toast.info(`Finding ${queryLabel} for ${vrmRes.make}...`);
         
-        const slug = partQuery.toLowerCase().replace(/\s+/g, '-');
+        // Remove unsafe characters for SEO slug matching
+        const slug = partQuery === "custom" 
+           ? encodeURIComponent(customQuery.toLowerCase().replace(/[^a-z0-9]+/g, '-')) 
+           : partQuery.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId,
@@ -104,8 +124,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         });
 
         if (partsRes.products && Array.isArray(partsRes.products) && partsRes.products.length > 0) {
-          setParts(partsRes.products);
-          toast.success(`Found ${partsRes.products.length} parts!`);
+          // Sort lowest to highest price
+          const sorted = [...partsRes.products].sort((a, b) => (a.netPrice || 0) - (b.netPrice || 0));
+          setParts(sorted);
+          toast.success(`Found ${sorted.length} parts!`);
         } else {
           toast.error("No parts found for this category.");
         }
@@ -216,10 +238,13 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                 disabled={isWorking}
               />
             </div>
-            <div className="flex-1">
+            <div className={`flex-1 flex flex-col sm:flex-row gap-2 ${partQuery === "custom" ? "sm:col-span-2" : ""}`}>
               <select
                 value={partQuery} 
-                onChange={e => setPartQuery(e.target.value)} 
+                onChange={e => {
+                  setPartQuery(e.target.value);
+                  if (e.target.value !== "custom") setCustomQuery("");
+                }} 
                 disabled={isWorking}
                 className="w-full h-10 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -227,6 +252,16 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
               </select>
+              {partQuery === "custom" && (
+                <Input 
+                  placeholder="E.g. spark plug, alternators..."
+                  value={customQuery}
+                  onChange={e => setCustomQuery(e.target.value)}
+                  className="w-full sm:w-1/2 h-10 bg-white border-slate-300"
+                  disabled={isWorking}
+                  autoFocus
+                />
+              )}
             </div>
             <Button type="submit" disabled={isWorking || !vrm} className="bg-blue-600 hover:bg-blue-700 text-white">
               {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
@@ -261,12 +296,51 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
             </div>
           )}
 
+          {estimateItems.length > 0 && (
+            <div className="mt-6 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-xl print:bg-white print:border-gray-200 print:shadow-none text-white print:text-black">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-lg flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5" />
+                  Live Parts Estimate
+                </h3>
+                <Badge variant="outline" className="text-blue-300 border-blue-400 print:text-black print:border-black">
+                  {estimateItems.length} {estimateItems.length === 1 ? 'Item' : 'Items'}
+                </Badge>
+              </div>
+              <div className="space-y-2 mb-4">
+                {estimateItems.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-slate-700 print:bg-gray-50 p-2 rounded-md">
+                    <div>
+                      <div className="font-semibold text-sm">{item.name}</div>
+                      <div className="text-xs text-slate-300 print:text-gray-500">{item.brandName} • {item.sku}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="font-medium text-green-400 print:text-green-700">£{(item.netPrice || 0).toFixed(2)}</div>
+                      </div>
+                      <button onClick={() => removeFromEstimate(idx)} className="text-slate-400 hover:text-red-400 print:hidden text-lg p-1">&times;</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between items-end border-t border-slate-600 print:border-gray-300 pt-4 mt-4">
+                <div className="text-sm text-slate-300 print:text-gray-600">
+                  Retail Value: <span className="line-through">£{estimateRetailTotal.toFixed(2)}</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Total Trade Cost</div>
+                  <div className="text-2xl font-bold text-green-400 print:text-green-700">£{estimateTotal.toFixed(2)}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {parts.length > 0 && (
             <div className="mt-6 space-y-4">
               <h3 className="font-semibold text-slate-800">Trade Pricing Results:</h3>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full text-sm text-left text-slate-600">
-                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+              <div className="rounded-lg border border-slate-200 shadow-sm relative z-0">
+                <table className="w-full text-sm text-left text-slate-600 relative">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                     <tr>
                       <th scope="col" className="px-4 py-3 w-32">Brand</th>
                       <th scope="col" className="px-4 py-3 w-24">Image</th>
@@ -274,6 +348,7 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                       <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">Local Stock</th>
                       <th scope="col" className="px-4 py-3 text-right">Retail</th>
                       <th scope="col" className="px-4 py-3 text-right">Trade Price</th>
+                      <th scope="col" className="px-4 py-3 w-16"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -288,13 +363,13 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                             <span className="font-bold text-slate-700">{p.brandName || "Part"}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 align-middle">
+                        <td className="px-4 py-3 align-middle relative">
                           {p.imageUrl ? (
-                            <div className="relative group flex items-center h-12 w-16">
+                            <div className="group flex items-center h-12 w-16">
                               <img 
                                 src={p.imageUrl} 
                                 alt={p.name} 
-                                className="h-full w-full object-contain mix-blend-multiply cursor-zoom-in transition-transform duration-200 ease-out sm:group-hover:scale-[3.5] group-hover:scale-150 relative z-10 sm:group-hover:z-50 origin-left bg-white rounded-sm shadow-sm group-hover:shadow-lg p-0.5" 
+                                className="h-full w-full object-contain mix-blend-multiply cursor-zoom-in group-hover:absolute transition-transform duration-200 ease-out sm:group-hover:scale-[3.5] group-hover:scale-[2.0] group-hover:z-[99999] group-hover:-translate-y-4 group-hover:translate-x-4 bg-white rounded-md shadow-sm group-hover:shadow-2xl group-hover:border group-hover:border-slate-300 p-1" 
                               />
                             </div>
                           ) : (
@@ -315,6 +390,17 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                         </td>
                         <td className="px-4 py-3 align-middle text-right">
                           <span className="text-lg font-bold text-green-700">£{(p.netPrice || 0).toFixed(2)}</span>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-right">
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="bg-slate-800 hover:bg-slate-900 text-white rounded px-3 transition-colors shadow-sm"
+                            onClick={() => addToEstimate(p)}
+                            title="Add to Live Estimate Cart"
+                          >
+                            + Add
+                          </Button>
                         </td>
                       </tr>
                     ))}
