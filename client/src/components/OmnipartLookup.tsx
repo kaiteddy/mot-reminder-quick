@@ -151,9 +151,9 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         const queryLabel = isCustom ? customValue : targetSlug;
         toast.info(`Finding ${queryLabel} for ${vrmRes.make}...`);
         
-        // Remove unsafe characters for SEO slug matching
+        // For custom text searches, pass the raw keywords. For typical mapped categories, convert to a strict slug.
         const passedSlug = isCustom 
-           ? encodeURIComponent(customValue.toLowerCase().replace(/[^a-z0-9]+/g, '-')) 
+           ? customValue 
            : targetSlug.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
@@ -304,7 +304,7 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                       key={i} 
                       type="button"
                       disabled={isWorking}
-                      onClick={() => executeSearch(dep.slug, false, dep.name)}
+                      onClick={() => executeSearch(dep.slug, true, dep.name)}
                       className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
                     >
                       <div className="h-14 w-14 relative flex-shrink-0 flex items-center justify-center">
