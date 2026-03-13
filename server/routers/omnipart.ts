@@ -184,27 +184,81 @@ export const omnipartRouter = router({
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
         if (!input.skus && input.vehicleId && input.categorySlug) {
-          const keywords = encodeURIComponent(input.categorySlug.replace(/-/g, ' '));
-          const categoryResData = await crawlWithCurl(
-            "GET",
-             `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${keywords}&vehicleId=${input.vehicleId}`,
-             apiHeaders
-          );
-          // Assuming the category endpoint returns an array of SKUs or product objects
-          skusToLookup = (categoryResData.products || categoryResData || []).map((p: any) => p.sku || p).slice(0, 5);
-        }
+            // Step 1: Query the storefront for the category
+            // Based on HAR, they load all products for the vehicle using this endpoint
+            const url = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${input.vehicleId}?`;
+            const baseResData = await crawlWithCurl("GET", url, apiHeaders);
+            
+            // The structure is nested: hydra:member[0].products[baseSku][subSku]
+            const productGroups = baseResData['hydra:member']?.[0]?.products || {};
+            let baseProducts: any[] = [];
+            
+            // To properly filter by category, we should ideally check the category, but for now 
+            // since the user only queried for 'brake pads' we might just take the first N products 
+            // from the result. A better way is to do the search first to get SKUs, OR just parse the base products.
+            // Wait, the search endpoint DID work earlier, but let's just make sure we get the full product details.
+            
+            // Actually, querying the search endpoint to get the specific SKUs for the category is safer:
+            const keywords = encodeURIComponent(input.categorySlug.replace(/-/g, ' '));
+            const categoryResData = await crawlWithCurl(
+                "GET",
+                 `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${keywords}&vehicleId=${input.vehicleId}`,
+                 apiHeaders
+            );
+            
+            const searchProducts = categoryResData.products || [];
+            if (searchProducts.length === 0) {
+                return { products: [] };
+            }
+            // Use search endpoint to find the matched products, but get full details from the 
+            // vehicle-specific-products endpoint to get brands etc.
+            
+            // Collect all sub-SKUs from the vehicle-specific endpoint
+            for (const baseSku in productGroups) {
+                for (const subSku in productGroups[baseSku]) {
+                    baseProducts.push(productGroups[baseSku][subSku]);
+                }
+            }
 
-        if (skusToLookup.length === 0) {
-          return { products: [] };
-        }
+            skusToLookup = searchProducts.map((p: any) => p.sku || p).slice(0, 15);
+            
+            if (skusToLookup.length === 0) {
+                return { products: [] };
+            }
 
-        // Step 2: Get detailed pricing and stock for the SKUs
-        const queryParams = skusToLookup.map((s: string) => `skus[]=${s}`).join('&');
-        const priceResData = await crawlWithCurl(
-          "GET",
-          `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
-          apiHeaders
-        );
+            // Step 2: Get detailed pricing for these SKUs
+            const queryParams = skusToLookup.map((s: string) => `skus[]=${s}`).join('&');
+            let priceResData;
+            try {
+                priceResData = await crawlWithCurl(
+                    "GET",
+                    `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
+                    apiHeaders
+                );
+            } catch(e) {
+                console.error("Failed to fetch product-information, but continuing...", e);
+                priceResData = { 'hydra:member': [] };
+            }
+            
+            const detailedPricing = priceResData['hydra:member'] || (Array.isArray(priceResData) ? priceResData : []);
+
+            // Step 3: Mix the base product info with the detailed pricing
+            const finalProducts = skusToLookup.map((sku: string) => {
+                const baseInfo = baseProducts.find((p: any) => p.sku === sku) || searchProducts.find((p: any) => p.sku === sku) || {};
+                const pricingInfo = detailedPricing.find((p: any) => p.sku === sku) || {};
+                
+                return {
+                    sku,
+                    name: baseInfo.name || "Unknown Part",
+                    brandName: baseInfo.brand?.name || baseInfo.brandName || "Unknown Brand",
+                    netPrice: pricingInfo.price?.excTax ? pricingInfo.price.excTax / 100 : 0,
+                    rrp: pricingInfo.wasPrice?.excTax ? pricingInfo.wasPrice.excTax / 100 : 0,
+                    branchStock: pricingInfo.stock?.reduce((acc: number, val: any) => acc + (val.stock || 0), 0) || 0
+                };
+            }).filter((p: any) => p.netPrice > 0);
+
+            return { products: finalProducts };
+        }
 
         return { products: priceResData };
       } catch (error: any) {
