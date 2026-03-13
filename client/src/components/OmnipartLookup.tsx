@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Search, ShoppingCart, Wrench, Key, Lock, TerminalSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }) {
   const [vrm, setVrm] = useState(defaultVrm);
@@ -105,10 +106,29 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
     setIsConfiguring(false);
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vrm) return;
+  const departments = [
+    { name: "Air Conditioning", slug: "air-conditioning", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_20.jpg" },
+    { name: "Belts & Chains", slug: "belts-and-chains", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_21.jpg" },
+    { name: "Braking", slug: "braking", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_22.jpg" },
+    { name: "Bulbs", slug: "bulbs", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_30.jpg" },
+    { name: "Cables", slug: "cables", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_23.jpg" },
+    { name: "Clutch & Trans", slug: "clutch-and-transmission", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_24.jpg" },
+    { name: "Cooling & Heating", slug: "cooling-and-heating", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_25.jpg" },
+    { name: "Electrical", slug: "electrical-and-ignition", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_26.jpg" },
+    { name: "Engine Parts", slug: "engine-parts", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_27.jpg" },
+    { name: "Exhaust & Turbo", slug: "exhaust-and-turbo", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_28.jpg" },
+    { name: "Fuel & Engine", slug: "fuel-and-engine-management", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_29.jpg" },
+    { name: "Lubricants", slug: "lubricants-and-fluids", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_31.jpg" },
+    { name: "Service Parts", slug: "service-parts", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_32.jpg" },
+    { name: "Steering", slug: "steering", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_33.jpg" },
+    { name: "Suspension", slug: "suspension", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_34.jpg" },
+    { name: "Wipers", slug: "wiper-blades", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_35.jpg" },
+    { name: "Accessories", slug: "accessories", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/Accessories_1.png" },
+    { name: "Performance", slug: "performance-styling", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/Performance_1.png" }
+  ];
 
+  const executeSearch = async (targetSlug: string, isCustom: boolean, customValue: string = "") => {
+    if (!vrm) return;
     if (!sessionToken) {
       toast.error("Please configure your Omnipart Token first.");
       setIsConfiguring(true);
@@ -127,20 +147,20 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
       setParts([]);
 
       // Step 2: Lookup Parts if requested
-      if ((partQuery || (partQuery === "custom" && customQuery)) && vrmRes.vehicleId) {
-        const queryLabel = partQuery === "custom" ? customQuery : partQuery;
+      if ((targetSlug || (isCustom && customValue)) && vrmRes.vehicleId) {
+        const queryLabel = isCustom ? customValue : targetSlug;
         toast.info(`Finding ${queryLabel} for ${vrmRes.make}...`);
         
         // Remove unsafe characters for SEO slug matching
-        const slug = partQuery === "custom" 
-           ? encodeURIComponent(customQuery.toLowerCase().replace(/[^a-z0-9]+/g, '-')) 
-           : partQuery.toLowerCase().replace(/\s+/g, '-');
+        const passedSlug = isCustom 
+           ? encodeURIComponent(customValue.toLowerCase().replace(/[^a-z0-9]+/g, '-')) 
+           : targetSlug.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId.toString(),
           vrm: vrm, // Provide VRM to help set the active session
-          categorySlug: partQuery === "custom" ? customQuery : slug,
-          isCustomSearch: partQuery === "custom",
+          categorySlug: isCustom ? customValue : passedSlug,
+          isCustomSearch: isCustom,
           token: sessionToken
         });
 
@@ -172,6 +192,11 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         toast.error(msg);
       }
     }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSearch(partQuery, partQuery === "custom", customQuery);
   };
 
   const isWorking = vrmMutation.isPending || partsMutation.isPending;
@@ -249,46 +274,85 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
             </div>
           )}
 
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4 mb-6">
-            <div className="flex-1">
-              <Input 
-                placeholder="Registration (e.g. RE16 RWP)" 
-                value={vrm} onChange={e => setVrm(e.target.value)} 
-                className="font-mono text-lg uppercase bg-white border-slate-300"
-                maxLength={8}
-                disabled={isWorking}
-              />
-            </div>
-            <div className={`flex-1 flex flex-col sm:flex-row gap-2 ${partQuery === "custom" ? "sm:col-span-2" : ""}`}>
-              <select
-                value={partQuery} 
-                onChange={e => {
-                  setPartQuery(e.target.value);
-                  if (e.target.value !== "custom") setCustomQuery("");
-                }} 
-                disabled={isWorking}
-                className="w-full h-10 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {commonCategories.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </select>
-              {partQuery === "custom" && (
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
                 <Input 
-                  placeholder="E.g. spark plug, alternators..."
-                  value={customQuery}
-                  onChange={e => setCustomQuery(e.target.value)}
-                  className="w-full sm:w-1/2 h-10 bg-white border-slate-300"
+                  placeholder="Registration (e.g. RE16 RWP)" 
+                  value={vrm} onChange={e => setVrm(e.target.value)} 
+                  className="font-mono text-xl uppercase bg-white border-slate-300 h-14 pl-4 shadow-sm"
+                  maxLength={8}
                   disabled={isWorking}
-                  autoFocus
                 />
-              )}
+              </div>
+              <Button onClick={() => executeSearch("", false, "")} disabled={isWorking || !vrm} className="h-14 px-8 text-lg bg-slate-800 hover:bg-slate-900 text-white shadow-md">
+                  {vrmMutation.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Search className="w-5 h-5 mr-2" />}
+                  Identify Vehicle
+              </Button>
             </div>
-            <Button type="submit" disabled={isWorking || !vrm} className="bg-blue-600 hover:bg-blue-700 text-white">
-              {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-              Lookup Vehicle & Parts
-            </Button>
-          </form>
+
+            <Tabs defaultValue="departments" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="departments">Departments Grid</TabsTrigger>
+                <TabsTrigger value="list">Dropdown List</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="departments" className="mt-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {departments.map((dep, i) => (
+                    <button 
+                      key={i} 
+                      type="button"
+                      disabled={isWorking}
+                      onClick={() => executeSearch(dep.slug, false, dep.name)}
+                      className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
+                    >
+                      <div className="h-14 w-14 relative flex-shrink-0 flex items-center justify-center">
+                         <img src={dep.image} alt={dep.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out drop-shadow-sm" />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-700 text-center leading-tight line-clamp-2">
+                        {dep.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="list" className="mt-4">
+                <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
+                  <div className={`flex-1 flex flex-col sm:flex-row gap-2 ${partQuery === "custom" ? "sm:col-span-2" : ""}`}>
+                    <select
+                      value={partQuery} 
+                      onChange={e => {
+                        setPartQuery(e.target.value);
+                        if (e.target.value !== "custom") setCustomQuery("");
+                      }} 
+                      disabled={isWorking}
+                      className="w-full h-12 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
+                    >
+                      {commonCategories.map(cat => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      ))}
+                    </select>
+                    {partQuery === "custom" && (
+                      <Input 
+                        placeholder="E.g. spark plug, alternators..."
+                        value={customQuery}
+                        onChange={e => setCustomQuery(e.target.value)}
+                        className="w-full sm:w-1/2 h-12 bg-white border-slate-300 shadow-sm"
+                        disabled={isWorking}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                  <Button type="submit" disabled={isWorking || !vrm} className="h-12 bg-blue-600 hover:bg-blue-700 text-white px-8 shadow-sm">
+                    {partsMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                    Search
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </div>
 
           {vehicle && (
             <div className="mt-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
