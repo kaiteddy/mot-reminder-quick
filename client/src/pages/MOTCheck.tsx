@@ -83,6 +83,17 @@ export default function MOTCheck() {
   const [customerData, setCustomerData] = useState<any>(null);
   const hasSearched = useRef(false);
 
+  const [recentMOTSearches, setRecentMOTSearches] = useState<string[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("mot_recent_vrms");
+    if (saved) {
+      try {
+        setRecentMOTSearches(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+
   const lookupMutation = trpc.reminders.lookupMOT.useMutation({
     onSuccess: async (data) => {
       setVehicleData(data as VehicleData);
@@ -114,7 +125,15 @@ export default function MOTCheck() {
       toast.error("Please enter a registration number");
       return;
     }
-    lookupMutation.mutate({ registration: registration.toUpperCase() });
+    const cleanReg = registration.replace(/\s+/g, '').toUpperCase();
+    
+    setRecentMOTSearches(prev => {
+        const newSearches = [cleanReg, ...prev.filter(v => v !== cleanReg)].slice(0, 5);
+        localStorage.setItem("mot_recent_vrms", JSON.stringify(newSearches));
+        return newSearches;
+    });
+    
+    lookupMutation.mutate({ registration: cleanReg });
   };
 
   useEffect(() => {
@@ -122,8 +141,14 @@ export default function MOTCheck() {
     const searchParams = new URLSearchParams(window.location.search);
     const regParam = searchParams.get('reg');
     if (regParam) {
-      setRegistration(regParam.toUpperCase());
-      lookupMutation.mutate({ registration: regParam.toUpperCase() });
+      const cleanReg = regParam.replace(/\s+/g, '').toUpperCase();
+      setRegistration(cleanReg);
+      setRecentMOTSearches(prev => {
+          const newSearches = [cleanReg, ...prev.filter(v => v !== cleanReg)].slice(0, 5);
+          localStorage.setItem("mot_recent_vrms", JSON.stringify(newSearches));
+          return newSearches;
+      });
+      lookupMutation.mutate({ registration: cleanReg });
       hasSearched.current = true;
     }
   }, []);

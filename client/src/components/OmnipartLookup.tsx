@@ -36,9 +36,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   }, []);
 
   useEffect(() => {
-    if (defaultVrm && sessionToken && sessionToken !== "auto" && !hasAutoSearched) {
+    if (defaultVrm && sessionToken && !hasAutoSearched) {
       setHasAutoSearched(true);
-      // Wait a tick for states to settle
+      
+      // Wait to ensure everything mounted smoothly
       setTimeout(() => {
         executeSearch("", false, "");
       }, 500);
@@ -395,7 +396,7 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
                                  key={j} 
                                  type="button"
                                  disabled={isWorking}
-                                 onClick={() => executeSearch(sub.slug, false, sub.name)}
+                                 onClick={() => executeSearch(sub.slug, true, sub.name)}
                                  className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
                                >
                                  <div className="h-10 w-10 relative flex-shrink-0 flex items-center justify-center">

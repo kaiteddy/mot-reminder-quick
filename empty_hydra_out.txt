@@ -1,0 +1,3 @@
+Setting VRM search context...
+hydra keys: [ '@context', '@type', 'hydra:title', 'hydra:description' ]
+hydra:member missing entirely?

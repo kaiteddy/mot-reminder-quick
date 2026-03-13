@@ -1,0 +1,21 @@
+WAITING A BIT TO BYPASS CF...
+CATEGORY DATA KEYS: [
+  '@type',
+  '@id',
+  'heading',
+  'breadCrumbs',
+  'tooltipForMultiples',
+  'status',
+  'exhaustCategory',
+  'comparisonToolEnabled',
+  'metaTitle',
+  'metaDescription',
+  'thumbnail',
+  'tierNumber',
+  'webServiceCategory',
+  'code',
+  'description',
+  'children'
+]
+@id: /categories/192
+type: CategoryGetItemOutput
