@@ -1,0 +1,2 @@
+Keys: [ '@context', '@id', '@type', 'products', 'source', 'categories' ]
+Categories if any: 4

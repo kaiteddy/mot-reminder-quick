@@ -1,0 +1,7 @@
+Are products an array? true Length: 83
+Categories: [
+  'high-performance-brake-discs',
+  'brake-disc',
+  'brake-discs',
+  'high-performance-brake-pads'
+]

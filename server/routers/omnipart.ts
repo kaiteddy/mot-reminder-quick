@@ -6,13 +6,16 @@ import { promisify } from "util";
 
 const exec = promisify(cp.exec);
 
-async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, bodyStr: string | null = null) {
+async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, bodyStr: string | null = null, cookieJar: string | null = null) {
     let cmd = `curl -s -X ${method} '${url}'`;
     for (const [k, v] of Object.entries(headers)) {
         cmd += ` -H '${k}: ${v.replace(/'/g, "")}'`;
     }
     if (bodyStr) {
         cmd += ` --data '${bodyStr.replace(/'/g, "")}'`;
+    }
+    if (cookieJar) {
+        cmd += ` -c '${cookieJar}' -b '${cookieJar}'`;
     }
     
     // Add insecure just in case
@@ -190,6 +193,12 @@ export const omnipartRouter = router({
         if (authHeader) apiHeaders["Authorization"] = authHeader;
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
+        // Ensure we maintain a cookie-jar session strictly across all steps in this transaction
+        const cookieJar = `/tmp/op_cookies_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`;
+        
+        // Emulate initial visit to establish basic session vars
+        await crawlWithCurl("GET", "https://omnipart.eurocarparts.com/", apiHeaders, null, cookieJar);
+
         if (!input.skus && input.categorySlug) {
             // STEP 1: Set the session context if VRM was provided
             if (input.vrm) {
@@ -197,14 +206,16 @@ export const omnipartRouter = router({
                     "POST",
                     "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm",
                     apiHeaders,
-                    JSON.stringify({ vrm: input.vrm, saveToCache: false })
+                    JSON.stringify({ vrm: input.vrm, saveToCache: false }),
+                    cookieJar
                 );
             } else if (input.vehicleId) {
                 await crawlWithCurl(
                     "POST",
                     "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vehicle-id",
                     apiHeaders,
-                    JSON.stringify({ vehicleId: parseInt(input.vehicleId), saveToCache: false })
+                    JSON.stringify({ vehicleId: parseInt(input.vehicleId), saveToCache: false }),
+                    cookieJar
                 );
             }
 
@@ -214,12 +225,12 @@ export const omnipartRouter = router({
                 // Free text search mapped to vehicle
                 const urlKeywords = encodeURIComponent(input.categorySlug || "");
                 const searchUrl = `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${urlKeywords}&vehicleId=${input.vehicleId || ""}`;
-                const searchData = await crawlWithCurl("GET", searchUrl, apiHeaders);
+                const searchData = await crawlWithCurl("GET", searchUrl, apiHeaders, null, cookieJar);
                 baseProducts = searchData.products || [];
             } else {
                 // STEP 2: Lookup the precise category ID via slug
                 const catUrl = `https://api.omnipart.eurocarparts.com/storefront/categories/${input.categorySlug}`;
-                const catData = await crawlWithCurl("GET", catUrl, apiHeaders);
+                const catData = await crawlWithCurl("GET", catUrl, apiHeaders, null, cookieJar);
                 
                 // Extract trailing ID, e.g. "/categories/196" -> "196"
                 let categoryId = "";
@@ -236,7 +247,7 @@ export const omnipartRouter = router({
 
                 // STEP 3: Fetch purely vehicle-specific products for that category using session
                 const specUrl = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/${categoryId}?`;
-                const baseResData = await crawlWithCurl("GET", specUrl, apiHeaders);
+                const baseResData = await crawlWithCurl("GET", specUrl, apiHeaders, null, cookieJar);
                 
                 // The structure is nested: hydra:member[0].products[baseSku][subSku]
                 const productGroups = baseResData['hydra:member']?.[0]?.products || {};
@@ -262,7 +273,9 @@ export const omnipartRouter = router({
                 priceResData = await crawlWithCurl(
                     "GET",
                     `https://api.omnipart.eurocarparts.com/products/product-information?${queryParams}`,
-                    apiHeaders
+                    apiHeaders,
+                    null,
+                    cookieJar
                 );
             } catch(e) {
                 console.error("Failed to fetch product-information, but continuing...", e);

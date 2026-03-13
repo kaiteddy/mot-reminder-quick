@@ -1,0 +1,4 @@
+SKUS TO LOOKUP: [ '538771201', '538774400', 'LAS34131' ]
+PRICE URL: https://api.omnipart.eurocarparts.com/products/product-information?skus[]=538771201&skus[]=538774400&skus[]=LAS34131
+PRICE KEYS: [ '@context', '@type', 'hydra:title', 'hydra:description' ]
+PRICING MEM LENGTH: 0

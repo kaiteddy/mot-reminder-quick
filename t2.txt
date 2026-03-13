@@ -1,0 +1,27 @@
+Brake Pads Keys: [ '@context', '@id', '@type', 'products', 'source', 'categories' ] categories? 4
+First cat: {
+  '@type': 'StorefrontSearchCategoryOutputDto',
+  '@id': '/.well-known/genid/5aeebbdfe1adfccae633',
+  heading: 'High Performance Brake Pads',
+  identifier: 'high-performance-brake-pads',
+  code: 'high-performance-brake-pads',
+  thumbnail: 'https://d2s3hssvudfex6.cloudfront.net/ProductImages/product_page_normal/https://assets.omnipart.eurocarparts.com/CategoryImages/performance_brake_pads.jpg'
+}
+Brake Pad Wear Sensors Keys: [ '@context', '@id', '@type', 'products', 'source', 'categories' ] categories? 1
+First cat: {
+  '@type': 'StorefrontSearchCategoryOutputDto',
+  '@id': '/.well-known/genid/8036a95a7e9ba3ee0071',
+  heading: 'Brake Pad Wear Sensors',
+  identifier: 'brake-pad-sensor',
+  code: 'brake-pad-sensor',
+  thumbnail: 'https://d2s3hssvudfex6.cloudfront.net/ProductImages/product_page_normal/https://assets.omnipart.eurocarparts.com/CategoryImages/cp4_147.jpg'
+}
+Brake Discs Keys: [ '@context', '@id', '@type', 'products', 'source', 'categories' ] categories? 4
+First cat: {
+  '@type': 'StorefrontSearchCategoryOutputDto',
+  '@id': '/.well-known/genid/7b1365e1513f198a5fee',
+  heading: 'High Performance Brake Discs',
+  identifier: 'high-performance-brake-discs',
+  code: 'high-performance-brake-discs',
+  thumbnail: 'https://d2s3hssvudfex6.cloudfront.net/ProductImages/product_page_normal/https://assets.omnipart.eurocarparts.com/CategoryImages/performance_brake_discs.jpg'
+}
