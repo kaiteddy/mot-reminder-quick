@@ -8,19 +8,19 @@ import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../d
 import { eq, like, desc } from "drizzle-orm";
 
 const fallbackKey = "sk-" + "proj" + "-D0hxv1znK5LY35z9iIngC_DrLg" + "HXYLI5T2u8BzHPGfYd4VSvmNyTMPaYry8r" + "GkH0Zr7GTWCccYT3BlbkFJfi" + "H130_7pYUo--tdjc-RkoMzsZ" + "-xEJNbwbOi4Ns29u-Ze04XRgu2Y1ED8useJvQBdyS3Bd9NoA";
-let activeKey = process.env.OPENAI_API_KEY;
 
-// Force new API key if the old one is still stuck in production host caching
-if (!activeKey || activeKey.endsWith("KyUA")) {
-  activeKey = fallbackKey;
-}
-
-const aiProvider = activeKey
-  ? createOpenAI({ apiKey: activeKey })
-  : createOpenAI({
-      baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
-      apiKey: ENV.forgeApiKey,
-    });
+const getRuntimeProvider = () => {
+  let activeKey = process.env.OPENAI_API_KEY;
+  if (!activeKey || activeKey.endsWith("KyUA")) {
+    activeKey = fallbackKey;
+  }
+  return activeKey
+    ? createOpenAI({ apiKey: activeKey, headers: { Authorization: `Bearer ${activeKey}` } })
+    : createOpenAI({
+        baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
+        apiKey: ENV.forgeApiKey,
+      });
+};
 
 
 export const aiRouter = router({
@@ -36,7 +36,7 @@ export const aiRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
-      if (!activeKey && !ENV.forgeApiKey) {
+      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
@@ -122,8 +122,9 @@ Please format the response strictly as a JSON object matching this structure:
 Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
 
       try {
+        const provider = getRuntimeProvider();
         const { object } = await generateObject({
-          model: aiProvider('gpt-4o-mini'),
+          model: provider('gpt-4o-mini'),
           system: "You are an expert UK mechanic and garage manager.",
           prompt: prompt,
           schema: z.object({
@@ -160,7 +161,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       year: z.number().optional()
     }))
     .mutation(async ({ input }) => {
-      if (!activeKey && !ENV.forgeApiKey) {
+      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
@@ -177,8 +178,9 @@ CRITICAL INSTRUCTIONS:
 5. Do not mention prices.`;
 
       try {
+        const provider = getRuntimeProvider();
         const { text } = await generateText({
-          model: aiProvider('gpt-4o-mini'),
+          model: provider('gpt-4o-mini'),
           system: "You are a helpful, friendly UK mechanic.",
           prompt: prompt,
         });
