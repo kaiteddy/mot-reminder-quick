@@ -62,7 +62,7 @@ export default function PricingIntelligence() {
             Pricing Intelligence
           </h1>
           <p className="text-muted-foreground mt-2">
-            Configure the baseline pricing that the AI uses to generate accurate MOT & Repair estimates based on your exact garage prices.
+            The system automatically scans your historical invoices to learn pricing for specific parts based on vehicle Make and Model. Configure your standard base rates and fixed pricing overrides below.
           </p>
         </div>
 
@@ -142,10 +142,10 @@ export default function PricingIntelligence() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Brain className="w-5 h-5 text-purple-500" />
-                    AI Core Pricing Knowledge
+                    Standard & Common Pricing Overrides
                   </CardTitle>
                   <CardDescription>
-                    Teach the AI about your specific parts pricing, oil grades, and standard repair times.
+                    The AI already automatically learns part prices from your past invoices. Use this space ONLY for standard fixed pricing (like common oils, diagnostic fees, or set repair times).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -158,7 +158,7 @@ export default function PricingIntelligence() {
                       className="min-h-[200px] font-mono text-sm leading-relaxed whitespace-pre-wrap"
                     />
                     <p className="text-xs text-muted-foreground mt-2">
-                      The AI reads this text literally before every estimate. Be as specific as possible with your pricing rules!
+                      These rules will override the AI's automatically learned prices when generating estimates.
                     </p>
                   </div>
                 </CardContent>
@@ -188,13 +188,13 @@ export default function PricingIntelligence() {
                 </CardHeader>
                 <CardContent className="text-sm text-blue-800 space-y-4">
                   <p>
-                    Every time you click "Generate Repair Estimate" on the MOT Check page, the AI reads these settings to build an accurate quote.
+                    <strong>Automatic Learning:</strong> The AI automatically scans your past system invoices for similar parts and repairs on the same Make & Model. You don't need to manually enter every part price!
                   </p>
                   <p>
-                    <strong>Labour Rules:</strong> It will look at the defect and calculate time required × your Hourly Rate (£{labourRate}).
+                    <strong>Labour Rules:</strong> It evaluates the defect and calculates time required × your Hourly Rate (£{labourRate}).
                   </p>
                   <p>
-                    <strong>Custom Rules:</strong> If you write "Brake fluid change is always £40" in the text box, the AI will hardcode £40 into the estimate whenever it sees brake fluid issues!
+                    <strong>Fixed Overrides:</strong> If you write "Brake fluid change is always £40" in the text box, the AI will prioritize that £40 standard rate instead of looking at history.
                   </p>
                 </CardContent>
               </Card>
