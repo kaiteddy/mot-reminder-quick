@@ -82,6 +82,7 @@ export default function Database() {
   const [showDeadVehicles, setShowDeadVehicles] = useState(false);
   const [hideMissingPhone, setHideMissingPhone] = useState(true);
   const [hideSorn, setHideSorn] = useState(true);
+  const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -526,6 +527,14 @@ export default function Database() {
         return false;
       }
 
+      // Filter: Hide expired AND read
+      if (hideReadAndExpired && vehicle.motExpiryDate) {
+        const diffDays = Math.ceil((new Date(vehicle.motExpiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0 && vehicle.lastReminderStatus === 'read') {
+          return false;
+        }
+      }
+
       const termLower = debouncedSearchTerm.toLowerCase();
       const termNormalized = termLower.replace(/\s+/g, '');
 
@@ -639,7 +648,7 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter]);
+  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -1039,6 +1048,20 @@ export default function Database() {
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
                 Hide SORN Vehicles
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox
+                id="hide-read-expired-database"
+                checked={hideReadAndExpired}
+                onCheckedChange={(checked) => setHideReadAndExpired(checked as boolean)}
+              />
+              <label
+                htmlFor="hide-read-expired-database"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Hide Read & Expired
               </label>
             </div>
 

@@ -29,6 +29,7 @@ import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 import { OmnipartIntegration } from "@/components/OmnipartLookup";
+import { MOTMileageChart } from "@/components/MOTMileageChart";
 
 interface MOTTest {
   completedDate: string;
@@ -401,6 +402,11 @@ export default function MOTCheck() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* MOT Mileage History Chart */}
+            {vehicleData.motTests && vehicleData.motTests.length > 0 && (
+              <MOTMileageChart tests={vehicleData.motTests} />
+            )}
 
             {/* Omnipart Trade Lookup Integration */}
             <div className="mb-6">
