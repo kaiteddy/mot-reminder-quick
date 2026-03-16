@@ -7,10 +7,13 @@ import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
 
-const aiProvider = createOpenAI({
-  baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
-  apiKey: ENV.forgeApiKey,
-});
+const aiProvider = process.env.OPENAI_API_KEY
+  ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : createOpenAI({
+      baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
+      apiKey: ENV.forgeApiKey,
+    });
+
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -25,8 +28,8 @@ export const aiRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
-      if (!ENV.forgeApiKey) {
-        throw new Error("AI API key is not configured. Please set BUILT_IN_FORGE_API_KEY in your .env");
+      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
       const db = await getDb();
@@ -149,8 +152,8 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       year: z.number().optional()
     }))
     .mutation(async ({ input }) => {
-      if (!ENV.forgeApiKey) {
-        throw new Error("AI API key is not configured. Please set BUILT_IN_FORGE_API_KEY in your .env");
+      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
       const prompt = `You are a friendly, helpful UK mechanic talking to a customer who knows absolutely nothing about cars. They received this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
