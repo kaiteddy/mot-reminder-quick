@@ -84,6 +84,7 @@ export default function Database() {
   const [hideSorn, setHideSorn] = useState(true);
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
+  const [hideNoData, setHideNoData] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -523,6 +524,11 @@ export default function Database() {
         return false;
       }
 
+      // Filter: Hide vehicles with no MOT data
+      if (hideNoData && !vehicle.motExpiryDate) {
+        return false;
+      }
+
       // Filter: Hide SORN vehicles
       if (hideSorn && vehicle.taxStatus?.toLowerCase() === 'sorn') {
         return false;
@@ -654,7 +660,7 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent]);
+  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -1082,6 +1088,20 @@ export default function Database() {
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
                 Show Only Never Sent
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox
+                id="hide-no-data-database"
+                checked={hideNoData}
+                onCheckedChange={(checked) => setHideNoData(checked as boolean)}
+              />
+              <label
+                htmlFor="hide-no-data-database"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Hide "No Data" Vehicles
               </label>
             </div>
 

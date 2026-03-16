@@ -59,6 +59,7 @@ export default function Home() {
   const [hideSorn, setHideSorn] = useState(true);
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
+  const [hideNoData, setHideNoData] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -292,6 +293,11 @@ export default function Home() {
         return false;
       }
 
+      // Filter: Hide vehicles with no MOT data
+      if (hideNoData && !vehicle.motExpiryDate) {
+        return false;
+      }
+
       // Filter: Hide SORN vehicles
       if (hideSorn && vehicle.taxStatus?.toLowerCase() === 'sorn') {
         return false;
@@ -344,7 +350,7 @@ export default function Home() {
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
 
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
@@ -478,6 +484,20 @@ export default function Home() {
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
                   Show Only Never Sent
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="hide-no-data-home"
+                  checked={hideNoData}
+                  onCheckedChange={(checked) => setHideNoData(checked as boolean)}
+                />
+                <label
+                  htmlFor="hide-no-data-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Hide "No Data" Vehicles
                 </label>
               </div>
             </div>
