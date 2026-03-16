@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Search, ShoppingCart, Wrench, Key, Lock, TerminalSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import omnipartSubcategories from "@/lib/data/omnipart_categories.json";
 
 export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }) {
   const [vrm, setVrm] = useState(defaultVrm);
@@ -18,33 +16,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
   
   const [vehicle, setVehicle] = useState<any>(null);
   const [parts, setParts] = useState<any[]>([]);
+
   const [estimateItems, setEstimateItems] = useState<any[]>([]);
   const [customQuery, setCustomQuery] = useState("");
   const [labourRate, setLabourRate] = useState<number | string>("");
-  const [selectedDepartment, setSelectedDepartment] = useState<{name:string, slug:string, image:string} | null>(null);
-  
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [hasAutoSearched, setHasAutoSearched] = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("omnipart_recent_vrms");
-    if (saved) {
-      try {
-        setRecentSearches(JSON.parse(saved));
-      } catch (e) {}
-    }
-  }, []);
-
-  useEffect(() => {
-    if (defaultVrm && sessionToken && !hasAutoSearched) {
-      setHasAutoSearched(true);
-      
-      // Wait to ensure everything mounted smoothly
-      setTimeout(() => {
-        executeSearch("", false, "");
-      }, 500);
-    }
-  }, [defaultVrm, sessionToken, hasAutoSearched]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToEstimate = (part: any) => {
     // Default retail to RRP, or if RRP is missing/zero, provide a 40% margin on netPrice.
@@ -88,27 +63,18 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
 
   const commonCategories = [
     { label: "-- Select a Part --", value: "" },
-    { label: "Brake Discs", value: "brake-disc" },
-    { label: "Brake Pads", value: "brake-pad" },
-    { label: "Clutch Kits", value: "clutch-kit" },
-    { label: "Wheel Bearings & Hubs", value: "wheel-bearing-and-wheel-hub" },
-    { label: "Water Pumps & Gaskets", value: "water-pump-gasket" },
-    { label: "Alternators", value: "alternator" },
-    { label: "Car Battery", value: "car-battery" },
-    { label: "Starter Motors", value: "starter-motor" },
-    { label: "Spark Plugs", value: "spark-plug" },
-    { label: "Engine Oil", value: "engine-oils" },
-    { label: "Exhaust Systems", value: "exhaust-system" },
-    { label: "Turbo Chargers", value: "turbocharger" },
-    { label: "Fuel Pumps & Sender", value: "fuel-pump-sending-unit" },
-    { label: "Air Filters", value: "air-filter" },
-    { label: "Fuel Filters", value: "fuel-filter" },
-    { label: "Oil Filters", value: "oil-filter" },
-    { label: "Shock Absorbers", value: "shock-absorber" },
-    { label: "Springs", value: "coil-spring" },
-    { label: "EGR Valves", value: "egr-valves" },
-    { label: "Timing Belt Kit", value: "timing-belt-kit" },
+    { label: "Engine Oil", value: "engine-oil" },
+    { label: "Oil Filter", value: "oil-filter" },
+    { label: "Air Filter", value: "air-filter" },
+    { label: "Cabin / Pollen Filter", value: "cabin-filter" },
+    { label: "Fuel Filter", value: "fuel-filter" },
+    { label: "Spark Plugs", value: "spark-plugs" },
+    { label: "Brake Pads", value: "brake-pads" },
+    { label: "Brake Discs", value: "brake-discs" },
+    { label: "Car Battery", value: "car-batteries" },
     { label: "Wiper Blades", value: "wiper-blades" },
+    { label: "Timing Belt", value: "timing-belt-kit" },
+    { label: "Water Pump", value: "water-pump" },
     { label: "Other (Type manually)", value: "custom" }
   ];
 
@@ -130,29 +96,10 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
     setIsConfiguring(false);
   };
 
-  const departments = [
-    { name: "Air Conditioning", slug: "air-conditioning", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_20.jpg" },
-    { name: "Belts & Chains", slug: "belts-and-chains", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_21.jpg" },
-    { name: "Braking", slug: "braking", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_22.jpg" },
-    { name: "Bulbs", slug: "bulbs", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_30.jpg" },
-    { name: "Cables", slug: "cables", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_23.jpg" },
-    { name: "Clutch & Trans", slug: "clutch-and-transmission", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_24.jpg" },
-    { name: "Cooling & Heating", slug: "cooling-and-heating", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_25.jpg" },
-    { name: "Electrical", slug: "electrical-and-ignition", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_26.jpg" },
-    { name: "Engine Parts", slug: "engine-parts", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_27.jpg" },
-    { name: "Exhaust & Turbo", slug: "exhaust-and-turbo", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_28.jpg" },
-    { name: "Fuel & Engine", slug: "fuel-and-engine-management", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_29.jpg" },
-    { name: "Lubricants", slug: "lubricants-and-fluids", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_31.jpg" },
-    { name: "Service Parts", slug: "service-parts", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_32.jpg" },
-    { name: "Steering", slug: "steering", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_33.jpg" },
-    { name: "Suspension", slug: "suspension", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_34.jpg" },
-    { name: "Wipers", slug: "wiper-blades", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/cp2_35.jpg" },
-    { name: "Accessories", slug: "accessories", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/Accessories_1.png" },
-    { name: "Performance", slug: "performance-styling", image: "https://assets.omnipart.eurocarparts.com/CategoryImages/Performance_1.png" }
-  ];
-
-  const executeSearch = async (targetSlug: string, isCustom: boolean, customValue: string = "") => {
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!vrm) return;
+
     if (!sessionToken) {
       toast.error("Please configure your Omnipart Token first.");
       setIsConfiguring(true);
@@ -162,36 +109,29 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
     try {
       // Step 1: Lookup VRM
       toast.info(`Looking up vehicle ${vrm.toUpperCase()}...`);
-      const cleanVrm = vrm.replace(/\s+/g, '').toUpperCase();
       const vrmRes = await vrmMutation.mutateAsync({ 
-        vrm: cleanVrm, 
+        vrm: vrm.replace(/\s+/g, '').toUpperCase(), 
         token: sessionToken 
-      });
-      
-      setRecentSearches(prev => {
-         const newSearches = [cleanVrm, ...prev.filter(v => v !== cleanVrm)].slice(0, 5);
-         localStorage.setItem("omnipart_recent_vrms", JSON.stringify(newSearches));
-         return newSearches;
       });
       
       setVehicle(vrmRes);
       setParts([]);
 
       // Step 2: Lookup Parts if requested
-      if ((targetSlug || (isCustom && customValue)) && vrmRes.vehicleId) {
-        const queryLabel = isCustom ? customValue : targetSlug;
+      if ((partQuery || (partQuery === "custom" && customQuery)) && vrmRes.vehicleId) {
+        const queryLabel = partQuery === "custom" ? customQuery : partQuery;
         toast.info(`Finding ${queryLabel} for ${vrmRes.make}...`);
         
-        // For custom text searches, pass the raw keywords. For typical mapped categories, use the deep category slug.
-        const passedSlug = isCustom 
-           ? customValue 
-           : targetSlug;
+        // Remove unsafe characters for SEO slug matching
+        const slug = partQuery === "custom" 
+           ? encodeURIComponent(customQuery.toLowerCase().replace(/[^a-z0-9]+/g, '-')) 
+           : partQuery.toLowerCase().replace(/\s+/g, '-');
         
         const partsRes = await partsMutation.mutateAsync({
           vehicleId: vrmRes.vehicleId.toString(),
           vrm: vrm, // Provide VRM to help set the active session
-          categorySlug: isCustom ? customValue : passedSlug,
-          isCustomSearch: isCustom,
+          categorySlug: partQuery === "custom" ? customQuery : slug,
+          isCustomSearch: partQuery === "custom",
           token: sessionToken
         });
 
@@ -223,11 +163,6 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
         toast.error(msg);
       }
     }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    executeSearch(partQuery, partQuery === "custom", customQuery);
   };
 
   const isWorking = vrmMutation.isPending || partsMutation.isPending;
@@ -305,150 +240,46 @@ export function OmnipartIntegration({ defaultVrm = "" }: { defaultVrm?: string }
             </div>
           )}
 
-          <div className="mb-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Input 
-                  placeholder="ENTER REG" 
-                  value={vrm} onChange={e => setVrm(e.target.value)} 
-                  className="font-mono text-2xl uppercase h-14 text-center font-bold tracking-widest text-black border-2 border-slate-800 bg-yellow-400 focus-visible:ring-yellow-500 shadow-inner rounded-md placeholder:text-black/30 placeholder:font-normal"
-                  maxLength={8}
-                  disabled={isWorking}
-                />
-              </div>
-              <Button onClick={() => executeSearch("", false, "")} disabled={isWorking || !vrm} className="h-14 px-8 text-lg bg-slate-800 hover:bg-slate-900 text-white shadow-md">
-                  {vrmMutation.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Search className="w-5 h-5 mr-2" />}
-                  Identify Vehicle
-              </Button>
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <Input 
+                placeholder="Registration (e.g. RE16 RWP)" 
+                value={vrm} onChange={e => setVrm(e.target.value)} 
+                className="font-mono text-lg uppercase bg-white border-slate-300"
+                maxLength={8}
+                disabled={isWorking}
+              />
             </div>
-
-            {recentSearches.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">Recent history:</span>
-                {recentSearches.map(r => (
-                  <button 
-                    key={r}
-                    type="button"
-                    onClick={() => { 
-                       setVrm(r); 
-                       setTimeout(() => {
-                           // Trigger identify logic directly
-                           vrmMutation.mutateAsync({ vrm: r, token: sessionToken }).then(vrmRes => {
-                               setVehicle(vrmRes);
-                               setParts([]);
-                               toast.success(`Vehicle identified: ${vrmRes.make} ${vrmRes.model}`);
-                           }).catch(err => {
-                               toast.error(err.message || "Failed to identify vehicle");
-                           });
-                       }, 100); 
-                    }}
-                    className="text-xs px-2.5 py-1 bg-white hover:bg-yellow-100 border border-slate-200 hover:border-yellow-400 rounded-md text-slate-700 font-mono shadow-sm transition-colors"
-                  >
-                    {r}
-                  </button>
+            <div className={`flex-1 flex flex-col sm:flex-row gap-2 ${partQuery === "custom" ? "sm:col-span-2" : ""}`}>
+              <select
+                value={partQuery} 
+                onChange={e => {
+                  setPartQuery(e.target.value);
+                  if (e.target.value !== "custom") setCustomQuery("");
+                }} 
+                disabled={isWorking}
+                className="w-full h-10 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {commonCategories.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
-              </div>
-            )}
-
-            <Tabs defaultValue="departments" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="departments">Departments Grid</TabsTrigger>
-                <TabsTrigger value="list">Dropdown List</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="departments" className="mt-4">
-                {!selectedDepartment ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {departments.map((dep, i) => (
-                      <button 
-                        key={i} 
-                        type="button"
-                        onClick={() => setSelectedDepartment(dep)}
-                        className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group h-full"
-                      >
-                        <div className="h-14 w-14 relative flex-shrink-0 flex items-center justify-center">
-                           <img src={dep.image} alt={dep.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out drop-shadow-sm" />
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700 text-center leading-tight line-clamp-2">
-                          {dep.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-6 bg-slate-50/50 p-4 rounded-xl border border-slate-200 relative">
-                    <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedDepartment(null)} className="h-8 px-2 -ml-2 text-slate-500 hover:text-slate-900">
-                          <Search className="w-4 h-4 mr-1 rotate-90" /> Back
-                        </Button>
-                        <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                          <img src={selectedDepartment.image} className="w-6 h-6 mix-blend-multiply" alt="" />
-                          {selectedDepartment.name}
-                        </h3>
-                    </div>
-                    
-                    {Array.from(new Set(omnipartSubcategories.filter(s => s.topLevelSlug === selectedDepartment.slug).map(s => s.subgroupTitle))).map(subgroup => (
-                       <div key={subgroup} className="space-y-3">
-                          <h4 className="text-sm font-semibold text-slate-500 border-b pb-1">{subgroup}</h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {omnipartSubcategories.filter(s => s.topLevelSlug === selectedDepartment.slug && s.subgroupTitle === subgroup).map((sub, j) => (
-                               <button 
-                                 key={j} 
-                                 type="button"
-                                 disabled={isWorking}
-                                 onClick={() => executeSearch(sub.slug, true, sub.name)}
-                                 className="flex flex-col items-center justify-between p-3 gap-2 bg-white border border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all group disabled:opacity-50 disabled:cursor-not-allowed h-full"
-                               >
-                                 <div className="h-10 w-10 relative flex-shrink-0 flex items-center justify-center">
-                                    <img src={sub.image || selectedDepartment.image} alt={sub.name} className="max-w-full max-h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-200 ease-out" />
-                                 </div>
-                                 <span className="text-xs font-medium text-slate-700 text-center leading-tight line-clamp-2">
-                                   {sub.name}
-                                 </span>
-                               </button>
-                            ))}
-                          </div>
-                       </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="list" className="mt-4">
-                <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
-                  <div className={`flex-1 flex flex-col sm:flex-row gap-2 ${partQuery === "custom" ? "sm:col-span-2" : ""}`}>
-                    <select
-                      value={partQuery} 
-                      onChange={e => {
-                        setPartQuery(e.target.value);
-                        if (e.target.value !== "custom") setCustomQuery("");
-                      }} 
-                      disabled={isWorking}
-                      className="w-full h-12 px-3 py-2 bg-white border border-slate-300 rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
-                    >
-                      {commonCategories.map(cat => (
-                        <option key={cat.value} value={cat.value}>{cat.label}</option>
-                      ))}
-                    </select>
-                    {partQuery === "custom" && (
-                      <Input 
-                        placeholder="E.g. spark plug, alternators..."
-                        value={customQuery}
-                        onChange={e => setCustomQuery(e.target.value)}
-                        className="w-full sm:w-1/2 h-12 bg-white border-slate-300 shadow-sm"
-                        disabled={isWorking}
-                        autoFocus
-                      />
-                    )}
-                  </div>
-                  <Button type="submit" disabled={isWorking || !vrm} className="h-12 bg-blue-600 hover:bg-blue-700 text-white px-8 shadow-sm">
-                    {partsMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-                    Search
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
-          </div>
+              </select>
+              {partQuery === "custom" && (
+                <Input 
+                  placeholder="E.g. spark plug, alternators..."
+                  value={customQuery}
+                  onChange={e => setCustomQuery(e.target.value)}
+                  className="w-full sm:w-1/2 h-10 bg-white border-slate-300"
+                  disabled={isWorking}
+                  autoFocus
+                />
+              )}
+            </div>
+            <Button type="submit" disabled={isWorking || !vrm} className="bg-blue-600 hover:bg-blue-700 text-white">
+              {isWorking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+              Lookup Vehicle & Parts
+            </Button>
+          </form>
 
           {vehicle && (
             <div className="mt-6 bg-slate-50 p-4 rounded-xl border border-slate-200">

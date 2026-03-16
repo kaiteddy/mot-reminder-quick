@@ -1,50 +1,53 @@
 import 'dotenv/config';
-import { getAppSetting } from './server/db.js';
-import { exec } from 'child_process';
-import util from 'util';
-const execPromise = util.promisify(exec);
-
-async function crawlWithCurl(method: string, url: string, headers: Record<string, string>, body?: string) {
-    let curlCmd = `curl -s -X ${method} "${url}"`;
-    for (const [k, v] of Object.entries(headers)) {
-        curlCmd += ` -H "${k}: ${v.replace(/"/g, '\\"')}"`;
-    }
-    if (body) {
-        curlCmd += ` -d '${body.replace(/'/g, "'\\''")}'`;
-    }
-    const { stdout } = await execPromise(curlCmd);
-    try {
-        return JSON.parse(stdout);
-    } catch(e) {
-        console.log("Failed to parse JSON. Raw output:", stdout.slice(0, 500));
-        throw e;
-    }
-}
+import { crawlWithCurl } from './server/routers/omnipart.ts';
 
 async function run() {
-    const token = await getAppSetting('omnipart_jwt_token') as string;
-    let clean = token.replace(/^["']|["']$/g, '').trim().replace(/[\n\r]| /g, '');
-    const headers = { 
-        "Authorization": `Bearer ${clean}`,
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Origin": "https://omnipart.eurocarparts.com",
-        "Referer": "https://omnipart.eurocarparts.com/"
-    };
-
     try {
-        const urlKeywords = encodeURIComponent("Air Conditioning");
-        const searchUrl = `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${urlKeywords}&vehicleId=53130`;
-        const data1 = await crawlWithCurl("GET", searchUrl, headers);
-        console.log("data1.products isArray: ", Array.isArray(data1.products));
-        if (Array.isArray(data1.products)) {
-            console.log("products array length:", data1.products.length);
-            console.log("first item:", data1.products[0]);
-        } else {
-            console.log("type of products:", typeof data1.products);
+        const { getAppSetting } = await import('./server/db.ts');
+        const dbToken = await getAppSetting('omnipart_jwt_token');
+        let authHeader = "";
+        let cookieHeader = "";
+        if (dbToken && typeof dbToken === 'string') {
+            if (dbToken.startsWith("COOKIE_JAR:")) {
+                cookieHeader = dbToken.substring(11).trim();
+                let match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
+                if (match) authHeader = `Bearer ${match[1]}`;
+            } else {
+                let clean = dbToken.replace(/^["']|["']$/g, '').trim().replace(/[\n\r]| /g, '');
+                const lc = clean.toLowerCase();
+                if (lc.startsWith("authorization:bearer")) clean = clean.substring(20);
+                else if (lc.startsWith("bearer")) clean = clean.substring(6);
+                authHeader = `Bearer ${clean}`;
+            }
         }
-    } catch(e:any) {
-        console.error(e);
+        
+        const apiHeaders: Record<string, string> = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "Origin": "https://omnipart.eurocarparts.com",
+            "Referer": "https://omnipart.eurocarparts.com/"
+        };
+        if (authHeader) apiHeaders["Authorization"] = authHeader;
+        if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
+        
+        const cookieJar = `/tmp/test_search.txt`;
+        const slug = "brake-disc";
+        const vehicleId = "148810"; // RF67NRO Kuga
+        
+        console.log("Establishing session...");
+        await crawlWithCurl("GET", "https://omnipart.eurocarparts.com/", apiHeaders, null, cookieJar, false);
+        await crawlWithCurl("POST", "https://api.omnipart.eurocarparts.com/storefront/vehicle-search/vrm", apiHeaders, JSON.stringify({ vrm: "RF67NRO", saveToCache: true }), cookieJar);
+
+        apiHeaders["Accept"] = "application/ld+json";
+        
+        console.log("TRYING /storefront/vehicle-specific-products/192");
+        const specUrl1 = `https://api.omnipart.eurocarparts.com/storefront/vehicle-specific-products/192`;
+        const res1 = await crawlWithCurl("GET", specUrl1, apiHeaders, null, cookieJar, false);
+        console.log("1:", res1.substring(0, 500));
+        
+    } catch (e: any) {
+        console.error("ERROR:", e.message);
     }
 }
-run().catch(console.error);
+run();

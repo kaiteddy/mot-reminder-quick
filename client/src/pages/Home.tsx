@@ -57,6 +57,7 @@ export default function Home() {
   const [showDeadVehicles, setShowDeadVehicles] = useState(false);
   const [hideMissingPhone, setHideMissingPhone] = useState(true);
   const [hideSorn, setHideSorn] = useState(true);
+  const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -295,6 +296,14 @@ export default function Home() {
         return false;
       }
 
+      // Filter: Hide expired AND read
+      if (hideReadAndExpired && vehicle.motExpiryDate) {
+        const diffDays = Math.ceil((new Date(vehicle.motExpiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0 && vehicle.lastReminderStatus === 'read') {
+          return false;
+        }
+      }
+
       const termLower = searchTerm.toLowerCase();
       const matchesSearch = (vehicle.registration?.toLowerCase() || "").includes(termLower.replace(/\s+/g, '')) ||
         (vehicle.customerName?.toLowerCase() || "").includes(termLower) ||
@@ -329,7 +338,7 @@ export default function Home() {
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired]);
 
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
@@ -435,6 +444,20 @@ export default function Home() {
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
                   Hide SORN Vehicles
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="hide-read-expired-home"
+                  checked={hideReadAndExpired}
+                  onCheckedChange={(checked) => setHideReadAndExpired(checked as boolean)}
+                />
+                <label
+                  htmlFor="hide-read-expired-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Hide Read & Expired
                 </label>
               </div>
             </div>

@@ -181,7 +181,7 @@ export default function MOTCheck() {
           <CardHeader>
             <CardTitle>Vehicle Registration</CardTitle>
             <CardDescription>
-              Enter a UK vehicle registration to check MOT history. Try <strong>TEST123</strong> to see a demo of the expiry display.
+              Enter a UK vehicle registration to check MOT history. Try <strong>RF67NRO</strong> to see a demo of the expiry display.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -194,13 +194,35 @@ export default function MOTCheck() {
                   id="registration"
                   value={registration}
                   onChange={(e) => setRegistration(e.target.value.toUpperCase())}
-                  placeholder="e.g., AB12 CDE"
-                  className="text-lg font-mono"
+                  placeholder="ENTER REG"
+                  className="text-center font-mono uppercase bg-[#FDD017] text-black border-4 border-slate-900 rounded-lg font-bold shadow-inner placeholder:text-black/30 h-16 text-3xl tracking-widest focus-visible:ring-offset-0 focus-visible:ring-black"
                   maxLength={8}
                 />
+                
+                {recentMOTSearches.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pl-1">
+                    <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Recent:</span>
+                    {recentMOTSearches.map((vrm) => (
+                      <Badge 
+                        key={vrm} 
+                        variant="secondary" 
+                        className="cursor-pointer hover:bg-slate-200 text-xs font-mono border border-slate-200"
+                        onClick={() => {
+                           setRegistration(vrm);
+                           lookupMutation.mutate({ registration: vrm });
+                        }}
+                      >
+                        {vrm}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
-              <Button type="submit" size="lg" disabled={lookupMutation.isPending}>
-                {lookupMutation.isPending ? (
+              <Button 
+                type="submit" 
+                disabled={lookupMutation.isPending || !registration}
+                className="h-16 px-8 text-lg font-medium shadow-sm transition-all rounded-lg"
+              >             {lookupMutation.isPending ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Searching...

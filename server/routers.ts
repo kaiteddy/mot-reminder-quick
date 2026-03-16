@@ -366,6 +366,10 @@ export const appRouter = router({
             status = "archived";
           }
 
+          if (daysUntilExpiry < 0 && deliveryStatus === "read") {
+            status = "archived";
+          }
+
           if (status === "sent" && sentAt) {
             let lastResponseDate: Date | null = null;
             if (v.customerId && messageMap.has(v.customerId)) {
@@ -388,6 +392,11 @@ export const appRouter = router({
           if (manualState?.customerResponded) {
             customerResponded = 1;
             needsFollowUp = 0;
+          }
+
+          if (status === "archived" && deliveryStatus === "read") {
+            needsFollowUp = 0;
+            customerResponded = 1; // Count reading an expired MOT as completing the communication loop
           }
 
           return {
