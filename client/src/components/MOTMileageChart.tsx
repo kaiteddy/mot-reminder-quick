@@ -99,7 +99,13 @@ export function MOTMileageChart({ tests }: MOTMileageChartProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[250px] w-full mt-4">
+        <div 
+          className="h-[250px] mt-4" 
+          style={{ 
+            width: "100%", 
+            maxWidth: chartData.length <= 4 ? `${Math.max(chartData.length * 180, 400)}px` : "100%" 
+          }}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
