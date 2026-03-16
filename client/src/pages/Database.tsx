@@ -83,6 +83,7 @@ export default function Database() {
   const [hideMissingPhone, setHideMissingPhone] = useState(true);
   const [hideSorn, setHideSorn] = useState(true);
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
+  const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -535,6 +536,11 @@ export default function Database() {
         }
       }
 
+      // Filter: Show only never sent
+      if (showOnlyNeverSent && vehicle.lastReminderSent) {
+        return false;
+      }
+
       const termLower = debouncedSearchTerm.toLowerCase();
       const termNormalized = termLower.replace(/\s+/g, '');
 
@@ -648,7 +654,7 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired]);
+  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -1062,6 +1068,20 @@ export default function Database() {
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
                 Hide Read & Expired
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox
+                id="show-only-never-sent-database"
+                checked={showOnlyNeverSent}
+                onCheckedChange={(checked) => setShowOnlyNeverSent(checked as boolean)}
+              />
+              <label
+                htmlFor="show-only-never-sent-database"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Show Only Never Sent
               </label>
             </div>
 

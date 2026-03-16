@@ -58,6 +58,7 @@ export default function Home() {
   const [hideMissingPhone, setHideMissingPhone] = useState(true);
   const [hideSorn, setHideSorn] = useState(true);
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
+  const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -304,6 +305,11 @@ export default function Home() {
         }
       }
 
+      // Filter: Show only never sent
+      if (showOnlyNeverSent && vehicle.lastReminderSent) {
+        return false;
+      }
+
       const termLower = searchTerm.toLowerCase();
       const matchesSearch = (vehicle.registration?.toLowerCase() || "").includes(termLower.replace(/\s+/g, '')) ||
         (vehicle.customerName?.toLowerCase() || "").includes(termLower) ||
@@ -338,7 +344,7 @@ export default function Home() {
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent]);
 
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
@@ -458,6 +464,20 @@ export default function Home() {
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
                   Hide Read & Expired
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-only-never-sent-home"
+                  checked={showOnlyNeverSent}
+                  onCheckedChange={(checked) => setShowOnlyNeverSent(checked as boolean)}
+                />
+                <label
+                  htmlFor="show-only-never-sent-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Show Only Never Sent
                 </label>
               </div>
             </div>
