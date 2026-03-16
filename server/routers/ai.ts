@@ -1,10 +1,16 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateText, generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { ENV } from "../_core/env";
 import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
+
+const aiProvider = createOpenAI({
+  baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
+  apiKey: ENV.forgeApiKey,
+});
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -19,8 +25,8 @@ export const aiRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error("OPENAI_API_KEY is not configured.");
+      if (!ENV.forgeApiKey) {
+        throw new Error("AI API key is not configured. Please set BUILT_IN_FORGE_API_KEY in your .env");
       }
 
       const db = await getDb();
@@ -106,7 +112,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
 
       try {
         const { object } = await generateObject({
-          model: openai('gpt-4o-mini'),
+          model: aiProvider('gpt-4o-mini'),
           system: "You are an expert UK mechanic and garage manager.",
           prompt: prompt,
           schema: z.object({
@@ -143,8 +149,8 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       year: z.number().optional()
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error("OPENAI_API_KEY is not configured.");
+      if (!ENV.forgeApiKey) {
+        throw new Error("AI API key is not configured. Please set BUILT_IN_FORGE_API_KEY in your .env");
       }
 
       const prompt = `You are a friendly, helpful UK mechanic talking to a customer who knows absolutely nothing about cars. They received this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
@@ -161,7 +167,7 @@ CRITICAL INSTRUCTIONS:
 
       try {
         const { text } = await generateText({
-          model: openai('gpt-4o-mini'),
+          model: aiProvider('gpt-4o-mini'),
           system: "You are a helpful, friendly UK mechanic.",
           prompt: prompt,
         });
