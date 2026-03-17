@@ -65,6 +65,8 @@ export default function Home() {
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
   // History State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -353,6 +355,11 @@ export default function Home() {
     return filtered;
   }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter]);
+
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
     let expired = 0, due = 0, valid = 0, noData = 0, e90 = 0, e60 = 0, e30 = 0, e7 = 0, x7 = 0, x14 = 0, x30 = 0, x60 = 0, x90 = 0;
@@ -511,9 +518,9 @@ export default function Home() {
         </Card>
 
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <ComprehensiveVehicleTable
-              vehicles={filteredAndSortedVehicles}
+              vehicles={filteredAndSortedVehicles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)}
               isLoading={isLoading}
               selectedVehicleIds={selectedVehicleIds}
               onSelectAll={handleSelectAll}
@@ -529,6 +536,33 @@ export default function Home() {
               }}
             />
           </CardContent>
+
+          {/* Pagination Controls */}
+          {!isLoading && filteredAndSortedVehicles.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-4 border-t">
+              <div className="text-sm text-slate-500">
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedVehicles.length)} of {filteredAndSortedVehicles.length} entries
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  disabled={currentPage * ITEMS_PER_PAGE >= filteredAndSortedVehicles.length}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Dialogs */}
