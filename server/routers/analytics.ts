@@ -109,4 +109,121 @@ export const analyticsRouter = router({
                 dailyStats
             };
         }),
+        
+    getFinancialStats: publicProcedure
+        .query(async ({ ctx }) => {
+            const { getDb } = await import("../db");
+            const db = await getDb();
+            if (!db) {
+                throw new Error("Database not available");
+            }
+            
+            const { serviceHistory } = await import("../../drizzle/schema");
+            
+            // 1. Fetch all docs with 'SI' (Sales Invoice) or 'SR' (Sales Receipt) to calculate revenue
+            // Since it's ~33k rows, pulling just dateCreated/dateIssued and totalGross is very fast
+            const docs = await db
+                .select({
+                    dateIssued: serviceHistory.dateIssued,
+                    dateCreated: serviceHistory.dateCreated,
+                    totalGross: serviceHistory.totalGross,
+                    docType: serviceHistory.docType
+                })
+                .from(serviceHistory)
+                .where(
+                    sql`${serviceHistory.docType} = 'SI' OR ${serviceHistory.docType} = 'SR'`
+                );
+                
+            let totalRevenue = 0;
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+            
+            // Helpful boundaries
+            const lastWeekStart = new Date(now);
+            lastWeekStart.setDate(lastWeekStart.getDate() - 14);
+            
+            const thisWeekStart = new Date(now);
+            thisWeekStart.setDate(thisWeekStart.getDate() - 7);
+            
+            const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            
+            const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
+            const thisYearStart = new Date(now.getFullYear(), 0, 1);
+            
+            let revenueThisWeek = 0;
+            let revenueLastWeek = 0;
+            
+            let revenueThisMonth = 0;
+            let revenueLastMonth = 0;
+            
+            let revenueThisYear = 0;
+            let revenueLastYear = 0;
+            
+            // For charting
+            const monthlyChartDataMap = new Map<string, number>();
+            const yearlyChartDataMap = new Map<string, number>();
+            
+            for (const doc of docs) {
+                // Prefer dateIssued, fallback to dateCreated
+                const docDate = doc.dateIssued || doc.dateCreated;
+                if (!docDate) continue;
+                
+                const val = parseFloat(doc.totalGross as any) || 0;
+                totalRevenue += val;
+                
+                const dateObj = new Date(docDate);
+                const year = dateObj.getFullYear();
+                const month = dateObj.getMonth();
+                
+                // Yearly
+                if (year === currentYear) revenueThisYear += val;
+                if (year === currentYear - 1) revenueLastYear += val;
+                
+                // Monthly
+                if (dateObj >= thisMonthStart) revenueThisMonth += val;
+                if (dateObj >= lastMonthStart && dateObj < thisMonthStart) revenueLastMonth += val;
+                
+                // Weekly
+                if (dateObj >= thisWeekStart) revenueThisWeek += val;
+                if (dateObj >= lastWeekStart && dateObj < thisWeekStart) revenueLastWeek += val;
+                
+                // Chart mappings
+                const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+                monthlyChartDataMap.set(monthKey, (monthlyChartDataMap.get(monthKey) || 0) + val);
+                
+                const yearKey = `${year}`;
+                yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
+            }
+            
+            // Format chart data
+            const monthlyChartData = Array.from(monthlyChartDataMap.entries())
+                .map(([date, revenue]) => ({ date, revenue }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+                
+            const yearlyChartData = Array.from(yearlyChartDataMap.entries())
+                .map(([year, revenue]) => ({ year, revenue }))
+                .sort((a, b) => a.year.localeCompare(b.year));
+                
+            // Safe division for percentages
+            const wowChange = revenueLastWeek > 0 ? ((revenueThisWeek - revenueLastWeek) / revenueLastWeek) * 100 : 0;
+            const momChange = revenueLastMonth > 0 ? ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100 : 0;
+            const yoyChange = revenueLastYear > 0 ? ((revenueThisYear - revenueLastYear) / revenueLastYear) * 100 : 0;
+            
+            return {
+                totalRevenue,
+                revenueThisWeek,
+                revenueLastWeek,
+                wowChange,
+                revenueThisMonth,
+                revenueLastMonth,
+                momChange,
+                revenueThisYear,
+                revenueLastYear,
+                yoyChange,
+                monthlyChartData,
+                yearlyChartData
+            };
+        }),
 });
