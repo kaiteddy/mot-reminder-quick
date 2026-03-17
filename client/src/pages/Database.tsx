@@ -64,7 +64,10 @@ import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ComprehensiveVehicleTable } from "@/components/ComprehensiveVehicleTable";
 import { BookMOTDialog } from "@/components/BookMOTDialog";
+import { ImageUpload } from "@/components/ImageUpload";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
+import { DebouncedInput } from "@/components/DebouncedInput";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type SortDirection = "asc" | "desc";
@@ -108,16 +111,6 @@ export default function Database() {
   const [showBookedDialog, setShowBookedDialog] = useState(false);
   const [bookedDate, setBookedDate] = useState<string>("");
   const [bookingTargetIds, setBookingTargetIds] = useState<Set<number> | null>(null);
-
-  // Debounced search term
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
 
   // Service History State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -547,7 +540,7 @@ export default function Database() {
         return false;
       }
 
-      const termLower = debouncedSearchTerm.toLowerCase();
+      const termLower = searchTerm.toLowerCase();
       const termNormalized = termLower.replace(/\s+/g, '');
 
       const matchesSearch =
@@ -660,12 +653,12 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, debouncedSearchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
+  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, motStatusFilter, dateRangeFilter]);
+  }, [searchTerm, motStatusFilter, dateRangeFilter]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -989,10 +982,10 @@ export default function Database() {
             <div className="flex gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
+                <DebouncedInput
                   placeholder="Search by registration, customer, make, or model..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(val) => setSearchTerm(val)}
                   className="pl-10"
                 />
               </div>

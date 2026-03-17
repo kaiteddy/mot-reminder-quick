@@ -42,6 +42,7 @@ import { BookMOTDialog } from "@/components/BookMOTDialog";
 import { APP_TITLE } from "@/const";
 import { ImageUpload } from "@/components/ImageUpload";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import { DebouncedInput } from "@/components/DebouncedInput";
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
@@ -404,7 +405,12 @@ export default function Home() {
             <div className="flex gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+                <DebouncedInput 
+                  placeholder="Search Registration, Customer, or Make..." 
+                  value={searchTerm} 
+                  onChange={(val) => setSearchTerm(val)} 
+                  className="pl-10" 
+                />
               </div>
               <Select value={dateRangeFilter} onValueChange={(v) => setDateRangeFilter(v as any)}>
                 <SelectTrigger className="w-48"><SelectValue placeholder="Date Range" /></SelectTrigger>
