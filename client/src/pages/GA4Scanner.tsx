@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck } from "lucide-react";
+import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,6 +94,7 @@ export default function GA4Scanner() {
     const [showBookedDialog, setShowBookedDialog] = useState(false);
     const [bookingTargetRegs, setBookingTargetRegs] = useState<Set<string> | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [hideSuccessful, setHideSuccessful] = useState(false);
 
     const createMutation = trpc.reminders.createManualReminder.useMutation();
     const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
@@ -283,10 +284,20 @@ export default function GA4Scanner() {
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
         .filter((id): id is number => id !== null && id !== undefined);
 
-    const sortedFilteredResults = results.filter(item =>
-        item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const sortedFilteredResults = results.filter(item => {
+        const matchesSearch = item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase());
+            
+        if (!matchesSearch) return false;
+
+        if (hideSuccessful) {
+            // Hide if it was successfully sent, delivered or read
+            if (item.lastStatus === "read" || item.lastStatus === "delivered" || item.lastStatus === "sent") {
+                return false;
+            }
+        }
+        return true;
+    });
 
     return (
         <DashboardLayout>
@@ -324,6 +335,19 @@ export default function GA4Scanner() {
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                     />
+                                </div>
+                                <div className="flex items-center space-x-2 mt-2 sm:mt-0 px-2">
+                                    <Checkbox
+                                        id="hide-successful"
+                                        checked={hideSuccessful}
+                                        onCheckedChange={(checked) => setHideSuccessful(checked as boolean)}
+                                    />
+                                    <label
+                                        htmlFor="hide-successful"
+                                        className="text-sm font-medium leading-none whitespace-nowrap peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                        Hide Sent/Delivered
+                                    </label>
                                 </div>
                                 <div className="flex items-center gap-2 mt-2 sm:mt-0">
                                     <Button
@@ -414,7 +438,7 @@ export default function GA4Scanner() {
                                         <TableHead className="w-[100px]">MOT</TableHead>
                                         <TableHead className="w-[120px]">Status</TableHead>
                                         <TableHead className="w-[100px]">Tax</TableHead>
-                                        <TableHead className="w-[100px]">Last Sent</TableHead>
+                                        <TableHead className="w-[140px]">Last Sent</TableHead>
                                         <TableHead className="w-[90px]">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -538,7 +562,19 @@ export default function GA4Scanner() {
                                                     ) : '-'}
                                                 </TableCell>
                                                 <TableCell className="align-middle text-muted-foreground text-xs">
-                                                    {sentDate}
+                                                    <div className="flex flex-col gap-1">
+                                                        <span>{sentDate}</span>
+                                                        {item.lastSent && (
+                                                            <div className="flex items-center gap-1.5">
+                                                                {item.lastStatus === "read" ? <Eye className="w-3.5 h-3.5 text-blue-600" /> :
+                                                                 item.lastStatus === "delivered" ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> :
+                                                                 item.lastStatus === "sent" ? <Clock className="w-3.5 h-3.5 text-yellow-600" /> :
+                                                                 item.lastStatus === "failed" ? <XCircle className="w-3.5 h-3.5 text-red-600" /> :
+                                                                 <Clock className="w-3.5 h-3.5 text-gray-400" />}
+                                                                <span className="capitalize">{item.lastStatus || 'queued'}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="align-middle">
                                                     {isSent ? (
