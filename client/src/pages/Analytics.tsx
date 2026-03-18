@@ -122,12 +122,14 @@ export default function Analytics() {
                                 <CardContent className="pl-2">
                                     <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={financials?.weeklyChartData || []} margin={{ bottom: 20 }}>
+                                            <BarChart data={financials?.weeklyChartData || []} margin={{ bottom: 40 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis 
                                                     dataKey="date" 
-                                                    tick={{ fontSize: 11 }} 
+                                                    tick={{ fontSize: 10 }} 
                                                     angle={-45}
+                                                    interval={0}
+                                                    height={60}
                                                     textAnchor="end"
                                                     tickFormatter={(value) => {
                                                         const [year, month, day] = value.split('-');
