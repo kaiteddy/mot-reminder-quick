@@ -15,13 +15,17 @@ export default function Vehicles() {
   const [, setLocation] = useLocation();
   const { data: vehicles, isLoading, refetch } = trpc.vehicles.list.useQuery();
 
-  const filteredVehicles = vehicles?.filter((vehicle) => {
-    const search = searchTerm.toLowerCase();
+  const filteredVehicles = vehicles?.filter((vehicle: any) => {
+    const search = searchTerm.toLowerCase().trim();
+    const searchNoSpace = search.replace(/\s/g, '');
+    
     return (
-      vehicle.registration?.toLowerCase().includes(search) ||
+      (vehicle.registration || "").toLowerCase().replace(/\s/g, '').includes(searchNoSpace) ||
       vehicle.make?.toLowerCase().includes(search) ||
       vehicle.model?.toLowerCase().includes(search) ||
-      vehicle.vin?.toLowerCase().includes(search)
+      vehicle.vin?.toLowerCase().includes(search) ||
+      vehicle.customerName?.toLowerCase().includes(search) ||
+      vehicle.customerPhone?.toLowerCase().includes(search)
     );
   }) || [];
 
@@ -77,7 +81,7 @@ export default function Vehicles() {
             <div className="flex items-center gap-2">
               <Search className="w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search by registration, make, model, or VIN..."
+                placeholder="Search by registration (e.g. LD57 PYG), customer, phone, or make..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1"
@@ -120,12 +124,19 @@ export default function Vehicles() {
                               <div className="font-bold text-base">
                                 {vehicle.make || "Unknown"} {vehicle.model || ""}
                               </div>
-                              {vehicle.colour && (
-                                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <div className="w-2 h-2 rounded-full border border-border" style={{ backgroundColor: vehicle.colour.toLowerCase() }} />
-                                  {vehicle.colour}
-                                </div>
-                              )}
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
+                                  {vehicle.colour && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <div className="w-2 h-2 rounded-full border border-border" style={{ backgroundColor: vehicle.colour.toLowerCase() }} />
+                                      {vehicle.colour}
+                                    </span>
+                                  )}
+                                  {(vehicle as any).customerName && (
+                                    <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary font-medium rounded">
+                                      Owner: {(vehicle as any).customerName}
+                                    </span>
+                                  )}
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
