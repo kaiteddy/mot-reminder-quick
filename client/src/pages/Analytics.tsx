@@ -122,14 +122,18 @@ export default function Analytics() {
                                 <CardContent className="pl-2">
                                     <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={(financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'))}>
+                                            <BarChart data={(financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'))} margin={{ bottom: 20 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis 
                                                     dataKey="date" 
-                                                    tick={{ fontSize: 12 }} 
+                                                    tick={{ fontSize: 11 }} 
+                                                    interval={0}
+                                                    angle={-45}
+                                                    textAnchor="end"
                                                     tickFormatter={(value) => {
                                                         const [year, month] = value.split('-');
-                                                        return `${month}/${year.slice(2)}`;
+                                                        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                                        return `${monthNames[parseInt(month)-1]} '${year.slice(2)}`;
                                                     }}
                                                 />
                                                 <YAxis 
@@ -139,9 +143,14 @@ export default function Analytics() {
                                                 <Tooltip 
                                                     contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                                     formatter={(value: any) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'Revenue']}
+                                                    labelFormatter={(label) => {
+                                                         const [year, month] = label.split('-');
+                                                         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                                                         return `${monthNames[parseInt(month)-1]} ${year}`;
+                                                    }}
                                                 />
-                                                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-                                            </LineChart>
+                                                <Bar dataKey="revenue" name="Revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </CardContent>

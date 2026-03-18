@@ -179,6 +179,14 @@ export const analyticsRouter = router({
             const monthlyChartDataMap = new Map<string, number>();
             const yearlyChartDataMap = new Map<string, number>();
             
+            // Pre-fill 2025 and 2026 strictly with 0s so empty months still render on the graph
+            for (const y of [2025, 2026]) {
+                for (let m = 1; m <= 12; m++) {
+                    const key = `${y}-${String(m).padStart(2, '0')}`;
+                    monthlyChartDataMap.set(key, 0);
+                }
+            }
+            
             for (const doc of docs) {
                 // Prefer dateIssued, fallback to dateCreated
                 const docDate = doc.dateIssued || doc.dateCreated;
