@@ -52,6 +52,7 @@ import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: BarChart, label: "Analytics", path: "/analytics" },
   { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
   { icon: ShieldCheck, label: "System Status", path: "/system-status" },
   { icon: Search, label: "MOT Check", path: "/mot-check" },
