@@ -120,8 +120,8 @@ export default function Analytics() {
                             </Card>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2 mt-4">
-                            <Card className="col-span-1">
+                        <div className="space-y-4 mt-4">
+                            <Card>
                                 <CardHeader>
                                     <CardTitle>Weekly Revenue Trend</CardTitle>
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
@@ -131,10 +131,11 @@ export default function Analytics() {
                                         </span>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="pl-2">
-                                    <div className="h-[350px] w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={financials?.weeklyChartData || []} margin={{ bottom: 40 }}>
+                                <CardContent className="pl-2 overflow-hidden">
+                                    <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
+                                        <div className="h-[350px] min-w-[1000px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={financials?.weeklyChartData || []} margin={{ bottom: 40, right: 30 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis 
                                                     dataKey="date" 
@@ -166,10 +167,11 @@ export default function Analytics() {
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
+                                    </div>
                                 </CardContent>
                             </Card>
                             
-                            <Card className="col-span-1">
+                            <Card>
                                 <CardHeader>
                                     <CardTitle>Yearly Revenue Trend</CardTitle>
                                     <CardDescription>Long term business growth.</CardDescription>
