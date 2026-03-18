@@ -24,6 +24,48 @@ const getRuntimeProvider = () => {
 
 
 export const aiRouter = router({
+  generateFinancialInsights: publicProcedure
+    .input(z.object({
+      totalRevenue: z.number(),
+      wowChange: z.number(),
+      momChange: z.number(),
+      yoyChange: z.number(),
+      weeklyAverage: z.number(),
+      monthlyAverage: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider('gpt-4o'),
+          system: "You are an expert UK garage business analyst and strategic advisor.",
+          prompt: `Analyze the following financial data for our independent garage and provide an engaging, highly professional executive summary.
+          
+Financial Metrics:
+- Total Lifetime Revenue: £${input.totalRevenue}
+- Week-over-Week Change: ${input.wowChange.toFixed(2)}%
+- Month-over-Month Change: ${input.momChange.toFixed(2)}%
+- Year-over-Year Change: ${input.yoyChange.toFixed(2)}%
+- Average Active Weekly Revenue: £${input.weeklyAverage}
+- Average Active Monthly Revenue: £${input.monthlyAverage}
+
+Create a structured analysis containing:
+1. 'insights' - Core operational observations based precisely on these metrics. Be deeply analytical.
+2. 'understanding' - A clear, non-jargon explanation of where the business stands.
+3. 'opportunities' - 3 realistic, highly actionable growth opportunities for a UK independent garage to improve or leverage these specific trends.`,
+          schema: z.object({
+            insights: z.string(),
+            understanding: z.string(),
+            opportunities: z.array(z.string()),
+          }),
+        });
+        return object;
+      } catch (e: any) {
+        console.error("AI Generation Error:", e);
+        throw new Error("Failed to generate insights: " + e.message);
+      }
+    }),
+
   generateMOTEstimate: publicProcedure
     .input(z.object({
       make: z.string().optional(),

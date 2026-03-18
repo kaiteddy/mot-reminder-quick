@@ -1,15 +1,19 @@
-
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, TrendingUp, Mail, MessageSquare, PoundSterling } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowUpRight, ArrowDownRight, CircleDollarSign } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, CircleDollarSign, Brain, CheckCircle2 } from "lucide-react";
 
 export default function Analytics() {
     const { data: stats, isLoading: isLoadingStats } = trpc.analytics.getStats.useQuery();
     const { data: financials, isLoading: isLoadingFinancials } = trpc.analytics.getFinancialStats.useQuery();
+    
+    const generateInsightsMutation = trpc.ai.generateFinancialInsights.useMutation();
+    const [insights, setInsights] = useState<{ insights: string; understanding: string; opportunities: string[] } | null>(null);
 
     if (isLoadingStats || isLoadingFinancials) {
         return (
@@ -27,6 +31,23 @@ export default function Analytics() {
     const monthlyFiltered = (financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'));
     const nonZeroMonths = monthlyFiltered.filter((d: any) => d.revenue > 0);
     const avgMonthlyRevenue = nonZeroMonths.length ? nonZeroMonths.reduce((acc: number, curr: any) => acc + curr.revenue, 0) / nonZeroMonths.length : 0;
+
+    const handleGenerateInsights = async () => {
+        if (!financials) return;
+        try {
+            const res = await generateInsightsMutation.mutateAsync({
+                totalRevenue: financials.totalRevenue,
+                wowChange: financials.wowChange,
+                momChange: financials.momChange,
+                yoyChange: financials.yoyChange,
+                weeklyAverage: avgWeeklyRevenue,
+                monthlyAverage: avgMonthlyRevenue,
+            });
+            setInsights(res);
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     if (!stats) {
         return (
@@ -53,6 +74,55 @@ export default function Analytics() {
                     </TabsList>
                     
                     <TabsContent value="financials" className="space-y-4">
+                        {/* AI Insights Card */}
+                        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100 overflow-hidden relative dark:from-blue-950/20 dark:to-indigo-950/20">
+                            <CardHeader>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <Brain className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                        <CardTitle className="text-blue-900 dark:text-blue-100">AI Executive Summary</CardTitle>
+                                    </div>
+                                    <Button 
+                                        onClick={handleGenerateInsights} 
+                                        disabled={generateInsightsMutation.isPending}
+                                        size="sm"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                    >
+                                        {generateInsightsMutation.isPending ? (
+                                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Financials...</>
+                                        ) : insights ? (
+                                            "Regenerate Analysis"
+                                        ) : "Generate AI Insights"}
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            {insights && (
+                                <CardContent className="space-y-4 text-sm text-blue-950 dark:text-blue-50">
+                                    <div>
+                                        <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-1">Business Understanding</h4>
+                                        <p className="leading-relaxed">{insights.understanding}</p>
+                                    </div>
+                                    <div className="grid md:grid-cols-2 gap-4 pt-2">
+                                        <div className="bg-white/60 dark:bg-black/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900 shadow-sm">
+                                            <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">Key Operational Insights</h4>
+                                            <p className="leading-relaxed">{insights.insights}</p>
+                                        </div>
+                                        <div className="bg-white/60 dark:bg-black/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900 shadow-sm">
+                                            <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">Growth Opportunities</h4>
+                                            <ul className="space-y-2">
+                                                {insights.opportunities.map((opp, idx) => (
+                                                    <li key={idx} className="flex gap-2">
+                                                        <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                                        <span className="leading-relaxed">{opp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            )}
+                        </Card>
+
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
