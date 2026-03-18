@@ -20,6 +20,13 @@ export default function Analytics() {
             </DashboardLayout>
         );
     }
+    
+    const nonZeroWeeks = financials?.weeklyChartData?.filter((d: any) => d.revenue > 0) || [];
+    const avgWeeklyRevenue = nonZeroWeeks.length ? nonZeroWeeks.reduce((acc: number, curr: any) => acc + curr.revenue, 0) / nonZeroWeeks.length : 0;
+    
+    const monthlyFiltered = (financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'));
+    const nonZeroMonths = monthlyFiltered.filter((d: any) => d.revenue > 0);
+    const avgMonthlyRevenue = nonZeroMonths.length ? nonZeroMonths.reduce((acc: number, curr: any) => acc + curr.revenue, 0) / nonZeroMonths.length : 0;
 
     if (!stats) {
         return (
@@ -117,7 +124,12 @@ export default function Analytics() {
                             <Card className="col-span-1">
                                 <CardHeader>
                                     <CardTitle>Weekly Revenue Trend</CardTitle>
-                                    <CardDescription>Sales invoice performance over the last 52 weeks.</CardDescription>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
+                                        <CardDescription>Sales invoice performance over the last 52 weeks.</CardDescription>
+                                        <span className="text-sm font-bold bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/20 shadow-sm">
+                                            Weekly Avg (Active): £{Number(avgWeeklyRevenue).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                                        </span>
+                                    </div>
                                 </CardHeader>
                                 <CardContent className="pl-2">
                                     <div className="h-[350px] w-full">
@@ -183,6 +195,55 @@ export default function Analytics() {
                                 </CardContent>
                             </Card>
                         </div>
+
+                        {/* Monthly Trend row below */}
+                        <Card className="mt-4">
+                            <CardHeader>
+                                <CardTitle>Monthly Revenue Trend</CardTitle>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
+                                    <CardDescription>Performance month by month for 2025 and 2026.</CardDescription>
+                                    <span className="text-sm font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full border border-amber-500/20 shadow-sm">
+                                        Monthly Avg (Active): £{Number(avgMonthlyRevenue).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                                    </span>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="pl-2">
+                                <div className="h-[350px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={monthlyFiltered} margin={{ bottom: 40, right: 20 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis 
+                                                dataKey="date" 
+                                                tick={{ fontSize: 11 }} 
+                                                interval={0}
+                                                angle={-45}
+                                                height={60}
+                                                textAnchor="end"
+                                                tickFormatter={(value) => {
+                                                    const [year, month] = value.split('-');
+                                                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                                    return `${monthNames[parseInt(month)-1]} '${year.slice(2)}`;
+                                                }}
+                                            />
+                                            <YAxis 
+                                                tick={{ fontSize: 12 }} 
+                                                tickFormatter={(value) => `£${value/1000}k`}
+                                            />
+                                            <Tooltip 
+                                                contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                formatter={(value: any) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'Revenue']}
+                                                labelFormatter={(label) => {
+                                                     const [year, month] = label.split('-');
+                                                     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                                                     return `${monthNames[parseInt(month)-1]} ${year}`;
+                                                }}
+                                            />
+                                            <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
 
                     <TabsContent value="reminders" className="space-y-4">

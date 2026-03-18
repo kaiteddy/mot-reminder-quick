@@ -177,6 +177,7 @@ export const analyticsRouter = router({
             
             // For charting
             const weeklyChartDataMap = new Map<string, number>();
+            const monthlyChartDataMap = new Map<string, number>();
             const yearlyChartDataMap = new Map<string, number>();
             
             // Pre-fill last 52 weeks so empty weeks render
@@ -189,6 +190,13 @@ export const analyticsRouter = router({
                 tempDate.setDate(wStart.getDate() - (i * 7));
                 const weekKey = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}-${String(tempDate.getDate()).padStart(2, '0')}`;
                 weeklyChartDataMap.set(weekKey, 0);
+            }
+            
+            for (const y of [2025, 2026]) {
+                for (let m = 1; m <= 12; m++) {
+                    const monthKey = `${y}-${String(m).padStart(2, '0')}`;
+                    monthlyChartDataMap.set(monthKey, 0);
+                }
             }
             
             for (const doc of docs) {
@@ -225,12 +233,21 @@ export const analyticsRouter = router({
                     weeklyChartDataMap.set(weekKey, weeklyChartDataMap.get(weekKey)! + val);
                 }
                 
+                const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+                if (monthlyChartDataMap.has(monthKey)) {
+                    monthlyChartDataMap.set(monthKey, monthlyChartDataMap.get(monthKey)! + val);
+                }
+                
                 const yearKey = `${year}`;
                 yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
             }
             
             // Format chart data
             const weeklyChartData = Array.from(weeklyChartDataMap.entries())
+                .map(([date, revenue]) => ({ date, revenue }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+                
+            const monthlyChartData = Array.from(monthlyChartDataMap.entries())
                 .map(([date, revenue]) => ({ date, revenue }))
                 .sort((a, b) => a.date.localeCompare(b.date));
                 
@@ -255,6 +272,7 @@ export const analyticsRouter = router({
                 revenueLastYear,
                 yoyChange,
                 weeklyChartData,
+                monthlyChartData,
                 yearlyChartData
             };
         }),
