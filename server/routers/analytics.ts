@@ -135,7 +135,21 @@ export const analyticsRouter = router({
                 );
                 
             let totalRevenue = 0;
-            const now = new Date();
+            const nowReal = new Date();
+            let latestDate = 0;
+
+            for (const doc of docs) {
+                const docDate = doc.dateIssued || doc.dateCreated;
+                if (!docDate) continue;
+                const ms = new Date(docDate).getTime();
+                if (ms > latestDate) latestDate = ms;
+            }
+
+            // Time travel dashboard "now" to the edge of the dataset if the data is stale
+            const now = (latestDate > 0 && latestDate < nowReal.getTime() - 3 * 24 * 60 * 60 * 1000) 
+                 ? new Date(latestDate) 
+                 : nowReal;
+                 
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth();
             
