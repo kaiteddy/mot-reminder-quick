@@ -122,7 +122,7 @@ export default function Analytics() {
                                 <CardContent className="pl-2">
                                     <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={financials?.monthlyChartData.slice(-24) || []}>
+                                            <LineChart data={(financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'))}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis 
                                                     dataKey="date" 
