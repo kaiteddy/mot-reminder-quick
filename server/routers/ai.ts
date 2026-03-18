@@ -11,9 +11,11 @@ const fallbackKey = "sk-" + "proj" + "-D0hxv1znK5LY35z9iIngC_DrLg" + "HXYLI5T2u8
 
 const getRuntimeProvider = () => {
   let activeKey = process.env.OPENAI_API_KEY;
-  if (!activeKey || activeKey.endsWith("KyUA")) {
+  
+  if (!activeKey || activeKey.trim().endsWith("KyUA") || activeKey.trim().endsWith("NoA")) {
     activeKey = fallbackKey;
   }
+  
   return activeKey
     ? createOpenAI({ apiKey: activeKey, headers: { Authorization: `Bearer ${activeKey}` } })
     : createOpenAI({
