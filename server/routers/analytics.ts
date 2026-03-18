@@ -176,15 +176,19 @@ export const analyticsRouter = router({
             let revenueLastYear = 0;
             
             // For charting
-            const monthlyChartDataMap = new Map<string, number>();
+            const weeklyChartDataMap = new Map<string, number>();
             const yearlyChartDataMap = new Map<string, number>();
             
-            // Pre-fill 2025 and 2026 strictly with 0s so empty months still render on the graph
-            for (const y of [2025, 2026]) {
-                for (let m = 1; m <= 12; m++) {
-                    const key = `${y}-${String(m).padStart(2, '0')}`;
-                    monthlyChartDataMap.set(key, 0);
-                }
+            // Pre-fill last 52 weeks so empty weeks render
+            const wStart = new Date(now);
+            const wDay = wStart.getDay();
+            wStart.setDate(wStart.getDate() - wDay + (wDay === 0 ? -6 : 1));
+            
+            for (let i = 0; i < 52; i++) {
+                const tempDate = new Date(wStart);
+                tempDate.setDate(wStart.getDate() - (i * 7));
+                const weekKey = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}-${String(tempDate.getDate()).padStart(2, '0')}`;
+                weeklyChartDataMap.set(weekKey, 0);
             }
             
             for (const doc of docs) {
@@ -212,15 +216,21 @@ export const analyticsRouter = router({
                 if (dateObj >= lastWeekStart && dateObj < thisWeekStart) revenueLastWeek += val;
                 
                 // Chart mappings
-                const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-                monthlyChartDataMap.set(monthKey, (monthlyChartDataMap.get(monthKey) || 0) + val);
+                const wd = new Date(dateObj);
+                const wdocDay = wd.getDay();
+                wd.setDate(wd.getDate() - wdocDay + (wdocDay === 0 ? -6 : 1));
+                const weekKey = `${wd.getFullYear()}-${String(wd.getMonth() + 1).padStart(2, '0')}-${String(wd.getDate()).padStart(2, '0')}`;
+                
+                if (weeklyChartDataMap.has(weekKey)) {
+                    weeklyChartDataMap.set(weekKey, weeklyChartDataMap.get(weekKey)! + val);
+                }
                 
                 const yearKey = `${year}`;
                 yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
             }
             
             // Format chart data
-            const monthlyChartData = Array.from(monthlyChartDataMap.entries())
+            const weeklyChartData = Array.from(weeklyChartDataMap.entries())
                 .map(([date, revenue]) => ({ date, revenue }))
                 .sort((a, b) => a.date.localeCompare(b.date));
                 
@@ -244,7 +254,7 @@ export const analyticsRouter = router({
                 revenueThisYear,
                 revenueLastYear,
                 yoyChange,
-                monthlyChartData,
+                weeklyChartData,
                 yearlyChartData
             };
         }),

@@ -116,24 +116,23 @@ export default function Analytics() {
                         <div className="grid gap-4 md:grid-cols-2 mt-4">
                             <Card className="col-span-1">
                                 <CardHeader>
-                                    <CardTitle>Monthly Revenue Trend</CardTitle>
-                                    <CardDescription>Sales invoice performance over time.</CardDescription>
+                                    <CardTitle>Weekly Revenue Trend</CardTitle>
+                                    <CardDescription>Sales invoice performance over the last 52 weeks.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pl-2">
                                     <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={(financials?.monthlyChartData || []).filter((d: any) => d.date.startsWith('2025') || d.date.startsWith('2026'))} margin={{ bottom: 20 }}>
+                                            <BarChart data={financials?.weeklyChartData || []} margin={{ bottom: 20 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis 
                                                     dataKey="date" 
                                                     tick={{ fontSize: 11 }} 
-                                                    interval={0}
                                                     angle={-45}
                                                     textAnchor="end"
                                                     tickFormatter={(value) => {
-                                                        const [year, month] = value.split('-');
+                                                        const [year, month, day] = value.split('-');
                                                         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                                        return `${monthNames[parseInt(month)-1]} '${year.slice(2)}`;
+                                                        return `${day} ${monthNames[parseInt(month)-1]}`;
                                                     }}
                                                 />
                                                 <YAxis 
@@ -144,9 +143,9 @@ export default function Analytics() {
                                                     contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                                     formatter={(value: any) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'Revenue']}
                                                     labelFormatter={(label) => {
-                                                         const [year, month] = label.split('-');
-                                                         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                                                         return `${monthNames[parseInt(month)-1]} ${year}`;
+                                                         const [year, month, day] = label.split('-');
+                                                         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                                         return `Week starting ${day} ${monthNames[parseInt(month)-1]} ${year}`;
                                                     }}
                                                 />
                                                 <Bar dataKey="revenue" name="Revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
