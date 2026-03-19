@@ -30,6 +30,7 @@ import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 import { OmnipartIntegration } from "@/components/OmnipartLookup";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
+import { ServiceHistory } from "@/components/ServiceHistory";
 
 interface MOTTest {
   completedDate: string;
@@ -455,6 +456,21 @@ export default function MOTCheck() {
             <AutodataMini 
               vrm={vehicleData.registration}
             />
+
+            {/* Service / Invoicing History */}
+            {customerData?.vehicle?.id && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Invoicing & Service History</CardTitle>
+                  <CardDescription>
+                    All archived invoices and job sheets for this vehicle
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ServiceHistory vehicleId={customerData.vehicle.id} />
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

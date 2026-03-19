@@ -438,10 +438,10 @@ export async function sendUrgentFollowUpWithTemplate(params: {
     year: "numeric",
   });
 
-  // Placeholder template SIDs. Update these to the real SIDs once approved in Twilio.
+  // Use the approved SIDs provided by the user in Twilio console
   const templateSid = isExpired
-    ? process.env.TWILIO_URGENT_EXPIRED_TEMPLATE_SID || 'HX_URGENT_EXPIRED'
-    : process.env.TWILIO_URGENT_EXPIRING_TEMPLATE_SID || 'HX_URGENT_EXPIRING';
+    ? process.env.TWILIO_URGENT_EXPIRED_TEMPLATE_SID || 'HXe190fe9ce0c696e1631a32319f8eb783' // mot_expired
+    : process.env.TWILIO_URGENT_EXPIRING_TEMPLATE_SID || 'HXd3903b97116a1967f51c87a233a052c6'; // mot_expiring
 
   const templateVariables: Record<string, string> = isExpired ? {
     '1': params.customerName,
