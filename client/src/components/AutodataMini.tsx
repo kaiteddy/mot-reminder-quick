@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Wrench, Droplets, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-export function AutodataMini({ vrm }: { vrm: string }) {
+export function AutodataMini({ vrm, isWorkshop = false }: { vrm: string; isWorkshop?: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vehicleData, setVehicleData] = useState<any>(null);
@@ -146,7 +146,7 @@ export function AutodataMini({ vrm }: { vrm: string }) {
               <p className="text-xs text-muted-foreground text-center mb-4 leading-tight">
                 Live interactive Service Schedules, Repair Times, and Component Layouts are now available in the dedicated Technical Workspace.
               </p>
-              <Button onClick={() => window.location.href = `/technical-data?vrm=${encodeURIComponent(vrm)}`} className="w-full">
+              <Button onClick={() => window.location.href = isWorkshop ? `/workshop/technical-data?vrm=${encodeURIComponent(vrm)}` : `/technical-data?vrm=${encodeURIComponent(vrm)}`} className="w-full">
                 Open Technical Workspace
               </Button>
             </div>

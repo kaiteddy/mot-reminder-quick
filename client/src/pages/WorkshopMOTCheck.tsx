@@ -417,6 +417,7 @@ export default function WorkshopMOTCheck() {
             <div className="mb-2">
               <AutodataMini 
                 vrm={vehicleData.registration}
+                isWorkshop={true}
               />
             </div>
 
