@@ -413,6 +413,13 @@ export default function WorkshopMOTCheck() {
               </CardContent>
             </Card>
 
+            {/* Embedded Drone Technical Data */}
+            <div className="mb-2">
+              <AutodataMini 
+                vrm={vehicleData.registration}
+              />
+            </div>
+
             {/* MOT Mileage History Chart */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <MOTMileageChart tests={vehicleData.motTests} />
@@ -460,11 +467,6 @@ export default function WorkshopMOTCheck() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Embedded Drone Technical Data */}
-            <AutodataMini 
-              vrm={vehicleData.registration}
-            />
 
             {/* Service / Invoicing History */}
             {customerData?.vehicle?.id && (
