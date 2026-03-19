@@ -401,13 +401,13 @@ export function generateFullUrgentFollowUpTemplateContent(params: {
     year: "numeric",
   });
 
-  const header = "⚠️ Eli Motors Ltd - Urgent MOT Notice";
+  const header = "🚗 *Eli Motors Ltd* - MOT Reminder";
 
   const body = params.isExpired
-    ? `Hi ${params.customerName},\n\nWe sent you a reminder recently, but our records show your vehicle ${params.registration} MOT expired on ${formattedDate}. Please contact us urgently to get this sorted and stay legal on the road.`
-    : `Hi ${params.customerName},\n\nWe sent you a reminder recently. Your vehicle ${params.registration} MOT expires on ${formattedDate} (in ${params.daysLeft} days). Please contact us urgently to secure a booking before it expires.`;
+    ? `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expired on ${formattedDate}.\nPlease do call us to book your car in or notify us if you no longer own the vehicle.`
+    : `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT is due to expire on ${formattedDate} (in ${params.daysLeft} days).\nPlease do call us to book your car in or notify us if you no longer own the vehicle.`;
 
-  const callToAction = `📅 Book your MOT test today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
+  const callToAction = `📅 Book your MOT test today\n📞 Call: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
 
   const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
 
