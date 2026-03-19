@@ -386,6 +386,92 @@ export async function sendServiceReminderWithTemplate(params: {
 }
 
 /**
+ * Generate full Urgent Follow-Up template content (for display/storage)
+ */
+export function generateFullUrgentFollowUpTemplateContent(params: {
+  customerName: string;
+  registration: string;
+  motExpiryDate: Date;
+  isExpired: boolean;
+  daysLeft?: number;
+}): string {
+  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const header = "⚠️ Eli Motors Ltd - Urgent MOT Notice";
+
+  const body = params.isExpired
+    ? `Hi ${params.customerName},\n\nWe sent you a reminder recently, but our records show your vehicle ${params.registration} MOT expired on ${formattedDate}. Please contact us urgently to get this sorted and stay legal on the road.`
+    : `Hi ${params.customerName},\n\nWe sent you a reminder recently. Your vehicle ${params.registration} MOT expires on ${formattedDate} (in ${params.daysLeft} days). Please contact us urgently to secure a booking before it expires.`;
+
+  const callToAction = `📅 Book your MOT test today\nCall: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
+
+  const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
+
+  return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
+}
+
+/**
+ * Send Urgent Follow-Up reminder using WhatsApp template
+ */
+export async function sendUrgentFollowUpWithTemplate(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  motExpiryDate: Date;
+}): Promise<SendSMSResult> {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const expiryDate = new Date(params.motExpiryDate);
+  expiryDate.setHours(0, 0, 0, 0);
+
+  const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const isExpired = expiryDate < now;
+
+  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  // Placeholder template SIDs. Update these to the real SIDs once approved in Twilio.
+  const templateSid = isExpired
+    ? process.env.TWILIO_URGENT_EXPIRED_TEMPLATE_SID || 'HX_URGENT_EXPIRED'
+    : process.env.TWILIO_URGENT_EXPIRING_TEMPLATE_SID || 'HX_URGENT_EXPIRING';
+
+  const templateVariables: Record<string, string> = isExpired ? {
+    '1': params.customerName,
+    '2': params.registration,
+    '3': formattedDate,
+  } : {
+    '1': params.customerName,
+    '2': params.registration,
+    '3': formattedDate,
+    '4': daysLeft.toString(),
+  };
+
+  const fallbackMessage = generateFullUrgentFollowUpTemplateContent({
+    customerName: params.customerName,
+    registration: params.registration,
+    motExpiryDate: params.motExpiryDate,
+    isExpired,
+    daysLeft,
+  });
+
+  return sendSMS({
+    to: params.to,
+    useTemplate: true,
+    templateSid,
+    templateVariables,
+    fallbackMessage,
+  });
+}
+
+/**
  * Format customer name for WhatsApp templates
  * Handles various name field combinations
  */

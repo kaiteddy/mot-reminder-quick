@@ -1120,7 +1120,7 @@ export const appRouter = router({
         registration: z.string().optional(),
         expiryDate: z.string().optional(),
         daysUntil: z.number().optional(),
-        messageType: z.enum(["MOT", "Service"]).optional(),
+        messageType: z.enum(["MOT", "Service", "UrgentFollowUp"]).optional(),
         // IDs for linking logs to database records
         vehicleId: z.number().optional(),
         customerId: z.number().optional(),
@@ -1153,6 +1153,24 @@ export const appRouter = router({
               message: input.customMessage,
             });
             messageContent = input.customMessage;
+          } else if (messageType === "UrgentFollowUp") {
+            const { sendUrgentFollowUpWithTemplate, generateFullUrgentFollowUpTemplateContent } = await import("./smsService");
+            
+            const isExpired = expiryDate < new Date();
+            messageContent = generateFullUrgentFollowUpTemplateContent({
+              customerName,
+              registration,
+              motExpiryDate: expiryDate,
+              isExpired,
+              daysLeft: daysUntil,
+            });
+
+            result = await sendUrgentFollowUpWithTemplate({
+              to: input.phoneNumber,
+              customerName,
+              registration,
+              motExpiryDate: expiryDate,
+            });
           } else if (messageType === "Service") {
             // Send Service reminder template
             const { sendServiceReminderWithTemplate, generateFullServiceTemplateContent } = await import("./smsService");
@@ -1220,11 +1238,11 @@ export const appRouter = router({
             reminderId: null,
             customerId: input.customerId || null,
             vehicleId: input.vehicleId || null,
-            messageType,
+            messageType: messageType === "UrgentFollowUp" ? "MOT" : messageType as any,
             recipient: input.phoneNumber,
             messageSid: result.messageId || null,
             status: "sent",
-            templateUsed: messageType === "MOT" ? (isExpired ? "copy_motreminder" : "mot_reminder") : "servicereminder",
+            templateUsed: messageType === "UrgentFollowUp" ? (isExpired ? "urgent_expired" : "urgent_expiring") : (messageType === "MOT" ? (isExpired ? "copy_motreminder" : "mot_reminder") : "servicereminder"),
             customerName,
             registration,
             dueDate: expiryDate,

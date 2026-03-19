@@ -15,7 +15,11 @@ import {
     AlertTriangle,
     ShieldAlert,
     Zap,
-    Loader2
+    Loader2,
+    Send,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
@@ -23,11 +27,28 @@ import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ChatHistory } from "@/components/ChatHistory";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+
+type SortConfig = { key: "sentAt" | "registration" | "customerName" | "currentExpiry" | "daysLeft" | "taxStatus"; direction: "asc" | "desc" } | null;
 
 export default function UrgentFollowUps() {
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isSendingBatch, setIsSendingBatch] = useState(false);
+    const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
+    const [sortConfig, setSortConfig] = useState<SortConfig>(null);
+
     const { data: logs, isLoading, refetch } = trpc.logs.list.useQuery();
     const utils = trpc.useUtils();
+    
+    const sendReminderMutation = trpc.reminders.sendWhatsApp.useMutation({
+        onSuccess: () => {
+            toast.success("Follow-up reminder sent successfully!");
+            refetch();
+        },
+        onError: (err) => {
+            toast.error("Failed to send follow-up", { description: err.message });
+        }
+    });
 
     const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation({
         onSuccess: (res) => {
@@ -47,7 +68,7 @@ export default function UrgentFollowUps() {
 
     const urgentLogs = useMemo(() => {
         if (!logs) return [];
-        return logs.filter(log => {
+        const filteredLogs = logs.filter(log => {
             if (!log.currentMOTExpiry || !log.dueDate) return false;
 
             const sentDate = new Date(log.sentAt);
@@ -68,8 +89,106 @@ export default function UrgentFollowUps() {
             if (daysToExpiry > 14) return false; // Not expiring soon
 
             return true;
-        }).sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
-    }, [logs]);
+        });
+
+        if (sortConfig) {
+            filteredLogs.sort((a, b) => {
+                let aValue: any;
+                let bValue: any;
+
+                if (sortConfig.key === "sentAt") {
+                    aValue = new Date(a.sentAt).getTime();
+                    bValue = new Date(b.sentAt).getTime();
+                } else if (sortConfig.key === "currentExpiry") {
+                    aValue = new Date(a.currentMOTExpiry || 0).getTime();
+                    bValue = new Date(b.currentMOTExpiry || 0).getTime();
+                } else if (sortConfig.key === "daysLeft") {
+                    const today = new Date().getTime();
+                    aValue = Math.ceil((new Date(a.currentMOTExpiry || 0).getTime() - today) / (1000 * 60 * 60 * 24));
+                    bValue = Math.ceil((new Date(b.currentMOTExpiry || 0).getTime() - today) / (1000 * 60 * 60 * 24));
+                } else {
+                    aValue = (a as any)[sortConfig.key] || "";
+                    bValue = (b as any)[sortConfig.key] || "";
+                }
+
+                if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+                return 0;
+            });
+            return filteredLogs;
+        }
+
+        return filteredLogs.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+    }, [logs, sortConfig]);
+
+    const handleSort = (key: NonNullable<SortConfig>["key"]) => {
+        setSortConfig((current: SortConfig) => {
+            if (current?.key === key) {
+                if (current.direction === "asc") return { key, direction: "desc" };
+                return null;
+            }
+            return { key, direction: "asc" };
+        });
+    };
+
+    const SortIcon = ({ columnKey }: { columnKey: NonNullable<SortConfig>["key"] }) => {
+        if (sortConfig?.key !== columnKey) return <ArrowUpDown className="ml-2 h-3 w-3 inline text-slate-300" />;
+        return sortConfig.direction === "asc" ? <ArrowUp className="ml-2 h-3 w-3 inline" /> : <ArrowDown className="ml-2 h-3 w-3 inline" />;
+    };
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedLogs(new Set(urgentLogs.map((l: any) => l.id)));
+        } else {
+            setSelectedLogs(new Set());
+        }
+    };
+
+    const handleSelectOne = (id: number, checked: boolean) => {
+        const newSet = new Set(selectedLogs);
+        if (checked) newSet.add(id); else newSet.delete(id);
+        setSelectedLogs(newSet);
+    };
+
+    const handleBatchSend = async () => {
+        const logsToSend = urgentLogs.filter((l: any) => selectedLogs.has(l.id));
+        if (logsToSend.length === 0) return;
+
+        if (!confirm(`Are you sure you want to send urgent follow-up templates to ${logsToSend.length} numbers? This will charge your Twilio account.`)) {
+            return;
+        }
+
+        setIsSendingBatch(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const log of logsToSend) {
+            if (!log.recipient) continue;
+            try {
+                await sendReminderMutation.mutateAsync({
+                    id: 0,
+                    phoneNumber: log.recipient,
+                    messageType: "UrgentFollowUp",
+                    customerName: log.customerName || "Customer",
+                    registration: log.registration || "Unknown",
+                    expiryDate: log.currentMOTExpiry ? new Date(log.currentMOTExpiry).toISOString() : undefined,
+                    vehicleId: log.vehicleId || undefined,
+                    customerId: log.customerId || undefined
+                });
+                successCount++;
+            } catch (error) {
+                failCount++;
+            }
+        }
+
+        setIsSendingBatch(false);
+        setSelectedLogs(new Set());
+        if (successCount > 0 || failCount > 0) {
+            toast.success(`Batch Complete`, {
+                description: `Successfully sent ${successCount}. Failed: ${failCount}.`
+            });
+        }
+    };
 
     const handleBulkMOTCheck = () => {
         const vehicleIds = Array.from(new Set(urgentLogs.map(log => log.vehicleId).filter((id): id is number => id !== null)));
@@ -94,14 +213,25 @@ export default function UrgentFollowUps() {
                             Reminders sent in the last 30 days where the MOT is either expired or expiring soon, and the test has not been recorded as completed.
                         </p>
                     </div>
-                    <Button
-                        onClick={handleBulkMOTCheck}
-                        disabled={isUpdating || urgentLogs.length === 0}
-                        className="gap-2 shadow-lg hover:shadow-xl transition-all"
-                    >
-                        {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-400 fill-yellow-400" />}
-                        {isUpdating ? "Checking MOTs..." : "Re-check MOTs for these vehicles"}
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            onClick={handleBatchSend}
+                            disabled={isSendingBatch || selectedLogs.size === 0}
+                            className="gap-2 shadow-lg"
+                        >
+                            {isSendingBatch ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+                            {isSendingBatch ? "Sending..." : `Send Urgent Reminders (${selectedLogs.size})`}
+                        </Button>
+                        <Button
+                            onClick={handleBulkMOTCheck}
+                            disabled={isUpdating || urgentLogs.length === 0}
+                            variant="secondary"
+                            className="gap-2 shadow-sm transition-all"
+                        >
+                            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
+                            {isUpdating ? "Checking MOTs..." : "Re-check MOTs"}
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -146,22 +276,41 @@ export default function UrgentFollowUps() {
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-slate-50">
-                                        <TableHead>Sent Date</TableHead>
-                                        <TableHead>Registration</TableHead>
-                                        <TableHead>Customer</TableHead>
-                                        <TableHead>Current Expiry</TableHead>
-                                        <TableHead>Status</TableHead>
+                                        <TableHead className="w-[40px] px-4">
+                                            <Checkbox 
+                                                checked={urgentLogs.length > 0 && selectedLogs.size === urgentLogs.length}
+                                                onCheckedChange={(c) => handleSelectAll(!!c)}
+                                            />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("sentAt")}>
+                                            Sent Date <SortIcon columnKey="sentAt" />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("registration")}>
+                                            Registration <SortIcon columnKey="registration" />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("customerName")}>
+                                            Customer <SortIcon columnKey="customerName" />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("taxStatus")}>
+                                            Tax Status <SortIcon columnKey="taxStatus" />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("currentExpiry")}>
+                                            Current Expiry <SortIcon columnKey="currentExpiry" />
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort("daysLeft")}>
+                                            Status <SortIcon columnKey="daysLeft" />
+                                        </TableHead>
                                         <TableHead className="text-right">Reach Out</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {isLoading ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="h-24 text-center">Loading urgent follow-ups...</TableCell>
+                                            <TableCell colSpan={8} className="h-24 text-center">Loading urgent follow-ups...</TableCell>
                                         </TableRow>
                                     ) : urgentLogs.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="h-24 text-center text-muted-foreground font-medium">All clear! No urgent follow-ups found.</TableCell>
+                                            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground font-medium">All clear! No urgent follow-ups found.</TableCell>
                                         </TableRow>
                                     ) : (
                                         urgentLogs.map((log) => {
@@ -173,6 +322,12 @@ export default function UrgentFollowUps() {
 
                                             return (
                                                 <TableRow key={log.id} className={isExpired ? "bg-red-50/40" : "bg-orange-50/20"}>
+                                                    <TableCell className="px-4">
+                                                        <Checkbox 
+                                                            checked={selectedLogs.has(log.id)}
+                                                            onCheckedChange={(c) => handleSelectOne(log.id, !!c)}
+                                                        />
+                                                    </TableCell>
                                                     <TableCell className="text-sm font-medium">
                                                         {sentDate.toLocaleDateString("en-GB")}
                                                         <div className="text-xs text-muted-foreground">{daysSinceSent} days ago</div>
@@ -194,6 +349,17 @@ export default function UrgentFollowUps() {
                                                             <div className="font-bold text-sm text-slate-700">{log.customerName || "Unknown"}</div>
                                                         )}
                                                         <div className="text-xs text-slate-500 font-mono mt-0.5 opacity-80">{log.recipient}</div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {log.taxStatus && (
+                                                            <div className={`text-[10px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded w-fit ${
+                                                                log.taxStatus.toLowerCase() === 'taxed' ? 'bg-green-100 text-green-800' :
+                                                                log.taxStatus.toLowerCase() === 'sorn' ? 'bg-orange-100 text-orange-800' :
+                                                                'bg-red-100 text-red-800'
+                                                            }`}>
+                                                                {log.taxStatus === "Not Taxed for on Road Use" ? "Not Taxed" : log.taxStatus}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className={`text-sm font-bold ${isExpired ? "text-red-600" : "text-orange-600"}`}>
