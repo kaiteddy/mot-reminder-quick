@@ -29,6 +29,8 @@ import { Link } from "wouter";
 import { Home, ArrowLeft } from "lucide-react";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
+import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
+import { OmnipartIntegration } from "@/components/OmnipartLookup";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { ServiceHistory } from "@/components/ServiceHistory";
 
@@ -435,6 +437,30 @@ export default function WorkshopMOTCheck() {
               <MOTMileageChart tests={vehicleData.motTests} />
             )}
 
+            {/* Omnipart Trade Lookup Integration */}
+            <div className="mb-6">
+              <OmnipartIntegration defaultVrm={vehicleData.registration} />
+            </div>
+
+            {/* Quick Estimate for Latest Test (if it has defects/advisories) */}
+            {vehicleData.motTests && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
+              <div className="mb-6">
+                <h3 className={`text-xl font-bold mb-3 flex items-center gap-2 ${vehicleData.motTests[0].testResult === 'PASSED' ? 'text-orange-600' : 'text-red-600'}`}>
+                  <AlertTriangle className="w-6 h-6" />
+                  {vehicleData.motTests[0].testResult === 'PASSED' ? 'Mot Advisories – Quick Estimate' : 'Latest MOT Failed – Quick Estimate'}
+                </h3>
+                <MOTEstimateCreator 
+                  vehicleDetails={{
+                    make: vehicleData.make,
+                    model: vehicleData.model,
+                    year: vehicleData.yearOfManufacture,
+                    registration: vehicleData.registration
+                  }} 
+                  defects={vehicleData.motTests[0].defects} 
+                />
+              </div>
+            )}
+
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <Card className="shadow-lg">
@@ -596,6 +622,19 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
             })}
           </div>
           
+          {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
+          {test.defects.length > 0 && vehicleData && isLatest && (
+            <div className="pt-4 border-t mt-4">
+              <MOTEstimateCreator 
+                vehicleDetails={{
+                  make: vehicleData.make,
+                  model: vehicleData.model,
+                  year: vehicleData.yearOfManufacture
+                }} 
+                defects={test.defects} 
+              />
+            </div>
+          )}
         </div>
       )}
       
