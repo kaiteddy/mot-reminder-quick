@@ -19,7 +19,8 @@ import {
   Palette,
   FileText,
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  Zap
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -419,6 +420,16 @@ export default function WorkshopMOTCheck() {
                 vrm={vehicleData.registration}
                 isWorkshop={true}
               />
+            </div>
+
+            {/* SWS Technical Intelligence Hub Direct Link */}
+            <div className="mb-4">
+               <Link href={`/workshop/technical-hub?vrm=${encodeURIComponent(vehicleData.registration)}`}>
+                 <Button className="w-full h-12 bg-blue-600 hover:bg-blue-700 font-bold uppercase tracking-widest text-sm shadow-md">
+                   <Zap className="w-4 h-4 mr-2 fill-white" />
+                   SWS Deep Intelligence Hub
+                 </Button>
+               </Link>
             </div>
 
             {/* MOT Mileage History Chart */}

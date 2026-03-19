@@ -32,6 +32,7 @@ import Appointments from "./pages/Appointments";
 import PricingIntelligence from "./pages/PricingIntelligence";
 import WorkshopMOTCheck from "./pages/WorkshopMOTCheck";
 import WorkshopTechnicalData from "./pages/WorkshopTechnicalData";
+import WorkshopTechnicalHub from "./pages/WorkshopTechnicalHub";
 
 function Router() {
   return (
@@ -71,6 +72,7 @@ function Router() {
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
       <Route path="/workshop" component={WorkshopMOTCheck} />
       <Route path="/workshop/technical-data" component={WorkshopTechnicalData} />
+      <Route path="/workshop/technical-hub" component={WorkshopTechnicalHub} />
 
       <Route path="/appointments" component={Appointments} />
 

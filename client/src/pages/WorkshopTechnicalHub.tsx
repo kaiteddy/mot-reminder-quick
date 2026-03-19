@@ -1,0 +1,634 @@
+import { useState, useEffect, useRef } from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+    Search,
+    Zap,
+    Droplet,
+    Thermometer,
+    Wrench,
+    Settings,
+    Loader2,
+    AlertCircle,
+    CheckCircle2,
+    Info,
+    Box,
+    Activity,
+    FileCode,
+    ChevronRight,
+    ArrowLeft,
+    ShieldCheck,
+    Gauge,
+    Home
+} from "lucide-react";
+
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+export default function WorkshopTechnicalHub() {
+    const [registration, setRegistration] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [repairHistory, setRepairHistory] = useState<{ id: string; text: string; data?: any }[]>([]);
+    const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
+
+    const utils = trpc.useUtils();
+    const getRepairNodes = trpc.vehicles.getRepairTimesByCategory.useMutation();
+
+    const handleCategoryClick = async (node: any, reg: string, repid: string) => {
+        if (!node.hasChildren && !node.id) return;
+
+        setLoadingNodeId(node.id);
+        try {
+            const res = await getRepairNodes.mutateAsync({
+                registration: reg,
+                repid: repid.toString(),
+                nodeId: node.id
+            });
+
+            if (res.success && res.data) {
+                setRepairHistory(prev => [...prev, { id: node.id, text: node.text, data: res.data }]);
+            } else {
+                toast.error("Could not load sub-categories");
+            }
+        } catch (e) {
+            toast.error("Connection error loading technical data");
+        } finally {
+            setLoadingNodeId(null);
+        }
+    };
+
+    const goBack = () => {
+        setRepairHistory(prev => prev.slice(0, -1));
+    };
+
+    const currentRepairData = repairHistory.length > 0
+        ? repairHistory[repairHistory.length - 1].data
+        : null;
+
+    const { data: result, isLoading: isQueryLoading } = trpc.vehicles.getByRegistration.useQuery(
+        { registration: searchQuery },
+        { enabled: !!searchQuery, retry: false }
+    );
+
+    const vehicle = result?.vehicle;
+
+    const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
+        onSuccess: (res) => {
+            if (res.cached) {
+                toast("Technical intelligence loaded from cache");
+            } else {
+                toast.success("Deep technical scan complete! Vehicle identity image & specs updated.");
+            }
+            utils.vehicles.getByRegistration.invalidate({ registration: searchQuery });
+        },
+        onError: (err) => {
+            toast.error("Deep scan failed: " + err.message);
+        }
+    });
+
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (registration.length < 5) {
+            toast.error("Please enter a valid registration");
+            return;
+        }
+        setRepairHistory([]); // Clear drill-down history
+        setSearchQuery(registration.toUpperCase().replace(/\s/g, ""));
+    };
+
+    const techData = vehicle?.comprehensiveTechnicalData as any;
+
+    const uniqueLubricants = Array.isArray(techData?.lubricants)
+        ? techData.lubricants.filter(
+            (item: any, index: number, self: any[]) =>
+                index ===
+                self.findIndex(
+                    (t) =>
+                        t.description === item.description &&
+                        t.specification === item.specification &&
+                        t.capacity === item.capacity
+                )
+        )
+        : [];
+
+    const initialLoadDone = useRef(false);
+
+    useEffect(() => {
+        if (initialLoadDone.current) return;
+        const params = new URLSearchParams(window.location.search);
+        const urlVrm = params.get("vrm");
+        if (urlVrm) {
+            setRegistration(urlVrm);
+            setSearchQuery(urlVrm.toUpperCase().replace(/\s/g, ""));
+        }
+        initialLoadDone.current = true;
+    }, []);
+
+    return (
+        <div className="min-h-screen bg-slate-100 flex flex-col">
+            {/* Mobile Top Bar */}
+            <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Link href={`/workshop?reg=${encodeURIComponent(searchQuery || registration)}`}>
+                        <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
+                            <ArrowLeft className="w-5 h-5 text-slate-100" />
+                        </div>
+                    </Link>
+                    <div>
+                        <h1 className="text-xl font-bold leading-none">Deep Intel</h1>
+                        <p className="text-slate-400 text-xs mt-1">SWS Technical Hub</p>
+                    </div>
+                </div>
+                <Link href="/workshop">
+                    <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
+                        <Home className="w-5 h-5 text-slate-100" />
+                    </div>
+                </Link>
+            </div>
+
+            <div className="flex-1 p-3 flex flex-col gap-6 max-w-6xl mx-auto w-full">
+                {/* Search Header */}
+                <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10">
+                        <Settings className="w-32 h-32 rotate-12" />
+                    </div>
+
+                    <div className="relative z-10 space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-500 rounded-lg">
+                                <Zap className="w-6 h-6 fill-white" />
+                            </div>
+                            <h1 className="text-3xl font-black tracking-tight uppercase">Technical Intelligence Hub</h1>
+                        </div>
+                        <p className="text-slate-400 max-w-xl font-medium">
+                            Access deep technical specifications, lubricant requirements, and AC system data sourced directly from SWS Solutions.
+                        </p>
+
+                        <form onSubmit={handleSearch} className="flex gap-2 max-w-md pt-4">
+                            <div className="relative flex-1">
+                                <Input
+                                    placeholder="ENTER REGISTRATION"
+                                    className="bg-white/10 border-white/20 text-white placeholder:text-white/40 font-mono font-bold text-xl uppercase h-12 tracking-widest pl-4"
+                                    value={registration}
+                                    onChange={(e) => setRegistration(e.target.value.toUpperCase())}
+                                />
+                            </div>
+                            <Button type="submit" size="lg" className="bg-blue-600 hover:bg-blue-700 h-12 px-6 font-bold shadow-lg shadow-blue-900/20">
+                                {isQueryLoading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Search className="w-5 h-5 mr-2" />}
+                                LOOKUP
+                            </Button>
+                        </form>
+                    </div>
+                </div>
+
+                {searchQuery && !isQueryLoading && !vehicle && (
+                    <Card className="border-dashed border-2">
+                        <CardContent className="flex flex-col items-center py-12 text-center space-y-4">
+                            <div className="p-4 bg-amber-50 rounded-full">
+                                <AlertCircle className="w-12 h-12 text-amber-500" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold uppercase">Vehicle Not Yet In System</h3>
+                                <p className="text-muted-foreground mb-4">You can still fetch technical specs directly from the cloud.</p>
+                                <Button
+                                    size="lg"
+                                    className="bg-amber-600 hover:bg-amber-700 font-bold tracking-wide mt-2"
+                                    onClick={() => fetchTechData.mutate({ registration: searchQuery })}
+                                    disabled={fetchTechData.isPending}
+                                >
+                                    {fetchTechData.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Zap className="w-5 h-5 mr-2 fill-white" />}
+                                    PULL TECHNICAL INTELLIGENCE
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {vehicle && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-500">
+                        {/* Vehicle Identity Sidebar */}
+                        <div className="lg:col-span-4 space-y-6">
+                            <Card className="overflow-hidden border-2 border-blue-100 shadow-lg">
+                                <div className="bg-blue-600 p-6 text-white text-center">
+                                    <div className="bg-yellow-400 text-black px-4 py-1.5 rounded-md font-mono font-black text-3xl border-2 border-black inline-block shadow-md mb-4 tracking-tighter">
+                                        {vehicle.registration}
+                                    </div>
+                                    <h2 className="text-xl font-black uppercase tracking-tight">{vehicle.make} {vehicle.model}</h2>
+                                    <p className="text-blue-100 text-sm font-medium mt-1">{vehicle.fuelType} • {vehicle.colour} • {vehicle.engineCC}cc</p>
+                                </div>
+                                <CardContent className="p-0">
+                                    <div className="divide-y text-sm">
+                                        <div className="p-4 flex justify-between">
+                                            <span className="text-muted-foreground font-bold uppercase text-[10px]">VIN / Chassis</span>
+                                            <span className="font-mono font-medium">{vehicle.vin || "N/A"}</span>
+                                        </div>
+                                        <div className="p-4 flex justify-between">
+                                            <span className="text-muted-foreground font-bold uppercase text-[10px]">Engine Code</span>
+                                            <span className="font-bold">{vehicle.engineCode || "N/A"}</span>
+                                        </div>
+                                        <div className="p-4 flex justify-between">
+                                            <span className="text-muted-foreground font-bold uppercase text-[10px]">First Registered</span>
+                                            <span className="font-bold">{vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).toLocaleDateString() : "N/A"}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 border-t">
+                                        {!techData ? (
+                                            <Button
+                                                className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
+                                                onClick={() => fetchTechData.mutate({ registration: searchQuery })}
+                                                disabled={fetchTechData.isPending}
+                                            >
+                                                {fetchTechData.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 fill-white" />}
+                                                TRIGGER DEEP SCAN
+                                            </Button>
+                                        ) : (
+                                            <div className="flex flex-col items-center py-2">
+                                                <div className="flex items-center text-green-600 font-black text-xs uppercase gap-1 mb-2">
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    Intelligence Synced
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full text-[11px] h-8"
+                                                    onClick={() => fetchTechData.mutate({ registration: searchQuery, force: true })}
+                                                    disabled={fetchTechData.isPending}
+                                                >
+                                                    {fetchTechData.isPending ? "Refreshing..." : "Refresh Data"}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-blue-600 text-white shadow-lg overflow-hidden border-0">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-black uppercase flex items-center gap-2">
+                                        <ShieldCheck className="w-4 h-4" />
+                                        DVSA STATUS
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="flex justify-between items-center border-b border-white/20 pb-3">
+                                        <span className="text-white/70 text-xs font-bold uppercase">MOT Expiry</span>
+                                        <span className="font-black">{vehicle.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString('en-GB') : "N/A"}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-white/70 text-xs font-bold uppercase">Tax Status</span>
+                                        <span className="bg-white text-blue-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">{vehicle.taxStatus || "Unknown"}</span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Main Technical Content */}
+                        <div className="lg:col-span-8 space-y-6">
+                            {!techData ? (
+                                <div className="bg-white border-2 border-dashed rounded-2xl h-[400px] flex flex-col items-center justify-center text-center p-8 space-y-4 shadow-sm">
+                                    <div className="p-4 bg-slate-100 rounded-full animate-pulse">
+                                        <Gauge className="w-16 h-16 text-slate-300" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold uppercase tracking-tight">Intelligence Not Initialized</h3>
+                                        <p className="text-muted-foreground max-w-md mx-auto">
+                                            This vehicle has not yet undergone a deep technical scan. Use the scan button to pull official oil, aircon, and spec data.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Vehicle Hero / Identity Image */}
+                                    {techData.ukvd?.imageUrl && (
+                                        <Card className="shadow-lg overflow-hidden border-0 relative group mb-6">
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
+                                            <img
+                                                src={techData.ukvd.imageUrl}
+                                                alt="Vehicle Identity"
+                                                className="w-full h-48 md:h-72 object-cover group-hover:scale-105 transition-transform duration-700"
+                                            />
+                                            <div className="absolute bottom-6 left-6 z-20">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="px-2 py-0.5 bg-blue-600 text-[9px] font-black text-white rounded uppercase tracking-widest">Library Image</span>
+                                                    <p className="text-[10px] font-black uppercase text-blue-300 tracking-widest drop-shadow-lg">Verified Identity Stream</p>
+                                                </div>
+                                                <h2 className="text-3xl font-black text-white uppercase drop-shadow-xl tracking-tight">
+                                                    {techData.specs?.fullName}
+                                                </h2>
+                                            </div>
+                                        </Card>
+                                    )}
+
+                                    {/* Lubricants Card */}
+                                    <Card className="shadow-lg border-blue-50">
+                                        <CardHeader className="bg-blue-50/50 border-b border-blue-100">
+                                            <CardTitle className="flex items-center gap-3 text-blue-900 uppercase font-black text-lg">
+                                                <Droplet className="w-6 h-6 text-blue-500" />
+                                                Lubricants & Fluids
+                                            </CardTitle>
+                                            <CardDescription className="text-blue-700/70 font-medium">Original Manufacturer Specification</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="p-0 overflow-hidden rounded-b-xl">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-blue-50/50 text-blue-900 uppercase text-[10px] font-black border-y border-blue-100">
+                                                        <tr>
+                                                            <th className="px-6 py-4">Component / System</th>
+                                                            <th className="px-6 py-4">Specification / Grade</th>
+                                                            <th className="px-6 py-4 text-right whitespace-nowrap">Capacity (Liters)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-blue-50">
+                                                        {uniqueLubricants.length > 0 ? (
+                                                            uniqueLubricants.map((item: any, i: number) => (
+                                                                <tr key={i} className="hover:bg-blue-50/50 transition-colors">
+                                                                    <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
+                                                                        {item.description || "Fluid Specification"}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-slate-600 font-medium min-w-[200px]">
+                                                                        {item.specification || "See technical note"}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                        {item.capacity ? (
+                                                                            <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-black">
+                                                                                {item.capacity} L
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 font-medium text-xs">N/A</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))
+                                                        ) : (
+                                                            <tr>
+                                                                <td colSpan={3} className="text-center py-8 italic text-muted-foreground">
+                                                                    No lubricant data returned from API
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* Labor Times Card */}
+                                    {techData.repairTimes && (
+                                        <Card className="shadow-lg border-indigo-50">
+                                            <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
+                                                <CardTitle className="flex items-center gap-3 text-indigo-900 uppercase font-black text-lg">
+                                                    <Wrench className="w-6 h-6 text-indigo-500" />
+                                                    Repair Strategy & Labor Times
+                                                </CardTitle>
+                                                <CardDescription className="text-indigo-700/70 font-medium">Standard Manufacturer Labor Durations</CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="p-6">
+                                                <div className="space-y-6">
+                                                    {/* Breadcrumbs / Back button */}
+                                                    {repairHistory.length > 0 && (
+                                                        <div className="flex items-center gap-2 mb-4">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 px-2 text-indigo-600 hover:bg-indigo-50"
+                                                                onClick={goBack}
+                                                            >
+                                                                <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                                                                Back
+                                                            </Button>
+                                                            <div className="flex items-center text-[10px] uppercase font-black text-slate-400">
+                                                                <ChevronRight className="w-3 h-3" />
+                                                                <span className="ml-1 text-slate-600 truncate max-w-[200px]">
+                                                                    {repairHistory[repairHistory.length - 1].text}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Categories Tree */}
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {(currentRepairData?.tree || techData.repairTimes.tree)?.length > 0 ? (
+                                                            (currentRepairData?.tree || techData.repairTimes.tree).map((node: any) => (
+                                                                <button
+                                                                    key={node.id}
+                                                                    disabled={loadingNodeId !== null}
+                                                                    onClick={() => handleCategoryClick(node, techData.vrm, techData.repairTimes.repairedTypeId)}
+                                                                    className={cn(
+                                                                        "group flex items-center gap-2 bg-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase border border-slate-200 shadow-sm transition-all text-left",
+                                                                        loadingNodeId === node.id ? "opacity-50 ring-2 ring-indigo-500" : "hover:border-indigo-500 hover:text-indigo-600 hover:shadow-md active:scale-95"
+                                                                    )}
+                                                                >
+                                                                    {loadingNodeId === node.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                                                    {node.text}
+                                                                    {node.hasChildren && <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-center w-full py-4 text-xs italic text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
+                                                                No repair categories returned for this vehicle model.
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Specific Times (Details) */}
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {Array.isArray(currentRepairData?.details || techData.repairTimes.details) && (currentRepairData?.details || techData.repairTimes.details).length > 0 ? (
+                                                            (currentRepairData?.details || techData.repairTimes.details).map((detail: any, i: number) => {
+                                                                const item = detail.TechnicalData;
+                                                                if (!item?.descriptions?.item) return null;
+                                                                return (
+                                                                    <div key={i} className="flex justify-between items-center bg-indigo-50/20 p-4 rounded-xl border border-indigo-100/50 hover:bg-white hover:shadow-md transition-all group">
+                                                                        <div className="space-y-0.5">
+                                                                            <p className="font-black uppercase text-[10px] text-indigo-600 tracking-wider opacity-60">{item.ids?.item}</p>
+                                                                            <p className="font-bold text-slate-900 group-hover:text-indigo-900">{item.descriptions?.item}</p>
+                                                                        </div>
+                                                                        <div className="text-right">
+                                                                            <div className="text-2xl font-black text-indigo-600 flex items-baseline gap-1">
+                                                                                {item.totalTime}
+                                                                                <span className="text-[10px] uppercase text-indigo-400">Min</span>
+                                                                            </div>
+                                                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Allowance</p>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            !currentRepairData?.tree && (
+                                                                <div className="text-center py-4 text-xs italic text-muted-foreground bg-indigo-50/10 rounded-lg">
+                                                                    Deeper labor data available in technical sub-menus
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Aircon & System Card */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <Card className="shadow-lg border-cyan-50">
+                                            <CardHeader className="bg-cyan-50/50 border-b border-cyan-100">
+                                                <CardTitle className="flex items-center gap-2 text-cyan-900 uppercase font-black text-sm">
+                                                    <Thermometer className="w-5 h-5 text-cyan-500" />
+                                                    AC System
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="p-6 space-y-6">
+                                                {techData.aircon ? (
+                                                    <>
+                                                        <div className="space-y-1">
+                                                            <p className="text-[10px] font-black uppercase text-cyan-600">Refrigerant Type</p>
+                                                            <p className="text-2xl font-black text-slate-900 uppercase">{techData.aircon.type || "N/A"}</p>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className="text-[10px] font-black uppercase text-cyan-600">Gas Quantity (Grams)</p>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-3xl font-black text-slate-900">{techData.aircon.quantity || "N/A"}</span>
+                                                                <span className="text-sm font-bold text-slate-400">g</span>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-center py-8 italic text-muted-foreground">AC data unavailable</p>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+
+                                        {techData.ukvd && (
+                                            <Card className="shadow-lg border-purple-50">
+                                                <CardHeader className="bg-purple-50/50 border-b border-purple-100">
+                                                    <CardTitle className="flex items-center gap-2 text-purple-900 uppercase font-black text-sm">
+                                                        <Box className="w-5 h-5 text-purple-500" />
+                                                        Physical Infrastructure
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent className="p-6 grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Height / Width</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.dimensions?.height || "?"} / {techData.ukvd.dimensions?.width || "?"} <span className="text-[10px] text-slate-400">mm</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Length / WB</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.dimensions?.length || "?"} / {techData.ukvd.dimensions?.wheelbase || "?"}<span className="text-[10px] text-slate-400">mm</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Gross Weight</p>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-xl font-black text-slate-900">{techData.ukvd.weights?.gross || "N/A"}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400">KG</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-purple-600">Payload</p>
+                                                        <div className="flex items-baseline justify-end gap-1">
+                                                            <span className="text-xl font-black text-slate-900">{techData.ukvd.weights?.payload || "N/A"}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400">KG</span>
+                                                        </div>
+                                                    </div>
+                                                    {techData.ukvd.fuelTankCapacity && (
+                                                        <div className="col-span-2 pt-2 border-t border-purple-100 flex justify-between items-center">
+                                                            <span className="text-[10px] font-black uppercase text-purple-600">Fuel Tank Capacity</span>
+                                                            <span className="font-bold text-slate-900">{techData.ukvd.fuelTankCapacity} <span className="text-[10px] text-slate-400 uppercase">Litres</span></span>
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
+                                        {techData.ukvd && (
+                                            <Card className="shadow-lg border-emerald-50">
+                                                <CardHeader className="bg-emerald-50/50 border-b border-emerald-100">
+                                                    <CardTitle className="flex items-center gap-2 text-emerald-900 uppercase font-black text-sm">
+                                                        <Activity className="w-5 h-5 text-emerald-500" />
+                                                        Drivetrain & Environment
+                                                    </CardTitle>
+                                                </CardHeader>
+                                                <CardContent className="p-6 grid grid-cols-2 gap-y-6 gap-x-4">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Euro Status</p>
+                                                        <p className="font-bold text-slate-900 text-sm">{techData.ukvd.euroStatus || "N/A"}</p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">CO2 Emissions</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.co2Emissions || "?"} <span className="text-[10px] text-slate-400">g/km</span>
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Transmission</p>
+                                                        <p className="font-bold text-slate-900 text-sm">
+                                                            {techData.ukvd.transmission?.type || "N/A"} ({techData.ukvd.transmission?.gears || "?"} Speed)
+                                                        </p>
+                                                    </div>
+                                                    <div className="space-y-1 text-right">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-600">Drive Type</p>
+                                                        <p className="font-bold text-slate-900 text-sm uppercase">{techData.ukvd.transmission?.driveType || "N/A"}</p>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        )}
+
+                                        <Card className="shadow-lg border-orange-50">
+                                            <CardHeader className="bg-orange-50/50 border-b border-orange-100">
+                                                <CardTitle className="flex items-center gap-2 text-orange-900 uppercase font-black text-sm">
+                                                    <Wrench className="w-5 h-5 text-orange-500" />
+                                                    System Overview
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="p-6 space-y-4">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="p-2 bg-slate-100 rounded-lg">
+                                                        <Info className="w-4 h-4 text-slate-600" />
+                                                    </div>
+                                                    <div className="text-sm">
+                                                        <p className="font-black uppercase text-[10px] text-slate-500">Intelligence Sync Source</p>
+                                                        <p className="font-bold">SWS Bridge + UKVD Enhanced</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="p-2 bg-slate-100 rounded-lg">
+                                                        <Settings className="w-4 h-4 text-slate-600" />
+                                                    </div>
+                                                    <div className="text-sm">
+                                                        <p className="font-black uppercase text-[10px] text-slate-500">Last Database Update</p>
+                                                        <p className="font-bold">{vehicle.swsLastUpdated ? new Date(vehicle.swsLastUpdated).toLocaleString() : "Sync required"}</p>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+
+                                    {/* Raw Intelligence Explorer */}
+                                    <Card className="shadow-lg border-slate-200 overflow-hidden">
+                                        <details className="group">
+                                            <summary className="flex items-center justify-between p-4 cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors list-none">
+                                                <div className="flex items-center gap-2">
+                                                    <FileCode className="w-4 h-4 text-slate-500" />
+                                                    <span className="text-xs font-black uppercase tracking-widest text-slate-600">Raw Intelligence Explorer</span>
+                                                </div>
+                                                <ChevronRight className="w-4 h-4 text-slate-400 group-open:rotate-90 transition-transform" />
+                                            </summary>
+                                            <CardContent className="p-0 border-t border-slate-200">
+                                                <pre className="p-4 bg-slate-900 text-blue-300 text-[10px] font-mono overflow-auto max-h-[500px] leading-relaxed">
+                                                    {JSON.stringify(techData, null, 2)}
+                                                </pre>
+                                            </CardContent>
+                                        </details>
+                                    </Card>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
