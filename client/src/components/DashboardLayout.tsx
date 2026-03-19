@@ -42,7 +42,8 @@ import {
   History,
   Calendar as CalendarIcon,
   Wrench,
-  Brain
+  Brain,
+  ShieldAlert
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -59,6 +60,7 @@ const menuItems = [
   { icon: Brain, label: "Pricing AI", path: "/pricing-intelligence" },
   { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
   { icon: MessageSquare, label: "Conversations", path: "/conversations" },
+  { icon: ShieldAlert, label: "Urgent Follow Ups", path: "/urgent-follow-ups" },
   { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
   { icon: FileText, label: "Generate Doc", path: "/generate-document" },
   { icon: FileText, label: "Logs & Messages", path: "/logs" },

@@ -23,6 +23,7 @@ import SystemStatus from "./pages/SystemStatus";
 import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
 import ReminderFollowUp from "./pages/ReminderFollowUp";
+import UrgentFollowUps from "./pages/UrgentFollowUps";
 import DocumentGenerator from "./pages/DocumentGenerator";
 import TechnicalHub from "./pages/TechnicalHub";
 import TechnicalData from "./pages/TechnicalData";
@@ -57,6 +58,7 @@ function Router() {
       <Route path="/archive" component={ReminderArchive} />
       <Route path="/follow-up" component={FollowUpActions} />
       <Route path="/reminders-sent" component={ReminderFollowUp} />
+      <Route path="/urgent-follow-ups" component={UrgentFollowUps} />
       <Route path="/conversations" component={Conversations} />
       <Route path="/ga4-scan" component={GA4Scanner} />
       <Route path="/generate-document" component={DocumentGenerator} />
