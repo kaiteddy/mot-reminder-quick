@@ -118,7 +118,7 @@ export const analyticsRouter = router({
                 throw new Error("Database not available");
             }
             
-            const { serviceHistory } = await import("../../drizzle/schema");
+            const { serviceHistory, customers, vehicles } = await import("../../drizzle/schema");
             
             // 1. Fetch all docs with 'SI' (Sales Invoice) or 'SR' (Sales Receipt) to calculate revenue
             // Since it's ~33k rows, pulling just dateCreated/dateIssued and totalGross is very fast
@@ -260,15 +260,19 @@ export const analyticsRouter = router({
             const momChange = revenueLastMonth > 0 ? ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100 : 0;
             const yoyChange = revenueLastYear > 0 ? ((revenueThisYear - revenueLastYear) / revenueLastYear) * 100 : 0;
             
-            const { desc } = await import("drizzle-orm");
+            const { desc, eq } = await import("drizzle-orm");
             const rawJobSheets = await db.select({
                 id: serviceHistory.id,
                 docNo: serviceHistory.docNo,
                 dateCreated: serviceHistory.dateCreated,
                 totalGross: serviceHistory.totalGross,
                 description: serviceHistory.description,
+                customerName: customers.name,
+                registration: vehicles.registration
             })
             .from(serviceHistory)
+            .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
+            .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
             .where(sql`${serviceHistory.docType} = 'JS'`)
             .orderBy(desc(serviceHistory.dateCreated))
             .limit(100);
@@ -279,6 +283,8 @@ export const analyticsRouter = router({
                 dateCreated: js.dateCreated ? js.dateCreated.toISOString() : null,
                 totalGross: parseFloat(js.totalGross as any) || 0,
                 description: js.description || "No description",
+                customerName: js.customerName || "Unknown",
+                registration: js.registration || "Unknown",
             }));
             
             const jobSheetsTotal = jobSheets.reduce((sum, js) => sum + js.totalGross, 0);

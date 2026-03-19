@@ -2,10 +2,12 @@ import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp, Mail, MessageSquare, PoundSterling } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowUpRight, ArrowDownRight, CircleDollarSign, FileText } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, CircleDollarSign, FileText, ExternalLink } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Analytics() {
     const { data: stats, isLoading: isLoadingStats } = trpc.analytics.getStats.useQuery();
@@ -152,22 +154,41 @@ export default function Analytics() {
                                             <Table>
                                                 <TableHeader className="bg-muted/50">
                                                     <TableRow>
-                                                        <TableHead className="w-[120px]">Date Opened</TableHead>
-                                                        <TableHead className="w-[120px]">Job No</TableHead>
+                                                        <TableHead className="w-[100px]">Opened</TableHead>
+                                                        <TableHead className="w-[80px]">Job No</TableHead>
+                                                        <TableHead className="w-[160px]">Client & Reg</TableHead>
                                                         <TableHead>Description</TableHead>
-                                                        <TableHead className="text-right w-[120px]">Est. Value</TableHead>
+                                                        <TableHead className="text-right w-[100px]">Value</TableHead>
+                                                        <TableHead className="w-[80px]"></TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {financials.jobSheets.slice(0, 10).map((js: any) => (
                                                         <TableRow key={js.id}>
-                                                            <TableCell className="font-mono text-xs text-muted-foreground">
+                                                            <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                                                                 {js.dateCreated ? new Date(js.dateCreated).toLocaleDateString() : 'N/A'}
                                                             </TableCell>
                                                             <TableCell className="font-mono text-xs font-medium">{js.docNo}</TableCell>
-                                                            <TableCell className="text-sm max-w-[400px] truncate" title={js.description}>{js.description}</TableCell>
+                                                            <TableCell className="py-2">
+                                                                {js.registration && js.registration !== "Unknown" && js.registration !== "N/A" && (
+                                                                    <span className="bg-yellow-400 text-black px-1.5 py-0.5 rounded font-mono font-bold text-[10px] border border-black shadow-sm mb-1 block w-fit tracking-wide">
+                                                                        {js.registration}
+                                                                    </span>
+                                                                )}
+                                                                <div className="text-xs font-medium truncate max-w-[140px] text-slate-700" title={js.customerName}>
+                                                                    {js.customerName}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-xs max-w-[300px] truncate text-slate-600" title={js.description}>{js.description}</TableCell>
                                                             <TableCell className="text-right font-medium text-sm">
                                                                 £{js.totalGross.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Link href={`/generate-document?editId=${js.id}`}>
+                                                                    <Button variant="ghost" size="sm" className="h-7 text-amber-700 hover:text-amber-800 hover:bg-amber-100 px-2 text-xs font-bold">
+                                                                        Open <ExternalLink className="h-3 w-3 ml-1.5" />
+                                                                    </Button>
+                                                                </Link>
                                                             </TableCell>
                                                         </TableRow>
                                                     ))}
