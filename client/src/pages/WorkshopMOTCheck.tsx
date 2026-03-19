@@ -24,7 +24,8 @@ import {
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
-import DashboardLayout from "@/components/DashboardLayout";
+import { Link } from "wouter";
+import { Home, ArrowLeft } from "lucide-react";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
@@ -80,7 +81,7 @@ interface VehicleData {
   motTestDueDate?: string;
 }
 
-export default function MOTCheck() {
+export default function WorkshopMOTCheck() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
   const [customerData, setCustomerData] = useState<any>(null);
@@ -168,25 +169,33 @@ export default function MOTCheck() {
   const daysUntilExpiry = vehicleData?.motExpiryDate ? getDaysUntilExpiry(vehicleData.motExpiryDate) : null;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Mobile Top Bar */}
+      <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/">
+            <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
+              <Home className="w-5 h-5 text-slate-100" />
+            </div>
+          </Link>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">MOT Check</h1>
-            <p className="text-slate-600 mt-1">Check MOT history and expiry dates</p>
+            <h1 className="text-xl font-bold leading-none">Workshop Mode</h1>
+            <p className="text-slate-400 text-xs mt-1">Quick MOT Scanner</p>
           </div>
         </div>
+      </div>
+
+      <div className="p-3 space-y-4 flex-1">
 
         {/* Search Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Vehicle Registration</CardTitle>
-            <CardDescription>
-              Enter a UK vehicle registration to check MOT history. Try <strong>RF67NRO</strong> to see a demo of the expiry display.
+        <Card className="shadow-lg border-primary/20 bg-white">
+          <CardHeader className="pb-3 pt-4 px-4">
+            <CardTitle className="text-lg">Vehicle Registration</CardTitle>
+            <CardDescription className="text-xs">
+              Enter a UK vehicle registration
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <form onSubmit={handleSearch} className="flex gap-4">
               <div className="flex-1">
                 <Label htmlFor="registration" className="sr-only">
@@ -242,7 +251,7 @@ export default function MOTCheck() {
 
         {/* Vehicle Details */}
         {vehicleData && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
             {/* MOT Status Card */}
@@ -435,10 +444,10 @@ export default function MOTCheck() {
 
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>MOT Test History</CardTitle>
-                  <CardDescription>
+              <Card className="shadow-lg">
+                <CardHeader className="px-4 py-3 bg-slate-50 border-b">
+                  <CardTitle className="text-lg">MOT History</CardTitle>
+                  <CardDescription className="text-xs">
                     {vehicleData.motTests.length} test{vehicleData.motTests.length !== 1 ? "s" : ""} on record
                   </CardDescription>
                 </CardHeader>
@@ -486,7 +495,7 @@ export default function MOTCheck() {
           </Card>
         )}
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
 

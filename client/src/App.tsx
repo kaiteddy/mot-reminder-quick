@@ -30,6 +30,7 @@ import TechnicalData from "./pages/TechnicalData";
 import MobileJobSummary from "./pages/MobileJobSummary";
 import Appointments from "./pages/Appointments";
 import PricingIntelligence from "./pages/PricingIntelligence";
+import WorkshopMOTCheck from "./pages/WorkshopMOTCheck";
 
 function Router() {
   return (
@@ -67,6 +68,7 @@ function Router() {
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
+      <Route path="/workshop" component={WorkshopMOTCheck} />
 
       <Route path="/appointments" component={Appointments} />
 
