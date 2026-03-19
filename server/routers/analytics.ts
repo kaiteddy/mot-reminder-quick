@@ -260,6 +260,29 @@ export const analyticsRouter = router({
             const momChange = revenueLastMonth > 0 ? ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100 : 0;
             const yoyChange = revenueLastYear > 0 ? ((revenueThisYear - revenueLastYear) / revenueLastYear) * 100 : 0;
             
+            const { desc } = await import("drizzle-orm");
+            const rawJobSheets = await db.select({
+                id: serviceHistory.id,
+                docNo: serviceHistory.docNo,
+                dateCreated: serviceHistory.dateCreated,
+                totalGross: serviceHistory.totalGross,
+                description: serviceHistory.description,
+            })
+            .from(serviceHistory)
+            .where(sql`${serviceHistory.docType} = 'JS'`)
+            .orderBy(desc(serviceHistory.dateCreated))
+            .limit(100);
+
+            const jobSheets = rawJobSheets.map(js => ({
+                id: js.id,
+                docNo: js.docNo || "Unknown",
+                dateCreated: js.dateCreated ? js.dateCreated.toISOString() : null,
+                totalGross: parseFloat(js.totalGross as any) || 0,
+                description: js.description || "No description",
+            }));
+            
+            const jobSheetsTotal = jobSheets.reduce((sum, js) => sum + js.totalGross, 0);
+
             return {
                 totalRevenue,
                 revenueThisWeek,
@@ -273,7 +296,9 @@ export const analyticsRouter = router({
                 yoyChange,
                 weeklyChartData,
                 monthlyChartData,
-                yearlyChartData
+                yearlyChartData,
+                jobSheets,
+                jobSheetsTotal
             };
         }),
 });

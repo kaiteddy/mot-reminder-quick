@@ -26,64 +26,6 @@ const getRuntimeProvider = () => {
 
 
 export const aiRouter = router({
-  generateFinancialInsights: publicProcedure
-    .input(z.object({
-      totalRevenue: z.number(),
-      wowChange: z.number(),
-      momChange: z.number(),
-      yoyChange: z.number(),
-      weeklyAverage: z.number(),
-      monthlyAverage: z.number(),
-      recentWeeks: z.array(z.object({
-          date: z.string(),
-          revenue: z.number()
-      })).optional(),
-      recentMonths: z.array(z.object({
-          date: z.string(),
-          revenue: z.number()
-      })).optional()
-    }))
-    .mutation(async ({ input }) => {
-      try {
-        const provider = getRuntimeProvider();
-        const { object } = await generateObject({
-          model: provider('gpt-4o'),
-          system: "You are an expert UK garage business analyst and strategic advisor.",
-          prompt: `Analyze the following highly specific financial data for our independent UK garage. DO NOT GIVE GENERIC ADVICE. Look specifically at the shape of the data, the exact numbers, the dates, and the performance trends. Call out specific dates, exact revenue amounts, and actual percentage shifts in your text to prove you are analyzing this real, underlying ledger data.
-          
-OVERALL PERFORMANCE:
-- Total Lifetime Revenue: £${input.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-- Average Active Weekly Revenue: £${input.weeklyAverage.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-- Average Active Monthly Revenue: £${input.monthlyAverage.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-
-PERCENTAGE SHIFTS (vs prior period):
-- Week-over-Week Change: ${input.wowChange.toFixed(2)}%
-- Month-over-Month Change: ${input.momChange.toFixed(2)}%
-- Year-over-Year Change: ${input.yoyChange.toFixed(2)}%
-
-RECENT WEEKLY REVENUE (Last 12 Weeks):
-${input.recentWeeks ? input.recentWeeks.map(w => `- Week starting ${w.date}: £${w.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join('\\n') : "N/A"}
-
-RECENT MONTHLY REVENUE (Last 6 Months):
-${input.recentMonths ? input.recentMonths.map(m => `- Month starting ${m.date}: £${m.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join('\\n') : "N/A"}
-
-Create a structured analysis containing:
-1. 'insights' - 2-3 deeply analytical observations. You MUST aggressively cite specific weeks, specific months, exact revenue figures, and exactly how the curve has shifted. Do not be vague (e.g., instead of "revenue was strong last month", state "March hit exceptional revenue of £15,200...").
-2. 'understanding' - A clear explanation of what is fundamentally driving these specific numbers right now.
-3. 'opportunities' - 3 hyper-targeted growth opportunities based directly on the precise weaknesses or momentum shown in the weeks/months above (e.g., "Since the week of X dipped to Y, we should...").`,
-          schema: z.object({
-            insights: z.string(),
-            understanding: z.string(),
-            opportunities: z.array(z.string()),
-          }),
-        });
-        return object;
-      } catch (e: any) {
-        console.error("AI Generation Error:", e);
-        throw new Error("Failed to generate insights: " + e.message);
-      }
-    }),
-
   generateMOTEstimate: publicProcedure
     .input(z.object({
       make: z.string().optional(),

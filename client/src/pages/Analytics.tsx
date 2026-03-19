@@ -1,19 +1,15 @@
-import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, TrendingUp, Mail, MessageSquare, PoundSterling } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowUpRight, ArrowDownRight, CircleDollarSign, Brain, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, CircleDollarSign, FileText } from "lucide-react";
 
 export default function Analytics() {
     const { data: stats, isLoading: isLoadingStats } = trpc.analytics.getStats.useQuery();
     const { data: financials, isLoading: isLoadingFinancials } = trpc.analytics.getFinancialStats.useQuery();
-    
-    const generateInsightsMutation = trpc.ai.generateFinancialInsights.useMutation();
-    const [insights, setInsights] = useState<{ insights: string; understanding: string; opportunities: string[] } | null>(null);
 
     if (isLoadingStats || isLoadingFinancials) {
         return (
@@ -32,24 +28,7 @@ export default function Analytics() {
     const nonZeroMonths = monthlyFiltered.filter((d: any) => d.revenue > 0);
     const avgMonthlyRevenue = nonZeroMonths.length ? nonZeroMonths.reduce((acc: number, curr: any) => acc + curr.revenue, 0) / nonZeroMonths.length : 0;
 
-    const handleGenerateInsights = async () => {
-        if (!financials) return;
-        try {
-            const res = await generateInsightsMutation.mutateAsync({
-                totalRevenue: financials.totalRevenue,
-                wowChange: financials.wowChange,
-                momChange: financials.momChange,
-                yoyChange: financials.yoyChange,
-                weeklyAverage: avgWeeklyRevenue,
-                monthlyAverage: avgMonthlyRevenue,
-                recentWeeks: financials.weeklyChartData.slice(-12).map((w: any) => ({ date: w.date, revenue: w.revenue })),
-                recentMonths: monthlyFiltered.slice(-6).map((m: any) => ({ date: m.date, revenue: m.revenue })),
-            });
-            setInsights(res);
-        } catch (e) {
-            console.error(e);
-        }
-    };
+
 
     if (!stats) {
         return (
@@ -76,55 +55,6 @@ export default function Analytics() {
                     </TabsList>
                     
                     <TabsContent value="financials" className="space-y-4">
-                        {/* AI Insights Card */}
-                        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100 overflow-hidden relative dark:from-blue-950/20 dark:to-indigo-950/20">
-                            <CardHeader>
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <Brain className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                        <CardTitle className="text-blue-900 dark:text-blue-100">AI Executive Summary</CardTitle>
-                                    </div>
-                                    <Button 
-                                        onClick={handleGenerateInsights} 
-                                        disabled={generateInsightsMutation.isPending}
-                                        size="sm"
-                                        className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                                    >
-                                        {generateInsightsMutation.isPending ? (
-                                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing Financials...</>
-                                        ) : insights ? (
-                                            "Regenerate Analysis"
-                                        ) : "Generate AI Insights"}
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            {insights && (
-                                <CardContent className="space-y-4 text-sm text-blue-950 dark:text-blue-50">
-                                    <div>
-                                        <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-1">Business Understanding</h4>
-                                        <p className="leading-relaxed">{insights.understanding}</p>
-                                    </div>
-                                    <div className="grid md:grid-cols-2 gap-4 pt-2">
-                                        <div className="bg-white/60 dark:bg-black/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900 shadow-sm">
-                                            <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">Key Operational Insights</h4>
-                                            <p className="leading-relaxed">{insights.insights}</p>
-                                        </div>
-                                        <div className="bg-white/60 dark:bg-black/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900 shadow-sm">
-                                            <h4 className="font-bold text-blue-800 dark:text-blue-200 mb-2">Growth Opportunities</h4>
-                                            <ul className="space-y-2">
-                                                {insights.opportunities.map((opp, idx) => (
-                                                    <li key={idx} className="flex gap-2">
-                                                        <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                                                        <span className="leading-relaxed">{opp}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            )}
-                        </Card>
-
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -139,7 +69,7 @@ export default function Analytics() {
                                         ) : (
                                             <span className="text-red-500 font-medium flex items-center"><ArrowDownRight className="h-4 w-4 mr-1" />{Math.abs(financials?.wowChange || 0).toFixed(1)}%</span>
                                         )}
-                                        <span className="ml-1">from last week</span>
+                                        <span className="ml-1">from last week {financials?.wowChange! <= -50 && <span className="text-amber-600 font-semibold ml-1">(Incomplete / Pending Data)</span>}</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -157,7 +87,7 @@ export default function Analytics() {
                                         ) : (
                                             <span className="text-red-500 font-medium flex items-center"><ArrowDownRight className="h-4 w-4 mr-1" />{Math.abs(financials?.momChange || 0).toFixed(1)}%</span>
                                         )}
-                                        <span className="ml-1">from last month</span>
+                                        <span className="ml-1">from last month {financials?.momChange! <= -50 && <span className="text-amber-600 font-semibold ml-1">(Incomplete / Pending Data)</span>}</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -175,7 +105,7 @@ export default function Analytics() {
                                         ) : (
                                             <span className="text-red-500 font-medium flex items-center"><ArrowDownRight className="h-4 w-4 mr-1" />{Math.abs(financials?.yoyChange || 0).toFixed(1)}%</span>
                                         )}
-                                        <span className="ml-1">from last year</span>
+                                        <span className="ml-1">from last year {financials?.yoyChange! <= -50 && <span className="text-amber-600 font-semibold ml-1">(Incomplete / Pending Data)</span>}</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -192,7 +122,67 @@ export default function Analytics() {
                             </Card>
                         </div>
 
-                        <div className="space-y-4 mt-4">
+                        <div className="space-y-4 mt-6">
+                            {/* Ongoing Job Sheets */}
+                            {financials?.jobSheets && financials.jobSheets.length > 0 && (
+                                <Card className="border-amber-200 bg-amber-50/10 dark:bg-amber-950/20 dark:border-amber-900/50">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between p-6 pb-2">
+                                        <div>
+                                            <CardTitle className="text-lg flex items-center gap-2">
+                                                <div className="bg-amber-100 dark:bg-amber-900/40 p-1.5 rounded-md">
+                                                    <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                                </div>
+                                                Ongoing Work (Uninvoiced Job Sheets)
+                                            </CardTitle>
+                                            <CardDescription className="mt-1">
+                                                Active job sheets currently sitting outside of finalised revenue totals.
+                                            </CardDescription>
+                                        </div>
+                                        <div className="mt-4 md:mt-0 md:text-right flex items-center md:block gap-3">
+                                            <div className="text-2xl font-bold text-amber-600 dark:text-amber-500">
+                                                £{financials.jobSheetsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <div className="text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                                {financials.jobSheets.length} active tickets
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <CardContent>
+                                        <div className="rounded-md border bg-card overflow-hidden mt-4">
+                                            <Table>
+                                                <TableHeader className="bg-muted/50">
+                                                    <TableRow>
+                                                        <TableHead className="w-[120px]">Date Opened</TableHead>
+                                                        <TableHead className="w-[120px]">Job No</TableHead>
+                                                        <TableHead>Description</TableHead>
+                                                        <TableHead className="text-right w-[120px]">Est. Value</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {financials.jobSheets.slice(0, 10).map((js: any) => (
+                                                        <TableRow key={js.id}>
+                                                            <TableCell className="font-mono text-xs text-muted-foreground">
+                                                                {js.dateCreated ? new Date(js.dateCreated).toLocaleDateString() : 'N/A'}
+                                                            </TableCell>
+                                                            <TableCell className="font-mono text-xs font-medium">{js.docNo}</TableCell>
+                                                            <TableCell className="text-sm max-w-[400px] truncate" title={js.description}>{js.description}</TableCell>
+                                                            <TableCell className="text-right font-medium text-sm">
+                                                                £{js.totalGross.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                            {financials.jobSheets.length > 10 && (
+                                                <div className="text-center py-2 text-xs text-muted-foreground bg-muted/10 border-t">
+                                                    Showing latest 10 of {financials.jobSheets.length} active job sheets.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Weekly Revenue Trend</CardTitle>
