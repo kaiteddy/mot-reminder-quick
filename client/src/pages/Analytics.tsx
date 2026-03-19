@@ -42,6 +42,8 @@ export default function Analytics() {
                 yoyChange: financials.yoyChange,
                 weeklyAverage: avgWeeklyRevenue,
                 monthlyAverage: avgMonthlyRevenue,
+                recentWeeks: financials.weeklyChartData.slice(-12).map((w: any) => ({ date: w.date, revenue: w.revenue })),
+                recentMonths: monthlyFiltered.slice(-6).map((m: any) => ({ date: m.date, revenue: m.revenue })),
             });
             setInsights(res);
         } catch (e) {
