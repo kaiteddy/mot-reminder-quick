@@ -421,25 +421,6 @@ export default function MOTCheck() {
               <OmnipartIntegration defaultVrm={vehicleData.registration} />
             </div>
 
-            {/* Quick Estimate for Latest Test (if it has defects/advisories) */}
-            {vehicleData.motTests && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (
-              <div className="mb-6">
-                <h3 className={`text-xl font-bold mb-3 flex items-center gap-2 ${vehicleData.motTests[0].testResult === 'PASSED' ? 'text-orange-600' : 'text-red-600'}`}>
-                  <AlertTriangle className="w-6 h-6" />
-                  {vehicleData.motTests[0].testResult === 'PASSED' ? 'Mot Advisories – Quick Estimate' : 'Latest MOT Failed – Quick Estimate'}
-                </h3>
-                <MOTEstimateCreator 
-                  vehicleDetails={{
-                    make: vehicleData.make,
-                    model: vehicleData.model,
-                    year: vehicleData.yearOfManufacture,
-                    registration: vehicleData.registration
-                  }} 
-                  defects={vehicleData.motTests[0].defects} 
-                />
-              </div>
-            )}
-
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <Card>
@@ -571,9 +552,9 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
               const isMinor = defect.type === "MINOR" || defect.type === "PRS";
               const isAdvisory = defect.type === "ADVISORY";
               
-              let baseClasses = "text-sm p-2.5 rounded mb-1.5 flex items-start gap-2 ";
+              let baseClasses = "text-sm p-3 rounded mb-2 flex items-start gap-2 ";
               if (isDangerous) {
-                baseClasses += "bg-red-600 text-white shadow-sm font-medium";
+                baseClasses += "bg-red-600 text-white shadow-md font-medium";
               } else if (isMajor) {
                 baseClasses += "bg-red-50 text-red-900 border border-red-200";
               } else if (isMinor) {
@@ -602,7 +583,7 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
           </div>
           
           {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
-          {test.defects.length > 0 && vehicleData && isLatest && (
+          {test.defects.length > 0 && vehicleData && (
             <div className="pt-4 border-t mt-4">
               <MOTEstimateCreator 
                 vehicleDetails={{
