@@ -432,9 +432,6 @@ export default function WorkshopMOTCheck() {
             <SWSDeepIntelEmbed 
                 registration={vehicleData.registration} 
                 vehicle={vehicleData} 
-                onDataFetched={() => {
-                   lookupMutation.mutate({ registration: vehicleData.registration });
-                }} 
             />
 
             {/* MOT Mileage History Chart */}

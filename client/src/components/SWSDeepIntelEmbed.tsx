@@ -12,22 +12,24 @@ interface SWSDeepIntelEmbedProps {
 }
 
 export function SWSDeepIntelEmbed({ registration, vehicle, onDataFetched }: SWSDeepIntelEmbedProps) {
+    const [techData, setTechData] = useState<any>(vehicle?.comprehensiveTechnicalData);
+
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
-        onSuccess: (data) => {
-            if (onDataFetched) {
-                // Tell parent to refetch vehicle data because the DB has been updated 
-                onDataFetched();
+        onSuccess: (response) => {
+            if (response.success && response.data) {
+                setTechData(response.data);
+                if (onDataFetched) {
+                    onDataFetched();
+                }
             }
         }
     });
 
-    const techData = vehicle?.comprehensiveTechnicalData as any;
-
     useEffect(() => {
-        if (vehicle && !techData && registration && !fetchTechData.isPending && !fetchTechData.isError) {
+        if (vehicle && !techData && registration && !fetchTechData.isPending && !fetchTechData.isError && !fetchTechData.isSuccess) {
             fetchTechData.mutate({ registration });
         }
-    }, [vehicle, techData, registration]);
+    }, [vehicle, techData, registration, fetchTechData]);
 
     if (fetchTechData.isPending || (!techData && !fetchTechData.isError)) {
         return (
