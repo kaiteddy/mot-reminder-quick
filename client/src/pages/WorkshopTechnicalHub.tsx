@@ -102,16 +102,19 @@ export default function WorkshopTechnicalHub() {
     const techData = vehicle?.comprehensiveTechnicalData as any;
 
     const uniqueLubricants = Array.isArray(techData?.lubricants)
-        ? techData.lubricants.filter(
-            (item: any, index: number, self: any[]) =>
-                index ===
-                self.findIndex(
-                    (t) =>
-                        t.description === item.description &&
-                        t.specification === item.specification &&
-                        t.capacity === item.capacity
-                )
-        )
+        ? techData.lubricants.reduce((acc: any[], item: any) => {
+            const existing = acc.find(
+                (t: any) => t.description === item.description && t.capacity === item.capacity
+            );
+            if (existing) {
+                if (item.specification && !existing.specification.includes(item.specification)) {
+                    existing.specification += `, ${item.specification}`;
+                }
+            } else {
+                acc.push({ ...item });
+            }
+            return acc;
+        }, [])
         : [];
 
     useEffect(() => {
@@ -342,22 +345,22 @@ export default function WorkshopTechnicalHub() {
                                                 <table className="w-full text-left text-sm">
                                                     <thead className="bg-blue-50/50 text-blue-900 uppercase text-[10px] font-black border-y border-blue-100">
                                                         <tr>
-                                                            <th className="px-6 py-4">Component / System</th>
-                                                            <th className="px-6 py-4">Specification / Grade</th>
-                                                            <th className="px-6 py-4 text-right whitespace-nowrap">Capacity (Liters)</th>
+                                                            <th className="px-3 md:px-6 py-4">Component / System</th>
+                                                            <th className="px-3 md:px-6 py-4">Specification / Grade</th>
+                                                            <th className="px-3 md:px-6 py-4 text-right whitespace-nowrap">Capacity</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-blue-50">
                                                         {uniqueLubricants.length > 0 ? (
                                                             uniqueLubricants.map((item: any, i: number) => (
                                                                 <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                                                                    <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
+                                                                    <td className="px-3 md:px-6 py-4 font-bold text-slate-800">
                                                                         {item.description || "Fluid Specification"}
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-slate-600 font-medium min-w-[200px]">
+                                                                    <td className="px-3 md:px-6 py-4 text-slate-600 font-medium min-w-[120px] break-words leading-relaxed">
                                                                         {item.specification || "See technical note"}
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                    <td className="px-3 md:px-6 py-4 text-right whitespace-nowrap">
                                                                         {item.capacity ? (
                                                                             <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-black">
                                                                                 {item.capacity} L
