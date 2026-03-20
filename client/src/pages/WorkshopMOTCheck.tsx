@@ -396,9 +396,9 @@ export default function WorkshopMOTCheck() {
                       <FileText className="w-4 h-4 text-slate-500" />
                       <div>
                         <div className="text-xs text-slate-500">VIN</div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono font-bold uppercase">{vehicleData.vin}</span>
-                          <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                          <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-[10px] sm:text-xs bg-blue-50 px-2 py-0.5 rounded text-blue-600 hover:bg-blue-100 transition-colors shrink-0">
                             Search on PartSouq
                           </a>
                         </div>
