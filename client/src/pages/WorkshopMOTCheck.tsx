@@ -20,15 +20,14 @@ import {
   FileText,
   Sparkles,
   ChevronDown,
-  Zap
+  Zap,
+  Home
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
 import { Link } from "wouter";
-import { Home, ArrowLeft } from "lucide-react";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
-import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { ServiceHistory } from "@/components/ServiceHistory";
@@ -427,14 +426,6 @@ export default function WorkshopMOTCheck() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Embedded Drone Technical Data */}
-            <div className="mb-2">
-              <AutodataMini 
-                vrm={vehicleData.registration}
-                isWorkshop={true}
-              />
-            </div>
 
             {/* SWS Technical Intelligence Hub Direct Link */}
             <div className="mb-4">
