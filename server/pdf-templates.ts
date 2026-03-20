@@ -760,64 +760,101 @@ export function parseDescription(text: string): { workItems: string[]; parts: st
 // SERVICE HISTORY
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// PROFESSIONAL SERVICE HISTORY REPORT
+// ═══════════════════════════════════════════════════════════════
+
 export async function generateServiceHistoryPDF(data: any): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
-  const SM = 35;                   // slightly wider margins
-  const SCW = PW - SM * 2;
-  let y = SM;
+  const PAGE_M = 40; // 40pt Margins
+  const CW = PW - PAGE_M * 2; // Content Width
+  const BRAND_BLUE = '#0a2342';
+  const LIGHT_GREY = '#f4f6f8';
+  const MID_GREY = '#d1d5db';
+  const DARK_TEXT = '#1f2937';
+  
+  let y = PAGE_M;
   let pageNum = 1;
 
+  // Formatting helpers specific to the premium report
+  const addDividerLine = (yPos: number, thickness = 1, color = MID_GREY) => {
+    doc.save().strokeColor(color).lineWidth(thickness).moveTo(PAGE_M, yPos).lineTo(PW - PAGE_M, yPos).stroke().restore();
+  };
+
   const pageHeader = (): number => {
-    y = SM;
+    y = PAGE_M;
 
-    // Company header
-    doc.font('Helvetica-Bold').fontSize(18).fillColor('black');
-    doc.text(data.company_name || 'ELI MOTORS LIMITED', SM, y); y += 20;
-    doc.font('Helvetica').fontSize(8);
-    doc.text(data.address || '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP', SM, y); y += 11;
-    doc.text(data.phone || '020 8203 6449, Sales 07950 250970', SM, y); y += 11;
-    doc.text(data.website || 'www.elimotors.co.uk', SM, y);
+    // Logo & Dealer Name (Right Aligned or Centered?)
+    // Let's do a crisp Side-by-Side header
+    const logo = findImg('eli_logo_white.png'); // Wait, white logo?
+    // In the earlier code: 'eli_logo_white.png' was used, likely meant to be put on a colored background or it's a dark logo.
+    // If it's a white logo, it won't show on a white PDF background!
+    // I'll assume they have a dark logo, or I'll just write the text beautifully.
+    
+    // Left: Dealership Info
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(BRAND_BLUE);
+    doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PAGE_M, y);
+    doc.font('Helvetica').fontSize(9).fillColor('#6b7280');
+    doc.text(data.address || '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP', PAGE_M, y + 26);
+    doc.text(`${data.phone || '020 8203 6449'}  |  ${data.website || 'www.elimotors.co.uk'}`, PAGE_M, y + 38);
 
-    const logo = findImg('eli_logo_white.png');
-    if (logo) {
-      const lw = 120;
-      doc.image(logo, PW - SM - lw, SM, { width: lw });
+    // Right: "CERTIFICATE OF MAINTENANCE"
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(BRAND_BLUE);
+    doc.text('OFFICIAL MAINTENANCE RECORD', PAGE_M, y + 4, { width: CW, align: 'right' });
+    doc.font('Helvetica').fontSize(8).fillColor('#9ca3af');
+    const now = new Date();
+    doc.text(`Generated: ${now.toLocaleDateString('en-GB')} at ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute:'2-digit' })}`, PAGE_M, y + 20, { width: CW, align: 'right' });
+    if (pageNum > 1) {
+      doc.text(`Page — ${pageNum}`, PAGE_M, y + 32, { width: CW, align: 'right' });
     }
-    y += 18;
 
-    // Blue + red accent lines
-    doc.save().strokeColor(ACCENT_BLUE).lineWidth(2).moveTo(SM, y).lineTo(PW - SM, y).stroke().restore();
-    y += 5;
-    doc.save().strokeColor(ACCENT_RED).lineWidth(1).moveTo(SM, y).lineTo(PW - SM, y).stroke().restore();
-    y += 18;
-
-    // Title
-    doc.font('Helvetica-Bold').fontSize(16).fillColor('black');
-    doc.text('VEHICLE SERVICE HISTORY', SM, y);
-
-    if (data.vehicle_reg) {
-      doc.font('Helvetica-Bold').fontSize(12);
-      doc.text(data.vehicle_reg, SM, y, { width: SCW, align: 'right' });
-      const vm = `${data.vehicle_make || ''} ${data.vehicle_model || ''}`.trim();
-      if (vm) {
-        doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-        doc.text(vm, SM, y + 16, { width: SCW, align: 'right' });
-        doc.fillColor('black');
-      }
-    }
+    y += 65;
+    addDividerLine(y, 2, BRAND_BLUE);
     y += 20;
 
-    doc.font('Helvetica').fontSize(8).fillColor(MUTED);
-    doc.text('Complete Maintenance Record', SM, y);
-    if (pageNum > 1) doc.text(`Page ${pageNum}`, SM, y, { width: SCW, align: 'right' });
-    doc.fillColor('black');
-    y += 18;
+    // Vehicle Detail Hero Block (Only on Page 1)
+    if (pageNum === 1) {
+      doc.save().roundedRect(PAGE_M, y, CW, 80, 4).fillAndStroke(LIGHT_GREY, MID_GREY).restore();
+      
+      const vMake = (data.vehicle_make || '').toUpperCase();
+      const vModel = (data.vehicle_model || '').toUpperCase();
+      const vReg = (data.vehicle_reg || '').toUpperCase();
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.text('VEHICLE IDENTITY', PAGE_M + 15, y + 15);
+      
+      doc.font('Helvetica-Bold').fontSize(24).fillColor(BRAND_BLUE);
+      doc.text(`${vMake} ${vModel}`, PAGE_M + 15, y + 30);
+      
+      doc.font('Helvetica-Bold').fontSize(14).fillColor('#4b5563');
+      doc.text(`REGISTRATION: ${vReg}`, PAGE_M + 15, y + 55);
+
+      // Financial Summary in the box
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.text('TOTAL SERVICE VISITS', PAGE_M, y + 15, { width: CW - 20, align: 'right' });
+      doc.font('Helvetica-Bold').fontSize(16).fillColor(BRAND_BLUE);
+      doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - 20, align: 'right' });
+      
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - 20, align: 'right' });
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(BRAND_BLUE);
+      doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - 20, align: 'right' });
+
+      y += 105;
+      
+      doc.font('Helvetica-Bold').fontSize(14).fillColor(DARK_TEXT);
+      doc.text('Detailed Service History', PAGE_M, y);
+      y += 20;
+    }
 
     return y;
   };
 
   const checkBreak = (needed: number): number => {
     if (y + needed > PH - 50) {
+      // Add footer to current page before breaking
+      doc.font('Helvetica').fontSize(7).fillColor('#9ca3af');
+      doc.text('Certified by Eli Motors Management Suite', PAGE_M, PH - 30, { width: CW, align: 'center' });
       doc.addPage();
       pageNum++;
       y = pageHeader();
@@ -826,163 +863,122 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
   };
 
   y = pageHeader();
-
-  const timelineX = SM + 8;
-  const contentX = SM + 24;
-  const boxW = PW - SM - contentX - 7;
-  const innerW = boxW - 16;
   const entries = data.entries || [];
+
+  if (entries.length === 0) {
+    doc.font('Helvetica-Oblique').fontSize(10).fillColor('#6b7280');
+    doc.text('No maintenance records found for this vehicle on the digital database.', PAGE_M, y + 20, { width: CW, align: 'center' });
+  }
 
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
     const { workItems, parts: partsList } = parseDescription(entry.description || '');
 
-    // ── Estimate entry height ──
-    doc.font('Helvetica').fontSize(8);
+    // Estimate height
+    doc.font('Helvetica').fontSize(9);
     let workH = 0;
     for (const item of workItems) {
-      workH += doc.heightOfString(`\u2022  ${item}`, { width: innerW }) + 2;
+      workH += doc.heightOfString(`\u2022  ${item}`, { width: CW - 30 }) + 4;
     }
-
     let partsH = 0;
     if (partsList.length > 0) {
-      partsH = 18; // label
-      doc.font('Helvetica').fontSize(7.5);
+      partsH = 20; // Label
       for (const part of partsList) {
-        partsH += doc.heightOfString(`\u25B8  ${part}`, { width: innerW - 8 }) + 2;
+        partsH += doc.heightOfString(part, { width: (CW / 2) - 30 }) + 4; // Rendered in columns
       }
-      partsH += 8;
+      partsH = (partsH / 2) + 15; // Rough estimate since we do 2 columns
     }
 
-    const descLabelH = 14;
-    const boxPad = 12;
-    let boxH = descLabelH + workH + partsH + boxPad;
-    if (workItems.length === 0 && partsList.length === 0) boxH = descLabelH + boxPad;
+    const headerH = 24;
+    const padding = 20;
+    const boxH = headerH + (workH > 0 ? workH + 15 : 0) + (partsH > 0 ? partsH + 10 : 0) + padding;
 
-    const entryH = 40 + boxH + 20;
-    y = checkBreak(entryH);
+    y = checkBreak(boxH + 15);
 
-    // ── Timeline dot ──
-    doc.save().circle(timelineX, y + 3, 4).fill(ACCENT_BLUE).restore();
-
-    // ── Date ──
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('black');
-    doc.text(entry.date, contentX, y);
-    const dateW = doc.widthOfString(entry.date);
-
-    // ── Invoice badge ──
-    const badgeText = `INVOICE  ${entry.invoice_number}`;
-    doc.font('Helvetica-Bold').fontSize(7);
-    const badgeW = doc.widthOfString(badgeText) + 12;
-    const badgeX = contentX + dateW + 12;
-    doc.save().roundedRect(badgeX, y - 1, badgeW, 14, 3).fill(BADGE_COLOR).restore();
-    doc.font('Helvetica-Bold').fontSize(7).fillColor('white');
-    doc.text(badgeText, badgeX + 6, y + 2);
-    doc.fillColor('black');
-
-    // ── Total (right-aligned) ──
-    doc.font('Helvetica-Bold').fontSize(11);
-    doc.text(`Total: ${entry.total}`, contentX, y, { width: PW - SM - contentX, align: 'right' });
-
-    doc.font('Helvetica').fontSize(6.5).fillColor(MUTED);
-    doc.text('RECORDED ENTRY', contentX, y + 13, { width: PW - SM - contentX, align: 'right' });
-    doc.fillColor('black');
-    y += 16;
-
-    // ── Mileage ──
+    // Entry Header Bar (Dark Blue)
+    doc.save().roundedRect(PAGE_M, y, CW, headerH, 3).fill(BRAND_BLUE).restore();
+    
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff');
+    doc.text(`DATE: ${entry.date}`, PAGE_M + 10, y + 7);
+    
     if (entry.mileage) {
-      doc.font('Helvetica').fontSize(8.5).fillColor(MUTED);
-      doc.text(`MILEAGE: ${entry.mileage}`, contentX, y);
-      doc.fillColor('black');
-      y += 14;
-    } else {
-      y += 6;
+      doc.text(`MILEAGE: ${entry.mileage}`, PAGE_M + 150, y + 7);
     }
+    
+    doc.text(`REF: ${entry.invoice_number}`, PAGE_M + 280, y + 7);
+    
+    doc.text(`VALUE: ${entry.total}`, PAGE_M, y + 7, { width: CW - 10, align: 'right' });
+    
+    // Entry Body (Bordered Box attached to header)
+    doc.save().moveTo(PAGE_M, y + headerH).lineTo(PAGE_M, y + boxH - 3).quadraticCurveTo(PAGE_M, y + boxH, PAGE_M + 3, y + boxH)
+       .lineTo(PAGE_M + CW - 3, y + boxH).quadraticCurveTo(PAGE_M + CW, y + boxH, PAGE_M + CW, y + boxH - 3)
+       .lineTo(PAGE_M + CW, y + headerH).strokeColor(MID_GREY).lineWidth(1).stroke().restore();
 
-    // ── Description box ──
-    const boxX = contentX + 2;
-    const boxTop = y;
+    let contentY = y + headerH + 12;
 
-    // Background + border
-    doc.save().roundedRect(boxX, boxTop, boxW, boxH, 5).fillAndStroke(LIGHT_BG, BORDER).restore();
+    if (workItems.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_BLUE);
+      doc.text('SERVICES PERFORMED:', PAGE_M + 12, contentY);
+      contentY += 12;
 
-    // "JOB DESCRIPTION" label
-    doc.font('Helvetica-Bold').fontSize(6.5).fillColor(ACCENT_BLUE);
-    doc.text('J O B   D E S C R I P T I O N', boxX + 8, boxTop + 6);
-    doc.fillColor('black');
-
-    // Work items
-    let drawY = boxTop + descLabelH + 2;
-    doc.font('Helvetica').fontSize(8).fillColor('#333333');
-    for (const item of workItems) {
-      const h = doc.heightOfString(`\u2022  ${item}`, { width: innerW });
-      doc.text(`\u2022  ${item}`, boxX + 8, drawY, { width: innerW });
-      drawY += h + 2;
-    }
-
-    // Parts sub-section
-    if (partsList.length > 0) {
-      const partsTop = drawY + 4;
-      doc.save()
-        .roundedRect(boxX + 4, partsTop, boxW - 8, partsH, 3)
-        .fillAndStroke(PARTS_BG, PARTS_ACCENT)
-        .restore();
-
-      doc.font('Helvetica-Bold').fontSize(6).fillColor(PARTS_ACCENT);
-      doc.text('P A R T S   U S E D', boxX + 10, partsTop + 5);
-
-      let partY = partsTop + 18;
-      doc.font('Helvetica').fontSize(7.5).fillColor('#444444');
-      for (const part of partsList) {
-        const h = doc.heightOfString(`\u25B8  ${part}`, { width: innerW - 8 });
-        doc.text(`\u25B8  ${part}`, boxX + 12, partY, { width: innerW - 8 });
-        partY += h + 2;
+      doc.font('Helvetica').fontSize(9).fillColor(DARK_TEXT);
+      for (const item of workItems) {
+        const itemH = doc.heightOfString(item, { width: CW - 30 });
+        doc.text(`\u2022   ${item}`, PAGE_M + 12, contentY, { width: CW - 30 });
+        contentY += itemH + 4;
       }
+      contentY += 5;
     }
-    doc.fillColor('black');
 
-    y = boxTop + boxH;
+    if (partsList.length > 0) {
+      if (workItems.length > 0) {
+        addDividerLine(contentY, 0.5, '#e5e7eb');
+        contentY += 10;
+      }
 
-    // ── Timeline line connecting entries ──
-    const lineTop = boxTop - 14;
-    if (idx < entries.length - 1) {
-      y += 10;
-      doc.save().strokeColor(BORDER).lineWidth(1.5)
-        .moveTo(timelineX, lineTop).lineTo(timelineX, y + 6).stroke().restore();
-      y += 10;
-    } else {
-      doc.save().strokeColor(BORDER).lineWidth(1.5)
-        .moveTo(timelineX, lineTop).lineTo(timelineX, y + 4).stroke().restore();
-      y += 15;
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_BLUE);
+      doc.text('COMPONENTS INSTALLED:', PAGE_M + 12, contentY);
+      contentY += 12;
+
+      doc.font('Helvetica').fontSize(8.5).fillColor('#4b5563');
+      
+      // Print parts in 2 columns
+      let leftCol = true;
+      let startColY = contentY;
+      let maxColY = contentY;
+      
+      const colW = (CW - 40) / 2;
+      for (const part of partsList) {
+        const cx = leftCol ? PAGE_M + 12 : PAGE_M + 12 + colW + 10;
+        const cy = leftCol ? contentY : startColY;
+        
+        const partH = doc.heightOfString(`\u25B8  ${part}`, { width: colW });
+        doc.text(`\u25B8  ${part}`, cx, cy, { width: colW });
+        
+        if (leftCol) {
+          contentY += partH + 4;
+          leftCol = false;
+        } else {
+          startColY += partH + 4;
+          leftCol = true;
+        }
+        maxColY = Math.max(contentY, startColY);
+      }
+      contentY = maxColY + 5;
     }
+
+    if (workItems.length === 0 && partsList.length === 0) {
+      doc.font('Helvetica-Oblique').fontSize(9).fillColor('#9ca3af');
+      doc.text('No detailed breakdown was digitally recorded for this visit.', PAGE_M + 12, contentY);
+    }
+
+    y += boxH + 15;
   }
 
-  // ═══ Summary Footer ═══
-  y = checkBreak(70);
-  doc.save().strokeColor(BORDER).lineWidth(1)
-    .moveTo(SM + 20, y).lineTo(PW - SM - 20, y).stroke().restore();
-  y += 25;
-
-  const mid = PW / 2;
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(MUTED);
-  doc.text('T O T A L   R E C O R D S', mid - 120, y, { width: 100, align: 'center' });
-  doc.text('C U M U L A T I V E   S P E N D', mid + 20, y, { width: 100, align: 'center' });
-
-  y += 16;
-  doc.font('Helvetica-Bold').fontSize(18).fillColor('black');
-  doc.text(String(data.total_records ?? entries.length), mid - 120, y, { width: 100, align: 'center' });
-  doc.text(data.cumulative_spend || '', mid + 20, y, { width: 100, align: 'center' });
-
-  y += 30;
-  doc.font('Helvetica-Oblique').fontSize(7).fillColor(MUTED);
-  const now = new Date();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const h = now.getHours(); const mi = now.getMinutes(); const s = now.getSeconds();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  const ts = `${months[now.getMonth()]} ${String(now.getDate()).padStart(2, '0')}, ${now.getFullYear()}, ${h12}:${String(mi).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}`;
-  doc.text(`Generated by Eli Motors Management Suite on ${ts}`, 0, y, { width: PW, align: 'center' });
+  // Final Footer string on the last page
+  doc.font('Helvetica').fontSize(7).fillColor('#9ca3af');
+  doc.text('Certified by Eli Motors Management Suite — Official Digital Record', PAGE_M, PH - 30, { width: CW, align: 'center' });
 
   const buf = await finish();
-  return { content: buf.toString('base64'), filename: `Service_History_${data.vehicle_reg || ''}.pdf` };
+  return { content: buf.toString('base64'), filename: `Vehicle_History_${data.vehicle_reg || 'Report'}.pdf` };
 }
