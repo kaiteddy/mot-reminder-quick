@@ -69,6 +69,12 @@ export function AutodataMini({ vrm, isWorkshop = false }: { vrm: string; isWorks
     }
   };
 
+  useEffect(() => {
+    if (vrm) {
+      fetchAutodata();
+    }
+  }, [vrm]);
+
   if (!vrm) return null;
 
   return (
@@ -82,12 +88,7 @@ export function AutodataMini({ vrm, isWorkshop = false }: { vrm: string; isWorks
             </CardTitle>
             <CardDescription>Live data directly from Autodata</CardDescription>
           </div>
-          {!vehicleData && !isLoading && !error && (
-            <Button onClick={fetchAutodata} size="sm">
-              Fetch Specs
-            </Button>
-          )}
-        </div>
+          </div>
       </CardHeader>
 
       <CardContent className="pt-6">

@@ -30,7 +30,6 @@ import { Home, ArrowLeft } from "lucide-react";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
-import { OmnipartIntegration } from "@/components/OmnipartLookup";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { ServiceHistory } from "@/components/ServiceHistory";
 
@@ -436,11 +435,6 @@ export default function WorkshopMOTCheck() {
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <MOTMileageChart tests={vehicleData.motTests} />
             )}
-
-            {/* Omnipart Trade Lookup Integration */}
-            <div className="mb-6">
-              <OmnipartIntegration defaultVrm={vehicleData.registration} />
-            </div>
 
             {/* Quick Estimate for Latest Test (if it has defects/advisories) */}
             {vehicleData.motTests && vehicleData.motTests[0]?.defects && vehicleData.motTests[0].defects.length > 0 && (

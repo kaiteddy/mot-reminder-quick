@@ -114,6 +114,13 @@ export default function WorkshopTechnicalHub() {
         )
         : [];
 
+    useEffect(() => {
+        if (vehicle && !techData && searchQuery && !fetchTechData.isPending) {
+            // Automatically trigger the deep scan if no technical data exists
+            fetchTechData.mutate({ registration: searchQuery });
+        }
+    }, [vehicle, techData, searchQuery]);
+
     const initialLoadDone = useRef(false);
 
     useEffect(() => {
@@ -238,12 +245,11 @@ export default function WorkshopTechnicalHub() {
                                     <div className="p-4 bg-slate-50 border-t">
                                         {!techData ? (
                                             <Button
-                                                className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
-                                                onClick={() => fetchTechData.mutate({ registration: searchQuery })}
-                                                disabled={fetchTechData.isPending}
+                                                className="w-full bg-blue-600 font-bold opacity-70 cursor-not-allowed"
+                                                disabled={true}
                                             >
-                                                {fetchTechData.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 fill-white" />}
-                                                TRIGGER DEEP SCAN
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                AUTO-PULLING DEEP SCAN...
                                             </Button>
                                         ) : (
                                             <div className="flex flex-col items-center py-2">
@@ -293,9 +299,9 @@ export default function WorkshopTechnicalHub() {
                                         <Gauge className="w-16 h-16 text-slate-300" />
                                     </div>
                                     <div>
-                                        <h3 className="text-xl font-bold uppercase tracking-tight">Intelligence Not Initialized</h3>
+                                        <h3 className="text-xl font-bold uppercase tracking-tight">Intelligence Initializing...</h3>
                                         <p className="text-muted-foreground max-w-md mx-auto">
-                                            This vehicle has not yet undergone a deep technical scan. Use the scan button to pull official oil, aircon, and spec data.
+                                            Auto-pulling official oil, aircon, and spec data from the deep network...
                                         </p>
                                     </div>
                                 </div>
