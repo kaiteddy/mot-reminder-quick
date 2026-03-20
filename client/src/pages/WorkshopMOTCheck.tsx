@@ -586,9 +586,9 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
               const isMinor = defect.type === "MINOR" || defect.type === "PRS";
               const isAdvisory = defect.type === "ADVISORY";
               
-              let baseClasses = "text-sm p-2.5 rounded mb-1.5 flex items-start gap-2 ";
+              let baseClasses = "text-sm p-3 rounded mb-2 flex items-start gap-2 ";
               if (isDangerous) {
-                baseClasses += "bg-red-600 text-white shadow-sm font-medium";
+                baseClasses += "bg-red-600 text-white shadow-md font-medium";
               } else if (isMajor) {
                 baseClasses += "bg-red-50 text-red-900 border border-red-200";
               } else if (isMinor) {
