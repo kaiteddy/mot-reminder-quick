@@ -623,7 +623,7 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
           </div>
           
           {/* Estimate Creator specifically for tests with actual defects (including advisories) */}
-          {test.defects.length > 0 && vehicleData && (
+          {test.defects && test.defects.length > 0 && vehicleData && (
             <div className="pt-4 border-t mt-4">
               <MOTEstimateCreator 
                 vehicleDetails={{
