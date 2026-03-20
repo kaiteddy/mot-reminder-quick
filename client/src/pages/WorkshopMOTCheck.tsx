@@ -30,6 +30,7 @@ import { Link } from "wouter";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
+import { SWSDeepIntelEmbed } from "@/components/SWSDeepIntelEmbed";
 import { ServiceHistory } from "@/components/ServiceHistory";
 
 interface MOTTest {
@@ -427,15 +428,14 @@ export default function WorkshopMOTCheck() {
               </CardContent>
             </Card>
 
-            {/* SWS Technical Intelligence Hub Direct Link */}
-            <div className="mb-4">
-               <Link href={`/workshop/technical-hub?vrm=${encodeURIComponent(vehicleData.registration)}`}>
-                 <Button className="w-full h-12 bg-blue-600 hover:bg-blue-700 font-bold uppercase tracking-widest text-sm shadow-md">
-                   <Zap className="w-4 h-4 mr-2 fill-white" />
-                   SWS Deep Intelligence Hub
-                 </Button>
-               </Link>
-            </div>
+            {/* Embedded SWS Deep Intelligence */}
+            <SWSDeepIntelEmbed 
+                registration={vehicleData.registration} 
+                vehicle={vehicleData} 
+                onDataFetched={() => {
+                   lookupMutation.mutate({ registration: vehicleData.registration });
+                }} 
+            />
 
             {/* MOT Mileage History Chart */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (

@@ -28,6 +28,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
 import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
+import { SWSDeepIntelEmbed } from "@/components/SWSDeepIntelEmbed";
 import { OmnipartIntegration } from "@/components/OmnipartLookup";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { ServiceHistory } from "@/components/ServiceHistory";
@@ -410,6 +411,15 @@ export default function MOTCheck() {
                 vrm={vehicleData.registration}
               />
             </div>
+
+            {/* Embedded SWS Deep Intelligence */}
+            <SWSDeepIntelEmbed 
+                registration={vehicleData.registration} 
+                vehicle={vehicleData} 
+                onDataFetched={() => {
+                   lookupMutation.mutate({ registration: vehicleData.registration });
+                }} 
+            />
 
             {/* MOT Mileage History Chart */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
