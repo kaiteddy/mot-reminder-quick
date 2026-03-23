@@ -148,7 +148,21 @@ export default function UrgentFollowUps() {
 
     const urgentLogs = useMemo(() => {
         if (!logs) return [];
-        const filteredLogs = logs.filter(log => {
+        
+        // 1. First, group by vehicleId and only keep the absolute LATEST log per vehicle
+        const latestLogsMap = new Map();
+        for (const log of logs) {
+            if (!log.vehicleId) continue;
+            const existing = latestLogsMap.get(log.vehicleId);
+            if (!existing || new Date(log.sentAt) > new Date(existing.sentAt)) {
+                latestLogsMap.set(log.vehicleId, log);
+            }
+        }
+        
+        const deduplicatedLogs = Array.from(latestLogsMap.values());
+
+        // 2. Filter these latest logs based on the urgent criteria
+        const filteredLogs = deduplicatedLogs.filter(log => {
             if (!log.currentMOTExpiry || !log.dueDate) return false;
 
             const sentDate = new Date(log.sentAt);
@@ -267,6 +281,7 @@ export default function UrgentFollowUps() {
             toast.success(`Batch Complete`, {
                 description: `Successfully sent ${successCount}. Failed: ${failCount}.`
             });
+            refetch(); // Ensure table refreshes immediately
         }
     };
 
