@@ -19,13 +19,31 @@ import {
     Send,
     ArrowUpDown,
     ArrowUp,
-    ArrowDown
+    ArrowDown,
+    CalendarCheck,
+    History,
+    CalendarDays,
+    Trash2
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ChatHistory } from "@/components/ChatHistory";
+import { BookMOTDialog } from "@/components/BookMOTDialog";
+import { ServiceHistory } from "@/components/ServiceHistory";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -65,6 +83,68 @@ export default function UrgentFollowUps() {
         },
         onSettled: () => setIsUpdating(false)
     });
+
+    const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry: string | null } | null>(null);
+    const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
+
+    const [showBookedDialog, setShowBookedDialog] = useState(false);
+    const [bookingTargetIds, setBookingTargetIds] = useState<Set<number> | null>(null);
+    const [bookedDate, setBookedDate] = useState("");
+
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [selectedVehicleForHistory, setSelectedVehicleForHistory] = useState<{ id: number, registration: string } | null>(null);
+
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [deletePendingId, setDeletePendingId] = useState<number | null>(null);
+
+    const deleteVehicleMutation = trpc.database.delete.useMutation({
+        onSuccess: () => {
+            toast.success("Vehicle deleted successfully");
+            setDeleteConfirmOpen(false);
+            setDeletePendingId(null);
+            setSelectedLogs(new Set());
+            refetch();
+        },
+        onError: (err: any) => {
+            toast.error("Failed to delete vehicle", { description: err.message });
+            setDeletePendingId(null);
+            setDeleteConfirmOpen(false);
+        }
+    });
+
+    const markBookedMutation = trpc.database.markMOTBooked.useMutation({
+        onSuccess: () => {
+            toast.success("MOT Booked status updated");
+            setShowBookedDialog(false);
+            setBookingTargetIds(null);
+            setBookedDate("");
+            refetch();
+        },
+        onError: (err: any) => {
+            toast.error("Failed to update status", { description: err.message });
+        }
+    });
+
+    const handleMarkBooked = async () => {
+        if (!bookingTargetIds) return;
+        const arrayIds = Array.from(bookingTargetIds);
+        if (arrayIds.length === 0) return;
+        
+        try {
+            await markBookedMutation.mutateAsync({
+                vehicleIds: arrayIds,
+                date: bookedDate
+            });
+        } catch (e) {
+            console.error("Failed to mark all as booked", e);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (deletePendingId) {
+            deleteVehicleMutation.mutate({ vehicleIds: [deletePendingId] });
+        }
+    };
 
     const urgentLogs = useMemo(() => {
         if (!logs) return [];
@@ -300,7 +380,7 @@ export default function UrgentFollowUps() {
                                         <TableHead className="cursor-pointer select-none" onClick={() => handleSort("daysLeft")}>
                                             Status <SortIcon columnKey="daysLeft" />
                                         </TableHead>
-                                        <TableHead className="text-right">Reach Out</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -378,20 +458,91 @@ export default function UrgentFollowUps() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        <Dialog>
-                                                            <DialogTrigger asChild>
-                                                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-8">
-                                                                    <MessageSquare className="h-3 w-3 mr-2" />
-                                                                    Message
-                                                                </Button>
-                                                            </DialogTrigger>
-                                                            <DialogContent className="max-w-3xl max-h-[90vh]">
-                                                                <DialogHeader>
-                                                                    <DialogTitle>Chat with {log.customerName || log.recipient}</DialogTitle>
-                                                                </DialogHeader>
-                                                                <ChatHistory phoneNumber={log.recipient} />
-                                                            </DialogContent>
-                                                        </Dialog>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Dialog>
+                                                                <DialogTrigger asChild>
+                                                                    <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                                                                        <span title="Direct Message (Urgent)">
+                                                                            <MessageSquare className="h-4 w-4" />
+                                                                        </span>
+                                                                    </Button>
+                                                                </DialogTrigger>
+                                                                <DialogContent className="max-w-3xl max-h-[90vh]">
+                                                                    <DialogHeader>
+                                                                        <DialogTitle>Chat with {log.customerName || log.recipient}</DialogTitle>
+                                                                    </DialogHeader>
+                                                                    <ChatHistory phoneNumber={log.recipient} />
+                                                                </DialogContent>
+                                                            </Dialog>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId) {
+                                                                        setBookingTargetIds(new Set([log.vehicleId]));
+                                                                        setShowBookedDialog(true);
+                                                                    }
+                                                                }}
+                                                                disabled={!log.vehicleId}
+                                                            >
+                                                                <span title="Mark as Booked">
+                                                                    <CalendarCheck className="h-4 w-4" />
+                                                                </span>
+                                                            </Button>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId && log.registration) {
+                                                                        setSelectedVehicleForHistory({ id: log.vehicleId, registration: log.registration });
+                                                                        setHistoryOpen(true);
+                                                                    }
+                                                                }}
+                                                                disabled={!log.vehicleId}
+                                                            >
+                                                                <span title="View Service History">
+                                                                    <History className="h-4 w-4" />
+                                                                </span>
+                                                            </Button>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-slate-600 hover:text-slate-700 hover:bg-slate-100"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId && log.registration) {
+                                                                        setSelectedVehicleForMOT({
+                                                                            id: log.vehicleId,
+                                                                            registration: log.registration,
+                                                                            currentExpiry: log.currentMOTExpiry ? new Date(log.currentMOTExpiry).toISOString() : null
+                                                                        });
+                                                                        setIsBookMOTOpen(true);
+                                                                    }
+                                                                }}
+                                                                disabled={!log.vehicleId}
+                                                            >
+                                                                <span title="Book MOT / Update Date">
+                                                                    <CalendarDays className="h-4 w-4" />
+                                                                </span>
+                                                            </Button>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId) {
+                                                                        setDeletePendingId(log.vehicleId);
+                                                                        setDeleteConfirmOpen(true);
+                                                                    }
+                                                                }}
+                                                                disabled={deleteVehicleMutation.isPending || !log.vehicleId}
+                                                            >
+                                                                <span title="Delete Vehicle">
+                                                                    {deletePendingId === log.vehicleId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                                </span>
+                                                            </Button>
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             );
@@ -402,6 +553,79 @@ export default function UrgentFollowUps() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Book MOT Dialog */}
+                {selectedVehicleForMOT && (
+                    <BookMOTDialog
+                        open={isBookMOTOpen}
+                        onOpenChange={setIsBookMOTOpen}
+                        vehicleId={selectedVehicleForMOT.id}
+                        registration={selectedVehicleForMOT.registration}
+                        currentExpiryDate={selectedVehicleForMOT.currentExpiry}
+                        onSuccess={() => refetch()}
+                    />
+                )}
+
+                {/* Mark Booked Dialog */}
+                <Dialog open={showBookedDialog} onOpenChange={(open) => {
+                    setShowBookedDialog(open);
+                    if (!open) setBookingTargetIds(null);
+                }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Mark MOT Booked</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Booked Date</label>
+                                <Input type="date" value={bookedDate} onChange={(e) => setBookedDate(e.target.value)} />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                            <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                                {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Save Booking
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Service History Dialog */}
+                <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Service History: {selectedVehicleForHistory?.registration}</DialogTitle>
+                        </DialogHeader>
+                        {selectedVehicleForHistory && (
+                            <ServiceHistory vehicleId={selectedVehicleForHistory.id} />
+                        )}
+                    </DialogContent>
+                </Dialog>
+
+                {/* Delete Confirmation */}
+                <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Vehicle</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to delete this vehicle? This will also remove all associated reminders. This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    confirmDelete();
+                                }}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                                {deleteVehicleMutation.isPending ? "Deleting..." : "Delete"}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </DashboardLayout>
     );
