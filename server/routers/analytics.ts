@@ -205,6 +205,12 @@ export const analyticsRouter = router({
                 }
             }
             
+            // YoY Monthly overlay
+            const yoyMonthlyChartDataMap = new Map<number, { month: number, currentYear: number, previousYear: number }>();
+            for (let i = 1; i <= 12; i++) {
+                yoyMonthlyChartDataMap.set(i, { month: i, currentYear: 0, previousYear: 0 });
+            }
+            
             for (const doc of docs) {
                 // Prefer dateIssued, fallback to dateCreated
                 const docDate = doc.dateIssued || doc.dateCreated;
@@ -247,15 +253,22 @@ export const analyticsRouter = router({
                 const yearKey = `${year}`;
                 yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
 
-                // YoY overlay
+                // YoY Weekly overlay
                 if (year === currentYear || year === currentYear - 1) {
                     const startOfYear = new Date(year, 0, 1);
                     const days = Math.floor((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
                     const weekNum = Math.min(Math.floor(days / 7) + 1, 52); // Cap at 52 for alignment
-                    const entry = yoyWeeklyChartDataMap.get(weekNum);
-                    if (entry) {
-                        if (year === currentYear) entry.currentYear += val;
-                        else entry.previousYear += val;
+                    const wEntry = yoyWeeklyChartDataMap.get(weekNum);
+                    if (wEntry) {
+                        if (year === currentYear) wEntry.currentYear += val;
+                        else wEntry.previousYear += val;
+                    }
+
+                    // YoY Monthly overlay
+                    const mEntry = yoyMonthlyChartDataMap.get(month + 1);
+                    if (mEntry) {
+                        if (year === currentYear) mEntry.currentYear += val;
+                        else mEntry.previousYear += val;
                     }
                 }
             }
@@ -274,6 +287,7 @@ export const analyticsRouter = router({
                 .sort((a, b) => a.year.localeCompare(b.year));
 
             const yoyWeeklyData = Array.from(yoyWeeklyChartDataMap.values()).sort((a, b) => a.week - b.week);
+            const yoyMonthlyData = Array.from(yoyMonthlyChartDataMap.values()).sort((a, b) => a.month - b.month);
                 
             // Safe division for percentages
             const wowChange = revenueLastWeek > 0 ? ((revenueThisWeek - revenueLastWeek) / revenueLastWeek) * 100 : 0;
@@ -297,15 +311,20 @@ export const analyticsRouter = router({
             .orderBy(desc(serviceHistory.dateCreated))
             .limit(100);
 
-            const jobSheets = rawJobSheets.map(js => ({
-                id: js.id,
-                docNo: js.docNo || "Unknown",
-                dateCreated: js.dateCreated ? js.dateCreated.toISOString() : null,
-                totalGross: parseFloat(js.totalGross as any) || 0,
-                description: js.description || "No description",
-                customerName: js.customerName || "Unknown",
-                registration: js.registration || "Unknown",
-            }));
+            const jobSheets = rawJobSheets.map(js => {
+                let cleanDesc = js.description || "No description";
+                // Replace tabs, carriage returns, newlines, and weird binary chars
+                cleanDesc = cleanDesc.replace(/[\r\n\t]+/g, ' - ').replace(/[^\x20-\x7E£]/g, ' ').replace(/\s+/g, ' ').trim();
+                return {
+                    id: js.id,
+                    docNo: js.docNo || "Unknown",
+                    dateCreated: js.dateCreated ? js.dateCreated.toISOString() : null,
+                    totalGross: parseFloat(js.totalGross as any) || 0,
+                    description: cleanDesc,
+                    customerName: js.customerName || "Unknown",
+                    registration: js.registration || "Unknown",
+                }
+            });
             
             const jobSheetsTotal = jobSheets.reduce((sum, js) => sum + js.totalGross, 0);
 
@@ -324,6 +343,7 @@ export const analyticsRouter = router({
                 monthlyChartData,
                 yearlyChartData,
                 yoyWeeklyData,
+                yoyMonthlyData,
                 jobSheets,
                 jobSheetsTotal
             };

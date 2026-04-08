@@ -282,11 +282,14 @@ export default function Analytics() {
                         </div>
 
                         {/* Monthly Trend row below */}
-                        <Card className="mt-4">
+                        <Card className="mt-4 border-amber-100 dark:border-amber-900/50">
                             <CardHeader>
-                                <CardTitle>Monthly Revenue Trend</CardTitle>
+                                <CardTitle className="text-xl flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                                    <TrendingUp className="h-5 w-5" />
+                                    Year-over-Year Monthly Comparison
+                                </CardTitle>
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
-                                    <CardDescription>Performance month by month for 2025 and 2026.</CardDescription>
+                                    <CardDescription>Direct month-by-month overlay comparing {new Date().getFullYear()} vs {new Date().getFullYear() - 1}.</CardDescription>
                                     <span className="text-sm font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full border border-amber-500/20 shadow-sm">
                                         Monthly Avg (Active): £{Number(avgMonthlyRevenue).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}
                                     </span>
@@ -295,20 +298,16 @@ export default function Analytics() {
                             <CardContent className="pl-2">
                                 <div className="h-[350px] w-full">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={monthlyFiltered} margin={{ bottom: 40, right: 20 }}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                        <LineChart data={financials?.yoyMonthlyData || []} margin={{ bottom: 20, right: 20 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.5} />
                                             <XAxis 
-                                                dataKey="date" 
-                                                tick={{ fontSize: 11 }} 
-                                                interval={0}
-                                                angle={-45}
-                                                height={60}
-                                                textAnchor="end"
+                                                dataKey="month" 
+                                                tick={{ fontSize: 12 }} 
                                                 tickFormatter={(value) => {
-                                                    const [year, month] = value.split('-');
                                                     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                                    return `${monthNames[parseInt(month)-1]} '${year.slice(2)}`;
+                                                    return monthNames[value - 1];
                                                 }}
+                                                tickMargin={10}
                                             />
                                             <YAxis 
                                                 tick={{ fontSize: 12 }} 
@@ -316,14 +315,37 @@ export default function Analytics() {
                                             />
                                             <Tooltip 
                                                 contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                formatter={(value: any) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 'Revenue']}
+                                                formatter={(value: any, name: string) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, name === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()]}
                                                 labelFormatter={(label) => {
-                                                     const [year, month] = label.split('-');
                                                      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                                                     return `${monthNames[parseInt(month)-1]} ${year}`;
+                                                     return monthNames[Number(label) - 1];
                                                 }}
                                             />
-                                            <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                            <Legend 
+                                                formatter={(value) => <span className="font-medium text-sm">{value === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()}</span>}
+                                                wrapperStyle={{ paddingTop: '20px' }}
+                                            />
+                                            <Line 
+                                                 type="monotone" 
+                                                 dataKey="currentYear" 
+                                                 name="currentYear" 
+                                                 stroke="#f59e0b" 
+                                                 strokeWidth={3} 
+                                                 dot={{ r: 4 }} 
+                                                 activeDot={{ r: 7 }} 
+                                                 animationDuration={1500}
+                                            />
+                                            <Line 
+                                                 type="monotone" 
+                                                 dataKey="previousYear" 
+                                                 name="previousYear" 
+                                                 stroke="#d6d3d1" 
+                                                 strokeWidth={2} 
+                                                 strokeDasharray="5 5" 
+                                                 dot={false} 
+                                                 activeDot={{ r: 4 }} 
+                                                 animationDuration={1500}
+                                            />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
