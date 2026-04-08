@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, isNotNull, like } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, isNotNull, like, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import os from "os";
@@ -475,6 +475,9 @@ export async function getAllVehiclesWithCustomers() {
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .orderBy(desc(vehicles.id));
 
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
     const logs = await db
       .select({
         vehicleId: reminderLogs.vehicleId,
@@ -482,7 +485,7 @@ export async function getAllVehiclesWithCustomers() {
         status: reminderLogs.status,
       })
       .from(reminderLogs)
-      .where(isNotNull(reminderLogs.vehicleId))
+      .where(and(isNotNull(reminderLogs.vehicleId), gte(reminderLogs.sentAt, oneYearAgo)))
       .orderBy(desc(reminderLogs.sentAt));
 
     const logMap = new Map();
