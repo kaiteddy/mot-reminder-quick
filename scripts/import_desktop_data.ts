@@ -31,7 +31,7 @@ import {
     getAllReminderLogs
 } from "../server/db";
 
-const EXPORT_DIR = "/Users/service/Desktop/Data Exports";
+const EXPORT_DIR = "/Users/service/Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/GA4 Backups/Latest Export";
 
 async function runImport() {
     const db = await getDb();

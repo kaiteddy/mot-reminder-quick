@@ -180,6 +180,12 @@ export const analyticsRouter = router({
             const monthlyChartDataMap = new Map<string, number>();
             const yearlyChartDataMap = new Map<string, number>();
             
+            // Year over Year (Current Year vs Previous Year overlapping)
+            const yoyWeeklyChartDataMap = new Map<number, { week: number, currentYear: number, previousYear: number }>();
+            for (let i = 1; i <= 52; i++) {
+                yoyWeeklyChartDataMap.set(i, { week: i, currentYear: 0, previousYear: 0 });
+            }
+
             // Pre-fill last 52 weeks so empty weeks render
             const wStart = new Date(now);
             const wDay = wStart.getDay();
@@ -240,6 +246,18 @@ export const analyticsRouter = router({
                 
                 const yearKey = `${year}`;
                 yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
+
+                // YoY overlay
+                if (year === currentYear || year === currentYear - 1) {
+                    const startOfYear = new Date(year, 0, 1);
+                    const days = Math.floor((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+                    const weekNum = Math.min(Math.floor(days / 7) + 1, 52); // Cap at 52 for alignment
+                    const entry = yoyWeeklyChartDataMap.get(weekNum);
+                    if (entry) {
+                        if (year === currentYear) entry.currentYear += val;
+                        else entry.previousYear += val;
+                    }
+                }
             }
             
             // Format chart data
@@ -254,6 +272,8 @@ export const analyticsRouter = router({
             const yearlyChartData = Array.from(yearlyChartDataMap.entries())
                 .map(([year, revenue]) => ({ year, revenue }))
                 .sort((a, b) => a.year.localeCompare(b.year));
+
+            const yoyWeeklyData = Array.from(yoyWeeklyChartDataMap.values()).sort((a, b) => a.week - b.week);
                 
             // Safe division for percentages
             const wowChange = revenueLastWeek > 0 ? ((revenueThisWeek - revenueLastWeek) / revenueLastWeek) * 100 : 0;
@@ -303,6 +323,7 @@ export const analyticsRouter = router({
                 weeklyChartData,
                 monthlyChartData,
                 yearlyChartData,
+                yoyWeeklyData,
                 jobSheets,
                 jobSheetsTotal
             };

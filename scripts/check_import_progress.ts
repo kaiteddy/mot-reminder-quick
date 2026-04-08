@@ -1,17 +1,22 @@
 import "dotenv/config";
 import { getDb } from "../server/db";
 import { vehicles, customers, reminders } from "../drizzle/schema";
-import { sql } from "drizzle-orm";
+import { sql, isNotNull } from "drizzle-orm";
 
 async function checkAllCounts() {
     const db = await getDb();
     if (!db) return;
 
-    const [vTotal] = await db.select({ count: sql<number>`count(*)` }).from(vehicles);
-    const [cTotal] = await db.select({ count: sql<number>`count(*)` }).from(customers);
-    const [rTotal] = await db.select({ count: sql<number>`count(*)` }).from(reminders);
+    console.log("Monitoring GA4 Reminder Import Progress Live... (Press Ctrl+C to stop)");
 
-    console.log(`${new Date().toISOString()} - Vehicles: ${vTotal.count}, Customers: ${cTotal.count}, Reminders: ${rTotal.count}`);
+    while (true) {
+        const [rTotal] = await db.select({ count: sql<number>`count(*)` }).from(reminders);
+        const [rImported] = await db.select({ count: sql<number>`count(*)` }).from(reminders).where(isNotNull(reminders.externalId));
+
+        console.log(`${new Date().toLocaleTimeString()} - Total Reminders: ${rTotal.count} (Imported via GA4: ${rImported.count})`);
+        
+        await new Promise(res => setTimeout(res, 2000));
+    }
 }
 
 checkAllCounts().catch(console.error);

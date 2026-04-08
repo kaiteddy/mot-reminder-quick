@@ -9,7 +9,7 @@ import {
 } from '../drizzle/schema';
 import { sql } from 'drizzle-orm';
 
-const EXPORT_DIR = "/Users/service/Desktop/Data Exports";
+const EXPORT_DIR = "/Users/service/Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/GA4 Backups/Latest Export";
 
 function loadCsv(filename: string) {
     const filePath = path.join(EXPORT_DIR, filename);
