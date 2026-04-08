@@ -9,6 +9,57 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowUpRight, ArrowDownRight, CircleDollarSign, FileText, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
 
+const CustomYoYTooltip = ({ active, payload, label, isMonthly }: any) => {
+    if (active && payload && payload.length) {
+        const curr = payload.find((p: any) => p.dataKey === 'currentYear')?.value || 0;
+        const prev = payload.find((p: any) => p.dataKey === 'previousYear')?.value || 0;
+        const twoPrev = payload.find((p: any) => p.dataKey === 'twoYearsAgo')?.value || 0;
+        
+        const diffPrev = curr - prev;
+        const diffTwoPrev = curr - twoPrev;
+
+        const labelText = isMonthly 
+            ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(label) - 1]
+            : `Week ${label}`;
+
+        return (
+            <div className="bg-white p-3 border rounded-lg shadow-lg dark:bg-slate-900 dark:border-slate-800">
+                <p className="font-bold border-b pb-1 mb-2 text-slate-800 dark:text-slate-200">{labelText}</p>
+                <div className="space-y-1 text-sm min-w-[200px]">
+                    <p className="text-blue-600 dark:text-blue-400 font-bold flex justify-between gap-4">
+                        <span>{new Date().getFullYear()}:</span>
+                        <span>£{curr.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </p>
+                    <p className="text-slate-500 font-medium flex justify-between gap-4">
+                        <span>{new Date().getFullYear() - 1}:</span>
+                        <span>£{prev.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </p>
+                    <p className="text-indigo-400 font-medium flex justify-between gap-4">
+                        <span>{new Date().getFullYear() - 2}:</span>
+                        <span>£{twoPrev.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </p>
+                </div>
+                
+                <div className="mt-3 pt-2 border-t dark:border-slate-800 space-y-1 text-xs">
+                    <p className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Gap (vs {new Date().getFullYear() - 1}):</span>
+                        <span className={`font-bold ${diffPrev >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                            {diffPrev >= 0 ? '+' : ''}£{diffPrev.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </span>
+                    </p>
+                    <p className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Gap (vs {new Date().getFullYear() - 2}):</span>
+                        <span className={`font-bold ${diffTwoPrev >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                            {diffTwoPrev >= 0 ? '+' : ''}£{diffTwoPrev.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </span>
+                    </p>
+                </div>
+            </div>
+        );
+    }
+    return null;
+}
+
 export default function Analytics() {
     const { data: stats, isLoading: isLoadingStats } = trpc.analytics.getStats.useQuery();
     const { data: financials, isLoading: isLoadingFinancials } = trpc.analytics.getFinancialStats.useQuery();
@@ -313,16 +364,13 @@ export default function Analytics() {
                                                 tick={{ fontSize: 12 }} 
                                                 tickFormatter={(value) => `£${value/1000}k`}
                                             />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                formatter={(value: any, name: string) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, name === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()]}
-                                                labelFormatter={(label) => {
-                                                     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-                                                     return monthNames[Number(label) - 1];
-                                                }}
-                                            />
+                                            <Tooltip content={<CustomYoYTooltip isMonthly />} />
                                             <Legend 
-                                                formatter={(value) => <span className="font-medium text-sm">{value === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()}</span>}
+                                                formatter={(value) => {
+                                                    if (value === 'currentYear') return <span className="font-bold text-sm text-amber-500">Current ({new Date().getFullYear()})</span>;
+                                                    if (value === 'previousYear') return <span className="font-medium text-sm text-slate-400">{new Date().getFullYear() - 1}</span>;
+                                                    return <span className="font-medium text-sm text-orange-300">{new Date().getFullYear() - 2}</span>;
+                                                }}
                                                 wrapperStyle={{ paddingTop: '20px' }}
                                             />
                                             <Line 
@@ -330,7 +378,7 @@ export default function Analytics() {
                                                  dataKey="currentYear" 
                                                  name="currentYear" 
                                                  stroke="#f59e0b" 
-                                                 strokeWidth={3} 
+                                                 strokeWidth={4} 
                                                  dot={{ r: 4 }} 
                                                  activeDot={{ r: 7 }} 
                                                  animationDuration={1500}
@@ -339,9 +387,20 @@ export default function Analytics() {
                                                  type="monotone" 
                                                  dataKey="previousYear" 
                                                  name="previousYear" 
-                                                 stroke="#d6d3d1" 
+                                                 stroke="#cbd5e1" 
                                                  strokeWidth={2} 
                                                  strokeDasharray="5 5" 
+                                                 dot={false} 
+                                                 activeDot={{ r: 4 }} 
+                                                 animationDuration={1500}
+                                            />
+                                            <Line 
+                                                 type="monotone" 
+                                                 dataKey="twoYearsAgo" 
+                                                 name="twoYearsAgo" 
+                                                 stroke="#fdba74" 
+                                                 strokeWidth={2} 
+                                                 strokeDasharray="3 3" 
                                                  dot={false} 
                                                  activeDot={{ r: 4 }} 
                                                  animationDuration={1500}
@@ -376,13 +435,13 @@ export default function Analytics() {
                                                 tick={{ fontSize: 12 }} 
                                                 tickFormatter={(value) => `£${value/1000}k`}
                                             />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                formatter={(value: any, name: string) => [`£${Number(value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, name === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()]}
-                                                labelFormatter={(label) => `Week ${label}`}
-                                            />
+                                            <Tooltip content={<CustomYoYTooltip />} />
                                             <Legend 
-                                                formatter={(value) => <span className="font-medium text-sm">{value === 'currentYear' ? new Date().getFullYear().toString() : (new Date().getFullYear() - 1).toString()}</span>}
+                                                formatter={(value) => {
+                                                    if (value === 'currentYear') return <span className="font-bold text-sm text-blue-600">Current ({new Date().getFullYear()})</span>;
+                                                    if (value === 'previousYear') return <span className="font-medium text-sm text-slate-500">{new Date().getFullYear() - 1}</span>;
+                                                    return <span className="font-medium text-sm text-indigo-400">{new Date().getFullYear() - 2}</span>;
+                                                }}
                                                 wrapperStyle={{ paddingTop: '20px' }}
                                             />
                                             <Line 
@@ -390,7 +449,7 @@ export default function Analytics() {
                                                 dataKey="currentYear" 
                                                 name="currentYear" 
                                                 stroke="#3b82f6" 
-                                                strokeWidth={3} 
+                                                strokeWidth={4} 
                                                 dot={{ r: 2 }} 
                                                 activeDot={{ r: 6 }} 
                                                 animationDuration={1500}
@@ -402,6 +461,17 @@ export default function Analytics() {
                                                 stroke="#94a3b8" 
                                                 strokeWidth={2} 
                                                 strokeDasharray="5 5" 
+                                                dot={false} 
+                                                activeDot={{ r: 4 }} 
+                                                animationDuration={1500}
+                                            />
+                                            <Line 
+                                                type="monotone" 
+                                                dataKey="twoYearsAgo" 
+                                                name="twoYearsAgo" 
+                                                stroke="#818cf8" 
+                                                strokeWidth={2} 
+                                                strokeDasharray="3 3" 
                                                 dot={false} 
                                                 activeDot={{ r: 4 }} 
                                                 animationDuration={1500}

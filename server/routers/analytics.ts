@@ -180,12 +180,18 @@ export const analyticsRouter = router({
             const monthlyChartDataMap = new Map<string, number>();
             const yearlyChartDataMap = new Map<string, number>();
             
-            // Year over Year (Current Year vs Previous Year overlapping)
-            const yoyWeeklyChartDataMap = new Map<number, { week: number, currentYear: number, previousYear: number }>();
+            // YoY Weekly overlay
+            const yoyWeeklyChartDataMap = new Map<number, { week: number, currentYear: number, previousYear: number, twoYearsAgo: number }>();
             for (let i = 1; i <= 52; i++) {
-                yoyWeeklyChartDataMap.set(i, { week: i, currentYear: 0, previousYear: 0 });
+                yoyWeeklyChartDataMap.set(i, { week: i, currentYear: 0, previousYear: 0, twoYearsAgo: 0 });
             }
-
+            
+            // YoY Monthly overlay
+            const yoyMonthlyChartDataMap = new Map<number, { month: number, currentYear: number, previousYear: number, twoYearsAgo: number }>();
+            for (let i = 1; i <= 12; i++) {
+                yoyMonthlyChartDataMap.set(i, { month: i, currentYear: 0, previousYear: 0, twoYearsAgo: 0 });
+            }
+            
             // Pre-fill last 52 weeks so empty weeks render
             const wStart = new Date(now);
             const wDay = wStart.getDay();
@@ -198,17 +204,11 @@ export const analyticsRouter = router({
                 weeklyChartDataMap.set(weekKey, 0);
             }
             
-            for (const y of [2025, 2026]) {
+            for (const y of [2024, 2025, 2026]) {
                 for (let m = 1; m <= 12; m++) {
                     const monthKey = `${y}-${String(m).padStart(2, '0')}`;
                     monthlyChartDataMap.set(monthKey, 0);
                 }
-            }
-            
-            // YoY Monthly overlay
-            const yoyMonthlyChartDataMap = new Map<number, { month: number, currentYear: number, previousYear: number }>();
-            for (let i = 1; i <= 12; i++) {
-                yoyMonthlyChartDataMap.set(i, { month: i, currentYear: 0, previousYear: 0 });
             }
             
             for (const doc of docs) {
@@ -253,22 +253,25 @@ export const analyticsRouter = router({
                 const yearKey = `${year}`;
                 yearlyChartDataMap.set(yearKey, (yearlyChartDataMap.get(yearKey) || 0) + val);
 
-                // YoY Weekly overlay
-                if (year === currentYear || year === currentYear - 1) {
+                // YoY overlay (3 years)
+                if (year >= currentYear - 2 && year <= currentYear) {
                     const startOfYear = new Date(year, 0, 1);
                     const days = Math.floor((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
                     const weekNum = Math.min(Math.floor(days / 7) + 1, 52); // Cap at 52 for alignment
+                    
                     const wEntry = yoyWeeklyChartDataMap.get(weekNum);
                     if (wEntry) {
                         if (year === currentYear) wEntry.currentYear += val;
-                        else wEntry.previousYear += val;
+                        else if (year === currentYear - 1) wEntry.previousYear += val;
+                        else wEntry.twoYearsAgo += val;
                     }
 
                     // YoY Monthly overlay
                     const mEntry = yoyMonthlyChartDataMap.get(month + 1);
                     if (mEntry) {
                         if (year === currentYear) mEntry.currentYear += val;
-                        else mEntry.previousYear += val;
+                        else if (year === currentYear - 1) mEntry.previousYear += val;
+                        else mEntry.twoYearsAgo += val;
                     }
                 }
             }
