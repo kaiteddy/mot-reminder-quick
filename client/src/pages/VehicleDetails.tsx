@@ -21,7 +21,13 @@ import {
     Copy,
     Check,
     ExternalLink,
-    Sparkles
+    Sparkles,
+    ShieldCheck,
+    ShieldAlert,
+    Banknote,
+    Gauge,
+    AlertTriangle,
+    CheckCircle2
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -421,6 +427,71 @@ export default function VehicleDetails() {
                                                     )}
                                                 </div>
                                             </div>
+
+                                            {/* Provenance Block */}
+                                            {ukvd.provenance && (
+                                                <div className="border-t border-blue-100 bg-slate-50 p-6">
+                                                  <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+                                                    <ShieldCheck className="w-5 h-5 text-slate-600" />
+                                                    Provenance & Security Details
+                                                  </h4>
+                                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                    {/* Police / Stolen */}
+                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.isStolen ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                                                      <div className="flex items-center gap-3">
+                                                        {ukvd.provenance.isStolen ? <ShieldAlert className="w-8 h-8 text-red-600" /> : <ShieldCheck className="w-8 h-8 text-green-600" />}
+                                                        <div>
+                                                          <div className="font-bold">Police Check</div>
+                                                          <div className="text-sm opacity-90">{ukvd.provenance.isStolen ? 'STOLEN RECORD' : 'Clear'}</div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    {/* MIAFTR / Write Offs */}
+                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.hasWriteOff ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                                                      <div className="flex items-center gap-3">
+                                                        {ukvd.provenance.hasWriteOff ? <AlertTriangle className="w-8 h-8 text-red-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                                                        <div>
+                                                          <div className="font-bold">Insurance (MIAFTR)</div>
+                                                          <div className="text-sm opacity-90">{ukvd.provenance.hasWriteOff ? 'WRITE-OFF RECORDED' : 'Clear'}</div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    {/* Outstanding Finance */}
+                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.hasFinance ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                                                      <div className="flex items-center gap-3">
+                                                        {ukvd.provenance.hasFinance ? <Banknote className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                                                        <div>
+                                                          <div className="font-bold">Finance</div>
+                                                          <div className="text-sm opacity-90">{ukvd.provenance.hasFinance ? 'OUTSTANDING FINANCE' : 'Clear'}</div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    {/* Mileage Anomaly */}
+                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.mileageAnomaly ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                                                      <div className="flex items-center gap-3">
+                                                        {ukvd.provenance.mileageAnomaly ? <Gauge className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                                                        <div>
+                                                          <div className="font-bold">Mileage</div>
+                                                          <div className="text-sm opacity-90">{ukvd.provenance.mileageAnomaly ? 'ANOMALY DETECTED' : 'Verified Sequence'}</div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    {/* Registration Status Flags */}
+                                                    {(ukvd.provenance.scrapped || ukvd.provenance.exported || ukvd.provenance.imported) && (
+                                                      <div className="col-span-full mt-2 flex flex-wrap gap-2">
+                                                        {ukvd.provenance.scrapped && <Badge variant="destructive" className="text-sm tracking-wide">SCRAPPED MARKER</Badge>}
+                                                        {ukvd.provenance.exported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">EXPORTED</Badge>}
+                                                        {ukvd.provenance.imported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">IMPORTED</Badge>}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                            )}
+
                                         </div>
                                     );
                                 })()}

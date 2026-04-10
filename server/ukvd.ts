@@ -34,6 +34,15 @@ export interface UKVDResponse {
         gears?: number;
         driveType?: string;
     };
+    provenance?: {
+        isStolen?: boolean;
+        hasWriteOff?: boolean;
+        hasFinance?: boolean;
+        mileageAnomaly?: boolean;
+        scrapped?: boolean;
+        exported?: boolean;
+        imported?: boolean;
+    };
     raw?: any;
 }
 
@@ -45,7 +54,7 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
 
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const url = new URL(UKVD_CONFIG.baseUrl);
-    const targetPackage = isPremium ? (process.env.UKVD_PACKAGE_NAME || "VehicleDetailsWithImage") : "VehicleData";
+    const targetPackage = isPremium ? "VDICheck" : "VehicleDetails";
     url.searchParams.append("ApiKey", UKVD_CONFIG.apiKey);
     url.searchParams.append("PackageName", targetPackage);
     url.searchParams.append("Vrm", cleanVRM);
@@ -115,6 +124,18 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
             },
             raw: data
         };
+        // Add Provenance Data
+        if (results.PncDetails || results.MiaftrDetails || results.FinanceDetails || vehicleDetails?.VehicleStatus) {
+            mapped.provenance = {
+                isStolen: results.PncDetails?.IsStolen === true,
+                hasWriteOff: Array.isArray(results.MiaftrDetails?.WriteOffRecordList) && results.MiaftrDetails.WriteOffRecordList.length > 0,
+                hasFinance: Array.isArray(results.FinanceDetails?.FinanceRecordList) && results.FinanceDetails.FinanceRecordList.length > 0,
+                mileageAnomaly: results.MileageCheckDetails?.MileageAnomalyDetected === true,
+                scrapped: vehicleDetails?.VehicleStatus?.IsScrapped === true,
+                exported: vehicleDetails?.VehicleStatus?.IsExported === true,
+                imported: vehicleDetails?.VehicleStatus?.IsImported === true
+            };
+        }
 
         return mapped;
     } catch (error) {

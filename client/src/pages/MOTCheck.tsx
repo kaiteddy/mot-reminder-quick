@@ -19,7 +19,10 @@ import {
   Palette,
   FileText,
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck,
+  ShieldAlert,
+  Banknote
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -99,6 +102,15 @@ interface VehicleData {
     type?: string;
     gears?: number;
     driveType?: string;
+  };
+  provenance?: {
+    isStolen?: boolean;
+    hasWriteOff?: boolean;
+    hasFinance?: boolean;
+    mileageAnomaly?: boolean;
+    scrapped?: boolean;
+    exported?: boolean;
+    imported?: boolean;
   };
 }
 
@@ -549,6 +561,77 @@ export default function MOTCheck() {
                         </div>
                       )}
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Provenance & Security Checks */}
+            {vehicleData.provenance && (
+              <Card className="border-slate-200">
+                <CardHeader className="bg-slate-50 border-b pb-4">
+                  <CardTitle className="text-slate-800 flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-slate-600" />
+                    Provenance & Security Details
+                  </CardTitle>
+                  <CardDescription>
+                    Official data sourced via MIAFTR, Police National Computer, and Finance Registers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Police / Stolen */}
+                    <div className={`p-4 rounded-lg border \${vehicleData.provenance.isStolen ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                      <div className="flex items-center gap-3">
+                        {vehicleData.provenance.isStolen ? <ShieldAlert className="w-8 h-8 text-red-600" /> : <ShieldCheck className="w-8 h-8 text-green-600" />}
+                        <div>
+                          <div className="font-bold">Police Check</div>
+                          <div className="text-sm opacity-90">{vehicleData.provenance.isStolen ? 'STOLEN RECORD' : 'Clear'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* MIAFTR / Write Offs */}
+                    <div className={`p-4 rounded-lg border \${vehicleData.provenance.hasWriteOff ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                      <div className="flex items-center gap-3">
+                        {vehicleData.provenance.hasWriteOff ? <AlertTriangle className="w-8 h-8 text-red-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                        <div>
+                          <div className="font-bold">Insurance (MIAFTR)</div>
+                          <div className="text-sm opacity-90">{vehicleData.provenance.hasWriteOff ? 'WRITE-OFF RECORDED' : 'Clear'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Outstanding Finance */}
+                    <div className={`p-4 rounded-lg border \${vehicleData.provenance.hasFinance ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                      <div className="flex items-center gap-3">
+                        {vehicleData.provenance.hasFinance ? <Banknote className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                        <div>
+                          <div className="font-bold">Finance</div>
+                          <div className="text-sm opacity-90">{vehicleData.provenance.hasFinance ? 'OUTSTANDING FINANCE' : 'Clear'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mileage Anomaly */}
+                    <div className={`p-4 rounded-lg border \${vehicleData.provenance.mileageAnomaly ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
+                      <div className="flex items-center gap-3">
+                        {vehicleData.provenance.mileageAnomaly ? <Gauge className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
+                        <div>
+                          <div className="font-bold">Mileage</div>
+                          <div className="text-sm opacity-90">{vehicleData.provenance.mileageAnomaly ? 'ANOMALY DETECTED' : 'Verified Sequence'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Registration Status Flags */}
+                    {(vehicleData.provenance.scrapped || vehicleData.provenance.exported || vehicleData.provenance.imported) && (
+                      <div className="col-span-full mt-2 flex flex-wrap gap-2">
+                        {vehicleData.provenance.scrapped && <Badge variant="destructive" className="text-sm tracking-wide">SCRAPPED MARKER</Badge>}
+                        {vehicleData.provenance.exported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">EXPORTED</Badge>}
+                        {vehicleData.provenance.imported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">IMPORTED</Badge>}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
