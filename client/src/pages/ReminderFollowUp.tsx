@@ -20,13 +20,16 @@ import {
     Filter,
     Check,
     X,
-    ShieldAlert
+    ShieldAlert,
+    CalendarDays,
+    CalendarCheck
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { useState, useMemo } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { ChatHistory } from "@/components/ChatHistory";
+import { BookMOTDialog } from "@/components/BookMOTDialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -42,9 +45,43 @@ export default function ReminderFollowUp() {
     const [searchTerm, setSearchTerm] = useState("");
     const [hideSorn, setHideSorn] = useState(true);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry: string | null } | null>(null);
+    const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
+
+    const [showBookedDialog, setShowBookedDialog] = useState(false);
+    const [bookingTargetIds, setBookingTargetIds] = useState<Set<number> | null>(null);
+    const [bookedDate, setBookedDate] = useState("");
 
     const { data: logs, isLoading, refetch } = trpc.logs.list.useQuery();
     const utils = trpc.useUtils();
+
+    const markBookedMutation = trpc.database.markMOTBooked.useMutation({
+        onSuccess: () => {
+            toast.success("MOT Booked status updated");
+            setShowBookedDialog(false);
+            setBookingTargetIds(null);
+            setBookedDate("");
+            refetch();
+        },
+        onError: (err: any) => {
+            toast.error("Failed to update status", { description: err.message });
+        }
+    });
+
+    const handleMarkBooked = async () => {
+        if (!bookingTargetIds) return;
+        const arrayIds = Array.from(bookingTargetIds);
+        if (arrayIds.length === 0) return;
+        
+        try {
+            await markBookedMutation.mutateAsync({
+                vehicleIds: arrayIds,
+                date: bookedDate
+            });
+        } catch (e) {
+            console.error("Failed to mark all as booked", e);
+        }
+    };
 
     const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation({
         onSuccess: (res) => {
@@ -357,6 +394,42 @@ export default function ReminderFollowUp() {
                                                                     <ChatHistory phoneNumber={log.recipient} />
                                                                 </DialogContent>
                                                             </Dialog>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId) {
+                                                                        setBookingTargetIds(new Set([log.vehicleId]));
+                                                                        setShowBookedDialog(true);
+                                                                    }
+                                                                }}
+                                                                disabled={!log.vehicleId}
+                                                            >
+                                                                <span title="Mark as Booked">
+                                                                    <CalendarCheck className="h-4 w-4" />
+                                                                </span>
+                                                            </Button>
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                className="h-8 w-8 text-slate-600 hover:text-slate-700 hover:bg-slate-100"
+                                                                onClick={() => {
+                                                                    if (log.vehicleId && log.registration) {
+                                                                        setSelectedVehicleForMOT({
+                                                                            id: log.vehicleId,
+                                                                            registration: log.registration,
+                                                                            currentExpiry: log.currentMOTExpiry ? new Date(log.currentMOTExpiry).toISOString() : null
+                                                                        });
+                                                                        setIsBookMOTOpen(true);
+                                                                    }
+                                                                }}
+                                                                disabled={!log.vehicleId}
+                                                            >
+                                                                <span title="Book MOT / Update Date">
+                                                                    <CalendarDays className="h-4 w-4" />
+                                                                </span>
+                                                            </Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
@@ -368,6 +441,43 @@ export default function ReminderFollowUp() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Book MOT Dialog */}
+                {selectedVehicleForMOT && (
+                    <BookMOTDialog
+                        open={isBookMOTOpen}
+                        onOpenChange={setIsBookMOTOpen}
+                        vehicleId={selectedVehicleForMOT.id}
+                        registration={selectedVehicleForMOT.registration}
+                        currentExpiryDate={selectedVehicleForMOT.currentExpiry}
+                        onSuccess={() => refetch()}
+                    />
+                )}
+
+                {/* Mark Booked Dialog */}
+                <Dialog open={showBookedDialog} onOpenChange={(open) => {
+                    setShowBookedDialog(open);
+                    if (!open) setBookingTargetIds(null);
+                }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Mark MOT Booked</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Booked Date</label>
+                                <Input type="date" value={bookedDate} onChange={(e) => setBookedDate(e.target.value)} />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                            <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                                {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Save Booking
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </DashboardLayout>
     );
