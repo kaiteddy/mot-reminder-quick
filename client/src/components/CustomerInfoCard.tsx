@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2 } from "lucide-react";
+import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2, Search, ArrowLeftRight } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,80 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
+
+function AssignCustomerDialog({ vehicleId, triggerButton }: { vehicleId: number; triggerButton: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  const { data: customers = [], isLoading } = trpc.customers.list.useQuery(undefined, {
+    enabled: open
+  });
+  
+  const assignMutation = trpc.reminders.assignVehicle.useMutation({
+    onSuccess: () => {
+      toast.success("Vehicle successfully assigned to customer.");
+      setOpen(false);
+      setTimeout(() => window.location.reload(), 1000);
+    },
+    onError: (err) => {
+      toast.error("Failed to assign customer: " + err.message);
+    }
+  });
+
+  const filtered = customers.filter(c => 
+    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.phone || '').includes(searchTerm) ||
+    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {triggerButton}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Assign Customer</DialogTitle>
+          <DialogDescription>
+            Search for an existing customer in the system to link to this vehicle.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search by name, phone or email..."
+              className="pl-9"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="border rounded-md divide-y max-h-[300px] overflow-y-auto">
+             {isLoading ? <div className="p-4 text-center">Loading customers...</div> : 
+              filtered.length === 0 ? <div className="p-4 text-center text-muted-foreground">No matching customers found.</div> :
+              filtered.map(c => (
+                <div key={c.id} className="p-3 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                  <div>
+                    <div className="font-semibold text-sm">{c.name}</div>
+                    <div className="text-xs text-slate-500">{c.phone || 'No phone'} | {c.email || 'No email'}</div>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="secondary"
+                    disabled={assignMutation.isPending}
+                    onClick={() => assignMutation.mutate({ vehicleId, customerId: c.id })}
+                  >
+                    Select
+                  </Button>
+                </div>
+              ))
+             }
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehicleId?: number }) {
   const [editOpen, setEditOpen] = useState(false);
@@ -39,7 +113,26 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
     }
   });
 
-  if (!customer) return null;
+  if (!customer) {
+    if (!vehicleId) return null;
+    return (
+      <Card className="border-2 border-dashed border-slate-200 bg-slate-50/50">
+        <CardContent className="py-8 flex flex-col items-center justify-center text-center">
+          <User className="h-10 w-10 text-slate-300 mb-3" />
+          <h3 className="font-semibold text-slate-700 text-lg">No Customer Assigned</h3>
+          <p className="text-sm text-slate-500 mb-4 max-w-sm">
+            This vehicle does not currently have an owner on file. Assign an existing customer to manage MOT reminders and jobs.
+          </p>
+          <AssignCustomerDialog 
+            vehicleId={vehicleId} 
+            triggerButton={
+              <Button>Assign Owner</Button>
+            } 
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   const jobSummaryUrl = vehicleId ? `${window.location.protocol}//${window.location.host}/mobile/job/${vehicleId}` : "";
 
@@ -196,6 +289,19 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
         </div>
         {vehicleId && (
           <div className="absolute bottom-2 right-4 flex gap-2">
+            <AssignCustomerDialog 
+              vehicleId={vehicleId}
+              triggerButton={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                >
+                  <ArrowLeftRight className="w-3 h-3 mr-1.5" />
+                  Change Owner
+                </Button>
+              }
+            />
             <Button
               variant="outline"
               size="sm"
