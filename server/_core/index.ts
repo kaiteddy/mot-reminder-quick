@@ -248,6 +248,99 @@ function setupApp(app: Express) {
 // Initial setup
 setupApp(app);
 
+// Background MOT Synchronization Worker
+// Eliminates the "blind spot" by independently verifying vehicles that are hidden by UI filters 
+function startBackgroundMOTChecker() {
+  const MOT_CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
+  
+  setInterval(async () => {
+    try {
+      console.log("[BG WORKER] Starting routine MOT verification sweep...");
+      const { getDb, bulkUpdateVehicleMOT } = await import("../db");
+      const { getVehicleDetails } = await import("../dvlaApi");
+      const { vehicles } = await import("../../drizzle/schema");
+      const { sql, or, asc } = await import("drizzle-orm");
+
+      const db = await getDb();
+      if (!db) return;
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Find vehicles that have never been checked or were checked > 30 days ago
+      const vehiclesToUpdate = await db.select()
+        .from(vehicles)
+        .where(or(
+          sql`${vehicles.lastChecked} < ${thirtyDaysAgo}`,
+          sql`${vehicles.lastChecked} IS NULL`
+        ))
+        // Prioritize NULLs first to quickly catch blind-spot vehicles
+        .orderBy(asc(sql`COALESCE(${vehicles.lastChecked}, '1970-01-01')`))
+        .limit(50);
+
+      if (vehiclesToUpdate.length === 0) {
+        // console.log("[BG WORKER] No vehicles need MOT verification.");
+        return;
+      }
+
+      console.log(`[BG WORKER] Verifying MOT for ${vehiclesToUpdate.length} missing/stale vehicles...`);
+      
+      const updates: Array<{
+        id: number;
+        motExpiryDate?: Date | null;
+        make?: string;
+        model?: string;
+        colour?: string;
+        fuelType?: string;
+        taxStatus?: string;
+        taxDueDate?: Date | null;
+        lastChecked?: Date | null;
+      }> = [];
+
+      for (const v of vehiclesToUpdate) {
+        if (!v.registration) continue;
+        try {
+          const dvlaData = await getVehicleDetails(v.registration);
+          if (dvlaData && dvlaData.motExpiryDate) {
+            updates.push({
+              id: v.id,
+              motExpiryDate: new Date(dvlaData.motExpiryDate),
+              make: dvlaData.make,
+              model: dvlaData.model,
+              colour: dvlaData.colour,
+              fuelType: dvlaData.fuelType,
+              taxStatus: dvlaData.taxStatus,
+              taxDueDate: dvlaData.taxDueDate ? new Date(dvlaData.taxDueDate) : null,
+              lastChecked: new Date()
+            });
+          } else {
+             // Missing or exempt (e.g. pre-1960 or extremely new)
+             updates.push({ id: v.id, lastChecked: new Date() });
+          }
+        } catch (e) {
+          // In case DVSA throws rate-limits/404s, mark it as checked to prevent infinite stall
+          updates.push({ id: v.id, lastChecked: new Date() });
+        }
+        
+        // Wait 1.5 seconds between DVSA API hits to prevent hammering rate limits
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      if (updates.length > 0) {
+        await bulkUpdateVehicleMOT(updates);
+        console.log(`[BG WORKER] Successfully verified and saved ${updates.length} vehicles.`);
+      }
+
+    } catch (e) {
+      console.error("[BG WORKER] Critical error during MOT sweep:", e);
+    }
+  }, MOT_CHECK_INTERVAL);
+  
+  console.log("[BG WORKER] Automated MOT Synchronization started. Sweeping every 1 hour.");
+}
+
+// Start the background checker
+startBackgroundMOTChecker();
 async function startServer(port: number, attempt = 0) {
   if (attempt > 10) {
     console.error("Could not find an available port after 10 attempts.");
