@@ -1,11 +1,23 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { User, Phone, MapPin, Smartphone, Copy } from "lucide-react";
+import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useState } from "react";
 
 export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehicleId?: number }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: customer?.name || "",
+    phone: customer?.phone || "",
+    email: customer?.email || "",
+    address: customer?.address || "",
+    postcode: customer?.postcode || ""
+  });
+
   const unlinkMutation = trpc.reminders.unlinkVehicle.useMutation({
     onSuccess: () => {
       toast.success("Vehicle securely unlinked from customer.");
@@ -13,6 +25,17 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
     },
     onError: () => {
       toast.error("Failed to unlink vehicle.");
+    }
+  });
+
+  const updateMutation = trpc.customers.update.useMutation({
+    onSuccess: () => {
+      toast.success("Customer details updated successfully.");
+      setEditOpen(false);
+      setTimeout(() => window.location.reload(), 1000);
+    },
+    onError: (err) => {
+      toast.error("Failed to update customer: " + err.message);
     }
   });
 
@@ -27,53 +50,131 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
           <User className="h-5 w-5 text-primary" />
           Customer Information
         </CardTitle>
-        {vehicleId && (
-          <Dialog>
+        <div className="flex items-center gap-2">
+          {vehicleId && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100">
+                  <Smartphone className="w-4 h-4 mr-2 text-primary" />
+                  Portal Link
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md text-center flex flex-col items-center">
+                <DialogHeader>
+                  <DialogTitle className="text-center">Mobile Job Summary</DialogTitle>
+                  <DialogDescription className="text-center">
+                    Scan this QR code with your phone camera to instantly open the customer's portal for this vehicle.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="p-6 bg-white rounded-xl shadow-inner border border-slate-100 flex items-center justify-center">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(jobSummaryUrl)}`}
+                    alt="QR Code"
+                    className="w-48 h-48 pointer-events-none"
+                  />
+                </div>
+                <div className="flex w-full gap-2 mt-4">
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(jobSummaryUrl);
+                      toast.success("Mobile link copied to clipboard");
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      window.open(`sms:${customer.phone || ''}?&body=${encodeURIComponent(`Your Vehicle Portal: ${jobSummaryUrl}`)}`, '_blank');
+                    }}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Smartphone className="w-4 h-4 mr-2 text-white" />
+                    <span className="text-white">Send SMS</span>
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100">
-                <Smartphone className="w-4 h-4 mr-2 text-primary" />
-                Portal Link
+                <Edit className="w-4 h-4 mr-2 text-primary" />
+                Edit
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md text-center flex flex-col items-center">
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="text-center">Mobile Job Summary</DialogTitle>
-                <DialogDescription className="text-center">
-                  Scan this QR code with your phone camera to instantly open the customer's portal for this vehicle.
+                <DialogTitle>Edit Customer</DialogTitle>
+                <DialogDescription>
+                  Update the contact information for this customer below.
                 </DialogDescription>
               </DialogHeader>
-              <div className="p-6 bg-white rounded-xl shadow-inner border border-slate-100 flex items-center justify-center">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(jobSummaryUrl)}`}
-                  alt="QR Code"
-                  className="w-48 h-48 pointer-events-none"
-                />
-              </div>
-              <div className="flex w-full gap-2 mt-4">
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(jobSummaryUrl);
-                    toast.success("Mobile link copied to clipboard");
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Link
-                </Button>
-                <Button
-                  onClick={() => {
-                    window.open(`sms:${customer.phone || ''}?&body=${encodeURIComponent(`Your Vehicle Portal: ${jobSummaryUrl}`)}`, '_blank');
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                >
-                  <Smartphone className="w-4 h-4 mr-2 text-white" />
-                  <span className="text-white">Send SMS</span>
-                </Button>
-              </div>
+              <form 
+                className="space-y-4 pt-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  updateMutation.mutate({
+                    id: customer.id,
+                    ...formData
+                  });
+                }}
+              >
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input 
+                    value={formData.name} 
+                    onChange={e => setFormData(f => ({...f, name: e.target.value}))}
+                    placeholder="E.g. John Smith"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input 
+                    value={formData.phone} 
+                    onChange={e => setFormData(f => ({...f, phone: e.target.value}))}
+                    placeholder="E.g. 07700 900077"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input 
+                    type="email"
+                    value={formData.email} 
+                    onChange={e => setFormData(f => ({...f, email: e.target.value}))}
+                    placeholder="Email address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <Input 
+                    value={formData.address} 
+                    onChange={e => setFormData(f => ({...f, address: e.target.value}))}
+                    placeholder="Full address (e.g. 123 High St)"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Postcode</Label>
+                  <Input 
+                    value={formData.postcode} 
+                    onChange={e => setFormData(f => ({...f, postcode: e.target.value}))}
+                    placeholder="e.g. SW1A 1AA"
+                    className="uppercase"
+                  />
+                </div>
+                <div className="flex justify-end pt-4">
+                  <Button type="submit" disabled={updateMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                    {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
-        )}
+        </div>
       </CardHeader>
       <CardContent className="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4 relative pb-6">
         <div>
