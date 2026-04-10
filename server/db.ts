@@ -736,7 +736,7 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
   if (!db) return [];
 
   // We join with line items to get a main description and a fallback total
-  return db.select({
+  const rawDocs = await db.select({
     id: serviceHistory.id,
     externalId: serviceHistory.externalId,
     customerId: serviceHistory.customerId,
@@ -759,6 +759,22 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     .where(eq(serviceHistory.vehicleId, vehicleId))
     .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
+
+  // Deduplicate by docType and docNo
+  const seen = new Set<string>();
+  const deduplicated = [];
+  for (const doc of rawDocs) {
+    if (doc.docNo) {
+      const key = `${doc.docType}-${doc.docNo}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(doc);
+      }
+    } else {
+      deduplicated.push(doc);
+    }
+  }
+  return deduplicated;
 }
 
 export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {
@@ -773,7 +789,7 @@ export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {
 export async function getServiceHistoryByCustomerId(customerId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
+  const rawDocs = await db.select({
     id: serviceHistory.id,
     externalId: serviceHistory.externalId,
     customerId: serviceHistory.customerId,
@@ -796,6 +812,22 @@ export async function getServiceHistoryByCustomerId(customerId: number) {
     .where(eq(serviceHistory.customerId, customerId))
     .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
+
+  // Deduplicate by docType and docNo
+  const seen = new Set<string>();
+  const deduplicated = [];
+  for (const doc of rawDocs) {
+    if (doc.docNo) {
+      const key = `${doc.docType}-${doc.docNo}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(doc);
+      }
+    } else {
+      deduplicated.push(doc);
+    }
+  }
+  return deduplicated;
 }
 
 export async function getServiceLineItemsByDocumentId(documentId: number) {
