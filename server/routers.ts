@@ -219,6 +219,44 @@ export const appRouter = router({
         }
       }),
 
+    syncUKVD: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("No database");
+
+        const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
+        const vehicleRecord = await db.select().from(vehicles).where(eq(vehicles.registration, cleanReg)).limit(1);
+        if (!vehicleRecord.length) throw new Error("Vehicle not found in database");
+
+        const dbVeh = vehicleRecord[0];
+
+        const { fetchUKVDData } = await import("./ukvd");
+        const ukvdData = await fetchUKVDData(cleanReg);
+        if (!ukvdData) throw new Error("UKVD data could not be fetched");
+
+        // Merge existing comprehensive data safely
+        const prevComprehensive = dbVeh.comprehensiveTechnicalData || {} as any;
+        
+        await db.update(vehicles).set({
+          vin: ukvdData.vin || dbVeh.vin,
+          make: ukvdData.make || dbVeh.make,
+          model: ukvdData.model || dbVeh.model,
+          engineCC: ukvdData.engineSize || dbVeh.engineCC,
+          fuelType: ukvdData.fuelType || dbVeh.fuelType,
+          colour: ukvdData.colour || dbVeh.colour,
+          comprehensiveTechnicalData: {
+            ...prevComprehensive,
+            ukvd: ukvdData
+          }
+        }).where(eq(vehicles.id, dbVeh.id));
+
+        return { success: true, vehicleId: dbVeh.id };
+      }),
+
     getRepairTimesByCategory: publicProcedure
       .input(z.object({
         registration: z.string(),

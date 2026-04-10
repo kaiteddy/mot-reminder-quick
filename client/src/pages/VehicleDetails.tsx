@@ -20,7 +20,8 @@ import {
     AlertTriangle,
     Copy,
     Check,
-    ExternalLink
+    ExternalLink,
+    Sparkles
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -66,6 +67,16 @@ export default function VehicleDetails() {
         },
         onError: (err) => {
             toast.error("Failed to fetch tech specs: " + err.message);
+        }
+    });
+
+    const syncUKVDMutation = trpc.vehicles.syncUKVD.useMutation({
+        onSuccess: () => {
+            toast.success("Premium Technical Data updated!");
+            utils.vehicles.getByRegistration.invalidate();
+        },
+        onError: (err) => {
+            toast.error("Failed to fetch premium data: " + err.message);
         }
     });
 
@@ -141,11 +152,15 @@ export default function VehicleDetails() {
                         </Button>
                         <Button
                             variant="outline"
-                            disabled={fetchTechData.isPending}
-                            onClick={() => fetchTechData.mutate({ registration: vehicle.registration })}
+                            disabled={fetchTechData.isPending || syncUKVDMutation.isPending}
+                            onClick={() => {
+                                fetchTechData.mutate({ registration: vehicle.registration });
+                                syncUKVDMutation.mutate({ registration: vehicle.registration });
+                            }}
+                            className={vehicle.vin ? "" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"}
                         >
-                            {fetchTechData.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 text-yellow-500 fill-yellow-500" />}
-                            Fetch Tech Specs
+                            {fetchTechData.isPending || syncUKVDMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 text-yellow-500 fill-yellow-500" />}
+                            Fetch Premium Data
                         </Button>
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
@@ -344,9 +359,72 @@ export default function VehicleDetails() {
                                     <Zap className="w-5 h-5 fill-primary" />
                                     Rich Vehicle Intelligence
                                 </CardTitle>
-                                <CardDescription>Data sourced from SWS Solutions technical modules</CardDescription>
+                                <CardDescription>Data sourced from Premium UKVD and SWS Technical modules</CardDescription>
                             </CardHeader>
                             <CardContent>
+                                {/* UKVD Premium Render */}
+                                {(() => {
+                                    const ukvd = (vehicle.comprehensiveTechnicalData as any)?.ukvd;
+                                    if (!ukvd) return null;
+                                    return (
+                                        <div className="mb-8 border rounded-xl overflow-hidden shadow-sm bg-white border-blue-100">
+                                            <div className="bg-blue-50/50 p-4 border-b border-blue-100 flex items-center gap-2">
+                                                <Sparkles className="w-5 h-5 text-blue-600" />
+                                                <h3 className="font-bold text-blue-900">Premium Technical Data</h3>
+                                            </div>
+                                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                {ukvd.imageUrl && (
+                                                    <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm flex items-center justify-center bg-white/50 bg-gray-50">
+                                                        <img 
+                                                            src={ukvd.imageUrl} 
+                                                            alt={`${vehicle.make} ${vehicle.model}`} 
+                                                            className="w-full h-auto max-h-[250px] object-contain"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className="grid grid-cols-2 gap-4 place-content-start">
+                                                    {ukvd.transmission?.type && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Transmission</div>
+                                                            <div className="font-medium capitalize text-sm">{ukvd.transmission.type.toLowerCase()} {ukvd.transmission.gears ? `(${ukvd.transmission.gears} Speed)` : ''}</div>
+                                                        </div>
+                                                    )}
+                                                    {ukvd.transmission?.driveType && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Drivetrain</div>
+                                                            <div className="font-medium text-sm">{ukvd.transmission.driveType}</div>
+                                                        </div>
+                                                    )}
+                                                    {ukvd.fuelTankCapacity && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Fuel Tank</div>
+                                                            <div className="font-medium text-sm">{ukvd.fuelTankCapacity} Litres</div>
+                                                        </div>
+                                                    )}
+                                                    {ukvd.dimensions?.length && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Length</div>
+                                                            <div className="font-medium text-sm">{ukvd.dimensions.length} mm</div>
+                                                        </div>
+                                                    )}
+                                                    {ukvd.dimensions?.width && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Width</div>
+                                                            <div className="font-medium text-sm">{ukvd.dimensions.width} mm</div>
+                                                        </div>
+                                                    )}
+                                                    {ukvd.weights?.kerb && (
+                                                        <div>
+                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Kerb Weight</div>
+                                                            <div className="font-medium text-sm">{ukvd.weights.kerb} kg</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {/* Lubricants Section */}
                                     {(vehicle.comprehensiveTechnicalData as any).lubricants && (
