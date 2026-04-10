@@ -19,18 +19,18 @@ import {
   Palette,
   FileText,
   Sparkles,
-  ChevronDown,
-  Zap,
-  Home
+  ChevronDown
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { formatMOTDate, getMOTStatusBadge, formatDaysUntilExpiry } from "@/lib/motUtils";
-import { Link } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 import { CustomerInfoCard } from "@/components/CustomerInfoCard";
+import { AutodataMini } from "@/components/AutodataMini";
 import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
-import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { SWSDeepIntelEmbed } from "@/components/SWSDeepIntelEmbed";
+import { OmnipartIntegration } from "@/components/OmnipartLookup";
+import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { ServiceHistory } from "@/components/ServiceHistory";
 
 interface MOTTest {
@@ -71,6 +71,7 @@ interface VehicleData {
   revenueWeight?: number;
   artEndDate?: string;
   vin?: string;
+  // Additional MOT fields
   primaryColour?: string;
   secondaryColour?: string;
   registrationDate?: string;
@@ -101,7 +102,7 @@ interface VehicleData {
   };
 }
 
-export default function WorkshopMOTCheck() {
+export default function MOTCheck() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
   const [customerData, setCustomerData] = useState<any>(null);
@@ -189,34 +190,26 @@ export default function WorkshopMOTCheck() {
   const daysUntilExpiry = vehicleData?.motExpiryDate ? getDaysUntilExpiry(vehicleData.motExpiryDate) : null;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Mobile Top Bar */}
-      <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
-              <Home className="w-5 h-5 text-slate-100" />
-            </div>
-          </Link>
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold leading-none">Workshop Mode</h1>
-            <p className="text-slate-400 text-xs mt-1">Quick MOT Scanner</p>
+            <h1 className="text-3xl font-bold text-slate-900">MOT Check</h1>
+            <p className="text-slate-600 mt-1">Check MOT history and expiry dates</p>
           </div>
         </div>
-      </div>
-
-      <div className="p-3 space-y-4 flex-1">
 
         {/* Search Form */}
-        <Card className="shadow-lg border-primary/20 bg-white">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <CardTitle className="text-lg">Vehicle Registration</CardTitle>
-            <CardDescription className="text-xs">
-              Enter a UK vehicle registration
+        <Card>
+          <CardHeader>
+            <CardTitle>Vehicle Registration</CardTitle>
+            <CardDescription>
+              Enter a UK vehicle registration to check MOT history. Try <strong>RF67NRO</strong> to see a demo of the expiry display.
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <form onSubmit={handleSearch} className="flex flex-col gap-4">
+          <CardContent>
+            <form onSubmit={handleSearch} className="flex gap-4">
               <div className="flex-1">
                 <Label htmlFor="registration" className="sr-only">
                   Registration
@@ -282,25 +275,10 @@ export default function WorkshopMOTCheck() {
             </form>
           </CardContent>
         </Card>
-        {/* Floating Scan New Vehicle Button */}
-        {vehicleData && (
-          <Button 
-            onClick={() => {
-              setVehicleData(null);
-              setRegistration("");
-              lookupMutation.reset();
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-            className="w-full h-14 text-lg font-bold bg-slate-900 border-2 border-slate-700 shadow-xl hover:bg-slate-800 sticky top-20 z-40 mb-2 rounded-xl"
-          >
-            <Search className="w-5 h-5 mr-3" />
-            SCAN ANOTHER VEHICLE
-          </Button>
-        )}
 
         {/* Vehicle Details */}
         {vehicleData && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
             {/* MOT Status Card */}
@@ -431,9 +409,9 @@ export default function WorkshopMOTCheck() {
                       <FileText className="w-4 h-4 text-slate-500" />
                       <div>
                         <div className="text-xs text-slate-500">VIN</div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <span className="font-mono font-bold uppercase">{vehicleData.vin}</span>
-                          <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-[10px] sm:text-xs bg-blue-50 px-2 py-0.5 rounded text-blue-600 hover:bg-blue-100 transition-colors shrink-0">
+                          <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
                             Search on PartSouq
                           </a>
                         </div>
@@ -576,6 +554,13 @@ export default function WorkshopMOTCheck() {
               </Card>
             )}
 
+            {/* Embedded Drone Technical Data */}
+            <div className="mb-2">
+              <AutodataMini 
+                vrm={vehicleData.registration}
+              />
+            </div>
+
             {/* Embedded SWS Deep Intelligence */}
             <SWSDeepIntelEmbed 
                 registration={vehicleData.registration} 
@@ -606,12 +591,17 @@ export default function WorkshopMOTCheck() {
               </div>
             )}
 
+            {/* Omnipart Trade Lookup Integration */}
+            <div className="mb-6">
+              <OmnipartIntegration defaultVrm={vehicleData.registration} />
+            </div>
+
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
-              <Card className="shadow-lg">
-                <CardHeader className="px-4 py-3 bg-slate-50 border-b">
-                  <CardTitle className="text-lg">MOT History</CardTitle>
-                  <CardDescription className="text-xs">
+              <Card>
+                <CardHeader>
+                  <CardTitle>MOT Test History</CardTitle>
+                  <CardDescription>
                     {vehicleData.motTests.length} test{vehicleData.motTests.length !== 1 ? "s" : ""} on record
                   </CardDescription>
                 </CardHeader>
@@ -654,7 +644,7 @@ export default function WorkshopMOTCheck() {
           </Card>
         )}
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
