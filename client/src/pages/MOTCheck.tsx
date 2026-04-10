@@ -123,7 +123,7 @@ export default function MOTCheck() {
     },
   });
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent, checkType: "normal" | "full" = "normal") => {
     e.preventDefault();
     if (!registration) {
       toast.error("Please enter a registration number");
@@ -137,7 +137,7 @@ export default function MOTCheck() {
         return newSearches;
     });
     
-    lookupMutation.mutate({ registration: cleanReg });
+    lookupMutation.mutate({ registration: cleanReg, checkType });
   };
 
   useEffect(() => {
@@ -152,7 +152,7 @@ export default function MOTCheck() {
           localStorage.setItem("mot_recent_vrms", JSON.stringify(newSearches));
           return newSearches;
       });
-      lookupMutation.mutate({ registration: cleanReg });
+      lookupMutation.mutate({ registration: cleanReg, checkType: "normal" });
       hasSearched.current = true;
     }
   }, []);
@@ -212,7 +212,7 @@ export default function MOTCheck() {
                         className="cursor-pointer hover:bg-slate-200 text-xs font-mono border border-slate-200"
                         onClick={() => {
                            setRegistration(vrm);
-                           lookupMutation.mutate({ registration: vrm });
+                           lookupMutation.mutate({ registration: vrm, checkType: "normal" });
                         }}
                       >
                         {vrm}
@@ -221,22 +221,36 @@ export default function MOTCheck() {
                   </div>
                 )}
               </div>
-              <Button 
-                type="submit" 
-                disabled={lookupMutation.isPending || !registration}
-                className="h-16 px-8 text-lg font-medium shadow-sm transition-all rounded-lg"
-              >             {lookupMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-5 h-5 mr-2" />
-                    Check MOT
-                  </>
-                )}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button 
+                  type="submit" 
+                  onClick={(e) => handleSearch(e, "normal")}
+                  disabled={lookupMutation.isPending || !registration}
+                  className="h-16 px-8 text-lg font-medium shadow-sm transition-all rounded-lg w-full md:w-auto"
+                >             
+                  {lookupMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5 mr-2" />
+                      Normal Check
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  onClick={(e) => handleSearch(e, "full")}
+                  disabled={lookupMutation.isPending || !registration}
+                  variant="outline"
+                  className="h-10 text-sm font-medium shadow-sm transition-all rounded-lg border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 w-full md:w-auto"
+                >
+                  <Sparkles className="w-4 h-4 mr-2 text-blue-600" />
+                  Full Check (1 Credit)
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>

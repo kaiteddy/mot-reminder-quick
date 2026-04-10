@@ -977,7 +977,10 @@ export const appRouter = router({
       }),
 
     lookupMOT: publicProcedure
-      .input(z.object({ registration: z.string() }))
+      .input(z.object({ 
+        registration: z.string(),
+        checkType: z.enum(["normal", "full"]).optional().default("normal")
+      }))
       .mutation(async ({ input }) => {
         const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { getVehicleDetails } = await import("./dvlaApi");
@@ -1015,7 +1018,7 @@ export const appRouter = router({
         }
 
         // Fetch from both APIs
-        const [motData, dvlaData, ukvdData] = await Promise.all([
+        const promises: Promise<any>[] = [
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
             return null;
@@ -1023,12 +1026,19 @@ export const appRouter = router({
           getVehicleDetails(input.registration).catch((err) => {
             console.error("DVLA API Error:", err.message);
             return null;
-          }),
-          fetchUKVDData(input.registration).catch((err) => {
-            console.error("UKVD API Error:", err.message);
-            return null;
-          }),
-        ]);
+          })
+        ];
+
+        if (input.checkType === "full") {
+          promises.push(
+            fetchUKVDData(input.registration).catch((err) => {
+              console.error("UKVD API Error:", err.message);
+              return null;
+            })
+          );
+        }
+
+        const [motData, dvlaData, ukvdData] = await Promise.all(promises);
 
         if (!motData && !dvlaData) {
           throw new Error("Vehicle not found. Try TEST123 to see a demo.");
