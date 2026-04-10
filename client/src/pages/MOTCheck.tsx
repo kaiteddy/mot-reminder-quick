@@ -79,6 +79,27 @@ interface VehicleData {
   firstUsedDate?: string;
   dvlaId?: string;
   motTestDueDate?: string;
+  // Extended UKVD fields
+  imageUrl?: string;
+  engineSize?: number;
+  dimensions?: {
+    height?: number;
+    width?: number;
+    length?: number;
+    wheelbase?: number;
+  };
+  weights?: {
+    kerb?: number;
+    gross?: number;
+    unladen?: number;
+    payload?: number;
+  };
+  fuelTankCapacity?: number;
+  transmission?: {
+    type?: string;
+    gears?: number;
+    driveType?: string;
+  };
 }
 
 export default function MOTCheck() {
@@ -415,9 +436,123 @@ export default function MOTCheck() {
                       </div>
                     </div>
                   )}
+                  {vehicleData.dateOfLastV5CIssued && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Last V5C</div>
+                        <div className="font-medium">{new Date(vehicleData.dateOfLastV5CIssued).toLocaleDateString("en-GB")}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.typeApproval && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Type Approval</div>
+                        <div className="font-medium">{vehicleData.typeApproval}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.wheelplan && (
+                    <div className="flex items-center gap-2">
+                      <Car className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Wheelplan</div>
+                        <div className="font-medium">{vehicleData.wheelplan}</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.revenueWeight && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Revenue Weight</div>
+                        <div className="font-medium">{vehicleData.revenueWeight} kg</div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.markedForExport && (
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Export Status</div>
+                        <div className="font-medium text-red-600 font-bold">Marked for Export</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
+
+            {/* Premium UKVD Vehicle Image/Tech Details (Only shown if Full Check was used) */}
+            {(vehicleData.imageUrl || vehicleData.transmission || vehicleData.dimensions || vehicleData.weights || vehicleData.fuelTankCapacity) && (
+              <Card className="border-blue-200 bg-blue-50/30">
+                <CardHeader>
+                  <CardTitle className="text-blue-900 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-blue-600" />
+                    Premium Technical Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {vehicleData.imageUrl && (
+                      <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm max-h-[300px] flex items-center justify-center bg-white/50">
+                        <img 
+                          src={vehicleData.imageUrl} 
+                          alt={`${vehicleData.make} ${vehicleData.model}`} 
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4 place-content-start">
+                      {vehicleData.transmission?.type && (
+                        <div>
+                          <div className="text-xs text-slate-500">Transmission</div>
+                          <div className="font-medium capitalize">{vehicleData.transmission.type.toLowerCase()} {vehicleData.transmission.gears ? `(${vehicleData.transmission.gears} Speed)` : ''}</div>
+                        </div>
+                      )}
+                      {vehicleData.transmission?.driveType && (
+                        <div>
+                          <div className="text-xs text-slate-500">Drivetrain</div>
+                          <div className="font-medium">{vehicleData.transmission.driveType}</div>
+                        </div>
+                      )}
+                      {vehicleData.fuelTankCapacity && (
+                        <div>
+                          <div className="text-xs text-slate-500">Fuel Tank</div>
+                          <div className="font-medium">{vehicleData.fuelTankCapacity} Litres</div>
+                        </div>
+                      )}
+                      {vehicleData.dimensions?.length && (
+                        <div>
+                          <div className="text-xs text-slate-500">Length</div>
+                          <div className="font-medium">{vehicleData.dimensions.length} mm</div>
+                        </div>
+                      )}
+                      {vehicleData.dimensions?.width && (
+                        <div>
+                          <div className="text-xs text-slate-500">Width</div>
+                          <div className="font-medium">{vehicleData.dimensions.width} mm</div>
+                        </div>
+                      )}
+                      {vehicleData.weights?.kerb && (
+                        <div>
+                          <div className="text-xs text-slate-500">Kerb Weight</div>
+                          <div className="font-medium">{vehicleData.weights.kerb} kg</div>
+                        </div>
+                      )}
+                      {vehicleData.weights?.gross && (
+                        <div>
+                          <div className="text-xs text-slate-500">Gross Weight</div>
+                          <div className="font-medium">{vehicleData.weights.gross} kg</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Embedded Drone Technical Data */}
             <div className="mb-2">
