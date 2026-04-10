@@ -357,6 +357,11 @@ export default function ReminderFollowUp() {
                                                                 <CheckCircle2 className="w-3 h-3 mr-1" />
                                                                 Actioned
                                                             </Badge>
+                                                        ) : (log as any).motBookedDate ? (
+                                                            <Badge className="bg-blue-500 text-white hover:bg-blue-600 border-none">
+                                                                <CalendarCheck className="w-3 h-3 mr-1" />
+                                                                MOT Booked: {new Date((log as any).motBookedDate).toLocaleDateString("en-GB")}
+                                                            </Badge>
                                                         ) : (
                                                             <Badge variant="outline" className="text-slate-400 border-slate-200">
                                                                 <Clock className="w-3 h-3 mr-1" />
