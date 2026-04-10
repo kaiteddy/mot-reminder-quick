@@ -1084,6 +1084,37 @@ export const appRouter = router({
         };
       }),
 
+    unlinkVehicle: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("No database connection");
+        
+        await db.update(vehicles).set({ customerId: null }).where(eq(vehicles.id, input.vehicleId));
+        return { success: true };
+      }),
+
+    assignVehicle: publicProcedure
+      .input(z.object({ vehicleId: z.number(), customerId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { vehicles, reminders } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("No database connection");
+
+        // Update vehicle ownership
+        await db.update(vehicles).set({ customerId: input.customerId }).where(eq(vehicles.id, input.vehicleId));
+        
+        // Ensure any outstanding reminders for this vehicle are correctly routed to the new customer
+        await db.update(reminders).set({ customerId: input.customerId }).where(eq(reminders.vehicleId, input.vehicleId));
+        
+        return { success: true };
+      }),
+
     update: publicProcedure
       .input(z.object({
         id: z.number(),

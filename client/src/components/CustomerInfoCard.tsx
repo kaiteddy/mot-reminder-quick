@@ -3,8 +3,19 @@ import { User, Phone, MapPin, Smartphone, Copy } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehicleId?: number }) {
+  const unlinkMutation = trpc.reminders.unlinkVehicle.useMutation({
+    onSuccess: () => {
+      toast.success("Vehicle securely unlinked from customer.");
+      setTimeout(() => window.location.reload(), 1000);
+    },
+    onError: () => {
+      toast.error("Failed to unlink vehicle.");
+    }
+  });
+
   if (!customer) return null;
 
   const jobSummaryUrl = vehicleId ? `${window.location.protocol}//${window.location.host}/mobile/job/${vehicleId}` : "";
@@ -64,7 +75,7 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
           </Dialog>
         )}
       </CardHeader>
-      <CardContent className="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <CardContent className="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4 relative pb-6">
         <div>
           <h4 className="font-semibold text-lg">{customer.name}</h4>
           {customer.phone && (
@@ -82,6 +93,23 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
             </div>
           </div>
         </div>
+        {vehicleId && (
+          <div className="absolute bottom-2 right-4 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to unlink this vehicle from ${customer.name}? This will prevent reminders from going to the wrong person.`)) {
+                  unlinkMutation.mutate({ vehicleId });
+                }
+              }}
+              disabled={unlinkMutation.isPending}
+            >
+              {unlinkMutation.isPending ? "Unlinking..." : "Unlink Owner"}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
