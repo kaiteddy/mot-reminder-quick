@@ -1055,7 +1055,7 @@ export const appRouter = router({
           };
         }
 
-        // Fetch from both APIs
+        // Fetch from all APIs (UKVD basic tier used for normal check)
         const promises: Promise<any>[] = [
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
@@ -1064,21 +1064,16 @@ export const appRouter = router({
           getVehicleDetails(input.registration).catch((err) => {
             console.error("DVLA API Error:", err.message);
             return null;
+          }),
+          fetchUKVDData(input.registration, input.checkType === "full").catch((err) => {
+            console.error("UKVD API Error:", err.message);
+            return null;
           })
         ];
 
-        if (input.checkType === "full") {
-          promises.push(
-            fetchUKVDData(input.registration).catch((err) => {
-              console.error("UKVD API Error:", err.message);
-              return null;
-            })
-          );
-        }
-
         const [motData, dvlaData, ukvdData] = await Promise.all(promises);
 
-        if (!motData && !dvlaData) {
+        if (!motData && !dvlaData && !ukvdData) {
           throw new Error("Vehicle not found. Try TEST123 to see a demo.");
         }
 

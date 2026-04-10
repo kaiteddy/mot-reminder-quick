@@ -2,7 +2,6 @@ import "dotenv/config";
 
 const UKVD_CONFIG = {
     apiKey: process.env.UKVD_API_KEY || "",
-    packageName: process.env.UKVD_PACKAGE_NAME || "VehicleDetailsWithImage",
     baseUrl: "https://uk.api.vehicledataglobal.com/r2/lookup"
 };
 
@@ -38,7 +37,7 @@ export interface UKVDResponse {
     raw?: any;
 }
 
-export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
+export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Promise<UKVDResponse | null> {
     if (!UKVD_CONFIG.apiKey) {
         console.warn("[UKVD] No API key configured. Skipping lookup.");
         return null;
@@ -46,8 +45,9 @@ export async function fetchUKVDData(vrm: string): Promise<UKVDResponse | null> {
 
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const url = new URL(UKVD_CONFIG.baseUrl);
+    const targetPackage = isPremium ? (process.env.UKVD_PACKAGE_NAME || "VehicleDetailsWithImage") : "VehicleData";
     url.searchParams.append("ApiKey", UKVD_CONFIG.apiKey);
-    url.searchParams.append("PackageName", UKVD_CONFIG.packageName);
+    url.searchParams.append("PackageName", targetPackage);
     url.searchParams.append("Vrm", cleanVRM);
 
     try {
