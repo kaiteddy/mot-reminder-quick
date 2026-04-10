@@ -248,7 +248,7 @@ export default function MOTCheck() {
                   className="h-10 text-sm font-medium shadow-sm transition-all rounded-lg border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 w-full md:w-auto"
                 >
                   <Sparkles className="w-4 h-4 mr-2 text-blue-600" />
-                  Full Check (1 Credit)
+                  Full Paid Check (£2.70)
                 </Button>
               </div>
             </form>
