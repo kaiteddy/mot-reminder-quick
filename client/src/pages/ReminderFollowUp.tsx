@@ -158,7 +158,7 @@ export default function ReminderFollowUp() {
     const filteredLogs = useMemo(() => {
         if (!logs) return [];
 
-        return logs.filter(log => {
+        const result = logs.filter(log => {
             const sentDate = new Date(log.sentAt);
             const today = new Date();
             const diffDays = Math.floor((today.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24));
