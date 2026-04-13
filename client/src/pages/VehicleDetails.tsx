@@ -22,11 +22,9 @@ import {
     Check,
     ExternalLink,
     Sparkles,
-    ShieldCheck,
     ShieldAlert,
     Banknote,
     Gauge,
-    AlertTriangle,
     CheckCircle2
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";

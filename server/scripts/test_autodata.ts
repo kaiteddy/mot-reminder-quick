@@ -1,53 +1,49 @@
-import "dotenv/config";
+// @ts-nocheck
+
+import { testConnection } from "../autodataApi";
 import { getAppSetting } from "../db";
 
-async function test() {
-  const accountId = await getAppSetting("autodata_tokens").then(res => res?.pendoAccountId ? JSON.parse(res.pendoAccountId).value : null);
-  const session = await getAppSetting("autodata_tokens");
-  
-  if (!session || !session.awswaf) {
-    console.log("No tokens found!");
-    process.exit(1);
+async function run() {
+  const accountId = await getAppSetting("autodata_tokens").then(res => (res as any)?.pendoAccountId ? JSON.parse((res as any).pendoAccountId).value : null);
+  const sessionString = await getAppSetting("autodata_full_session");
+  const session = sessionString ? JSON.parse(sessionString) : null;
+  if (!session || !(session as any).awswaf) {
+    console.log("No valid session found in database with awswaf cookie.");
+    return;
   }
-
+  
   const tokens = session;
-  const awswaf = tokens.awswaf;
+  const awswaf = (tokens as any).awswaf;
   
-  const headers = {
-    "Cookie": `awswaf_session_storage=${awswaf};`,
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Origin": "https://workshop.autodata-group.com",
-    "Referer": "https://workshop.autodata-group.com/"
-  };
-
-  const url = "https://workshop.autodata-group.com/w1/service-schedules/OPL16080?vrm=DY60WXE";
-
-  console.log(`Fetching HTML from ${url}...`);
   try {
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-          const text = await res.text();
-          console.log("SUCCESS!");
-          
-          // Dump all strings that look like /w2/api/... or /v1/...
-          const apiMatches = text.match(/"\/[wv][12]\/[^"]+"/g);
-          if (apiMatches) {
-             console.log("Found API endpoints mapped in HTML:");
-             const unique = [...new Set(apiMatches)];
-             console.log(unique.join("\n"));
-          } else {
-             console.log("No API mappings found in HTML.");
-             console.log(text.substring(0, 1000));
-          }
-      } else {
-          console.log(`Failed: ${res.status}`);
-          console.log(await res.text());
-      }
-  } catch (e: any) {
-      console.log(`Failed fetching ${url}: ${e.message}`);
-  }
+    const res = await fetch(`https://workshop.autodata-group.com/api/customer/${accountId}/vehicles/MERCEDES-BENZ/model/C-CLASS/vrm/WX67WSO`, {
+        headers: {
+            "accept": "application/json",
+            "cookie": `aws-waf-token=${awswaf};`
+        }
+    });
 
-  process.exit(0);
+    const data = await res.json();
+    console.log("Live Autodata API response:");
+    console.dir(data, { depth: null });
+    
+    if (data && data.href) {
+        console.log(`\nSuccessfully located vehicle API endpoint:\n${data.href}`);
+        console.log(`\nNext step: Query this endpoint to get the manufacturer service schedules.`);
+    } else {
+        // Try falling back to analyzing the root API for endpoint hints
+        const htmlRes = await fetch(`https://workshop.autodata-group.com/`, { headers: { cookie: `aws-waf-token=${awswaf};` }});
+        const html = await htmlRes.text();
+        const apiMatches = html.match(/\/api\/[^"']+/g);
+        if (apiMatches) {
+            const unique = Array.from(new Set(apiMatches));
+            console.log("Found hidden API endpoints in the application code:", unique.slice(0, 10));
+        }
+    }
+
+  } catch (e) {
+    console.error("Failed to query live Autodata:", e);
+  }
 }
-test();
+
+run();
