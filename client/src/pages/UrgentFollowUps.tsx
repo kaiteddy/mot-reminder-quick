@@ -51,6 +51,7 @@ type SortConfig = { key: "sentAt" | "registration" | "customerName" | "currentEx
 
 export default function UrgentFollowUps() {
     const [isUpdating, setIsUpdating] = useState(false);
+    const [progress, setProgress] = useState<{ current: number, total: number } | null>(null);
     const [isSendingBatch, setIsSendingBatch] = useState(false);
     const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
@@ -68,21 +69,7 @@ export default function UrgentFollowUps() {
         }
     });
 
-    const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation({
-        onSuccess: (res) => {
-            toast.success("MOT Check Complete", {
-                description: `Updated ${res.updated} vehicles, ${res.failed} failed, ${res.skipped} skipped.`,
-            });
-            refetch();
-            utils.database.getAllVehiclesWithCustomers.invalidate();
-        },
-        onError: (err) => {
-            toast.error("MOT Check Failed", {
-                description: err.message,
-            });
-        },
-        onSettled: () => setIsUpdating(false)
-    });
+    const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation();
 
     const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry: string | null } | null>(null);
     const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
@@ -285,14 +272,41 @@ export default function UrgentFollowUps() {
         }
     };
 
-    const handleBulkMOTCheck = () => {
+    const handleBulkMOTCheck = async () => {
         const vehicleIds = Array.from(new Set(urgentLogs.map(log => log.vehicleId).filter((id): id is number => id !== null)));
         if (vehicleIds.length === 0) {
             toast.error("No vehicles found to check");
             return;
         }
         setIsUpdating(true);
-        bulkMOTCheck.mutate({ vehicleIds });
+        setProgress({ current: 0, total: vehicleIds.length });
+
+        const chunkSize = 5;
+        let totalUpdated = 0;
+        let totalFailed = 0;
+        let totalSkipped = 0;
+
+        for (let i = 0; i < vehicleIds.length; i += chunkSize) {
+            const chunk = vehicleIds.slice(i, i + chunkSize);
+            try {
+                const res = await bulkMOTCheck.mutateAsync({ vehicleIds: chunk });
+                totalUpdated += res.updated;
+                totalFailed += res.failed;
+                totalSkipped += res.skipped;
+                setProgress({ current: Math.min(i + chunkSize, vehicleIds.length), total: vehicleIds.length });
+            } catch (err: any) {
+                console.error("Chunk failed", err);
+            }
+        }
+
+        toast.success("MOT Check Complete", {
+            description: `Updated ${totalUpdated} vehicles, ${totalFailed} failed, ${totalSkipped} skipped.`,
+        });
+
+        setIsUpdating(false);
+        setProgress(null);
+        refetch();
+        utils.database.getAllVehiclesWithCustomers.invalidate();
     };
 
     return (
@@ -317,15 +331,36 @@ export default function UrgentFollowUps() {
                             {isSendingBatch ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-white" />}
                             {isSendingBatch ? "Sending..." : `Send Urgent Reminders (${selectedLogs.size})`}
                         </Button>
-                        <Button
-                            onClick={handleBulkMOTCheck}
-                            disabled={isUpdating || urgentLogs.length === 0}
-                            variant="secondary"
-                            className="gap-2 shadow-sm transition-all"
-                        >
-                            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
-                            {isUpdating ? "Checking MOTs..." : "Re-check MOTs"}
-                        </Button>
+                        <div className="w-[200px]">
+                            {progress ? (
+                                <div className="flex flex-col items-end gap-1 w-full">
+                                    <Button
+                                        disabled={true}
+                                        className="gap-2 shadow-sm w-full transition-all"
+                                        variant="secondary"
+                                    >
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Checking ({progress.current}/{progress.total})...
+                                    </Button>
+                                    <div className="w-full bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
+                                        <div 
+                                            className="bg-slate-600 h-full transition-all duration-300"
+                                            style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <Button
+                                    onClick={handleBulkMOTCheck}
+                                    disabled={isUpdating || urgentLogs.length === 0}
+                                    variant="secondary"
+                                    className="gap-2 shadow-sm transition-all w-full"
+                                >
+                                    {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />}
+                                    {isUpdating ? "Checking MOTs..." : "Re-check MOTs"}
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
