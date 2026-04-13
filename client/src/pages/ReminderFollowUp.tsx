@@ -22,7 +22,9 @@ import {
     X,
     ShieldAlert,
     CalendarDays,
-    CalendarCheck
+    CalendarCheck,
+    ArrowDown,
+    ArrowUp
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
@@ -47,6 +49,9 @@ export default function ReminderFollowUp() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [selectedVehicleForMOT, setSelectedVehicleForMOT] = useState<{ id: number, registration: string, currentExpiry: string | null } | null>(null);
     const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
+
+    const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+    const [progress, setProgress] = useState<{ current: number, total: number } | null>(null);
 
     const [showBookedDialog, setShowBookedDialog] = useState(false);
     const [bookingTargetIds, setBookingTargetIds] = useState<Set<number> | null>(null);
@@ -83,23 +88,9 @@ export default function ReminderFollowUp() {
         }
     };
 
-    const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation({
-        onSuccess: (res) => {
-            toast.success("MOT Check Complete", {
-                description: `Updated ${res.updated} vehicles, ${res.failed} failed, ${res.skipped} skipped.`,
-            });
-            refetch();
-            utils.database.getAllVehiclesWithCustomers.invalidate();
-        },
-        onError: (err) => {
-            toast.error("MOT Check Failed", {
-                description: err.message,
-            });
-        },
-        onSettled: () => setIsUpdating(false)
-    });
+    const bulkMOTCheck = trpc.database.bulkUpdateMOT.useMutation();
 
-    const handleBulkMOTCheck = () => {
+    const handleBulkMOTCheck = async () => {
         const vehicleIds = Array.from(new Set(filteredLogs.map(log => log.vehicleId).filter((id): id is number => id !== null)));
 
         if (vehicleIds.length === 0) {
@@ -108,7 +99,34 @@ export default function ReminderFollowUp() {
         }
 
         setIsUpdating(true);
-        bulkMOTCheck.mutate({ vehicleIds });
+        setProgress({ current: 0, total: vehicleIds.length });
+
+        const chunkSize = 5;
+        let totalUpdated = 0;
+        let totalFailed = 0;
+        let totalSkipped = 0;
+
+        for (let i = 0; i < vehicleIds.length; i += chunkSize) {
+            const chunk = vehicleIds.slice(i, i + chunkSize);
+            try {
+                const res = await bulkMOTCheck.mutateAsync({ vehicleIds: chunk });
+                totalUpdated += res.updated;
+                totalFailed += res.failed;
+                totalSkipped += res.skipped;
+                setProgress({ current: Math.min(i + chunkSize, vehicleIds.length), total: vehicleIds.length });
+            } catch (err: any) {
+                console.error("Chunk failed", err);
+            }
+        }
+
+        toast.success("MOT Check Complete", {
+            description: `Updated ${totalUpdated} vehicles, ${totalFailed} failed, ${totalSkipped} skipped.`,
+        });
+
+        setIsUpdating(false);
+        setProgress(null);
+        refetch();
+        utils.database.getAllVehiclesWithCustomers.invalidate();
     };
 
     const filteredLogs = useMemo(() => {
@@ -145,7 +163,15 @@ export default function ReminderFollowUp() {
 
             return true;
         });
-    }, [logs, rangeFilter, statusFilter, searchTerm, hideSorn]);
+
+        result.sort((a, b) => {
+            const timeA = new Date(a.sentAt).getTime();
+            const timeB = new Date(b.sentAt).getTime();
+            return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
+        });
+
+        return result;
+    }, [logs, rangeFilter, statusFilter, searchTerm, hideSorn, sortOrder]);
 
     const stats = useMemo(() => {
         if (!logs) return { total: 0, completed: 0, pending: 0 };
@@ -177,14 +203,34 @@ export default function ReminderFollowUp() {
                             Analyze all sent reminders and verify if MOT tests have been completed
                         </p>
                     </div>
-                    <Button
-                        onClick={handleBulkMOTCheck}
-                        disabled={isUpdating || filteredLogs.length === 0}
-                        className="gap-2 shadow-lg hover:shadow-xl transition-all"
-                    >
-                        {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-400 fill-yellow-400" />}
-                        {isUpdating ? "Checking MOTs..." : "Run MOT Check for these Vehicles"}
-                    </Button>
+                    <div className="w-64">
+                        {progress ? (
+                            <div className="flex flex-col items-end gap-1 w-full">
+                                <Button
+                                    disabled={true}
+                                    className="gap-2 shadow-lg w-full transition-all"
+                                >
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Checking ({progress.current}/{progress.total})...
+                                </Button>
+                                <div className="w-full bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
+                                    <div 
+                                        className="bg-blue-600 h-full transition-all duration-300"
+                                        style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <Button
+                                onClick={handleBulkMOTCheck}
+                                disabled={isUpdating || filteredLogs.length === 0}
+                                className="gap-2 shadow-lg hover:shadow-xl transition-all w-full"
+                            >
+                                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-yellow-400 fill-yellow-400" />}
+                                {isUpdating ? "Checking MOTs..." : "Run MOT Check for these Vehicles"}
+                            </Button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Summary Stats */}
@@ -291,7 +337,15 @@ export default function ReminderFollowUp() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Sent Date</TableHead>
+                                        <TableHead 
+                                            className="cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                                            onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Sent Date
+                                                {sortOrder === "desc" ? <ArrowDown className="w-3 h-3 text-slate-400" /> : <ArrowUp className="w-3 h-3 text-slate-400" />}
+                                            </div>
+                                        </TableHead>
                                         <TableHead>Registration</TableHead>
                                         <TableHead>Customer</TableHead>
                                         <TableHead>Old MOT Expiry</TableHead>
