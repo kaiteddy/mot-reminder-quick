@@ -62,6 +62,7 @@ export const vehicles = mysqlTable("vehicles", {
   taxDueDate: timestamp("taxDueDate"),
   lastChecked: timestamp("lastChecked"),
   motBookedDate: timestamp("motBookedDate"),
+  bookingRequested: int("bookingRequested").default(0),
   customerId: int("customerId"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),

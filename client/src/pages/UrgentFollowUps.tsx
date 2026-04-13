@@ -464,8 +464,15 @@ export default function UrgentFollowUps() {
                                                     </TableCell>
                                                     <TableCell>
                                                         <Link href={`/view-vehicle/${encodeURIComponent(log.registration || '')}`}>
-                                                            <div className="bg-yellow-400 text-black px-1.5 py-0.5 rounded font-mono font-bold text-[10px] border border-black shadow-sm mb-1 block w-fit tracking-wide cursor-pointer hover:scale-105 transition-transform">
-                                                                {log.registration}
+                                                            <div className="flex flex-col gap-1 items-start">
+                                                                <div className="bg-yellow-400 text-black px-1.5 py-0.5 rounded font-mono font-bold text-[10px] border border-black shadow-sm block w-fit tracking-wide cursor-pointer hover:scale-105 transition-transform">
+                                                                    {log.registration}
+                                                                </div>
+                                                                {log.bookingRequested === 1 && (
+                                                                    <div className="bg-green-100 text-green-800 px-1 py-0.5 text-[9px] font-bold tracking-wider uppercase rounded-sm border border-green-300 ml-0.5">
+                                                                        Booking Requested
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </Link>
                                                         <div className="text-[10px] text-muted-foreground uppercase">{log.vehicleMake} {log.vehicleModel}</div>

@@ -191,16 +191,19 @@ async function logIncomingMessage(data: {
           const db = await getDb();
           if (db) {
             // Find the most recent reminder sent to this customer
-            const recentReminder = await db.query.reminderLogs.findFirst({
-              where: eq(reminderLogs.customerId, customer.id),
-              orderBy: [desc(reminderLogs.sentAt)],
-            });
+            const recentReminders = await db.select()
+              .from(reminderLogs)
+              .where(eq(reminderLogs.customerId, customer.id))
+              .orderBy(desc(reminderLogs.sentAt))
+              .limit(1);
+              
+            const recentReminder = recentReminders[0];
             
             if (recentReminder && recentReminder.vehicleId) {
               await db.update(vehicles)
-                .set({ motBookedDate: new Date() })
+                .set({ bookingRequested: 1 })
                 .where(eq(vehicles.id, recentReminder.vehicleId));
-              console.log(`[Twilio Webhook] ✓ Customer ${customer.id} auto-booked vehicle ${recentReminder.vehicleId}.`);
+              console.log(`[Twilio Webhook] ✓ Customer ${customer.id} requested booking for vehicle ${recentReminder.vehicleId}. Flagged!`);
             }
           }
         }

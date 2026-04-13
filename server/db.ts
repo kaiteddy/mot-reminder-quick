@@ -176,6 +176,7 @@ export async function getAllReminderLogs() {
       vehicleModel: vehicles.model,
       taxStatus: vehicles.taxStatus,
       motBookedDate: vehicles.motBookedDate,
+      bookingRequested: vehicles.bookingRequested,
     })
     .from(reminderLogs)
     .leftJoin(customers, eq(reminderLogs.customerId, customers.id))

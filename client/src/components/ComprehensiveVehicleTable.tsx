@@ -233,16 +233,25 @@ export function ComprehensiveVehicleTable({
                                         />
                                     </TableCell>
                                     <TableCell className="font-mono font-bold whitespace-nowrap">
-                                        <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration)}`}>
-                                            <span className="cursor-pointer hover:underline text-blue-600">
-                                                {vehicle.registration}
-                                            </span>
-                                        </Link>
-                                        {vehicle.dateOfRegistration && (
-                                            <span className="ml-2 text-[10px] text-slate-400 font-normal">
-                                                ({new Date(vehicle.dateOfRegistration).getFullYear()})
-                                            </span>
-                                        )}
+                                        <div className="flex flex-col gap-1 items-start">
+                                            <div className="flex items-center">
+                                                <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration)}`}>
+                                                    <span className="cursor-pointer hover:underline text-blue-600">
+                                                        {vehicle.registration}
+                                                    </span>
+                                                </Link>
+                                                {vehicle.dateOfRegistration && (
+                                                    <span className="ml-2 text-[10px] text-slate-400 font-normal">
+                                                        ({new Date(vehicle.dateOfRegistration).getFullYear()})
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {(vehicle as any).bookingRequested === 1 && (
+                                                <div className="bg-green-100 text-green-800 px-1 py-0.5 text-[9px] font-bold tracking-wider uppercase rounded-sm border border-green-300">
+                                                    Booking Requested
+                                                </div>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-col">
