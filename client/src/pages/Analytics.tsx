@@ -63,8 +63,9 @@ const CustomYoYTooltip = ({ active, payload, label, isMonthly }: any) => {
 export default function Analytics() {
     const { data: stats, isLoading: isLoadingStats } = trpc.analytics.getStats.useQuery();
     const { data: financials, isLoading: isLoadingFinancials } = trpc.analytics.getFinancialStats.useQuery();
+    const { data: funnel, isLoading: isLoadingFunnel } = trpc.analytics.getConversionFunnel.useQuery();
 
-    if (isLoadingStats || isLoadingFinancials) {
+    if (isLoadingStats || isLoadingFinancials || isLoadingFunnel) {
         return (
             <DashboardLayout>
                 <div className="flex items-center justify-center h-64">
@@ -101,11 +102,60 @@ export default function Analytics() {
                     <p className="text-muted-foreground">Comprehensive insights into business performance.</p>
                 </div>
 
-                <Tabs defaultValue="financials" className="space-y-4">
+                <Tabs defaultValue="funnel" className="space-y-4">
                     <TabsList>
+                        <TabsTrigger value="funnel" className="text-green-600 dark:text-green-400 font-bold">ROI & Funnel</TabsTrigger>
                         <TabsTrigger value="financials">Financial Performance</TabsTrigger>
                         <TabsTrigger value="reminders">Reminders & Cost</TabsTrigger>
                     </TabsList>
+
+                    <TabsContent value="funnel" className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 pt-4">
+                            <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium text-blue-900 dark:text-blue-300">Total SMS Cost (30 Days)</CardTitle>
+                                    <MessageSquare className="h-4 w-4 text-blue-600" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">£{funnel?.cost.toFixed(2)}</div>
+                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{funnel?.totalSent30Days} Reminders Sent</p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20 dark:border-indigo-900">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium text-indigo-900 dark:text-indigo-300">Vehicles Contacted</CardTitle>
+                                    <Mail className="h-4 w-4 text-indigo-600" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100">{funnel?.uniqueVehiclesSent}</div>
+                                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">Unique outreach this month</p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium text-emerald-900 dark:text-emerald-300">Conversion Rate</CardTitle>
+                                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{funnel?.conversionRate.toFixed(1)}%</div>
+                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{funnel?.bookedCount} Confirmed MOT Bookings</p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-green-300 bg-green-50 shadow-md transform scale-[1.02] z-10 transition-transform dark:bg-green-950/40 dark:border-green-800">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-bold text-green-900 dark:text-green-300">Generated Revenue</CardTitle>
+                                    <CircleDollarSign className="h-5 w-5 text-green-600" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-3xl font-bold text-green-800 dark:text-green-100">£{funnel?.revenueGenerated.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                    <p className="text-sm text-green-700 dark:text-green-400 font-bold mt-1">ROI: +{funnel?.roi.toLocaleString(undefined, {maximumFractionDigits: 0})}%</p>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </TabsContent>
                     
                     <TabsContent value="financials" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

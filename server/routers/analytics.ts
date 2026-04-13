@@ -109,6 +109,63 @@ export const analyticsRouter = router({
                 dailyStats
             };
         }),
+
+    getConversionFunnel: publicProcedure
+        .query(async () => {
+            const { getDb } = await import("../db");
+            const db = await getDb();
+            if (!db) throw new Error("Database not available");
+            
+            const { reminderLogs, vehicles } = await import("../../drizzle/schema");
+            const { gte, isNotNull, and, sql, inArray } = await import("drizzle-orm");
+
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            // 1. Sent count inside 30 days
+            const sentCountRes = await db.select({ count: sql<number>`count(*)` })
+                .from(reminderLogs)
+                .where(gte(reminderLogs.sentAt, thirtyDaysAgo));
+                
+            // 2. We need unique vehicles that were sent reminders in the last 30 days
+            const uniqueVehiclesSent = await db.selectDistinct({ vehicleId: reminderLogs.vehicleId })
+                .from(reminderLogs)
+                .where(and(isNotNull(reminderLogs.vehicleId), gte(reminderLogs.sentAt, thirtyDaysAgo)));
+
+            // 3. Count how many of those vehicles have a motBookedDate not null
+            let bookedCount = 0;
+            if (uniqueVehiclesSent.length > 0) {
+               const vIds = uniqueVehiclesSent.map(v => v.vehicleId).filter((id): id is number => id !== null);
+               
+               // To avoid extreme query param sizes, we just chunk if needed, but < 1000 is fine for mysql
+               if (vIds.length > 0) {
+                   const bookedVehicles = await db.select({ id: vehicles.id })
+                      .from(vehicles)
+                      .where(
+                          and(
+                              inArray(vehicles.id, vIds),
+                              isNotNull(vehicles.motBookedDate)
+                          )
+                      );
+                   bookedCount = bookedVehicles.length;
+               }
+            }
+            
+            const totalSent30Days = sentCountRes[0]?.count || 0;
+            const totalCost = totalSent30Days * 0.05; // 5p per text
+            const avgBookingValue = 54.85; // Est. MOT Cost Rev
+            const generatedRevenue = bookedCount * avgBookingValue;
+
+            return {
+                totalSent30Days,
+                uniqueVehiclesSent: uniqueVehiclesSent.length,
+                bookedCount,
+                conversionRate: uniqueVehiclesSent.length > 0 ? (bookedCount / uniqueVehiclesSent.length) * 100 : 0,
+                revenueGenerated: generatedRevenue,
+                roi: totalCost > 0 ? ((generatedRevenue - totalCost) / totalCost) * 100 : 0,
+                cost: totalCost
+            }
+        }),
         
     getFinancialStats: publicProcedure
         .query(async ({ ctx }) => {

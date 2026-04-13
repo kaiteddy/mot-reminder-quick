@@ -180,6 +180,30 @@ async function logIncomingMessage(data: {
           await setCustomerOptIn(customer.id);
           console.log(`[Twilio Webhook] ✓ Customer ${customer.id} (${customer.name}) opted back in`);
         }
+
+        // Handle auto-booking (BOOK keyword)
+        const normalizedBody = data.body.trim().toUpperCase();
+        if (normalizedBody.includes('BOOK') || normalizedBody.includes('YES')) {
+          const { getDb } = await import("../db");
+          const { reminderLogs, vehicles } = await import("../../drizzle/schema");
+          const { eq, desc } = await import("drizzle-orm");
+          
+          const db = await getDb();
+          if (db) {
+            // Find the most recent reminder sent to this customer
+            const recentReminder = await db.query.reminderLogs.findFirst({
+              where: eq(reminderLogs.customerId, customer.id),
+              orderBy: [desc(reminderLogs.sentAt)],
+            });
+            
+            if (recentReminder && recentReminder.vehicleId) {
+              await db.update(vehicles)
+                .set({ motBookedDate: new Date() })
+                .where(eq(vehicles.id, recentReminder.vehicleId));
+              console.log(`[Twilio Webhook] ✓ Customer ${customer.id} auto-booked vehicle ${recentReminder.vehicleId}.`);
+            }
+          }
+        }
       } else {
         // Customer not found, create new one
         console.log(`[Twilio Webhook] Creating new customer for unknown number: ${fromNumber}`);
