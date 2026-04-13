@@ -308,13 +308,24 @@ export function ComprehensiveVehicleTable({
                                     </TableCell>
                                     <TableCell>
                                         {vehicle.lastReminderSent ? (
-                                            <div className="flex flex-col text-[11px]">
-                                                <span className="font-medium">{new Date(vehicle.lastReminderSent).toLocaleDateString("en-GB")}</span>
-                                                <div className="flex items-center gap-1">
-                                                    {getDeliveryStatusIcon(vehicle.lastReminderStatus)}
-                                                    <span className="text-slate-400 capitalize">{vehicle.lastReminderStatus || 'queued'}</span>
-                                                </div>
-                                            </div>
+                                            (() => {
+                                                const sentDate = new Date(vehicle.lastReminderSent);
+                                                const today = new Date();
+                                                const diffTime = today.getTime() - sentDate.getTime();
+                                                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                                return (
+                                                    <div className="flex flex-col text-[11px]">
+                                                        <span className="font-medium">
+                                                            {sentDate.toLocaleDateString("en-GB")}
+                                                            <span className="text-slate-500 ml-1 font-normal">({diffDays}d ago)</span>
+                                                        </span>
+                                                        <div className="flex items-center gap-1">
+                                                            {getDeliveryStatusIcon(vehicle.lastReminderStatus)}
+                                                            <span className="text-slate-400 capitalize">{vehicle.lastReminderStatus || 'queued'}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
                                         ) : (
                                             <span className="text-slate-400 text-xs">Never</span>
                                         )}
