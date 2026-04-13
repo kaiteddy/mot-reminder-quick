@@ -24,7 +24,8 @@ import {
     CalendarDays,
     CalendarCheck,
     ArrowDown,
-    ArrowUp
+    ArrowUp,
+    Send
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
@@ -127,6 +128,31 @@ export default function ReminderFollowUp() {
         setProgress(null);
         refetch();
         utils.database.getAllVehiclesWithCustomers.invalidate();
+    };
+
+    const sendFollowUpMutation = trpc.reminders.sendWhatsApp.useMutation({
+        onSuccess: () => {
+            toast.success("Follow-up sent successfully!");
+            refetch();
+        },
+        onError: (err) => {
+            toast.error("Failed to send follow-up", { description: err.message });
+        }
+    });
+
+    const handleSendFollowUp = (log: any) => {
+        if (!confirm(`Are you sure you want to send an urgent follow-up text to ${log.recipient}? This will incur standard messaging charges.`)) return;
+
+        sendFollowUpMutation.mutate({
+            id: 0,
+            phoneNumber: log.recipient,
+            customerName: log.customerName || "Customer",
+            registration: log.registration || "",
+            expiryDate: log.dueDate || log.currentMOTExpiry || new Date().toISOString(),
+            messageType: "UrgentFollowUp",
+            vehicleId: log.vehicleId,
+            customerId: log.customerId
+        });
     };
 
     const filteredLogs = useMemo(() => {
@@ -440,9 +466,21 @@ export default function ReminderFollowUp() {
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-2">
+                                                            {!isCompleted && (
+                                                                <Button 
+                                                                    size="icon" 
+                                                                    variant="ghost" 
+                                                                    className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                    onClick={() => handleSendFollowUp(log)}
+                                                                    disabled={sendFollowUpMutation.isPending}
+                                                                    title="Send urgent follow-up SMS"
+                                                                >
+                                                                    <Send className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
                                                             <Dialog>
                                                                 <DialogTrigger asChild>
-                                                                    <Button size="icon" variant="ghost" className="h-8 w-8">
+                                                                    <Button size="icon" variant="ghost" className="h-8 w-8" title="View Chat History">
                                                                         <MessageSquare className="h-4 w-4" />
                                                                     </Button>
                                                                 </DialogTrigger>
