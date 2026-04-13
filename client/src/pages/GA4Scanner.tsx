@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock } from "lucide-react";
+import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock, ArrowDown, ArrowUp } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -95,6 +95,7 @@ export default function GA4Scanner() {
     const [bookingTargetRegs, setBookingTargetRegs] = useState<Set<string> | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [hideSuccessful, setHideSuccessful] = useState(false);
+    const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
     const createMutation = trpc.reminders.createManualReminder.useMutation();
     const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
@@ -284,7 +285,7 @@ export default function GA4Scanner() {
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
         .filter((id): id is number => id !== null && id !== undefined);
 
-    const sortedFilteredResults = results.filter(item => {
+    const sortedFilteredResults = [...results].filter(item => {
         const matchesSearch = item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase());
             
@@ -297,6 +298,10 @@ export default function GA4Scanner() {
             }
         }
         return true;
+    }).sort((a, b) => {
+        const timeA = a.lastSent ? new Date(a.lastSent).getTime() : 0;
+        const timeB = b.lastSent ? new Date(b.lastSent).getTime() : 0;
+        return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
     });
 
     return (
@@ -438,7 +443,15 @@ export default function GA4Scanner() {
                                         <TableHead className="w-[100px]">MOT</TableHead>
                                         <TableHead className="w-[120px]">Status</TableHead>
                                         <TableHead className="w-[100px]">Tax</TableHead>
-                                        <TableHead className="w-[140px]">Last Sent</TableHead>
+                                        <TableHead 
+                                            className="w-[140px] cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                                            onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Last Sent
+                                                {sortOrder === "desc" ? <ArrowDown className="w-3 h-3 text-slate-400" /> : <ArrowUp className="w-3 h-3 text-slate-400" />}
+                                            </div>
+                                        </TableHead>
                                         <TableHead className="w-[90px]">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>

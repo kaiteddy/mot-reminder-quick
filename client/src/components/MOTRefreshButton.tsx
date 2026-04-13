@@ -23,73 +23,71 @@ export function MOTRefreshButton({
   size = "default",
   disabled = false,
 }: MOTRefreshButtonProps) {
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState<{ current: number, total: number } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const updateMutation = trpc.database.bulkUpdateMOT.useMutation({
-    onSuccess: (result) => {
-      // Result contains stats: { success: boolean, updated: number, failed: number, ... }
-      // We can iterate or just show simple stats.
-      // Based on routers.ts, database.bulkUpdateMOT returns: { success: boolean, updated: number, failed: number, skipped: number, errors: string[] }
+  const updateMutation = trpc.database.bulkUpdateMOT.useMutation();
 
-      const { updated, failed, skipped } = result;
-
-      if (updated > 0) {
-        toast.success(`Refreshed ${updated} vehicle${updated !== 1 ? 's' : ''}`);
-      }
-      if (skipped > 0) {
-        toast.info(`Skipped ${skipped} (up to date or invalid)`);
-      }
-      if (failed > 0) {
-        toast.error(`Failed to refresh ${failed} vehicle${failed !== 1 ? 's' : ''}`);
-      }
-
-      setProgress(0);
-      onComplete?.();
-    },
-    onError: (error: any) => {
-      toast.error(`Refresh failed: ${error.message}`);
-      setProgress(0);
-    },
-  });
-
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     if (!limit && (!vehicleIds || vehicleIds.length === 0)) {
       toast.error("No vehicles to refresh");
       return;
     }
 
-    // Start progress simulation
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) {
-          clearInterval(interval);
-          return 95;
+    setIsUpdating(true);
+    let totalUpdated = 0;
+    let totalFailed = 0;
+    let totalSkipped = 0;
+
+    try {
+      if (vehicleIds && vehicleIds.length > 0) {
+        setProgress({ current: 0, total: vehicleIds.length });
+        const chunkSize = 5;
+        for (let i = 0; i < vehicleIds.length; i += chunkSize) {
+          const chunk = vehicleIds.slice(i, i + chunkSize);
+          const res = await updateMutation.mutateAsync({ vehicleIds: chunk });
+          totalUpdated += res.updated;
+          totalFailed += res.failed;
+          totalSkipped += res.skipped;
+          setProgress({ current: Math.min(i + chunkSize, vehicleIds.length), total: vehicleIds.length });
         }
-        return prev + 5;
+      } else {
+        const res = await updateMutation.mutateAsync({ limit });
+        totalUpdated += res.updated;
+        totalFailed += res.failed;
+        totalSkipped += res.skipped;
+      }
+
+      const totalCount = limit || vehicleIds?.length || 0;
+      toast.success("MOT Check Complete", {
+        description: `Updated ${totalUpdated} vehicles, ${totalFailed} failed, ${totalSkipped} skipped.`
       });
-    }, 200);
+    } catch (e: any) {
+      toast.error(`Refresh failed: ${e.message}`);
+    }
 
-    const targetCount = limit || vehicleIds?.length || 0;
-    toast.info(`Refreshing data for ${targetCount} vehicle${targetCount !== 1 ? 's' : ''}...`);
-
-    updateMutation.mutate({ vehicleIds, limit });
+    setProgress(null);
+    setIsUpdating(false);
+    onComplete?.();
   };
 
-  const isLoading = updateMutation.isPending;
   const count = limit || vehicleIds?.length || 0;
 
   return (
     <Button
       onClick={handleRefresh}
-      disabled={disabled || isLoading || count === 0}
+      disabled={disabled || isUpdating || count === 0}
       variant={variant}
       size={size}
     >
-      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-      {isLoading ? (
+      <RefreshCw className={`h-4 w-4 mr-2 ${isUpdating ? 'animate-spin' : ''}`} />
+      {isUpdating && progress ? (
         <>
-          {label} ({progress}%)
+          {label} ({progress.current}/{progress.total})
+        </>
+      ) : isUpdating ? (
+        <>
+          {label}...
         </>
       ) : (
         <>
