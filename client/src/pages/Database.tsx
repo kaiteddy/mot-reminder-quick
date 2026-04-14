@@ -867,107 +867,96 @@ export default function Database() {
         </div>
 
         {/* Date Range Filters */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Filter by Date Range</CardTitle>
-            <CardDescription>Click a category to filter vehicles by MOT expiry timeframe</CardDescription>
+        <Card className="border-slate-200/60 shadow-sm overflow-hidden">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+            <CardTitle className="text-lg">Filter by Date Range</CardTitle>
+            <CardDescription>Click a timeframe below to isolate vehicles entering specific maturity windows</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="pt-6">
+            <div className="space-y-6">
               {/* Expired Categories */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Expired</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  <Button
-                    variant={dateRangeFilter === "expired-all" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-all" ? "all" : "expired-all")}
-                    className="justify-between"
-                  >
-                    <span>All Expired</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expired}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expired-60" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-60" ? "all" : "expired-60")}
-                    className="justify-between"
-                  >
-                    <span>Last 60 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expired60}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expired-30" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-30" ? "all" : "expired-30")}
-                    className="justify-between"
-                  >
-                    <span>Last 30 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expired30}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expired-7" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expired-7" ? "all" : "expired-7")}
-                    className="justify-between"
-                  >
-                    <span>Last 7 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expired7}</Badge>
-                  </Button>
+                <h3 className="text-sm font-bold text-red-800 mb-3 flex items-center">
+                  <span className="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+                  Historically Expired
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[
+                    { id: "expired-all", label: "All Expired", count: stats.expired },
+                    { id: "expired-60", label: "Last 60 days", count: stats.expired60 },
+                    { id: "expired-30", label: "Last 30 days", count: stats.expired30 },
+                    { id: "expired-7", label: "Last 7 days", count: stats.expired7 },
+                  ].map((filter) => {
+                    const isActive = dateRangeFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        onClick={() => setDateRangeFilter(isActive ? "all" : filter.id as any)}
+                        className={`flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                          isActive 
+                            ? "bg-red-500 text-white border-red-600 shadow-md shadow-red-500/20" 
+                            : "bg-white text-slate-600 border-slate-200 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                        }`}
+                      >
+                        <span>{filter.label}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          isActive ? "bg-red-600 text-red-50" : "bg-slate-100 text-slate-500"
+                        }`}>
+                          {filter.count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Expiring Categories */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Expiring Soon</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                  <Button
-                    variant={dateRangeFilter === "expiring-7" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-7" ? "all" : "expiring-7")}
-                    className="justify-between"
-                  >
-                    <span>Next 7 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expiring7}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expiring-14" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-14" ? "all" : "expiring-14")}
-                    className="justify-between"
-                  >
-                    <span>Next 14 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expiring14}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expiring-30" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-30" ? "all" : "expiring-30")}
-                    className="justify-between"
-                  >
-                    <span>Next 30 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expiring30}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expiring-60" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-60" ? "all" : "expiring-60")}
-                    className="justify-between"
-                  >
-                    <span>Next 60 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expiring60}</Badge>
-                  </Button>
-                  <Button
-                    variant={dateRangeFilter === "expiring-90" ? "default" : "outline"}
-                    onClick={() => setDateRangeFilter(dateRangeFilter === "expiring-90" ? "all" : "expiring-90")}
-                    className="justify-between"
-                  >
-                    <span>Next 90 days</span>
-                    <Badge variant="secondary" className="ml-2">{stats.expiring90}</Badge>
-                  </Button>
+                <h3 className="text-sm font-bold text-orange-800 mb-3 flex items-center mt-2">
+                  <span className="w-2 h-2 rounded-full bg-orange-500 mr-2"></span>
+                  Forward-Looking & Expiring
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                  {[
+                    { id: "expiring-7", label: "Next 7 days", count: stats.expiring7 },
+                    { id: "expiring-14", label: "Next 14 days", count: stats.expiring14 },
+                    { id: "expiring-30", label: "Next 30 days", count: stats.expiring30 },
+                    { id: "expiring-60", label: "Next 60 days", count: stats.expiring60 },
+                    { id: "expiring-90", label: "Next 90 days", count: stats.expiring90 },
+                  ].map((filter) => {
+                    const isActive = dateRangeFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        onClick={() => setDateRangeFilter(isActive ? "all" : filter.id as any)}
+                        className={`flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
+                          isActive 
+                            ? "bg-orange-500 text-white border-orange-600 shadow-md shadow-orange-500/20" 
+                            : "bg-white text-slate-600 border-slate-200 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                        }`}
+                      >
+                        <span>{filter.label}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          isActive ? "bg-orange-600 text-orange-50" : "bg-slate-100 text-slate-500"
+                        }`}>
+                          {filter.count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {dateRangeFilter !== "all" && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setDateRangeFilter("all")}
-                  className="w-full"
-                >
-                  Clear Date Filter
-                </Button>
+                <div className="pt-2 border-t border-slate-100 mt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setDateRangeFilter("all")}
+                    className="w-full text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                  >
+                    Clear Active Date Filter
+                  </Button>
+                </div>
               )}
             </div>
           </CardContent>
