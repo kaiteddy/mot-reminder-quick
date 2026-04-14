@@ -247,7 +247,7 @@ CRITICAL INSTRUCTIONS:
       const { sql } = await import("drizzle-orm");
       
       const metrics = await db.select({
-        partName: sql<string>`UPPER(${serviceLineItems.description})`,
+        partName: serviceLineItems.description,
         frequency: sql<number>`COUNT(*)`,
         avgPrice: sql<number>`AVG(${serviceLineItems.unitPrice})`,
         minPrice: sql<number>`MIN(${serviceLineItems.unitPrice})`,
@@ -255,7 +255,7 @@ CRITICAL INSTRUCTIONS:
       })
       .from(serviceLineItems)
       .where(sql`${serviceLineItems.unitPrice} > 0`)
-      .groupBy(sql`UPPER(${serviceLineItems.description})`)
+      .groupBy(serviceLineItems.description)
       .orderBy(sql`COUNT(*) DESC`)
       .limit(500);
 
