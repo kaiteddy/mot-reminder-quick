@@ -239,4 +239,26 @@ CRITICAL INSTRUCTIONS:
       }
       return { success: true };
     }),
+
+  getHistoricalPricingMetrics: publicProcedure
+    .query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const { sql } = await import("drizzle-orm");
+      
+      const metrics = await db.select({
+        partName: sql<string>`UPPER(${serviceLineItems.description})`,
+        frequency: sql<number>`COUNT(*)`,
+        avgPrice: sql<number>`AVG(${serviceLineItems.unitPrice})`,
+        minPrice: sql<number>`MIN(${serviceLineItems.unitPrice})`,
+        maxPrice: sql<number>`MAX(${serviceLineItems.unitPrice})`,
+      })
+      .from(serviceLineItems)
+      .where(sql`${serviceLineItems.unitPrice} > 0`)
+      .groupBy(sql`UPPER(${serviceLineItems.description})`)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(500);
+
+      return metrics;
+    }),
 });
