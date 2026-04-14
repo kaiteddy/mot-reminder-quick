@@ -653,12 +653,12 @@ export default function Database() {
     });
 
     return filtered;
-  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
+  }, [vehicles, searchTerm, sortField, sortDirection, motStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData, taxStatusFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, dateRangeFilter]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
