@@ -133,8 +133,8 @@ export const appRouter = router({
     lookupExternal: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
-        const { fetchUKVDData } = await import("./ukvd");
-        const data = await fetchUKVDData(input.registration);
+        const { getVehicleDetails } = await import("./dvlaApi");
+        const data = await getVehicleDetails(input.registration);
         return data ? { make: data.make, model: data.model } : null;
       }),
     search: publicProcedure
@@ -1081,7 +1081,7 @@ export const appRouter = router({
           };
         }
 
-        // Fetch from all APIs (UKVD basic tier used for normal check)
+        // Fetch from free APIs always, UKVD only used if paid full check
         const promises: Promise<any>[] = [
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
@@ -1091,10 +1091,10 @@ export const appRouter = router({
             console.error("DVLA API Error:", err.message);
             return null;
           }),
-          fetchUKVDData(input.registration, input.checkType === "full").catch((err) => {
+          input.checkType === "full" ? fetchUKVDData(input.registration, true).catch((err) => {
             console.error("UKVD API Error:", err.message);
             return null;
-          })
+          }) : Promise.resolve(null)
         ];
 
         const [motData, dvlaData, ukvdData] = await Promise.all(promises);
