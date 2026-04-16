@@ -721,21 +721,34 @@ export const appRouter = router({
           let model = item.vehicleModel;
 
           // Always fetch live MOT/Tax data to ensure accuracy, but sequentially with a small delay to avoid rate limiting
-          try {
-            // Add a small staggered delay based on index to reduce concurrent load even before sequential processing
-            await new Promise(resolve => setTimeout(resolve, i * 50));
+            try {
+              // Add a small staggered delay based on index to reduce concurrent load even before sequential processing
+              await new Promise(resolve => setTimeout(resolve, i * 50));
 
-            const dvlaData = await getVehicleDetails(item.normalizedReg);
-            if (dvlaData) {
-              motExpiryDate = dvlaData.motExpiryDate;
-              taxDueDate = dvlaData.taxDueDate;
-              taxStatus = dvlaData.taxStatus;
-              make = dvlaData.make || make;
-              model = dvlaData.model || model;
+              const dvlaData = await getVehicleDetails(item.normalizedReg);
+              if (dvlaData) {
+                motExpiryDate = dvlaData.motExpiryDate;
+                taxDueDate = dvlaData.taxDueDate;
+                taxStatus = dvlaData.taxStatus;
+                make = dvlaData.make || make;
+                model = dvlaData.model || model;
+              }
+              
+              const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+              try {
+                const dvsaData = await getMOTHistory(item.normalizedReg);
+                if (dvsaData) {
+                  const bestDate = getLatestMOTExpiry(dvsaData);
+                  if (bestDate) {
+                    motExpiryDate = bestDate.toISOString();
+                  }
+                }
+              } catch (motErr) {
+                // Ignore silent MOT fail
+              }
+            } catch (err) {
+              console.error(`Failed to fetch DVLA details for ${item.normalizedReg}`, err);
             }
-          } catch (err) {
-            console.error(`Failed to fetch DVLA details for ${item.normalizedReg}`, err);
-          }
 
           return {
             ...item,
@@ -985,6 +998,19 @@ export const appRouter = router({
               }
               vehicleMake = dvlaData?.make || reminder.vehicleMake;
               vehicleModel = dvlaData?.model || reminder.vehicleModel;
+              
+              const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+              try {
+                const dvsaData = await getMOTHistory(reminder.registration);
+                if (dvsaData) {
+                  const bestDate = getLatestMOTExpiry(dvsaData);
+                  if (bestDate) {
+                    motExpiryDate = bestDate;
+                  }
+                }
+              } catch (motErr) {
+                // Ignore silent MOT fail
+              }
             } catch (error) {
               console.log(`Could not fetch DVLA data for ${reminder.registration}`);
             }
@@ -1077,10 +1103,10 @@ export const appRouter = router({
           throw new Error("Vehicle not found. Try TEST123 to see a demo.");
         }
 
-        // DVLA provides MOT expiry date directly! Use it if available
+        // DVSA provides the most accurate MOT expiry. Fallback to DVLA.
         const dvlaExpiry = dvlaData?.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null;
         const motExpiry = motData ? getLatestMOTExpiry(motData) : null;
-        const finalExpiry = dvlaExpiry || motExpiry;
+        const finalExpiry = motExpiry || dvlaExpiry;
 
         return {
           registration: input.registration,
