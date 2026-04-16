@@ -1,0 +1,669 @@
+{
+  "RequestInformation": {
+    "PackageName": "VDICheck",
+    "SearchTerm": "LX62UCB",
+    "SearchType": "VRM",
+    "RequestIp": "145.224.66.66"
+  },
+  "ResponseInformation": {
+    "StatusCode": 0,
+    "StatusMessage": "Success",
+    "IsSuccessStatusCode": true,
+    "QueryTimeMs": 37,
+    "ResponseId": "019d9616-97f7-74d6-a04b-59abd1f7b597"
+  },
+  "BillingInformation": {
+    "BillingTransactionId": "5575c1c2-2f25-4f4b-bde5-7c464f7dfe3d",
+    "AccountType": 1,
+    "AccountBalance": 6.58,
+    "TransactionCost": 2.91,
+    "BillingResult": 0,
+    "BillingResultMessage": "Success",
+    "RefundAmount": null,
+    "RefundResult": null,
+    "RefundResultMessage": null
+  },
+  "Results": {
+    "VehicleDetails": {
+      "UkvdId": "V-WHTQEB",
+      "VehicleIdentification": {
+        "Vrm": "LX62UCB",
+        "Vin": "SHHGG6880DU001831",
+        "VinLast5": "01831",
+        "DvlaMake": "HONDA",
+        "DvlaModel": "JAZZ I-VTEC EX CVT",
+        "DvlaWheelPlan": "2 AXLE RIGID BODY",
+        "DateFirstRegisteredInUk": "2012-09-07T00:00:00Z",
+        "DateFirstRegistered": "2012-09-07T00:00:00Z",
+        "DateOfManufacture": "2012-09-07T00:00:00Z",
+        "YearOfManufacture": 2012,
+        "VehicleUsedBeforeFirstRegistration": false,
+        "EngineNumber": "L13Z15201701",
+        "PreviousVrmNi": "",
+        "DvlaBodyType": "5 DOOR HATCHBACK",
+        "DvlaFuelType": "PETROL"
+      },
+      "VehicleStatus": {
+        "IsImported": false,
+        "IsImportedFromNi": false,
+        "IsImportedFromOutsideEu": false,
+        "DateImported": null,
+        "CertificateOfDestructionIssued": false,
+        "IsExported": false,
+        "DateExported": null,
+        "IsScrapped": false,
+        "IsUnscrapped": false,
+        "DateScrapped": null,
+        "DvlaCherishedTransferMarker": false,
+        "VehicleExciseDutyDetails": {
+          "DvlaCo2": 128,
+          "DvlaCo2Band": "D",
+          "DvlaBand": "D",
+          "VedRate": {
+            "FirstYear": {
+              "SixMonths": null,
+              "TwelveMonths": null
+            },
+            "PremiumVehicle": {
+              "SixMonths": null,
+              "TwelveMonths": null
+            },
+            "Standard": {
+              "SixMonths": 93.5,
+              "TwelveMonths": 170
+            }
+          }
+        }
+      },
+      "VehicleHistory": {
+        "ColourDetails": {
+          "CurrentColour": "SILVER",
+          "NumberOfColourChanges": 0,
+          "OriginalColour": "SILVER",
+          "PreviousColour": null,
+          "LatestColourChangeDate": null
+        },
+        "KeeperChangeList": [
+          {
+            "NumberOfPreviousKeepers": 2,
+            "KeeperStartDate": null,
+            "PreviousKeeperDisposalDate": "2025-05-30T00:00:00Z"
+          },
+          {
+            "NumberOfPreviousKeepers": 1,
+            "KeeperStartDate": "2014-04-14T00:00:00Z",
+            "PreviousKeeperDisposalDate": "2014-03-07T00:00:00Z"
+          }
+        ],
+        "PlateChangeList": [],
+        "V5cCertificateList": [
+          {
+            "IssueDate": "2014-05-01T00:00:00Z"
+          },
+          {
+            "IssueDate": "2025-05-22T00:00:00Z"
+          }
+        ]
+      },
+      "DvlaTechnicalDetails": {
+        "NumberOfSeats": 5,
+        "EngineCapacityCc": 1339,
+        "GrossWeightKg": 1182,
+        "MaxNetPowerKw": 73,
+        "MassInServiceKg": 1182,
+        "PowerToWeightRatio": 0,
+        "MaxPermissibleBrakedTrailerMassKg": null,
+        "MaxPermissibleUnbrakedTrailerMassKg": null
+      },
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 116,
+      "GeneratedAt": "2025-10-03T19:26:32.601Z"
+    },
+    "ModelDetails": {
+      "ModelIdentification": {
+        "Make": "Honda",
+        "Range": "Jazz",
+        "Model": "Jazz i-VTec EX CVT",
+        "ModelVariant": "I-VTec EX",
+        "Series": "GE/GG",
+        "Mark": 2,
+        "StartDate": "2011-01-21T00:00:00Z",
+        "EndDate": "2018-06-01T00:00:00Z",
+        "IntroductionDate": "2011-01-05T00:00:00Z",
+        "CountryOfOrigin": "United Kingdom",
+        "VariantCode": 1
+      },
+      "ModelClassification": {
+        "TypeApprovalCategory": "M1",
+        "MarketSectorCode": "AA",
+        "VehicleClass": "Car",
+        "TaxationClass": "Car"
+      },
+      "AdditionalInformation": {
+        "VehicleWarrantyInformation": {
+          "ManufacturerWarrantyMiles": null,
+          "ManufacturerWarrantyMonths": null
+        },
+        "SubscriptionOptionList": [],
+        "Software": {
+          "SupportsOverTheAirSoftwareUpdate": null
+        }
+      },
+      "BodyDetails": {
+        "BodyShape": null,
+        "BodyStyle": "Hatchback",
+        "CabType": null,
+        "PlatformName": "Global Small Car",
+        "PlatformIsSharedAcrossModels": true,
+        "WheelbaseType": "Short Wheelbase",
+        "NumberOfAxles": 2,
+        "NumberOfDoors": 5,
+        "NumberOfSeats": 5,
+        "PayloadVolumeLitres": null,
+        "FuelTankCapacityLitres": 42
+      },
+      "Dimensions": {
+        "HeightMm": 1525,
+        "LengthMm": 3900,
+        "WidthMm": 1695,
+        "WheelbaseLengthMm": 2500,
+        "InternalLoadLengthMm": null
+      },
+      "Weights": {
+        "KerbWeightKg": 1140,
+        "GrossTrainWeightKg": null,
+        "UnladenWeightKg": null,
+        "PayloadWeightKg": null,
+        "GrossVehicleWeightKg": 1535,
+        "GrossCombinedWeightKg": 1535
+      },
+      "Powertrain": {
+        "PowertrainType": "ICE",
+        "FuelType": "Petrol",
+        "IceDetails": {
+          "EngineFamily": null,
+          "EngineLocation": "Front",
+          "EngineDescription": "L13Z1-A",
+          "EngineManufacturer": "Honda Cars",
+          "FuelDelivery": null,
+          "Aspiration": "Naturally Aspirated",
+          "CylinderArrangement": "Inline",
+          "NumberOfCylinders": 4,
+          "BoreMm": 73,
+          "StrokeMm": 80,
+          "ValveGear": "SOHC",
+          "ValvesPerCylinder": 4,
+          "EngineCapacityCc": 1339,
+          "EngineCapacityLitres": 1.3
+        },
+        "EvDetails": null,
+        "Transmission": {
+          "TransmissionType": "CVT",
+          "NumberOfGears": 1,
+          "DriveType": "4x2",
+          "DrivingAxle": "Front"
+        }
+      },
+      "Safety": {
+        "EuroNcap": {
+          "NcapStarRating": 5,
+          "NcapChildPercent": 79,
+          "NcapAdultPercent": 78,
+          "NcapPedestrianPercent": 60,
+          "NcapSafetyAssistPercent": 71
+        }
+      },
+      "Emissions": {
+        "EuroStatus": "5b",
+        "ManufacturerCo2": 128,
+        "SoundLevels": {
+          "StationaryDb": 72,
+          "EngineSpeedRpm": 3750,
+          "DriveByDb": 68
+        }
+      },
+      "Performance": {
+        "DragCoefficient": null,
+        "Torque": {
+          "Nm": 127,
+          "LbFt": 94,
+          "Rpm": 4800
+        },
+        "Power": {
+          "Bhp": 99,
+          "Ps": 100.4,
+          "Kw": 73,
+          "Rpm": 6000
+        },
+        "Statistics": {
+          "ZeroToSixtyMph": 11.8,
+          "ZeroToOneHundredKph": null,
+          "MaxSpeedKph": 175,
+          "MaxSpeedMph": 109
+        },
+        "FuelEconomy": {
+          "UrbanColdMpg": 40.9,
+          "ExtraUrbanMpg": 60.1,
+          "CombinedMpg": 51.4,
+          "UrbanColdL100Km": 6.9,
+          "ExtraUrbanL100Km": 4.7,
+          "CombinedL100Km": 5.5
+        }
+      },
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 42,
+      "GeneratedAt": "2026-03-13T11:47:54.644Z"
+    },
+    "MotHistoryDetails": {
+      "Vrm": "LX62UCB",
+      "UpdateTimeStamp": "2025-04-29T14:54:41.735Z",
+      "LatestTestDate": "2025-04-29T10:13:32Z",
+      "MotDueDate": "2026-04-28T00:00:00Z",
+      "DaysSinceLastMot": 352,
+      "FirstUsedDate": "2012-09-07T01:00:00Z",
+      "Make": "HONDA",
+      "Model": "JAZZ",
+      "FuelType": "Petrol",
+      "Colour": "Silver",
+      "MotTestDetailsList": [
+        {
+          "TestDate": "2025-04-29T10:13:32Z",
+          "TestPassed": true,
+          "ExpiryDate": "2026-04-28T00:00:00Z",
+          "OdometerReading": "35236",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 0,
+          "DaysSinceLastPass": 386,
+          "DaysOutOfMot": 21,
+          "IsRetest": true,
+          "ExtensionInformation": null,
+          "AnnotationList": [
+            {
+              "Type": "MINOR",
+              "Text": "Central Rear Upper Stop lamp(s) light intensity obviously reduced (4.3.3 (a) (i))",
+              "IsDangerous": false
+            }
+          ]
+        },
+        {
+          "TestDate": "2025-04-29T08:18:10Z",
+          "TestPassed": false,
+          "ExpiryDate": null,
+          "OdometerReading": "35236",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 386,
+          "DaysSinceLastPass": 386,
+          "DaysOutOfMot": 21,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": [
+            {
+              "Type": "MAJOR",
+              "Text": "Offside Front Windscreen wiper does not clear the windscreen effectively (3.4 (b) (ii))",
+              "IsDangerous": false
+            },
+            {
+              "Type": "MAJOR",
+              "Text": "Nearside Rear Shock absorbers has a serious fluid leak (5.3.2 (b))",
+              "IsDangerous": false
+            },
+            {
+              "Type": "MINOR",
+              "Text": "Central Rear Upper Stop lamp(s) light intensity obviously reduced (4.3.3 (a) (i))",
+              "IsDangerous": false
+            }
+          ]
+        },
+        {
+          "TestDate": "2024-04-08T09:25:43Z",
+          "TestPassed": true,
+          "ExpiryDate": "2025-04-12T00:00:00Z",
+          "OdometerReading": "33105",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 0,
+          "DaysSinceLastPass": 361,
+          "DaysOutOfMot": 0,
+          "IsRetest": true,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2024-04-08T08:27:23Z",
+          "TestPassed": false,
+          "ExpiryDate": null,
+          "OdometerReading": "33105",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 361,
+          "DaysSinceLastPass": 361,
+          "DaysOutOfMot": 0,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": [
+            {
+              "Type": "MAJOR",
+              "Text": "Offside Front Anti-roll bar linkage ball joint dust cover no longer prevents the ingress of dirt (5.3.4 (b) (ii))",
+              "IsDangerous": false
+            }
+          ]
+        },
+        {
+          "TestDate": "2023-04-13T08:13:05Z",
+          "TestPassed": true,
+          "ExpiryDate": "2024-04-12T00:00:00Z",
+          "OdometerReading": "30909",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 372,
+          "DaysSinceLastPass": 372,
+          "DaysOutOfMot": 7,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2022-04-06T10:31:21Z",
+          "TestPassed": true,
+          "ExpiryDate": "2023-04-12T00:00:00Z",
+          "OdometerReading": "28780",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 0,
+          "DaysSinceLastPass": 358,
+          "DaysOutOfMot": 0,
+          "IsRetest": true,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2022-04-06T08:21:58Z",
+          "TestPassed": false,
+          "ExpiryDate": null,
+          "OdometerReading": "28780",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 358,
+          "DaysSinceLastPass": 358,
+          "DaysOutOfMot": 0,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": [
+            {
+              "Type": "MAJOR",
+              "Text": "Nearside Front Anti-roll bar linkage ball joint dust cover no longer prevents the ingress of dirt (5.3.4 (b) (ii))",
+              "IsDangerous": false
+            }
+          ]
+        },
+        {
+          "TestDate": "2021-04-13T15:42:36Z",
+          "TestPassed": true,
+          "ExpiryDate": "2022-04-12T00:00:00Z",
+          "OdometerReading": "27054",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 588,
+          "DaysSinceLastPass": 588,
+          "DaysOutOfMot": 223,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2019-09-03T10:35:46Z",
+          "TestPassed": true,
+          "ExpiryDate": "2020-09-06T00:00:00Z",
+          "OdometerReading": "26611",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 0,
+          "DaysSinceLastPass": 364,
+          "DaysOutOfMot": 0,
+          "IsRetest": true,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2019-09-03T10:35:45Z",
+          "TestPassed": false,
+          "ExpiryDate": null,
+          "OdometerReading": "26611",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 364,
+          "DaysSinceLastPass": 364,
+          "DaysOutOfMot": 0,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": [
+            {
+              "Type": "PRS",
+              "Text": "Offside Windscreen wiper does not clear the windscreen effectively (3.4 (b) (ii))",
+              "IsDangerous": false
+            }
+          ]
+        },
+        {
+          "TestDate": "2018-09-04T13:22:09Z",
+          "TestPassed": true,
+          "ExpiryDate": "2019-09-06T00:00:00Z",
+          "OdometerReading": "24882",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 369,
+          "DaysSinceLastPass": 369,
+          "DaysOutOfMot": 4,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2017-08-31T10:19:51Z",
+          "TestPassed": true,
+          "ExpiryDate": "2018-09-06T00:00:00Z",
+          "OdometerReading": "20997",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 364,
+          "DaysSinceLastPass": 364,
+          "DaysOutOfMot": 0,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2016-09-01T09:06:49Z",
+          "TestPassed": true,
+          "ExpiryDate": "2017-09-06T00:00:00Z",
+          "OdometerReading": "16488",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": 364,
+          "DaysSinceLastPass": 364,
+          "DaysOutOfMot": 0,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        },
+        {
+          "TestDate": "2015-09-03T00:00:00Z",
+          "TestPassed": true,
+          "ExpiryDate": "2016-09-06T00:00:00Z",
+          "OdometerReading": "12112",
+          "OdometerUnit": "mi",
+          "OdometerResultType": "READ",
+          "TestNumber": "",
+          "DaysSinceLastTest": null,
+          "DaysSinceLastPass": null,
+          "DaysOutOfMot": null,
+          "IsRetest": false,
+          "ExtensionInformation": null,
+          "AnnotationList": []
+        }
+      ],
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 14
+    },
+    "PncDetails": {
+      "UkvdId": "V-WHTQEB",
+      "Vin": null,
+      "Vrm": null,
+      "IsStolen": false,
+      "DateReportedStolen": null,
+      "DateRecordAddedToPnc": null,
+      "CurrentStatusOnRecord": null,
+      "PoliceForceName": null,
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1
+    },
+    "MiaftrDetails": {
+      "UkvdId": "V-WHTQEB",
+      "WriteOffRecordList": [],
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1
+    },
+    "FinanceDetails": {
+      "FinanceRecordList": [],
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1,
+      "GeneratedAt": "2026-04-16T11:38:32.0540938Z"
+    },
+    "VehicleImageDetails": {
+      "VehicleImageList": [
+        {
+          "ViewAngle": "Exterior_Angle270",
+          "ImageUrl": "https://vehicleimages.ukvehicledata.co.uk/s3/95B34DF231C26B5D271C831DD725FD994D613146920E86F6384F08C8C0657BC17D53B27F40CE6A18658C7021637C6AB05E064727B74FB5D8567E3339E8E0EE8C77ECD3CB54ED54C25A403AFFCC72E0ABEA0C2EA033AAE7C67DD245EE4A34E064",
+          "Colour": "#C0C0C0",
+          "Description": "Silver",
+          "ExpiryDate": "2026-04-23T11:39:16Z"
+        }
+      ],
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1,
+      "GeneratedAt": "2024-06-11T10:54:24.493Z"
+    },
+    "VehicleCodes": {
+      "Uvc": "M-CTSXJ",
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1
+    },
+    "MileageCheckDetails": {
+      "MileageResultList": [
+        {
+          "Mileage": 12112,
+          "DateRecorded": "2015-09-03T00:00:00Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 16488,
+          "DateRecorded": "2016-09-01T09:06:49Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 20997,
+          "DateRecorded": "2017-08-31T10:19:51Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 24882,
+          "DateRecorded": "2018-09-04T13:22:09Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 26611,
+          "DateRecorded": "2019-09-03T10:35:45Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 26611,
+          "DateRecorded": "2019-09-03T10:35:46Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 27054,
+          "DateRecorded": "2021-04-13T15:42:36Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 28780,
+          "DateRecorded": "2022-04-06T08:21:58Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 28780,
+          "DateRecorded": "2022-04-06T10:31:21Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 30909,
+          "DateRecorded": "2023-04-13T08:13:05Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 33105,
+          "DateRecorded": "2024-04-08T08:27:23Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 33105,
+          "DateRecorded": "2024-04-08T09:25:43Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 35236,
+          "DateRecorded": "2025-04-29T08:18:10Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        },
+        {
+          "Mileage": 35236,
+          "DateRecorded": "2025-04-29T10:13:32Z",
+          "InSequence": true,
+          "DataSource": "MOT"
+        }
+      ],
+      "MileageAnomalyDetected": false,
+      "CalculatedAverageAnnualMileage": 2785,
+      "AverageMileageForAge": 168000,
+      "StatusCode": 0,
+      "StatusMessage": "Success",
+      "DocumentVersion": 1
+    }
+  }
+}

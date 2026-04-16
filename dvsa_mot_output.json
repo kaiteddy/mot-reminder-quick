@@ -1,0 +1,180 @@
+{
+  "registration": "LX62UCB",
+  "make": "HONDA",
+  "model": "JAZZ",
+  "firstUsedDate": "2012-09-07",
+  "fuelType": "Petrol",
+  "primaryColour": "Silver",
+  "registrationDate": "2012-09-07",
+  "manufactureDate": "2012-09-07",
+  "engineSize": "1339",
+  "hasOutstandingRecall": "Unknown",
+  "motTests": [
+    {
+      "completedDate": "2025-04-29T10:13:32.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2026-04-28",
+      "odometerValue": "35236",
+      "odometerUnit": "MI",
+      "motTestNumber": "831714388436",
+      "defects": [
+        {
+          "text": "Central Rear Upper Stop lamp(s) light intensity obviously reduced (4.3.3 (a) (i))",
+          "type": "MINOR",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "completedDate": "2025-04-29T08:18:10.000Z",
+      "testResult": "FAILED",
+      "expiryDate": null,
+      "odometerValue": "35236",
+      "odometerUnit": "MI",
+      "motTestNumber": "254124419415",
+      "defects": [
+        {
+          "text": "Offside Front Windscreen wiper does not clear the windscreen effectively  (3.4 (b) (ii))",
+          "type": "MAJOR",
+          "dangerous": false
+        },
+        {
+          "text": "Nearside Rear Shock absorbers has a serious fluid leak  (5.3.2 (b))",
+          "type": "MAJOR",
+          "dangerous": false
+        },
+        {
+          "text": "Central Rear Upper Stop lamp(s) light intensity obviously reduced (4.3.3 (a) (i))",
+          "type": "MINOR",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "completedDate": "2024-04-08T09:25:43.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2025-04-12",
+      "odometerValue": "33105",
+      "odometerUnit": "MI",
+      "motTestNumber": "564496144306",
+      "defects": []
+    },
+    {
+      "completedDate": "2024-04-08T08:27:23.000Z",
+      "testResult": "FAILED",
+      "expiryDate": null,
+      "odometerValue": "33105",
+      "odometerUnit": "MI",
+      "motTestNumber": "729980227633",
+      "defects": [
+        {
+          "text": "Offside Front Anti-roll bar linkage ball joint dust cover no longer prevents the ingress of dirt (5.3.4 (b) (ii))",
+          "type": "MAJOR",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "completedDate": "2023-04-13T08:13:05.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2024-04-12",
+      "odometerValue": "30909",
+      "odometerUnit": "MI",
+      "motTestNumber": "239587735445",
+      "defects": []
+    },
+    {
+      "completedDate": "2022-04-06T10:31:21.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2023-04-12",
+      "odometerValue": "28780",
+      "odometerUnit": "MI",
+      "motTestNumber": "967485860595",
+      "defects": []
+    },
+    {
+      "completedDate": "2022-04-06T08:21:58.000Z",
+      "testResult": "FAILED",
+      "expiryDate": null,
+      "odometerValue": "28780",
+      "odometerUnit": "MI",
+      "motTestNumber": "466766550889",
+      "defects": [
+        {
+          "text": "Nearside Front Anti-roll bar linkage ball joint dust cover no longer prevents the ingress of dirt (5.3.4 (b) (ii))",
+          "type": "MAJOR",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "completedDate": "2021-04-13T15:42:36.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2022-04-12",
+      "odometerValue": "27054",
+      "odometerUnit": "MI",
+      "motTestNumber": "837965017785",
+      "defects": []
+    },
+    {
+      "completedDate": "2019-09-03T10:35:46.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2020-09-06",
+      "odometerValue": "26611",
+      "odometerUnit": "MI",
+      "motTestNumber": "881692550051",
+      "defects": []
+    },
+    {
+      "completedDate": "2019-09-03T10:35:45.000Z",
+      "testResult": "FAILED",
+      "expiryDate": null,
+      "odometerValue": "26611",
+      "odometerUnit": "MI",
+      "motTestNumber": "291199053667",
+      "defects": [
+        {
+          "text": "Offside Windscreen wiper does not clear the windscreen effectively  (3.4 (b) (ii))",
+          "type": "PRS",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "completedDate": "2018-09-04T13:22:09.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2019-09-06",
+      "odometerValue": "24882",
+      "odometerUnit": "MI",
+      "motTestNumber": "445510620717",
+      "defects": []
+    },
+    {
+      "completedDate": "2017-08-31T10:19:51.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2018-09-06",
+      "odometerValue": "20997",
+      "odometerUnit": "MI",
+      "motTestNumber": "600008209735",
+      "defects": []
+    },
+    {
+      "completedDate": "2016-09-01T09:06:49.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2017-09-06",
+      "odometerValue": "16488",
+      "odometerUnit": "MI",
+      "motTestNumber": "973029825359",
+      "defects": []
+    },
+    {
+      "completedDate": "2015-09-03T00:00:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2016-09-06",
+      "odometerValue": "12112",
+      "odometerUnit": "MI",
+      "motTestNumber": "942218593108",
+      "defects": []
+    }
+  ]
+}

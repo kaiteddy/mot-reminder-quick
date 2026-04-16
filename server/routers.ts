@@ -1616,16 +1616,31 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getVehicleDetails } = await import("./dvlaApi");
         const { updateVehicleMOTExpiryDate } = await import("./db");
+        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
 
         const results = [];
 
         for (const registration of input.registrations) {
           try {
-            // Use DVLA API which provides MOT expiry date directly
+            // DVLA API for tax and base details
             const dvlaData = await getVehicleDetails(registration);
+            
+            // DVSA MOT History API for the most accurate MOT
+            let motExpiryDateStr = dvlaData?.motExpiryDate;
+            try {
+               const dvsaData = await getMOTHistory(registration);
+               if (dvsaData) {
+                 const bestDate = getLatestMOTExpiry(dvsaData);
+                 if (bestDate) {
+                   motExpiryDateStr = bestDate.toISOString();
+                 }
+               }
+            } catch (motErr) {
+               console.error(`Error checking DVSA MOT for ${registration}:`, motErr);
+            }
 
-            if (dvlaData && dvlaData.motExpiryDate) {
-              const expiryDate = new Date(dvlaData.motExpiryDate);
+            if (dvlaData && motExpiryDateStr) {
+              const expiryDate = new Date(motExpiryDateStr);
 
               // Update vehicle MOT date in database
               await updateVehicleMOTExpiryDate(registration, expiryDate);
@@ -1736,6 +1751,7 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getDb, getAllVehicles, bulkUpdateVehicleMOT } = await import("./db");
         const { getVehicleDetails } = await import("./dvlaApi");
+        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { vehicles } = await import("../drizzle/schema");
         const { asc, sql, or } = await import("drizzle-orm");
 
@@ -1770,7 +1786,7 @@ export const appRouter = router({
         let failed = 0;
         let skipped = 0;
         const errors: string[] = [];
-        const updates: Array<{ id: number; motExpiryDate: Date | null; make?: string; model?: string; colour?: string; fuelType?: string }> = [];
+        const updates: Array<{ id: number; motExpiryDate: Date | null; make?: string; model?: string; colour?: string; fuelType?: string; taxStatus?: string; taxDueDate?: Date | null }> = [];
 
         console.log(`[BULK-MOT] Starting bulk MOT check for ${vehiclesToUpdate.length} vehicles...`);
 
@@ -1782,11 +1798,24 @@ export const appRouter = router({
             }
 
             const dvlaData = await getVehicleDetails(vehicle.registration);
+            
+            let bestMotExpiryStr = dvlaData?.motExpiryDate;
+            try {
+              const dvsaData = await getMOTHistory(vehicle.registration);
+              if (dvsaData) {
+                const bestDate = getLatestMOTExpiry(dvsaData);
+                if (bestDate) {
+                  bestMotExpiryStr = bestDate.toISOString();
+                }
+              }
+            } catch (motErr) {
+               console.error(`Error checking DVSA MOT for bulk update ${vehicle.registration}:`, motErr);
+            }
 
-            if (dvlaData && dvlaData.motExpiryDate) {
+            if (dvlaData && bestMotExpiryStr) {
               const update: any = {
                 id: vehicle.id,
-                motExpiryDate: new Date(dvlaData.motExpiryDate),
+                motExpiryDate: new Date(bestMotExpiryStr),
                 lastChecked: new Date(),
               };
 
@@ -1814,7 +1843,7 @@ export const appRouter = router({
 
               updates.push(update);
               updated++;
-              console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${dvlaData.motExpiryDate}`);
+              console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${bestMotExpiryStr}`);
             } else {
               // Even if no MOT data, update lastChecked so we don't keep checking it as "Never Checked"
               updates.push({
