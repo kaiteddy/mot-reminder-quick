@@ -1050,6 +1050,10 @@ export const appRouter = router({
         const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { getVehicleDetails } = await import("./dvlaApi");
         const { fetchUKVDData } = await import("./ukvd");
+        const { getVehicleByRegistration } = await import("./db");
+
+        const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
+        const existingVehicle = await getVehicleByRegistration(cleanReg);
 
         // Use mock data for testing if registration is TEST123
         if (input.registration.toUpperCase() === "TEST123") {
@@ -1082,7 +1086,7 @@ export const appRouter = router({
           };
         }
 
-        // Fetch from free APIs always, UKVD only used if paid full check
+        // Fetch from free APIs always. UKVD used only if paid full check, OR if local DB lacks VIN
         const promises: Promise<any>[] = [
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
@@ -1092,10 +1096,10 @@ export const appRouter = router({
             console.error("DVLA API Error:", err.message);
             return null;
           }),
-          input.checkType === "full" ? fetchUKVDData(input.registration, true).catch((err) => {
+          (input.checkType === "full" || !existingVehicle?.vin) ? fetchUKVDData(input.registration, input.checkType === "full").catch((err) => {
             console.error("UKVD API Error:", err.message);
             return null;
-          }) : Promise.resolve(null)
+          }) : Promise.resolve({ vin: existingVehicle.vin })
         ];
 
         const [motData, dvlaData, ukvdData] = await Promise.all(promises);
