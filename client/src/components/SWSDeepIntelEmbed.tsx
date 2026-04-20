@@ -26,6 +26,12 @@ export function SWSDeepIntelEmbed({ registration, vehicle, onDataFetched }: SWSD
     });
 
     useEffect(() => {
+        // Reset state completely when registration changes
+        setTechData(vehicle?.comprehensiveTechnicalData || null);
+        fetchTechData.reset();
+    }, [registration]);
+
+    useEffect(() => {
         if (vehicle && !techData && registration && !fetchTechData.isPending && !fetchTechData.isError && !fetchTechData.isSuccess) {
             fetchTechData.mutate({ registration });
         }

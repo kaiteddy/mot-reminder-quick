@@ -187,7 +187,8 @@ export const appRouter = router({
     fetchTechnicalData: publicProcedure
       .input(z.object({
         registration: z.string(),
-        force: z.boolean().optional()
+        force: z.boolean().optional(),
+        includeUKVD: z.boolean().optional().default(false)
       }))
       .mutation(async ({ input }) => {
         const { getVehicleByRegistration, saveTechnicalData } = await import("./db");
@@ -210,7 +211,7 @@ export const appRouter = router({
         const { fetchRichVehicleData } = await import("./sws");
         try {
           console.log(`[SWS Cache] Miss for ${cleanReg} - fetching from API`);
-          const data = await fetchRichVehicleData(input.registration);
+          const data = await fetchRichVehicleData(input.registration, input.includeUKVD);
           await saveTechnicalData(input.registration, data);
           return { success: true, data, cached: false };
         } catch (error) {

@@ -83,7 +83,7 @@ function getHeuristicData(make: string, model: string, vin: string, fuelType: st
     return { lubricants, aircon };
 }
 
-export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalData> {
+export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = false): Promise<SWSTechnicalData> {
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const result: SWSTechnicalData = { vrm: cleanVRM };
 
@@ -301,25 +301,28 @@ export async function fetchRichVehicleData(vrm: string): Promise<SWSTechnicalDat
     }
 
     // 5. Complementary Intelligence: UKVD (UK Vehicle Data Global)
-    try {
-        const { fetchUKVDData } = await import("./ukvd");
-        const ukvdData = await fetchUKVDData(cleanVRM);
-        if (ukvdData) {
-            console.log(`[UKVD] Successfully merged enhanced data for ${cleanVRM}`);
-            result.ukvd = ukvdData;
+    if (includeUKVD) {
+        try {
+            const { fetchUKVDData } = await import("./ukvd");
+            const ukvdData = await fetchUKVDData(cleanVRM);
+            if (ukvdData) {
+                console.log(`[UKVD] Successfully merged enhanced data for ${cleanVRM}`);
+                result.ukvd = ukvdData;
 
-            // If SWS specs are missing, UKVD can provide basics
-            if (!result.specs) {
-                result.specs = {
-                    fullName: `${ukvdData.make} ${ukvdData.model}`,
-                    fuelType: ukvdData.fuelType,
-                    engineSize: ukvdData.engineSize
-                };
+                // If SWS specs are missing, UKVD can provide basics
+                if (!result.specs) {
+                    result.specs = {
+                        fullName: `${ukvdData.make} ${ukvdData.model}`,
+                        fuelType: ukvdData.fuelType,
+                        engineSize: ukvdData.engineSize
+                    };
+                }
             }
+        } catch (e) {
+            console.error("[UKVD] Integration error:", e);
         }
-    } catch (e) {
-        console.error("[UKVD] Integration error:", e);
     }
+
 
     // 6. SMART INTELLIGENCE FALLBACK
     // Only apply if the API returned NOTHING for lubricants
