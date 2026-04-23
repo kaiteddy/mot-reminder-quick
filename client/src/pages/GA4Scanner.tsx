@@ -462,13 +462,13 @@ export default function GA4Scanner() {
                                         // Handle date parsing safely - lastSent comes as string from JSON
                                         const sentDateObj = item.lastSent ? new Date(item.lastSent) : null;
                                         let sentDate = 'Never';
+                                        let sentRelative = '';
                                         if (sentDateObj) {
-                                            const formatted = sentDateObj.toLocaleDateString() + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            sentDate = sentDateObj.toLocaleDateString() + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                             try {
-                                                const relative = formatDistanceToNow(sentDateObj, { addSuffix: true });
-                                                sentDate = `${formatted} \n(${relative})`;
+                                                sentRelative = formatDistanceToNow(sentDateObj, { addSuffix: true });
                                             } catch(e) {
-                                                sentDate = formatted;
+                                                // Ignore
                                             }
                                         }
 
@@ -585,8 +585,13 @@ export default function GA4Scanner() {
                                                     ) : '-'}
                                                 </TableCell>
                                                 <TableCell className="align-middle text-muted-foreground text-xs">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="whitespace-pre-wrap">{sentDate}</span>
+                                                    <div className="flex flex-col gap-1 items-start">
+                                                        <span>{sentDate}</span>
+                                                        {sentRelative && (
+                                                            <div className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md text-[10px] tracking-wide inline-flex">
+                                                                {sentRelative}
+                                                            </div>
+                                                        )}
                                                         {item.lastSent && (
                                                             <div className="flex items-center gap-1.5">
                                                                 {item.lastStatus === "read" ? <Eye className="w-3.5 h-3.5 text-blue-600" /> :
