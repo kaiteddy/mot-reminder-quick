@@ -332,7 +332,8 @@ export async function getRemindersByVehicleId(vehicleId: number) {
 export async function getVehicleByRegistration(registration: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(vehicles).where(eq(vehicles.registration, registration.toUpperCase())).limit(1);
+  const cleanReg = registration.toUpperCase().replace(/\s/g, "");
+  const result = await db.select().from(vehicles).where(eq(vehicles.registration, cleanReg)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
