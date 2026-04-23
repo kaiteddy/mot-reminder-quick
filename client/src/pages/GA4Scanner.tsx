@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock, ArrowDown, ArrowUp } from "lucide-react";
+import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock, ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -108,6 +108,12 @@ export default function GA4Scanner() {
         } else {
             setSelectedRegs(new Set(results.map(r => r.registration)));
         }
+    };
+
+    const handleDeleteRow = (reg: string) => {
+        const nextResults = results.filter(r => r.registration !== reg);
+        setResults(nextResults);
+        localStorage.setItem("ga4_scan_results", JSON.stringify(nextResults));
     };
 
     const toggleSelectRow = (reg: string) => {
@@ -605,45 +611,56 @@ export default function GA4Scanner() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="align-middle">
-                                                    {isSent ? (
-                                                        <Button size="icon" variant="ghost" disabled title="Already Sent">
-                                                            <CheckCircle className="w-4 h-4 text-green-600" />
-                                                        </Button>
-                                                    ) : (
-                                                        canCreate ? (
-                                                            <div className="flex items-center gap-1">
-                                                                <CreateReminderButton
-                                                                    item={item}
-                                                                    onSuccess={() => {
-                                                                        // Update local state to show 'sent' for this item temporarily
-                                                                        const newResults = [...results];
-                                                                        const index = newResults.findIndex(r => r.registration === item.registration);
-                                                                        if (index !== -1) {
-                                                                            newResults[index] = { ...item, lastSent: new Date().toISOString() };
-                                                                            setResults(newResults);
-                                                                            localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
-                                                                        }
-                                                                    }}
-                                                                />
-                                                                <Button
-                                                                    size="icon"
-                                                                    variant="outline"
-                                                                    title="Mark as Booked"
-                                                                    disabled={!item.vehicleId}
-                                                                    onClick={() => {
-                                                                        setBookingTargetRegs(new Set([item.registration]));
-                                                                        setShowBookedDialog(true);
-                                                                    }}
-                                                                >
-                                                                    <CalendarCheck className="w-4 h-4 text-green-600" />
-                                                                </Button>
-                                                            </div>
-                                                        ) : (
-                                                            <Button size="icon" variant="ghost" disabled title={isBooked ? "MOT already booked" : "Cannot create reminder (No MOT data or too old)"}>
-                                                                {isBooked ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-slate-300" />}
+                                                    <div className="flex items-center gap-1">
+                                                        {isSent ? (
+                                                            <Button size="icon" variant="ghost" disabled title="Already Sent">
+                                                                <CheckCircle className="w-4 h-4 text-green-600" />
                                                             </Button>
-                                                        )
-                                                    )}
+                                                        ) : (
+                                                            canCreate ? (
+                                                                <>
+                                                                    <CreateReminderButton
+                                                                        item={item}
+                                                                        onSuccess={() => {
+                                                                            // Update local state to show 'sent' for this item temporarily
+                                                                            const newResults = [...results];
+                                                                            const index = newResults.findIndex(r => r.registration === item.registration);
+                                                                            if (index !== -1) {
+                                                                                newResults[index] = { ...item, lastSent: new Date().toISOString() };
+                                                                                setResults(newResults);
+                                                                                localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="outline"
+                                                                        title="Mark as Booked"
+                                                                        disabled={!item.vehicleId}
+                                                                        onClick={() => {
+                                                                            setBookingTargetRegs(new Set([item.registration]));
+                                                                            setShowBookedDialog(true);
+                                                                        }}
+                                                                    >
+                                                                        <CalendarCheck className="w-4 h-4 text-green-600" />
+                                                                    </Button>
+                                                                </>
+                                                            ) : (
+                                                                <Button size="icon" variant="ghost" disabled title={isBooked ? "MOT already booked" : "Cannot create reminder (No MOT data or too old)"}>
+                                                                    {isBooked ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-slate-300" />}
+                                                                </Button>
+                                                            )
+                                                        )}
+                                                        <Button 
+                                                            size="icon" 
+                                                            variant="ghost" 
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            title="Delete this row"
+                                                            onClick={() => handleDeleteRow(item.registration)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         )
