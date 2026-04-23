@@ -1,0 +1,818 @@
+{
+  "vrm": "LX62UCB",
+  "specs": {
+    "capacity": 1339,
+    "engineCode": "L13Z1",
+    "fuelType": "PETROL",
+    "fullName": "HONDA Jazz (GE, GG) 1.3 8V i-VTEC",
+    "id": 102001022,
+    "level": 3,
+    "madeFrom": "2008-01",
+    "madeUntil": "2015-12",
+    "modelPictureMimeDataName": "https://www.haynespro-assets.com/workshop/images/319004897.svgz",
+    "name": "1.3 8V i-VTEC",
+    "order": 0,
+    "output": 73,
+    "remark": null,
+    "status": null,
+    "subjects": {
+      "item": [
+        "ADJUSTMENTS",
+        "MAINTENANCE",
+        "LUBRICANTS",
+        "DRAWINGS",
+        "EOBD_LOCATIONS",
+        "FUSE_LOCATIONS",
+        "ENGINE_LOCATIONS",
+        "STORIES",
+        "WARNING_LIGHTS",
+        "WIRING_DIAGRAMS",
+        "REPAIR_TIMES",
+        "TIMING_REPAIR_MANUALS",
+        "VESA_ENGINE",
+        "VESA_ABS",
+        "VESA_TRANSM",
+        "VESA_STEERING",
+        "SHOW_VESA",
+        "TSB",
+        "CASES",
+        "RECALLS"
+      ]
+    },
+    "subjectsByGroup": {
+      "mapItems": {
+        "item": [
+          {
+            "key": "ENGINE",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,REPAIR_TIMES,TSB,CASES"
+          },
+          {
+            "key": "TRANSMISSION",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "STEERING",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES,TSB"
+          },
+          {
+            "key": "BRAKES",
+            "value": "ADJUSTMENTS,LUBRICANTS,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "EXTERIOR",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "ELECTRONICS",
+            "value": "WARNING_LIGHTS,FUSE_LOCATIONS,WIRING_DIAGRAMS,VESA_ENGINE,VESA_ABS,VESA_TRANSM,VESA_STEERING,SHOW_VESA,TSB,CASES"
+          },
+          {
+            "key": "QUICKGUIDES",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,WARNING_LIGHTS,DRAWINGS,REPAIR_TIMES,TSB,CASES"
+          }
+        ]
+      }
+    },
+    "superCarTypeId": 102000022
+  },
+  "raw": {
+    "capacity": 1339,
+    "engineCode": "L13Z1",
+    "fuelType": "PETROL",
+    "fullName": "HONDA Jazz (GE, GG) 1.3 8V i-VTEC",
+    "id": 102001022,
+    "level": 3,
+    "madeFrom": "2008-01",
+    "madeUntil": "2015-12",
+    "modelPictureMimeDataName": "https://www.haynespro-assets.com/workshop/images/319004897.svgz",
+    "name": "1.3 8V i-VTEC",
+    "order": 0,
+    "output": 73,
+    "remark": null,
+    "status": null,
+    "subjects": {
+      "item": [
+        "ADJUSTMENTS",
+        "MAINTENANCE",
+        "LUBRICANTS",
+        "DRAWINGS",
+        "EOBD_LOCATIONS",
+        "FUSE_LOCATIONS",
+        "ENGINE_LOCATIONS",
+        "STORIES",
+        "WARNING_LIGHTS",
+        "WIRING_DIAGRAMS",
+        "REPAIR_TIMES",
+        "TIMING_REPAIR_MANUALS",
+        "VESA_ENGINE",
+        "VESA_ABS",
+        "VESA_TRANSM",
+        "VESA_STEERING",
+        "SHOW_VESA",
+        "TSB",
+        "CASES",
+        "RECALLS"
+      ]
+    },
+    "subjectsByGroup": {
+      "mapItems": {
+        "item": [
+          {
+            "key": "ENGINE",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,REPAIR_TIMES,TSB,CASES"
+          },
+          {
+            "key": "TRANSMISSION",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "STEERING",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES,TSB"
+          },
+          {
+            "key": "BRAKES",
+            "value": "ADJUSTMENTS,LUBRICANTS,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "EXTERIOR",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,DRAWINGS,REPAIR_TIMES"
+          },
+          {
+            "key": "ELECTRONICS",
+            "value": "WARNING_LIGHTS,FUSE_LOCATIONS,WIRING_DIAGRAMS,VESA_ENGINE,VESA_ABS,VESA_TRANSM,VESA_STEERING,SHOW_VESA,TSB,CASES"
+          },
+          {
+            "key": "QUICKGUIDES",
+            "value": "ADJUSTMENTS,LUBRICANTS,STORIES,WARNING_LIGHTS,DRAWINGS,REPAIR_TIMES,TSB,CASES"
+          }
+        ]
+      }
+    },
+    "superCarTypeId": 102000022
+  },
+  "lubricants": [
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A5/B5 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A3/B3 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A5/B5 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A3/B3 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A5/B5 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A3/B3 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "ACEA A1/B1 SAE 0W-20",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A5/B5 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A3/B3 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "ACEA A1/B1 SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "API SL SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SL SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SL SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SL SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SL SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SL SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Without oil level sensor)",
+      "specification": "API SL SAE 15W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "API SM SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Without oil level sensor)",
+      "specification": "API SM SAE 15W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Improved fuel economy)",
+      "specification": "API SM SAE 0W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 0W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 5W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 5W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 10W-30",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil",
+      "specification": "API SM SAE 10W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Engine oil (Without oil level sensor)",
+      "specification": "API SM SAE 15W-40",
+      "capacity": "3.6 (l)"
+    },
+    {
+      "description": "Coolant",
+      "specification": "Honda Pro HP Type 2 Coolant",
+      "capacity": "4.54 (l)"
+    },
+    {
+      "description": "Brake fluid",
+      "specification": "DOT 4",
+      "capacity": "1.0 (l)"
+    },
+    {
+      "description": "Brake fluid",
+      "specification": "DOT 3",
+      "capacity": "1.0 (l)"
+    },
+    {
+      "description": "Gear oil",
+      "specification": "Honda MTF SAE 75W-80"
+    }
+  ],
+  "aircon": {
+    "type": "R134a",
+    "quantity": "395 ± 25 (g)"
+  },
+  "repairTimes": {
+    "repairedTypeId": 30358,
+    "tree": [
+      {
+        "id": "1Z1",
+        "text": "Accessories - retrofittings - design",
+        "hasChildren": true
+      },
+      {
+        "id": "1N4",
+        "text": "Advanced driver-assistance systems (ADAS)",
+        "hasChildren": true
+      },
+      {
+        "id": "1F1",
+        "text": "Air inlet system",
+        "hasChildren": true
+      },
+      {
+        "id": "1H1",
+        "text": "Automatic transmission",
+        "hasChildren": true
+      },
+      {
+        "id": "1P1",
+        "text": "Body - Exterior",
+        "hasChildren": true
+      },
+      {
+        "id": "1O1",
+        "text": "Body - Interior",
+        "hasChildren": true
+      },
+      {
+        "id": "1M3",
+        "text": "Brakes (Electric)",
+        "hasChildren": true
+      },
+      {
+        "id": "1M2",
+        "text": "Brakes (Mechanical)",
+        "hasChildren": true
+      },
+      {
+        "id": "0CJ0",
+        "text": "Common jobs",
+        "hasChildren": true
+      },
+      {
+        "id": "1M6",
+        "text": "Compressed air system",
+        "hasChildren": true
+      },
+      {
+        "id": "1D1",
+        "text": "Cooling system",
+        "hasChildren": true
+      },
+      {
+        "id": "1H7",
+        "text": "CVT",
+        "hasChildren": true
+      },
+      {
+        "id": "1H8",
+        "text": "Drivetrain",
+        "hasChildren": true
+      },
+      {
+        "id": "1H6",
+        "text": "Dual-clutch transmission",
+        "hasChildren": true
+      },
+      {
+        "id": "1A1",
+        "text": "Engine assembly",
+        "hasChildren": true
+      },
+      {
+        "id": "1E1",
+        "text": "Engine electrical systems",
+        "hasChildren": true
+      },
+      {
+        "id": "1G1",
+        "text": "Exhaust system",
+        "hasChildren": true
+      },
+      {
+        "id": "1N6",
+        "text": "Exterior lights",
+        "hasChildren": true
+      },
+      {
+        "id": "1J1",
+        "text": "Front suspension",
+        "hasChildren": true
+      },
+      {
+        "id": "1F2",
+        "text": "Fuel system",
+        "hasChildren": true
+      },
+      {
+        "id": "1V1",
+        "text": "Heating, ventilation and air conditioning (HVAC)",
+        "hasChildren": true
+      },
+      {
+        "id": "1N1",
+        "text": "Infotainment",
+        "hasChildren": true
+      },
+      {
+        "id": "1R1",
+        "text": "Inspection",
+        "hasChildren": true
+      },
+      {
+        "id": "1N5",
+        "text": "Instrument cluster",
+        "hasChildren": true
+      },
+      {
+        "id": "1N7",
+        "text": "Interior lights",
+        "hasChildren": true
+      },
+      {
+        "id": "1C1",
+        "text": "Lubrication system",
+        "hasChildren": true
+      },
+      {
+        "id": "1H2",
+        "text": "Manual transmission",
+        "hasChildren": true
+      },
+      {
+        "id": "1X1",
+        "text": "Paintwork",
+        "hasChildren": true
+      },
+      {
+        "id": "1M1",
+        "text": "Pedals",
+        "hasChildren": true
+      },
+      {
+        "id": "1J2",
+        "text": "Rear suspension",
+        "hasChildren": true
+      },
+      {
+        "id": "1N3",
+        "text": "Security system",
+        "hasChildren": true
+      },
+      {
+        "id": "1J3",
+        "text": "Self-levelling suspension",
+        "hasChildren": true
+      },
+      {
+        "id": "1H5",
+        "text": "Semi-automatic transmission",
+        "hasChildren": true
+      },
+      {
+        "id": "1E2",
+        "text": "Starting and charging",
+        "hasChildren": true
+      },
+      {
+        "id": "1I1",
+        "text": "Steering",
+        "hasChildren": true
+      },
+      {
+        "id": "1U2",
+        "text": "Supplemental restraint system (SRS)/Airbag",
+        "hasChildren": true
+      },
+      {
+        "id": "1K1",
+        "text": "Suspension",
+        "hasChildren": true
+      },
+      {
+        "id": "1T1",
+        "text": "Towing - breakdown assistance",
+        "hasChildren": true
+      },
+      {
+        "id": "1N2",
+        "text": "Vehicle electrical system",
+        "hasChildren": true
+      },
+      {
+        "id": "1S1",
+        "text": "Vehicle preservation - vehicle care",
+        "hasChildren": true
+      },
+      {
+        "id": "1Q1",
+        "text": "Wash/wipe system",
+        "hasChildren": true
+      },
+      {
+        "id": "1L1",
+        "text": "Wheels and tyres",
+        "hasChildren": true
+      },
+      {
+        "id": "1Q3",
+        "text": "Window/Windscreen",
+        "hasChildren": true
+      }
+    ]
+  }
+}

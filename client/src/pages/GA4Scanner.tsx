@@ -13,6 +13,7 @@ import { Link } from "wouter";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { formatDistanceToNow } from "date-fns";
 
 
 function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () => void }) {
@@ -460,7 +461,16 @@ export default function GA4Scanner() {
                                         const isSent = !!item.lastSent;
                                         // Handle date parsing safely - lastSent comes as string from JSON
                                         const sentDateObj = item.lastSent ? new Date(item.lastSent) : null;
-                                        const sentDate = sentDateObj ? sentDateObj.toLocaleDateString() + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never';
+                                        let sentDate = 'Never';
+                                        if (sentDateObj) {
+                                            const formatted = sentDateObj.toLocaleDateString() + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            try {
+                                                const relative = formatDistanceToNow(sentDateObj, { addSuffix: true });
+                                                sentDate = `${formatted} \n(${relative})`;
+                                            } catch(e) {
+                                                sentDate = formatted;
+                                            }
+                                        }
 
                                         // Live MOT/Tax Logic
                                         const motExpiry = item.liveMotExpiryDate ? new Date(item.liveMotExpiryDate) : null;
@@ -576,7 +586,7 @@ export default function GA4Scanner() {
                                                 </TableCell>
                                                 <TableCell className="align-middle text-muted-foreground text-xs">
                                                     <div className="flex flex-col gap-1">
-                                                        <span>{sentDate}</span>
+                                                        <span className="whitespace-pre-wrap">{sentDate}</span>
                                                         {item.lastSent && (
                                                             <div className="flex items-center gap-1.5">
                                                                 {item.lastStatus === "read" ? <Eye className="w-3.5 h-3.5 text-blue-600" /> :
