@@ -934,6 +934,7 @@ export async function lookupVehicleForReg(registration: string) {
     if (u.make || u.model || u.colour || u.fuelType || u.engineSize || u.vin) {
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
+      v.derivative = sws?.specs?.name || sws?.specs?.fullName || null;
       sources.push("sws");
     }
   } catch (e) { /* SWS/UKVD unavailable */ }
@@ -1027,6 +1028,7 @@ export async function saveDocument(input: SaveDocInput) {
       make: input.vehicle?.make, model: input.vehicle?.model, colour: input.vehicle?.colour,
       fuelType: input.vehicle?.fuelType, engineCC: input.vehicle?.engineCC ? Number(input.vehicle.engineCC) || null : input.vehicle?.engineCC,
       engineNo: input.vehicle?.engineNo, engineCode: input.vehicle?.engineCode, vin: input.vehicle?.vin,
+      derivative: input.vehicle?.derivative,
       paintCode: input.vehicle?.paintCode, keyCode: input.vehicle?.keyCode, radioCode: input.vehicle?.radioCode,
     });
     if (existing) {
@@ -1132,7 +1134,7 @@ export async function convertDocument(id: number, toType: string) {
     vehicle: vehicle ? {
       make: vehicle.make, model: vehicle.model, colour: vehicle.colour, fuelType: vehicle.fuelType,
       engineCC: vehicle.engineCC, engineNo: vehicle.engineNo, engineCode: vehicle.engineCode, vin: vehicle.vin,
-      paintCode: vehicle.paintCode, keyCode: vehicle.keyCode, radioCode: vehicle.radioCode,
+      derivative: vehicle.derivative, paintCode: vehicle.paintCode, keyCode: vehicle.keyCode, radioCode: vehicle.radioCode,
     } : undefined,
     customerName: doc.customerName, company: doc.company, accountNumber: doc.accountNumber,
     custHouseNo: doc.custHouseNo, custRoad: doc.custRoad, custLocality: doc.custLocality, custTown: doc.custTown,

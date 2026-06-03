@@ -65,7 +65,7 @@ export default function DocumentDetails() {
       docType: doc.docType || "JS",
       customerId: doc.customerId ?? undefined,
       registration: vehicle?.registration || doc.registration || "",
-      make: vehicle?.make || "", model: vehicle?.model || "", colour: vehicle?.colour || "",
+      make: vehicle?.make || "", model: vehicle?.model || "", derivative: vehicle?.derivative || "", colour: vehicle?.colour || "",
       fuelType: vehicle?.fuelType || "", engineCC: vehicle?.engineCC || "", engineNo: vehicle?.engineNo || "",
       engineCode: vehicle?.engineCode || "", vin: vehicle?.vin || "", paintCode: vehicle?.paintCode || "",
       keyCode: vehicle?.keyCode || "", radioCode: vehicle?.radioCode || "", dateOfRegistration: dateInput(vehicle?.dateOfRegistration),
@@ -91,7 +91,7 @@ export default function DocumentDetails() {
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
       setForm((f) => ({
         ...f, registration: v.registration || f.registration,
-        make: v.make ?? f.make, model: v.model ?? f.model, colour: v.colour ?? f.colour, fuelType: v.fuelType ?? f.fuelType,
+        make: v.make ?? f.make, model: v.model ?? f.model, derivative: v.derivative ?? f.derivative, colour: v.colour ?? f.colour, fuelType: v.fuelType ?? f.fuelType,
         engineCC: v.engineCC ?? f.engineCC, engineNo: v.engineNo ?? f.engineNo, engineCode: v.engineCode ?? f.engineCode,
         vin: v.vin ?? f.vin, paintCode: v.paintCode ?? f.paintCode, keyCode: v.keyCode ?? f.keyCode, radioCode: v.radioCode ?? f.radioCode,
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : f.dateOfRegistration,
@@ -120,7 +120,7 @@ export default function DocumentDetails() {
         id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
         customerId: form.customerId || undefined,
         createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
-        vehicle: { make: form.make, model: form.model, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
+        vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
         customerName: form.customerName, company: form.company, accountNumber: form.accountNumber,
         custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
         custCounty: form.custCounty, custPostcode: form.custPostcode, custTelephone: form.custTelephone, custMobile: form.custMobile, custEmail: form.custEmail,
@@ -224,6 +224,7 @@ export default function DocumentDetails() {
                 <EF label="Make / Model" field="make" {...{ form, set, editing }} />
                 <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1 self-end"} />
               </div>
+              <EF label="Derivative" field="derivative" {...{ form, set, editing }} grow />
               <div className="flex gap-2"><EF label="Chassis" field="vin" {...{ form, set, editing }} grow /></div>
               <div className="flex gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Engine Code" field="engineCode" {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" {...{ form, set, editing }} /></div>
@@ -274,8 +275,8 @@ export default function DocumentDetails() {
                 <EF label="Road Tester" field="staffRoadTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
               <Panel title="MOT">
-                <EF label="MOT Class" field="motClass" w="w-20" {...{ form, set, editing }} />
-                <EF label="MOT Status" field="motStatus" w="w-20" {...{ form, set, editing }} />
+                <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
+                <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
                 <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
             </div>
@@ -351,6 +352,18 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text" 
     <div className={`flex items-center gap-2 ${grow ? "flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
       <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1"} />
+    </div>
+  );
+}
+
+function SelectField({ label, field, form, set, editing, options, w = "w-24" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; options: string[]; w?: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
+      <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
+        <option value=""></option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
     </div>
   );
 }

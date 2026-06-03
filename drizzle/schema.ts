@@ -72,6 +72,7 @@ export const vehicles = mysqlTable("vehicles", {
   engineCC: int("engineCC"),
   engineNo: varchar("engineNo", { length: 50 }),
   engineCode: varchar("engineCode", { length: 50 }),
+  derivative: varchar("derivative", { length: 255 }),
   paintCode: varchar("paintCode", { length: 50 }),
   keyCode: varchar("keyCode", { length: 50 }),
   radioCode: varchar("radioCode", { length: 50 }),
