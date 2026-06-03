@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useReactToPrint } from "react-to-print";
+import PrintableDocument from "@/components/PrintableDocument";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +43,8 @@ export default function DocumentDetails() {
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const printRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: `${(data as any)?.doc?.docType || "Doc"}_${(data as any)?.doc?.docNo || "draft"}` });
 
   // initialise the form once data arrives
   useEffect(() => {
@@ -142,7 +146,7 @@ export default function DocumentDetails() {
           <div className="flex items-center gap-2">
             {!editing ? (
               <>
-                <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
+                <button onClick={handlePrint} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
                 <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1.5 text-sm hover:bg-violet-800"><Pencil className="w-4 h-4" /> Edit</button>
               </>
             ) : (
@@ -223,7 +227,7 @@ export default function DocumentDetails() {
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
             </div>
             {/* additional info */}
-            <div className="xl:col-span-3">
+            <div className="xl:col-span-3 space-y-3">
               <Panel title="Additional Info">
                 <EF label="Status" field="docStatus" w="w-20" {...{ form, set, editing }} />
                 <EF label="Order Ref" field="orderRef" w="w-20" {...{ form, set, editing }} />
@@ -232,6 +236,11 @@ export default function DocumentDetails() {
                 <EF label="Sales Advisor" field="staffSalesPerson" w="w-20" {...{ form, set, editing }} />
                 <EF label="Technician" field="staffTechnician" w="w-20" {...{ form, set, editing }} />
                 <EF label="Road Tester" field="staffRoadTester" w="w-20" {...{ form, set, editing }} />
+              </Panel>
+              <Panel title="MOT">
+                <EF label="MOT Class" field="motClass" w="w-20" {...{ form, set, editing }} />
+                <EF label="MOT Status" field="motStatus" w="w-20" {...{ form, set, editing }} />
+                <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
             </div>
           </div>
@@ -280,6 +289,13 @@ export default function DocumentDetails() {
                 <TRow label="Total" value={liveTotals.gross} bold />
               </Panel>
             </div>
+          </div>
+        </div>
+
+        {/* off-screen printable replica (react-to-print) */}
+        <div style={{ position: "absolute", left: "-99999px", top: 0 }} aria-hidden="true">
+          <div ref={printRef}>
+            <PrintableDocument doc={(data as any)?.doc} vehicle={(data as any)?.vehicle} customer={(data as any)?.customer} lineItems={(data as any)?.lineItems} />
           </div>
         </div>
       </div>
