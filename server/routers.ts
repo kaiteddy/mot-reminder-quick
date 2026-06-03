@@ -175,6 +175,13 @@ export const appRouter = router({
         const { saveDocument } = await import("./db");
         return saveDocument(input as any);
       }),
+
+    convert: publicProcedure
+      .input(z.object({ id: z.number(), toType: z.string() }))
+      .mutation(async ({ input }) => {
+        const { convertDocument } = await import("./db");
+        return convertDocument(input.id, input.toType);
+      }),
   }),
 
   descriptionPresets: router({

@@ -1120,6 +1120,34 @@ export async function saveDocument(input: SaveDocInput) {
   return { id: docId };
 }
 
+/** Convert a document to another type (Estimate↔Job Sheet↔Invoice…), copying all data into a new document. */
+export async function convertDocument(id: number, toType: string) {
+  const detail = await getDocumentDetail(id);
+  if (!detail?.doc) throw new Error("Document not found");
+  const { doc, vehicle, lineItems } = detail as any;
+  return saveDocument({
+    docType: toType,
+    registration: vehicle?.registration || doc.registration,
+    customerId: doc.customerId ?? undefined,
+    vehicle: vehicle ? {
+      make: vehicle.make, model: vehicle.model, colour: vehicle.colour, fuelType: vehicle.fuelType,
+      engineCC: vehicle.engineCC, engineNo: vehicle.engineNo, engineCode: vehicle.engineCode, vin: vehicle.vin,
+      paintCode: vehicle.paintCode, keyCode: vehicle.keyCode, radioCode: vehicle.radioCode,
+    } : undefined,
+    customerName: doc.customerName, company: doc.company, accountNumber: doc.accountNumber,
+    custHouseNo: doc.custHouseNo, custRoad: doc.custRoad, custLocality: doc.custLocality, custTown: doc.custTown,
+    custCounty: doc.custCounty, custPostcode: doc.custPostcode, custTelephone: doc.custTelephone,
+    custMobile: doc.custMobile, custEmail: doc.custEmail,
+    mileage: doc.mileage, description: doc.description, orderRef: doc.orderRef, department: doc.department, terms: doc.terms,
+    staffSalesPerson: doc.staffSalesPerson, staffTechnician: doc.staffTechnician, staffRoadTester: doc.staffRoadTester,
+    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, docStatus: "New",
+    lineItems: (lineItems || []).map((li: any) => ({
+      itemType: li.itemType, description: li.description, partNumber: li.partNumber, nominalCode: li.nominalCode,
+      quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
+    })),
+  });
+}
+
 export async function getServiceDocumentById(id: number) {
   const db = await getDb();
   if (!db) return undefined;

@@ -4,7 +4,7 @@ import PrintableDocument from "@/components/PrintableDocument";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -45,6 +45,16 @@ export default function DocumentDetails() {
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: `${(data as any)?.doc?.docType || "Doc"}_${(data as any)?.doc?.docNo || "draft"}` });
+  const convert = trpc.documents.convert.useMutation();
+  const [convertOpen, setConvertOpen] = useState(false);
+  async function doConvert(toType: string) {
+    setConvertOpen(false);
+    try {
+      const res: any = await convert.mutateAsync({ id, toType });
+      toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
+      setLocation(`/documents/${res.id}`);
+    } catch (e: any) { toast.error("Convert failed: " + e.message); }
+  }
 
   // initialise the form once data arrives
   useEffect(() => {
@@ -157,6 +167,22 @@ export default function DocumentDetails() {
             {!editing ? (
               <>
                 <button onClick={handlePrint} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
+                {!isNew && (
+                  <div className="relative">
+                    <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+                      {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                    {convertOpen && (
+                      <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[160px] py-1">
+                        {([["ES", "Estimate"], ["JS", "Job Sheet"], ["SI", "Invoice"], ["CR", "Credit Note"]] as [string, string][])
+                          .filter(([code]) => code !== (data as any)?.doc?.docType)
+                          .map(([code, label]) => (
+                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">To {label}</button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1.5 text-sm hover:bg-violet-800"><Pencil className="w-4 h-4" /> Edit</button>
               </>
             ) : (
@@ -277,12 +303,15 @@ export default function DocumentDetails() {
                   <TabsContent value="history" className="mt-0">
                     {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
                       <Table>
-                        <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
                           <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/documents/${h.id}`)}>
                             <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
                             <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
-                            <TableCell>{h.docNo}</TableCell><TableCell className="text-right">£{money(h.totalGross)}</TableCell>
+                            <TableCell>{h.docNo}</TableCell>
+                            <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
+                            <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
+                            <TableCell className="text-right">£{money(h.totalGross)}</TableCell>
                           </TableRow>))}
                         </TableBody>
                       </Table>
