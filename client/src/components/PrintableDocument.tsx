@@ -69,7 +69,7 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
         .hdr p { margin:1px 0; font-size:11px; }
         .hdr .vat { margin-top:3px; }
         .hdr img { height: 78px; width:auto; }
-        .cd { display:flex; justify-content:space-between; margin-top: 30px; }
+        .cd { display:flex; justify-content:space-between; margin-top: 24px; }
         .cust { padding-left: 40px; font-size: 12px; line-height: 1.45; }
         .cust .nm { font-weight: 700; }
         .doc { width: 300px; }
@@ -79,13 +79,13 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
         .doc .row { display:flex; justify-content:space-between; font-size:12px; line-height:1.55; }
         .doc .row .v { font-weight:600; }
         table { width:100%; border-collapse: collapse; }
-        .veh { margin-top: 22px; }
-        .veh th { background:#e9ebee; color:#5a6470; font-weight:500; border:1px solid #d4d7db; padding:5px; text-align:center; font-size:11px; }
-        .veh td { border:1px solid #d4d7db; padding:5px; text-align:center; font-size:12px; }
-        .veh td.big { font-size:14px; font-weight:800; }
-        .diag { display:flex; gap:10px; margin-top:16px; }
-        .diag .car { width:210px; border:1px solid #e2e4e7; display:flex; align-items:center; justify-content:center; padding:8px; }
-        .diag .notes { flex:1; border:1px solid #e2e4e7; position:relative; }
+        .veh { margin-top: 16px; }
+        .veh th { background:#e9ebee; color:#5a6470; font-weight:500; border:1px solid #d4d7db; padding:1px 4px; text-align:center; font-size:10px; line-height:1.25; }
+        .veh td { border:1px solid #d4d7db; padding:1px 5px; text-align:center; font-size:11px; line-height:1.3; height:18px; }
+        .veh td.big { font-size:12px; font-weight:800; }
+        .diag { display:flex; gap:10px; margin-top:12px; }
+        .diag .car { width:175px; border:1px solid #e2e4e7; display:flex; align-items:center; justify-content:center; padding:6px; }
+        .diag .notes { flex:1; border:1px solid #e2e4e7; position:relative; min-height:96px; }
         .diag .notes span { position:absolute; top:8px; right:12px; color:#cbd0d6; font-size:18px; }
         .desc { margin-top:18px; }
         .desc .h { font-weight:700; margin-top:10px; }
@@ -167,12 +167,16 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
       {(isEstimate || isJobSheet) && (
         <div className="diag">
           <div className="car">
-            <svg width="180" height="110" viewBox="0 0 180 110">
-              <rect x="35" y="18" width="110" height="74" rx="34" fill="none" stroke="#3a3f45" strokeWidth="2" />
-              <line x1="60" y1="30" x2="120" y2="30" stroke="#3a3f45" strokeWidth="1.5" />
-              <line x1="60" y1="80" x2="120" y2="80" stroke="#3a3f45" strokeWidth="1.5" />
-              {[[35, 28], [145, 28], [35, 82], [145, 82]].map(([cx, cy], i) => (
-                <circle key={i} cx={cx} cy={cy} r="11" fill="#fff" stroke="#1a1a1a" strokeWidth="4" />
+            <svg width="160" height="90" viewBox="0 0 160 90">
+              {/* body */}
+              <rect x="30" y="14" width="100" height="62" rx="17" fill="#fff" stroke="#333" strokeWidth="2" />
+              {/* cabin / roof */}
+              <rect x="50" y="25" width="60" height="40" rx="11" fill="none" stroke="#888" strokeWidth="1.1" />
+              {/* centre line */}
+              <line x1="80" y1="25" x2="80" y2="65" stroke="#bbb" strokeWidth="0.7" />
+              {/* 4 wheels on the corners */}
+              {[[30, 25], [130, 25], [30, 65], [130, 65]].map(([cx, cy], i) => (
+                <circle key={i} cx={cx} cy={cy} r="8.5" fill="#fff" stroke="#1a1a1a" strokeWidth="4.5" />
               ))}
             </svg>
           </div>
