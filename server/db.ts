@@ -906,7 +906,21 @@ export async function getDocumentDetail(id: number) {
     history = (await getServiceHistoryByVehicleId(doc.vehicleId)).filter((h) => h.id !== id);
   }
   const lineItems = await getServiceLineItemsByDocumentId(id);
-  return { doc, customer, vehicle, lineItems, history };
+  let accBalance = 0, custLastInvoiced: any = null, vehLastInvoiced: any = null;
+  if (doc.customerId) {
+    const r = await db.select({
+      bal: sql<number>`COALESCE(SUM(${serviceHistory.balance}),0)`,
+      last: sql<any>`MAX(CASE WHEN ${serviceHistory.docType}='SI' THEN ${serviceHistory.dateIssued} END)`,
+    }).from(serviceHistory).where(eq(serviceHistory.customerId, doc.customerId));
+    accBalance = Number(r[0]?.bal) || 0;
+    custLastInvoiced = r[0]?.last ?? null;
+  }
+  if (doc.vehicleId) {
+    const r = await db.select({ last: sql<any>`MAX(CASE WHEN ${serviceHistory.docType}='SI' THEN ${serviceHistory.dateIssued} END)` })
+      .from(serviceHistory).where(eq(serviceHistory.vehicleId, doc.vehicleId));
+    vehLastInvoiced = r[0]?.last ?? null;
+  }
+  return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced };
 }
 
 const normReg = (r?: string) => (r || "").toUpperCase().replace(/\s+/g, "");

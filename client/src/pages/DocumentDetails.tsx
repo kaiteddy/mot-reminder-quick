@@ -174,10 +174,10 @@ export default function DocumentDetails() {
                     </button>
                     {convertOpen && (
                       <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[160px] py-1">
-                        {([["ES", "Estimate"], ["JS", "Job Sheet"], ["SI", "Invoice"], ["CR", "Credit Note"]] as [string, string][])
+                        {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
                           .filter(([code]) => code !== (data as any)?.doc?.docType)
                           .map(([code, label]) => (
-                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">To {label}</button>
+                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
                           ))}
                       </div>
                     )}
@@ -279,6 +279,13 @@ export default function DocumentDetails() {
                 <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
                 <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
+              {!isNew && (
+                <Panel title="Account">
+                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
+                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
+                  <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
+                </Panel>
+              )}
             </div>
           </div>
 
