@@ -977,6 +977,7 @@ export interface SaveDocInput {
   docType?: string;
   registration?: string;
   customerId?: number;
+  createCustomer?: boolean;
   vehicle?: Record<string, any>;
   customerName?: string; company?: string; accountNumber?: string;
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
@@ -1015,6 +1016,22 @@ export async function saveDocument(input: SaveDocInput) {
       const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).$returningId();
       vehicleId = id;
     }
+  }
+
+  // 1b) create a new customer from entered details when requested
+  if (!input.customerId && input.createCustomer && input.customerName) {
+    const hadOwner = customerId != null;
+    const address = [input.custHouseNo, input.custRoad, input.custLocality, input.custTown, input.custCounty].filter(Boolean).join(", ");
+    const [{ id }] = await db.insert(customers).values({
+      name: input.customerName,
+      email: input.custEmail || null,
+      phone: input.custMobile || input.custTelephone || null,
+      postcode: input.custPostcode || null,
+      address: address || null,
+      externalId: `WEB-CUST-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    } as any).$returningId();
+    customerId = id;
+    if (vehicleId && !hadOwner) await db.update(vehicles).set({ customerId: id }).where(eq(vehicles.id, vehicleId)); // only adopt ownerless vehicles
   }
 
   // 2) recompute totals from line items

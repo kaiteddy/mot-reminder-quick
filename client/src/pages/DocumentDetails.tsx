@@ -36,6 +36,7 @@ export default function DocumentDetails() {
   const save = trpc.documents.save.useMutation();
 
   const [editing, setEditing] = useState(isNew);
+  const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
@@ -44,6 +45,7 @@ export default function DocumentDetails() {
   // initialise the form once data arrives
   useEffect(() => {
     if (isNew || !data?.doc) return;
+    setNewCust(false);
     const { doc, vehicle, customer } = data as any;
     setForm({
       docType: doc.docType || "JS",
@@ -103,6 +105,7 @@ export default function DocumentDetails() {
       const payload: any = {
         id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
         customerId: form.customerId || undefined,
+        createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
         vehicle: { make: form.make, model: form.model, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
         customerName: form.customerName, company: form.company, accountNumber: form.accountNumber,
         custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
@@ -191,11 +194,22 @@ export default function DocumentDetails() {
             {/* customer */}
             <div className="xl:col-span-4 space-y-1.5">
               {editing && (
-                <CustomerSearch onSelect={(c) => setForm((f) => ({
-                  ...f, customerId: c.id, customerName: c.name || f.customerName,
-                  custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
-                  custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
-                }))} />
+                <>
+                  <CustomerSearch onSelect={(c) => { setNewCust(false); setForm((f) => ({
+                    ...f, customerId: c.id, customerName: c.name || f.customerName,
+                    custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
+                    custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
+                  })); }} />
+                  <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
+                    {form.customerId ? (
+                      <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
+                    ) : (isNew || newCust) && form.customerName ? (
+                      <span className="text-[11px] text-green-700">New customer will be created</span>
+                    ) : null}
+                    <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); }}
+                      className="text-[11px] text-violet-700 hover:underline inline-flex items-center gap-1"><Plus className="w-3 h-3" /> New customer</button>
+                  </div>
+                </>
               )}
               <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
               <EF label="Company" field="company" {...{ form, set, editing }} />

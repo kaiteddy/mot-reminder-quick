@@ -140,6 +140,7 @@ export const appRouter = router({
         docType: z.string().optional(),
         registration: z.string().optional(),
         customerId: z.number().optional(),
+        createCustomer: z.boolean().optional(),
         vehicle: z.record(z.string(), z.any()).optional(),
         customerName: z.string().optional(),
         company: z.string().optional(),
