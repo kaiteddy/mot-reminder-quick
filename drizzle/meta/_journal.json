@@ -162,6 +162,13 @@
       "when": 1772734425290,
       "tag": "0022_secret_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1780410714174,
+      "tag": "0023_special_karnak",
+      "breakpoints": true
     }
   ]
 }

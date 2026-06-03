@@ -1,0 +1,24 @@
+ALTER TABLE `serviceHistory` ADD `docStatus` varchar(50);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `department` varchar(100);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `orderRef` varchar(100);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `balance` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `totalReceipts` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subPartsNet` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subPartsTax` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subPartsGross` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subLabourNet` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subLabourTax` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subLabourGross` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subMotNet` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subMotTax` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `subMotGross` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `paymentMethods` varchar(255);--> statement-breakpoint
+ALTER TABLE `serviceHistory` ADD `registration` varchar(20);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `documentExternalId` varchar(255);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `taxAmount` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `vatRate` decimal(5,2);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `discount` decimal(10,2);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `partNumber` varchar(100);--> statement-breakpoint
+ALTER TABLE `serviceLineItems` ADD `nominalCode` varchar(50);--> statement-breakpoint
+CREATE INDEX `service_history_doc_type_idx` ON `serviceHistory` (`docType`);--> statement-breakpoint
+CREATE INDEX `service_line_items_document_external_id_idx` ON `serviceLineItems` (`documentExternalId`);

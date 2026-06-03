@@ -1,0 +1,11 @@
+import "dotenv/config";
+import mysql from "mysql2/promise";
+const c = await mysql.createConnection({ uri: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true } });
+const q = async (s:string)=>{const [r]=await c.query(s); return r as any[];};
+console.log("counts:", (await q("SELECT (SELECT COUNT(*) FROM serviceHistory) docs, (SELECT COUNT(*) FROM serviceLineItems) items, (SELECT COUNT(*) FROM serviceHistory WHERE customerId IS NOT NULL) custLinked, (SELECT COUNT(*) FROM serviceHistory WHERE vehicleId IS NOT NULL) vehLinked"))[0]);
+console.log("docType:", await q("SELECT docType, COUNT(*) n, ROUND(SUM(totalGross)) gross FROM serviceHistory GROUP BY docType ORDER BY n DESC"));
+console.log("total invoiced (SI gross):", (await q("SELECT ROUND(SUM(totalGross),2) t FROM serviceHistory WHERE docType='SI'"))[0].t);
+const sample = (await q("SELECT id, externalId, docType, docNo, totalGross FROM serviceHistory WHERE docType='SI' AND totalGross>200 LIMIT 1"))[0];
+console.log("\nsample doc:", sample);
+console.log("its line items:", await q(`SELECT itemType, LEFT(description,40) descr, quantity, unitPrice, subNet FROM serviceLineItems WHERE documentId=${sample.id}`));
+await c.end();

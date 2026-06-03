@@ -67,6 +67,7 @@ const menuItems = [
   { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
+  { icon: FileText, label: "Documents", path: "/documents" },
   { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
   { icon: Wrench, label: "Technical Data", path: "/technical-data" },
   { icon: DatabaseIcon, label: "Database", path: "/database" },

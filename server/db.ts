@@ -841,6 +841,221 @@ export async function getServiceLineItemsByDocumentId(documentId: number) {
     .orderBy(serviceLineItems.id);
 }
 
+/** Paginated/filterable list of GA4 documents (job sheets / invoices / estimates). */
+export async function getDocuments(opts: { search?: string; docType?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const limit = Math.min(opts.limit ?? 100, 500);
+  const offset = opts.offset ?? 0;
+  const conds: any[] = [];
+  if (opts.docType && opts.docType !== "all") conds.push(eq(serviceHistory.docType, opts.docType));
+  if (opts.search && opts.search.trim()) {
+    const s = `%${opts.search.trim()}%`;
+    conds.push(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(customers.name, s)));
+  }
+  const where = conds.length ? and(...conds) : undefined;
+  return db.select({
+    id: serviceHistory.id,
+    docType: serviceHistory.docType,
+    docNo: serviceHistory.docNo,
+    dateIssued: serviceHistory.dateIssued,
+    dateCreated: serviceHistory.dateCreated,
+    registration: serviceHistory.registration,
+    totalGross: serviceHistory.totalGross,
+    balance: serviceHistory.balance,
+    docStatus: serviceHistory.docStatus,
+    customerId: serviceHistory.customerId,
+    customerName: customers.name,
+    vehicleId: serviceHistory.vehicleId,
+    make: vehicles.make,
+    model: vehicles.model,
+  })
+    .from(serviceHistory)
+    .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(where as any)
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(limit)
+    .offset(offset);
+}
+
+/** Document counts by type for the list header. */
+export async function getDocumentStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, byType: [] as { docType: string | null; n: number }[] };
+  const rows = await db.select({
+    docType: serviceHistory.docType,
+    n: sql<number>`COUNT(*)`,
+  }).from(serviceHistory).groupBy(serviceHistory.docType);
+  const total = rows.reduce((a, r) => a + Number(r.n), 0);
+  return { total, byType: rows.map(r => ({ docType: r.docType, n: Number(r.n) })) };
+}
+
+/** Full document detail: header + customer + vehicle + line items. */
+export async function getDocumentDetail(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(serviceHistory).where(eq(serviceHistory.id, id)).limit(1);
+  const doc = rows[0];
+  if (!doc) return null;
+  let customer = null, vehicle = null, history: any[] = [];
+  if (doc.customerId) customer = (await db.select().from(customers).where(eq(customers.id, doc.customerId)).limit(1))[0] ?? null;
+  if (doc.vehicleId) {
+    vehicle = (await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId)).limit(1))[0] ?? null;
+    history = (await getServiceHistoryByVehicleId(doc.vehicleId)).filter((h) => h.id !== id);
+  }
+  const lineItems = await getServiceLineItemsByDocumentId(id);
+  return { doc, customer, vehicle, lineItems, history };
+}
+
+const normReg = (r?: string) => (r || "").toUpperCase().replace(/\s+/g, "");
+
+/** Reg lookup for the job sheet form: DB first, then DVLA (like GA4's VRM lookup). */
+export async function lookupVehicleForReg(registration: string) {
+  const db = await getDb();
+  const reg = normReg(registration);
+  if (!reg) return { found: false, source: "none", vehicle: null, customer: null };
+  if (db) {
+    const v = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
+    if (v) {
+      const cust = v.customerId ? (await db.select().from(customers).where(eq(customers.id, v.customerId)).limit(1))[0] ?? null : null;
+      return { found: true, source: "database", vehicle: v, customer: cust };
+    }
+  }
+  // Not in our DB — do a live VRM lookup like GA4: SWS (rich: make/model/colour/
+  // fuel/engine/VIN, via its UKVD merge) supplemented by DVLA (MOT/year).
+  const v: any = { registration: reg };
+  const sources: string[] = [];
+  try {
+    const { fetchRichVehicleData } = await import("./sws");
+    const sws: any = await fetchRichVehicleData(reg, true);
+    const u = sws?.ukvd || {};
+    if (u.make || u.model || u.colour || u.fuelType || u.engineSize || u.vin) {
+      v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
+      v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
+      sources.push("sws");
+    }
+  } catch (e) { /* SWS/UKVD unavailable */ }
+  try {
+    const { getVehicleDetails } = await import("./dvlaApi");
+    const d = await getVehicleDetails(reg);
+    if (d) {
+      v.make = v.make ?? d.make ?? null; v.model = v.model ?? d.model ?? null; v.colour = v.colour ?? d.colour ?? null;
+      v.fuelType = v.fuelType ?? d.fuelType ?? null; v.engineCC = v.engineCC ?? d.engineCapacity ?? null;
+      v.motExpiryDate = d.motExpiryDate ?? null;
+      if (d.yearOfManufacture) v.dateOfRegistration = new Date(d.yearOfManufacture, 0, 1);
+      sources.push("dvla");
+    }
+  } catch (e) { /* DVLA unavailable */ }
+
+  return { found: false, source: sources.join("+") || "none", customer: null, vehicle: v };
+}
+
+/** Next sequential document number for a given GA4 doc type. */
+export async function getNextDocNo(docType: string) {
+  const db = await getDb();
+  if (!db) return "1";
+  const r = await db.select({ m: sql<number>`MAX(CAST(${serviceHistory.docNo} AS UNSIGNED))` })
+    .from(serviceHistory).where(eq(serviceHistory.docType, docType));
+  return String((Number(r[0]?.m) || 0) + 1);
+}
+
+export interface SaveDocInput {
+  id?: number;
+  docType?: string;
+  registration?: string;
+  vehicle?: Record<string, any>;
+  customerName?: string; company?: string; accountNumber?: string;
+  custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
+  custTelephone?: string; custMobile?: string; custEmail?: string;
+  mileage?: number | null; dateCreated?: any; dateIssued?: any;
+  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string;
+  staffSalesPerson?: string; staffTechnician?: string; staffRoadTester?: string; staffMotTester?: string;
+  motClass?: string; motStatus?: string;
+  lineItems?: Array<Record<string, any>>;
+}
+
+const undef = (o: Record<string, any>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+/** Create or update a job sheet / document, its vehicle link, line items, and recomputed totals. */
+export async function saveDocument(input: SaveDocInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const docType = input.docType || "JS";
+
+  // 1) upsert vehicle by registration
+  let vehicleId: number | null = null;
+  let customerId: number | null = null;
+  if (input.registration && normReg(input.registration)) {
+    const reg = normReg(input.registration);
+    const existing = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
+    const vf = undef({
+      make: input.vehicle?.make, model: input.vehicle?.model, colour: input.vehicle?.colour,
+      fuelType: input.vehicle?.fuelType, engineCC: input.vehicle?.engineCC ? Number(input.vehicle.engineCC) || null : input.vehicle?.engineCC,
+      engineNo: input.vehicle?.engineNo, engineCode: input.vehicle?.engineCode, vin: input.vehicle?.vin,
+      paintCode: input.vehicle?.paintCode, keyCode: input.vehicle?.keyCode, radioCode: input.vehicle?.radioCode,
+    });
+    if (existing) {
+      vehicleId = existing.id; customerId = existing.customerId ?? null;
+      if (Object.keys(vf).length) await db.update(vehicles).set(vf).where(eq(vehicles.id, existing.id));
+    } else {
+      const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).$returningId();
+      vehicleId = id;
+    }
+  }
+
+  // 2) recompute totals from line items
+  const items = (input.lineItems ?? []).filter((i) => i && (i.description || i.subNet != null));
+  const net = (pred: (i: any) => boolean) => items.filter(pred).reduce((a, i) => a + (Number(i.subNet) || 0), 0);
+  const tax = (pred: (i: any) => boolean) => items.filter(pred).reduce((a, i) => a + (Number(i.taxAmount) || 0), 0);
+  const subPartsNet = net((i) => i.itemType === "Part"), subPartsTax = tax((i) => i.itemType === "Part");
+  const subLabourNet = net((i) => i.itemType === "Labour"), subLabourTax = tax((i) => i.itemType === "Labour");
+  const totalNet = items.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
+  const totalTax = items.reduce((a, i) => a + (Number(i.taxAmount) || 0), 0);
+  const totalGross = +(totalNet + totalTax).toFixed(2);
+
+  // 3) document fields
+  const docFields: any = undef({
+    docType, vehicleId, customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
+    customerName: input.customerName, company: input.company, accountNumber: input.accountNumber,
+    custHouseNo: input.custHouseNo, custRoad: input.custRoad, custLocality: input.custLocality,
+    custTown: input.custTown, custCounty: input.custCounty, custPostcode: input.custPostcode,
+    custTelephone: input.custTelephone, custMobile: input.custMobile, custEmail: input.custEmail,
+    mileage: input.mileage, dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
+    dateIssued: input.dateIssued ? new Date(input.dateIssued) : undefined,
+    docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms,
+    description: input.description, staffSalesPerson: input.staffSalesPerson, staffTechnician: input.staffTechnician,
+    staffRoadTester: input.staffRoadTester, staffMotTester: input.staffMotTester, motClass: input.motClass, motStatus: input.motStatus,
+    totalNet: String(totalNet.toFixed(2)), totalTax: String(totalTax.toFixed(2)), totalGross: String(totalGross.toFixed(2)),
+    subPartsNet: String(subPartsNet.toFixed(2)), subPartsTax: String(subPartsTax.toFixed(2)),
+    subLabourNet: String(subLabourNet.toFixed(2)), subLabourTax: String(subLabourTax.toFixed(2)),
+  });
+
+  let docId = input.id;
+  if (docId) {
+    await db.update(serviceHistory).set(docFields).where(eq(serviceHistory.id, docId));
+  } else {
+    const docNo = await getNextDocNo(docType);
+    const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, balance: String(totalGross.toFixed(2)) }).$returningId();
+    docId = id;
+  }
+
+  // 4) replace line items
+  await db.delete(serviceLineItems).where(eq(serviceLineItems.documentId, docId!));
+  if (items.length) {
+    await db.insert(serviceLineItems).values(items.map((i, idx) => ({
+      documentId: docId!, externalId: `WEB-LI-${docId}-${idx}-${Date.now()}`,
+      itemType: i.itemType || "Part", description: i.description ?? null, partNumber: i.partNumber ?? null,
+      nominalCode: i.nominalCode ?? null,
+      quantity: i.quantity != null ? String(i.quantity) : null, unitPrice: i.unitPrice != null ? String(i.unitPrice) : null,
+      subNet: i.subNet != null ? String(i.subNet) : null, taxAmount: i.taxAmount != null ? String(i.taxAmount) : null,
+      vatRate: i.vatRate != null ? String(i.vatRate) : null,
+    })) as any);
+  }
+  return { id: docId };
+}
+
 export async function getServiceDocumentById(id: number) {
   const db = await getDb();
   if (!db) return undefined;

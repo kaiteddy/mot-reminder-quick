@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import MOTCheck from "./pages/MOTCheck";
 import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
+import Documents from "./pages/Documents";
+import DocumentDetails from "./pages/DocumentDetails";
 import Analytics from "./pages/Analytics";
 import Vehicles from "./pages/Vehicles";
 import VehicleDetails from "./pages/VehicleDetails";
@@ -49,6 +51,8 @@ function Router() {
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/customers" component={Customers} />
+      <Route path="/documents/:id" component={DocumentDetails} />
+      <Route path="/documents" component={Documents} />
 
       {/* Other routes */}
       <Route path="/analytics" component={Analytics} />

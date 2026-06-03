@@ -95,6 +95,78 @@ export const appRouter = router({
       }),
   }),
 
+  documents: router({
+    list: publicProcedure
+      .input(z.object({
+        search: z.string().optional(),
+        docType: z.string().optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const { getDocuments } = await import("./db");
+        return getDocuments(input ?? {});
+      }),
+
+    stats: publicProcedure.query(async () => {
+      const { getDocumentStats } = await import("./db");
+      return getDocumentStats();
+    }),
+
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getDocumentDetail } = await import("./db");
+        return getDocumentDetail(input.id);
+      }),
+
+    lookupVehicle: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { lookupVehicleForReg } = await import("./db");
+        return lookupVehicleForReg(input.registration);
+      }),
+
+    save: publicProcedure
+      .input(z.object({
+        id: z.number().optional(),
+        docType: z.string().optional(),
+        registration: z.string().optional(),
+        vehicle: z.record(z.string(), z.any()).optional(),
+        customerName: z.string().optional(),
+        company: z.string().optional(),
+        accountNumber: z.string().optional(),
+        custHouseNo: z.string().optional(),
+        custRoad: z.string().optional(),
+        custLocality: z.string().optional(),
+        custTown: z.string().optional(),
+        custCounty: z.string().optional(),
+        custPostcode: z.string().optional(),
+        custTelephone: z.string().optional(),
+        custMobile: z.string().optional(),
+        custEmail: z.string().optional(),
+        mileage: z.number().nullable().optional(),
+        dateCreated: z.string().optional(),
+        dateIssued: z.string().optional(),
+        docStatus: z.string().optional(),
+        orderRef: z.string().optional(),
+        department: z.string().optional(),
+        terms: z.string().optional(),
+        description: z.string().optional(),
+        staffSalesPerson: z.string().optional(),
+        staffTechnician: z.string().optional(),
+        staffRoadTester: z.string().optional(),
+        staffMotTester: z.string().optional(),
+        motClass: z.string().optional(),
+        motStatus: z.string().optional(),
+        lineItems: z.array(z.record(z.string(), z.any())).optional(),
+      }).passthrough())
+      .mutation(async ({ input }) => {
+        const { saveDocument } = await import("./db");
+        return saveDocument(input as any);
+      }),
+  }),
+
   vehicles: router({
     list: publicProcedure.query(async () => {
       const { getAllVehicles } = await import("./db");

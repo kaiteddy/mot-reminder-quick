@@ -72,6 +72,9 @@ export const vehicles = mysqlTable("vehicles", {
   engineCC: int("engineCC"),
   engineNo: varchar("engineNo", { length: 50 }),
   engineCode: varchar("engineCode", { length: 50 }),
+  paintCode: varchar("paintCode", { length: 50 }),
+  keyCode: varchar("keyCode", { length: 50 }),
+  radioCode: varchar("radioCode", { length: 50 }),
   notes: text("notes"),
   comprehensiveTechnicalData: json("comprehensiveTechnicalData"),
   swsLastUpdated: timestamp("swsLastUpdated"),
@@ -189,10 +192,52 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   totalGross: decimal("totalGross", { precision: 10, scale: 2 }),
   mileage: int("mileage"),
   description: text("description"),
+  // --- GA4 Documents import (added for full job-sheet/invoice/estimate parity) ---
+  docStatus: varchar("docStatus", { length: 50 }), // GA4 docUserStatus (Issued, Paid, etc.)
+  department: varchar("department", { length: 100 }), // GA4 docDepartment
+  orderRef: varchar("orderRef", { length: 100 }), // GA4 docOrderRef
+  balance: decimal("balance", { precision: 10, scale: 2 }), // GA4 us_Balance (outstanding)
+  totalReceipts: decimal("totalReceipts", { precision: 10, scale: 2 }), // payments received
+  subPartsNet: decimal("subPartsNet", { precision: 10, scale: 2 }),
+  subPartsTax: decimal("subPartsTax", { precision: 10, scale: 2 }),
+  subPartsGross: decimal("subPartsGross", { precision: 10, scale: 2 }),
+  subLabourNet: decimal("subLabourNet", { precision: 10, scale: 2 }),
+  subLabourTax: decimal("subLabourTax", { precision: 10, scale: 2 }),
+  subLabourGross: decimal("subLabourGross", { precision: 10, scale: 2 }),
+  subMotNet: decimal("subMotNet", { precision: 10, scale: 2 }),
+  subMotTax: decimal("subMotTax", { precision: 10, scale: 2 }),
+  subMotGross: decimal("subMotGross", { precision: 10, scale: 2 }),
+  paymentMethods: varchar("paymentMethods", { length: 255 }), // GA4 ui_display_paymentMethods
+  registration: varchar("registration", { length: 20 }), // denormalized for quick lookup/link
+  // --- GA4 parity: document-snapshot customer/staff/mot fields ---
+  customerName: varchar("customerName", { length: 255 }),
+  custEmail: varchar("custEmail", { length: 320 }),
+  accountNumber: varchar("accountNumber", { length: 50 }),
+  accountHeld: varchar("accountHeld", { length: 20 }),
+  company: varchar("company", { length: 255 }),
+  custHouseNo: varchar("custHouseNo", { length: 50 }),
+  custRoad: varchar("custRoad", { length: 255 }),
+  custLocality: varchar("custLocality", { length: 100 }),
+  custTown: varchar("custTown", { length: 100 }),
+  custCounty: varchar("custCounty", { length: 100 }),
+  custPostcode: varchar("custPostcode", { length: 20 }),
+  custTelephone: varchar("custTelephone", { length: 50 }),
+  custMobile: varchar("custMobile", { length: 50 }),
+  staffSalesPerson: varchar("staffSalesPerson", { length: 100 }),
+  staffTechnician: varchar("staffTechnician", { length: 100 }),
+  staffRoadTester: varchar("staffRoadTester", { length: 100 }),
+  staffMotTester: varchar("staffMotTester", { length: 100 }),
+  motClass: varchar("motClass", { length: 50 }),
+  motStatus: varchar("motStatus", { length: 50 }),
+  excessNet: decimal("excessNet", { precision: 10, scale: 2 }),
+  excessTax: decimal("excessTax", { precision: 10, scale: 2 }),
+  excessGross: decimal("excessGross", { precision: 10, scale: 2 }),
+  terms: varchar("terms", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
   customerIdIdx: index("service_history_customer_id_idx").on(table.customerId),
+  docTypeIdx: index("service_history_doc_type_idx").on(table.docType),
 }));
 
 export type ServiceHistory = typeof serviceHistory.$inferSelect;
@@ -205,14 +250,21 @@ export const serviceLineItems = mysqlTable("serviceLineItems", {
   id: int("id").autoincrement().primaryKey(),
   externalId: varchar("externalId", { length: 255 }).notNull().unique(), // GA4 LineItem _ID
   documentId: int("documentId").notNull(),
+  documentExternalId: varchar("documentExternalId", { length: 255 }), // GA4 parent doc _ID (for import linking)
   description: text("description"),
   quantity: decimal("quantity", { precision: 10, scale: 2 }),
   unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }),
   subNet: decimal("subNet", { precision: 10, scale: 2 }),
-  itemType: varchar("itemType", { length: 50 }), // Labour, Part, etc.
+  taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }),
+  vatRate: decimal("vatRate", { precision: 5, scale: 2 }),
+  discount: decimal("discount", { precision: 10, scale: 2 }),
+  partNumber: varchar("partNumber", { length: 100 }), // GA4 part number for stock-linked parts
+  nominalCode: varchar("nominalCode", { length: 50 }), // accounting nominal code
+  itemType: varchar("itemType", { length: 50 }), // Labour, Part, MOT, Fixed, etc.
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   documentIdIdx: index("service_line_items_document_id_idx").on(table.documentId),
+  documentExternalIdIdx: index("service_line_items_document_external_id_idx").on(table.documentExternalId),
 }));
 
 export type ServiceLineItem = typeof serviceLineItems.$inferSelect;
