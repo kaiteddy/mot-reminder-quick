@@ -47,6 +47,7 @@ export default function DocumentDetails() {
     const { doc, vehicle, customer } = data as any;
     setForm({
       docType: doc.docType || "JS",
+      customerId: doc.customerId ?? undefined,
       registration: vehicle?.registration || doc.registration || "",
       make: vehicle?.make || "", model: vehicle?.model || "", colour: vehicle?.colour || "",
       fuelType: vehicle?.fuelType || "", engineCC: vehicle?.engineCC || "", engineNo: vehicle?.engineNo || "",
@@ -101,6 +102,7 @@ export default function DocumentDetails() {
     try {
       const payload: any = {
         id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
+        customerId: form.customerId || undefined,
         vehicle: { make: form.make, model: form.model, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
         customerName: form.customerName, company: form.company, accountNumber: form.accountNumber,
         custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
@@ -188,6 +190,13 @@ export default function DocumentDetails() {
             </div>
             {/* customer */}
             <div className="xl:col-span-4 space-y-1.5">
+              {editing && (
+                <CustomerSearch onSelect={(c) => setForm((f) => ({
+                  ...f, customerId: c.id, customerName: c.name || f.customerName,
+                  custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
+                  custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
+                }))} />
+              )}
               <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
               <EF label="Company" field="company" {...{ form, set, editing }} />
               <EF label="Name" field="customerName" {...{ form, set, editing }} />
@@ -290,6 +299,34 @@ function TRow({ label, value, bold }: { label: string; value: any; bold?: boolea
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
       <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white ${bold ? "font-semibold" : ""}`}>{money(value)}</div>
+    </div>
+  );
+}
+
+function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
+  const [q, setQ] = useState("");
+  const { data: results } = trpc.customers.search.useQuery({ query: q }, { enabled: q.trim().length >= 2 });
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2">
+        <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Find customer</span>
+        <div className="relative flex-1">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name / phone / postcode…"
+            className="w-full bg-white border border-violet-300 rounded-sm pl-7 pr-2 py-[3px] text-[13px] h-[26px] outline-none focus:border-violet-500" />
+        </div>
+      </div>
+      {q.trim().length >= 2 && results && results.length > 0 && (
+        <div className="absolute z-30 left-[104px] right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg max-h-56 overflow-auto">
+          {results.map((c: any) => (
+            <button key={c.id} type="button" onClick={() => { onSelect(c); setQ(""); }}
+              className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 border-b last:border-0">
+              <span className="font-medium">{c.name}</span>
+              <span className="text-muted-foreground ml-2">{[c.phone, c.postcode].filter(Boolean).join(" · ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

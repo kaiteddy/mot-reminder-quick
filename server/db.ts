@@ -960,10 +960,23 @@ export async function getNextDocNo(docType: string) {
   return String((Number(r[0]?.m) || 0) + 1);
 }
 
+/** Search customers by name / phone / email / postcode (for the job-sheet picker). */
+export async function searchCustomers(query: string, limit = 10) {
+  const db = await getDb();
+  if (!db || !query || query.trim().length < 2) return [];
+  const s = `%${query.trim()}%`;
+  return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address })
+    .from(customers)
+    .where(or(like(customers.name, s), like(customers.phone, s), like(customers.email, s), like(customers.postcode, s)))
+    .orderBy(customers.name)
+    .limit(limit);
+}
+
 export interface SaveDocInput {
   id?: number;
   docType?: string;
   registration?: string;
+  customerId?: number;
   vehicle?: Record<string, any>;
   customerName?: string; company?: string; accountNumber?: string;
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
@@ -1016,7 +1029,7 @@ export async function saveDocument(input: SaveDocInput) {
 
   // 3) document fields
   const docFields: any = undef({
-    docType, vehicleId, customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
+    docType, vehicleId, customerId: input.customerId ?? customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
     customerName: input.customerName, company: input.company, accountNumber: input.accountNumber,
     custHouseNo: input.custHouseNo, custRoad: input.custRoad, custLocality: input.custLocality,
     custTown: input.custTown, custCounty: input.custCounty, custPostcode: input.custPostcode,

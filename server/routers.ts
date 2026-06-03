@@ -35,6 +35,13 @@ export const appRouter = router({
       return getAllCustomers();
     }),
 
+    search: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchCustomers } = await import("./db");
+        return searchCustomers(input.query);
+      }),
+
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
@@ -132,6 +139,7 @@ export const appRouter = router({
         id: z.number().optional(),
         docType: z.string().optional(),
         registration: z.string().optional(),
+        customerId: z.number().optional(),
         vehicle: z.record(z.string(), z.any()).optional(),
         customerName: z.string().optional(),
         company: z.string().optional(),
