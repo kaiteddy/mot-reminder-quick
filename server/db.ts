@@ -7,6 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
+  descriptionPresets,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -972,12 +973,31 @@ export async function searchCustomers(query: string, limit = 10) {
     .limit(limit);
 }
 
+/** Pre-set description snippets (GA4 parity). */
+export async function getDescriptionPresets() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(descriptionPresets).orderBy(descriptionPresets.title);
+}
+export async function createDescriptionPreset(input: { title: string; body: string; category?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [{ id }] = await db.insert(descriptionPresets).values({ title: input.title, body: input.body, category: input.category ?? null }).$returningId();
+  return { id };
+}
+export async function deleteDescriptionPreset(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(descriptionPresets).where(eq(descriptionPresets.id, id));
+}
+
 export interface SaveDocInput {
   id?: number;
   docType?: string;
   registration?: string;
   customerId?: number;
   createCustomer?: boolean;
+  updateCustomerRecord?: boolean;
   vehicle?: Record<string, any>;
   customerName?: string; company?: string; accountNumber?: string;
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
@@ -1032,6 +1052,20 @@ export async function saveDocument(input: SaveDocInput) {
     } as any).$returningId();
     customerId = id;
     if (vehicleId && !hadOwner) await db.update(vehicles).set({ customerId: id }).where(eq(vehicles.id, vehicleId)); // only adopt ownerless vehicles
+  }
+
+  // 1c) push edited customer details back to the linked customer record
+  if (input.updateCustomerRecord && (input.customerId ?? customerId)) {
+    const cid = (input.customerId ?? customerId)!;
+    const address = [input.custHouseNo, input.custRoad, input.custLocality, input.custTown, input.custCounty].filter(Boolean).join(", ");
+    const cu = undef({
+      name: input.customerName || undefined,
+      email: input.custEmail || undefined,
+      phone: (input.custMobile || input.custTelephone) || undefined,
+      postcode: input.custPostcode || undefined,
+      address: address || undefined,
+    });
+    if (Object.keys(cu).length) await db.update(customers).set(cu).where(eq(customers.id, cid));
   }
 
   // 2) recompute totals from line items

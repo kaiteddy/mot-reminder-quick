@@ -323,3 +323,19 @@ export const autodataRequests = mysqlTable("autodataRequests", {
 
 export type AutodataRequest = typeof autodataRequests.$inferSelect;
 export type InsertAutodataRequest = typeof autodataRequests.$inferInsert;
+
+/**
+ * Pre-set descriptions - reusable job-sheet description snippets (GA4 parity)
+ */
+export const descriptionPresets = mysqlTable("descriptionPresets", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  category: varchar("category", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  titleIdx: index("description_presets_title_idx").on(table.title),
+}));
+
+export type DescriptionPreset = typeof descriptionPresets.$inferSelect;
+export type InsertDescriptionPreset = typeof descriptionPresets.$inferInsert;

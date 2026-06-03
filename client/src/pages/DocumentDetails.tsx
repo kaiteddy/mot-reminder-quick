@@ -121,6 +121,16 @@ export default function DocumentDetails() {
         staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus,
         lineItems: items.map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
       };
+      // If the customer details were edited and a customer is linked, offer to update their record
+      const cust = (data as any)?.customer;
+      if (form.customerId && cust) {
+        const changed =
+          (form.customerName || "") !== (cust.name || "") ||
+          (form.custMobile || form.custTelephone || "") !== (cust.phone || "") ||
+          (form.custEmail || "") !== (cust.email || "") ||
+          (form.custPostcode || "") !== (cust.postcode || "");
+        if (changed) payload.updateCustomerRecord = window.confirm(`Customer details have changed.\n\nUpdate ${cust.name || "the customer"}'s record with the new details?`);
+      }
       const res = await save.mutateAsync(payload);
       toast.success("Job sheet saved");
       if (isNew) { setLocation(`/documents/${res.id}`); }
@@ -256,6 +266,7 @@ export default function DocumentDetails() {
                 </TabsList>
                 <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
                   <TabsContent value="description" className="mt-0">
+                    {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     <textarea value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} readOnly={!editing} rows={10}
                       placeholder={editing ? "Describe the work to be carried out…" : ""}
                       className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none read-only:border-transparent read-only:p-0 focus:border-violet-400 resize-y" />
@@ -356,6 +367,27 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void; currentBody?: string }) {
+  const { data: presets } = trpc.descriptionPresets.list.useQuery();
+  const create = trpc.descriptionPresets.create.useMutation();
+  const utils = trpc.useUtils();
+  return (
+    <div className="flex items-center gap-3 mb-2">
+      <select className="border border-slate-300 rounded-sm px-2 py-1 text-[13px] bg-white" value=""
+        onChange={(e) => { const p = (presets as any[])?.find((x) => String(x.id) === e.target.value); if (p) onPick(p.body); }}>
+        <option value="">Pre-set descriptions…</option>
+        {(presets as any[])?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+      </select>
+      {currentBody?.trim() && (
+        <button type="button" className="text-[12px] text-violet-700 hover:underline"
+          onClick={async () => { const title = prompt("Save current description as a preset — enter a title:"); if (title?.trim()) { await create.mutateAsync({ title: title.trim(), body: currentBody! }); await utils.descriptionPresets.list.invalidate(); toast.success("Preset saved"); } }}>
+          + Save as preset
+        </button>
       )}
     </div>
   );

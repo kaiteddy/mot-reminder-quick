@@ -141,6 +141,7 @@ export const appRouter = router({
         registration: z.string().optional(),
         customerId: z.number().optional(),
         createCustomer: z.boolean().optional(),
+        updateCustomerRecord: z.boolean().optional(),
         vehicle: z.record(z.string(), z.any()).optional(),
         customerName: z.string().optional(),
         company: z.string().optional(),
@@ -173,6 +174,26 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { saveDocument } = await import("./db");
         return saveDocument(input as any);
+      }),
+  }),
+
+  descriptionPresets: router({
+    list: publicProcedure.query(async () => {
+      const { getDescriptionPresets } = await import("./db");
+      return getDescriptionPresets();
+    }),
+    create: publicProcedure
+      .input(z.object({ title: z.string(), body: z.string(), category: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const { createDescriptionPreset } = await import("./db");
+        return createDescriptionPreset(input);
+      }),
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deleteDescriptionPreset } = await import("./db");
+        await deleteDescriptionPreset(input.id);
+        return { success: true };
       }),
   }),
 
