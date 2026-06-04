@@ -95,6 +95,10 @@ function recalc(i: Item): Item {
   return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
 }
 
+// Workshop staff (GA4 "Employee" list) — used for the Sales Advisor / Technician /
+// Road Tester / MOT Tester dropdowns. (Could later be moved to editable app settings.)
+const TECHNICIANS = ["Dec Buckley", "Doug Brittain", "Eli Rutstein", "Kevin Peach"];
+
 // "Extras" categories surfaced as single £ amounts (not itemised line tables).
 const EXTRA_KINDS = ["MOT", "Sundries", "Lubricant", "Paint"];
 const EXTRA_VAT: Record<string, number> = { MOT: 0, Sundries: 20, Lubricant: 20, Paint: 20 };
@@ -493,16 +497,16 @@ export default function DocumentDetails() {
                 <EF label="Order Ref" field="orderRef" w="w-20" {...{ form, set, editing }} />
                 <EF label="Department" field="department" w="w-20" {...{ form, set, editing }} />
                 <EF label="Terms" field="terms" w="w-20" {...{ form, set, editing }} />
-                <EF label="Sales Advisor" field="staffSalesPerson" w="w-20" {...{ form, set, editing }} />
-                <EF label="Technician" field="staffTechnician" w="w-20" {...{ form, set, editing }} />
-                <EF label="Road Tester" field="staffRoadTester" w="w-20" {...{ form, set, editing }} />
+                <SelectField label="Sales Advisor" field="staffSalesPerson" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
+                <SelectField label="Technician" field="staffTechnician" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
+                <SelectField label="Road Tester" field="staffRoadTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
               </Panel>
               {!isExcess && (
                 <Panel title="Extras">
                   <AmountField label="MOT" field="motAmount" {...{ form, set, editing }} />
                   <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
                   <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
-                  <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
+                  <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
                   <div className="border-t my-1.5" />
                   <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
                   <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
@@ -867,7 +871,7 @@ function SelectField({ label, field, form, set, editing, options, w = "w-24" }: 
       <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
       <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
         <option value=""></option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {(form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
   );

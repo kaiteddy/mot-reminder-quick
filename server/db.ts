@@ -969,7 +969,7 @@ export async function lookupVehicleForReg(registration: string) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
-          const deriv = sws?.specs?.name || sws?.specs?.fullName || null;
+          const deriv = sws?.specs?.fullName || sws?.specs?.name || null;
           if (deriv) {
             v.derivative = deriv;
             await db.update(vehicles).set({ derivative: deriv }).where(eq(vehicles.id, v.id));
@@ -999,7 +999,7 @@ export async function lookupVehicleForReg(registration: string) {
     if (u.make || u.model || u.colour || u.fuelType || u.engineSize || u.vin) {
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
-      v.derivative = sws?.specs?.name || sws?.specs?.fullName || null;
+      v.derivative = sws?.specs?.fullName || sws?.specs?.name || null;
       sources.push("sws");
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
