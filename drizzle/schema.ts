@@ -212,6 +212,9 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   registration: varchar("registration", { length: 20 }), // denormalized for quick lookup/link
   // --- GA4 parity: document-snapshot customer/staff/mot fields ---
   customerName: varchar("customerName", { length: 255 }),
+  custTitle: varchar("custTitle", { length: 20 }),
+  custForename: varchar("custForename", { length: 100 }),
+  custSurname: varchar("custSurname", { length: 150 }),
   custEmail: varchar("custEmail", { length: 320 }),
   accountNumber: varchar("accountNumber", { length: 50 }),
   accountHeld: varchar("accountHeld", { length: 20 }),

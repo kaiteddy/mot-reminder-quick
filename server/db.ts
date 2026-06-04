@@ -1039,7 +1039,8 @@ export interface SaveDocInput {
   createCustomer?: boolean;
   updateCustomerRecord?: boolean;
   vehicle?: Record<string, any>;
-  customerName?: string; company?: string; accountNumber?: string;
+  customerName?: string; custTitle?: string; custForename?: string; custSurname?: string;
+  company?: string; accountNumber?: string;
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
   custTelephone?: string; custMobile?: string; custEmail?: string;
   mileage?: number | null; dateCreated?: any; dateIssued?: any;
@@ -1122,7 +1123,9 @@ export async function saveDocument(input: SaveDocInput) {
   // 3) document fields
   const docFields: any = undef({
     docType, vehicleId, customerId: input.customerId ?? customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
-    customerName: input.customerName, company: input.company, accountNumber: input.accountNumber,
+    customerName: input.customerName || [input.custTitle, input.custForename, input.custSurname].filter(Boolean).join(" ") || undefined,
+    custTitle: input.custTitle, custForename: input.custForename, custSurname: input.custSurname,
+    company: input.company, accountNumber: input.accountNumber,
     custHouseNo: input.custHouseNo, custRoad: input.custRoad, custLocality: input.custLocality,
     custTown: input.custTown, custCounty: input.custCounty, custPostcode: input.custPostcode,
     custTelephone: input.custTelephone, custMobile: input.custMobile, custEmail: input.custEmail,

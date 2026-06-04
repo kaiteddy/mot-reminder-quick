@@ -18,6 +18,31 @@ const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleSt
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
 const dateInput = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "");
+const TITLES = ["MR", "MRS", "MS", "MISS", "DR", "PROF", "REV", "SIR"];
+function splitName(full?: string) {
+  const parts = (full || "").trim().split(/\s+/).filter(Boolean);
+  let title = "";
+  if (parts.length > 1 && TITLES.includes(parts[0].toUpperCase().replace(/\./g, ""))) title = parts.shift()!;
+  const surname = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || "");
+  const forename = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
+  return { title, forename, surname };
+}
+
+const EMAIL_TEMPLATES: { name: string; types?: string[]; subject: string; body: string }[] = [
+  { name: "Invoice", types: ["SI"], subject: "Invoice {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nThank you for choosing ELI Motors. Please find attached your invoice {docNo} for {reg}, total £{total}.\n\nIf you have any questions please reply to this email or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
+  { name: "Estimate", types: ["ES"], subject: "Estimate {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached our estimate {docNo} for {reg}, total £{total}.\n\nTo go ahead, or if you have any questions, just reply or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
+  { name: "Job Sheet", types: ["JS"], subject: "Job Sheet {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached the job sheet {docNo} for {reg}.\n\nKind regards,\nELI Motors Limited" },
+  { name: "General", subject: "{type} {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find your {type} attached.\n\nKind regards,\nELI Motors Limited" },
+];
+function applyTemplate(t: { subject: string; body: string }, ctx: any) {
+  const sub = (s: string) => s
+    .replace(/\{customer\}/g, ctx.customer || "Customer")
+    .replace(/\{docNo\}/g, ctx.docNo || "")
+    .replace(/\{type\}/g, ctx.type || "Document")
+    .replace(/\{total\}/g, ctx.total || "0.00")
+    .replace(/\{reg\}/g, ctx.reg || "your vehicle");
+  return { subject: sub(t.subject), message: sub(t.body) };
+}
 
 type Item = { id?: number; itemType: string; description?: string; partNumber?: string; nominalCode?: string; quantity?: any; unitPrice?: any; vatRate?: any; subNet?: any; taxAmount?: any };
 
@@ -56,11 +81,21 @@ export default function DocumentDetails() {
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
   }
   const emailMut = trpc.email.sendDocument.useMutation();
-  async function doEmail() {
-    const def = (data as any)?.doc?.custEmail || (data as any)?.customer?.email || "";
-    const to = window.prompt("Email this document (PDF attached) to:", def);
-    if (!to) return;
-    try { await emailMut.mutateAsync({ docId: id, to }); toast.success(`Emailed to ${to}`); }
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+  function emailCtx() {
+    const d = (data as any)?.doc; const cust = (data as any)?.customer; const veh = (data as any)?.vehicle;
+    return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
+  }
+  function openEmail() {
+    const d = (data as any)?.doc; const cust = (data as any)?.customer;
+    const t = EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
+    setEmailForm({ to: d?.custEmail || cust?.email || "", ...applyTemplate(t, emailCtx()) });
+    setEmailOpen(true);
+  }
+  async function sendEmail() {
+    if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
+    try { await emailMut.mutateAsync({ docId: id, to: emailForm.to, subject: emailForm.subject, message: emailForm.message }); toast.success(`Emailed to ${emailForm.to}`); setEmailOpen(false); }
     catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
   }
 
@@ -69,6 +104,7 @@ export default function DocumentDetails() {
     if (isNew || !data?.doc) return;
     setNewCust(false);
     const { doc, vehicle, customer } = data as any;
+    const nm = splitName(doc.customerName || customer?.name);
     setForm({
       docType: doc.docType || "JS",
       customerId: doc.customerId ?? undefined,
@@ -78,7 +114,9 @@ export default function DocumentDetails() {
       engineCode: vehicle?.engineCode || "", vin: vehicle?.vin || "", paintCode: vehicle?.paintCode || "",
       keyCode: vehicle?.keyCode || "", radioCode: vehicle?.radioCode || "", dateOfRegistration: dateInput(vehicle?.dateOfRegistration),
       mileage: doc.mileage ?? "",
-      customerName: doc.customerName || customer?.name || "", company: doc.company || "", accountNumber: doc.accountNumber || "",
+      customerName: doc.customerName || customer?.name || "",
+      custTitle: doc.custTitle || nm.title, custForename: doc.custForename || nm.forename, custSurname: doc.custSurname || nm.surname,
+      company: doc.company || "", accountNumber: doc.accountNumber || "",
       custHouseNo: doc.custHouseNo || "", custRoad: doc.custRoad || "", custLocality: doc.custLocality || "",
       custTown: doc.custTown || "", custCounty: doc.custCounty || "", custPostcode: doc.custPostcode || customer?.postcode || "",
       custTelephone: doc.custTelephone || customer?.phone || "", custMobile: doc.custMobile || "", custEmail: doc.custEmail || customer?.email || "",
@@ -129,7 +167,9 @@ export default function DocumentDetails() {
         customerId: form.customerId || undefined,
         createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
         vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
-        customerName: form.customerName, company: form.company, accountNumber: form.accountNumber,
+        customerName: [form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName,
+        custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
+        company: form.company, accountNumber: form.accountNumber,
         custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
         custCounty: form.custCounty, custPostcode: form.custPostcode, custTelephone: form.custTelephone, custMobile: form.custMobile, custEmail: form.custEmail,
         mileage: form.mileage ? Number(String(form.mileage).replace(/\D/g, "")) || null : null,
@@ -175,7 +215,7 @@ export default function DocumentDetails() {
             {!editing ? (
               <>
                 {!isNew && (
-                  <button onClick={doEmail} disabled={emailMut.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{emailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Email</button>
+                  <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
                 )}
                 <button onClick={handlePrint} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
                 {!isNew && (
@@ -247,8 +287,9 @@ export default function DocumentDetails() {
             <div className="xl:col-span-4 space-y-1.5">
               {editing && (
                 <>
-                  <CustomerSearch onSelect={(c) => { setNewCust(false); setForm((f) => ({
+                  <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
                     ...f, customerId: c.id, customerName: c.name || f.customerName,
+                    custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
                     custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
                     custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
                   })); }} />
@@ -258,14 +299,19 @@ export default function DocumentDetails() {
                     ) : (isNew || newCust) && form.customerName ? (
                       <span className="text-[11px] text-green-700">New customer will be created</span>
                     ) : null}
-                    <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); }}
+                    <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", custTitle: "", custForename: "", custSurname: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); }}
                       className="text-[11px] text-violet-700 hover:underline inline-flex items-center gap-1"><Plus className="w-3 h-3" /> New customer</button>
                   </div>
                 </>
               )}
               <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
               <EF label="Company" field="company" {...{ form, set, editing }} />
-              <EF label="Name" field="customerName" {...{ form, set, editing }} />
+              <div className="flex items-center gap-2">
+                <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Name</span>
+                <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
+                <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
+                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing} placeholder="Surname" className={boxCls(editing) + " flex-1"} />
+              </div>
               <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} /></div>
               <EF label="Road" field="custRoad" {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
@@ -351,6 +397,45 @@ export default function DocumentDetails() {
             </div>
           </div>
         </div>
+
+        {/* email dialog */}
+        {emailOpen && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setEmailOpen(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold flex items-center gap-2"><Mail className="w-5 h-5" /> Email document</h3>
+                <button onClick={() => setEmailOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+              </div>
+              <p className="text-xs text-muted-foreground">The {TYPE_LABEL[(data as any)?.doc?.docType] || "document"} PDF will be attached automatically.</p>
+              <div>
+                <label className="text-xs text-muted-foreground">Template</label>
+                <select className="w-full border rounded px-2 py-1.5 text-sm mt-0.5" defaultValue=""
+                  onChange={(e) => { const t = EMAIL_TEMPLATES.find((x) => x.name === e.target.value); if (t) setEmailForm((f) => ({ ...f, ...applyTemplate(t, emailCtx()) })); }}>
+                  <option value="" disabled>Choose a template…</option>
+                  {EMAIL_TEMPLATES.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">To</label>
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.to} onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))} placeholder="customer@email.com" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Subject</label>
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.subject} onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Message</label>
+                <textarea rows={8} className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 resize-y outline-none focus:border-violet-500" value={emailForm.message} onChange={(e) => setEmailForm((f) => ({ ...f, message: e.target.value }))} />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={() => setEmailOpen(false)} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
+                <button onClick={sendEmail} disabled={emailMut.isPending} className="bg-violet-700 text-white rounded px-4 py-1.5 text-sm hover:bg-violet-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+                  {emailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* off-screen printable replica (react-to-print) */}
         <div style={{ position: "absolute", left: "-99999px", top: 0 }} aria-hidden="true">
