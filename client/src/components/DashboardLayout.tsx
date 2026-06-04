@@ -63,7 +63,6 @@ const menuItems = [
   { icon: MessageSquare, label: "Conversations", path: "/conversations" },
   { icon: ShieldAlert, label: "Urgent Follow Ups", path: "/urgent-follow-ups" },
   { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
-  { icon: FileText, label: "Generate Doc", path: "/generate-document" },
   { icon: FileText, label: "Logs & Messages", path: "/logs" },
   { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
   { icon: Users, label: "Customers", path: "/customers" },
