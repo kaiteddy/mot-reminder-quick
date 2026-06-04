@@ -511,8 +511,7 @@ export default function DocumentDetails() {
                         className="accent-violet-600 w-3.5 h-3.5" />
                       MOT
                     </label>
-                    <input value={form.motAmount ?? ""} onChange={(e) => set("motAmount", e.target.value)} readOnly={!editing} inputMode="decimal" placeholder="0.00"
-                      className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white read-only:bg-slate-50 outline-none focus:border-violet-500" />
+                    <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
                   </div>
                   <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
                   <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
@@ -691,12 +690,25 @@ export default function DocumentDetails() {
 const boxCls = (editing: boolean) =>
   `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[26px] truncate outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
 
+// A right-aligned numeric input with a leading £ symbol, used for every amount entry.
+function MoneyInput({ value, onChange, readOnly = false, w = "w-24", big = false, placeholder = "0.00" }: { value: any; onChange: (v: string) => void; readOnly?: boolean; w?: string; big?: boolean; placeholder?: string }) {
+  const base = big
+    ? "border rounded pl-5 pr-2 py-1.5 text-sm"
+    : "border border-slate-300 rounded-sm pl-5 pr-2 py-[2px] text-[13px] bg-white read-only:bg-slate-50";
+  return (
+    <div className={`relative ${w}`}>
+      <span className={`absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 ${big ? "text-sm" : "text-[12px]"}`}>£</span>
+      <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} inputMode="decimal" placeholder={placeholder}
+        className={`w-full text-right outline-none focus:border-violet-500 ${base}`} />
+    </div>
+  );
+}
+
 function AmountField({ label, field, form, set, editing }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-[12px] text-slate-600">{label}</span>
-      <input value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} inputMode="decimal" placeholder="0.00"
-        className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white read-only:bg-slate-50 outline-none focus:border-violet-500" />
+      <MoneyInput value={form[field]} onChange={(v) => set(field, v)} readOnly={!editing} />
     </div>
   );
 }
@@ -752,8 +764,8 @@ function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onCl
             <label className="text-xs text-slate-600">Method
               <select value={method} onChange={(e) => setMethod(e.target.value)} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-36">{PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
             </label>
-            <label className="text-xs text-slate-600">Amount £
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={outstanding > 0 ? money(outstanding) : "0.00"} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-28 text-right outline-none focus:border-violet-500" />
+            <label className="text-xs text-slate-600">Amount
+              <MoneyInput value={amount} onChange={setAmount} big w="w-28 mt-0.5 block" placeholder={outstanding > 0 ? money(outstanding) : "0.00"} />
             </label>
             <label className="text-xs text-slate-600 flex-1 min-w-[140px]">Note
               <input value={note} onChange={(e) => setNote(e.target.value)} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-full outline-none focus:border-violet-500" />
@@ -806,11 +818,11 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-700">Insurance Policy Excess</span>
-            <input value={excess} onChange={(e) => setExcess(e.target.value)} placeholder="0.00" className="w-32 text-right border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+            <MoneyInput value={excess} onChange={setExcess} w="w-32" big />
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-700">Discount Amount</span>
-            <input value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0.00" className="w-32 text-right border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+            <MoneyInput value={discount} onChange={setDiscount} w="w-32" big />
           </div>
           <p className="text-[12px] italic text-slate-500">This discount only applies to the policy excess NET figure. It will discount the excess invoice, without it showing a discount on the insurance invoice.</p>
           <div className="bg-slate-50 border rounded p-3 text-[13px] space-y-1">
@@ -853,9 +865,9 @@ function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
         </div>
       </div>
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Policy Excess</span>
-        <input value={excess} onChange={(e) => setExcess(e.target.value)} className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px]" /></div>
+        <MoneyInput value={excess} onChange={setExcess} /></div>
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Discount</span>
-        <input value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px]" /></div>
+        <MoneyInput value={discount} onChange={setDiscount} /></div>
       <div className="border-t pt-1 mt-1 space-y-0.5">
         <div className="flex justify-between text-[12px]"><span className="text-slate-600">NET</span><span>£{money(net)}</span></div>
         <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT</span><span>£{money(vat)}</span></div>
@@ -1142,7 +1154,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
                 {showPartNo && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
                 <TableCell>{editing ? <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} /> : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
-                <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.unitPrice ?? ""} onChange={(e) => update(idx, { unitPrice: e.target.value })} /> : `£${money(it.unitPrice)}`}</TableCell>
+                <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
                 <TableCell className="text-right">£{money(it.subNet)}</TableCell>
                 <TableCell className="text-right">£{money(gross)}</TableCell>
