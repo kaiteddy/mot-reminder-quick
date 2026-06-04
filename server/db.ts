@@ -1164,7 +1164,7 @@ export interface SaveDocInput {
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
   custTelephone?: string; custMobile?: string; custEmail?: string;
   mileage?: number | null; dateCreated?: any; dateIssued?: any;
-  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string;
+  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string; insuranceCompany?: string;
   staffSalesPerson?: string; staffTechnician?: string; staffRoadTester?: string; staffMotTester?: string;
   motClass?: string; motStatus?: string;
   lineItems?: Array<Record<string, any>>;
@@ -1251,7 +1251,7 @@ export async function saveDocument(input: SaveDocInput) {
     custTelephone: input.custTelephone, custMobile: input.custMobile, custEmail: input.custEmail,
     mileage: input.mileage, dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
     dateIssued: input.dateIssued ? new Date(input.dateIssued) : undefined,
-    docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms,
+    docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms, insuranceCompany: input.insuranceCompany,
     description: input.description, staffSalesPerson: input.staffSalesPerson, staffTechnician: input.staffTechnician,
     staffRoadTester: input.staffRoadTester, staffMotTester: input.staffMotTester, motClass: input.motClass, motStatus: input.motStatus,
     totalNet: String(totalNet.toFixed(2)), totalTax: String(totalTax.toFixed(2)), totalGross: String(totalGross.toFixed(2)),
@@ -1304,7 +1304,7 @@ export async function convertDocument(id: number, toType: string) {
     custMobile: doc.custMobile, custEmail: doc.custEmail,
     mileage: doc.mileage, description: doc.description, orderRef: doc.orderRef, department: doc.department, terms: doc.terms,
     staffSalesPerson: doc.staffSalesPerson, staffTechnician: doc.staffTechnician, staffRoadTester: doc.staffRoadTester,
-    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, docStatus: "New",
+    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, insuranceCompany: doc.insuranceCompany, docStatus: "New",
     lineItems: (lineItems || []).map((li: any) => ({
       itemType: li.itemType, description: li.description, partNumber: li.partNumber, nominalCode: li.nominalCode,
       quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
@@ -1564,10 +1564,13 @@ export async function getRichPDF(documentId: number) {
     vat: '330 9339 65',
   };
 
+  // who the invoice is addressed to: the insurer on a main insurance invoice, else the customer
+  const billTo = (doc.docType !== 'XS' && (doc as any).insuranceCompany) ? String((doc as any).insuranceCompany) : null;
   const customerData = {
     name: customer?.name || 'Unknown Client',
     address_lines: (customer?.address || '').split(',').map((s: string) => s.trim()),
     mobile: customer?.phone || '',
+    billTo,
   };
 
   const vehicleData = {

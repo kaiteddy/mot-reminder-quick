@@ -239,6 +239,7 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   // --- Policy-excess insurance split (XS doc links back to its main insurance invoice) ---
   relatedDocId: int("relatedDocId"), // for an XS excess invoice: the main insurance invoice id (and vice-versa)
   relatedDocNo: varchar("relatedDocNo", { length: 50 }),
+  insuranceCompany: varchar("insuranceCompany", { length: 255 }), // bill-to for an insurance (main) invoice
   excessDiscount: decimal("excessDiscount", { precision: 10, scale: 2 }), // discount applied to the excess NET only
   custVatRegistered: int("custVatRegistered"), // 1 = customer is VAT registered (affects excess VAT)
   terms: varchar("terms", { length: 255 }),

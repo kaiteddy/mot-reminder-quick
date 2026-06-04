@@ -173,6 +173,7 @@ export const appRouter = router({
         department: z.string().optional(),
         terms: z.string().optional(),
         description: z.string().optional(),
+        insuranceCompany: z.string().optional(),
         staffSalesPerson: z.string().optional(),
         staffTechnician: z.string().optional(),
         staffRoadTester: z.string().optional(),

@@ -144,9 +144,18 @@ function customerAndDoc(
   const rw = PW - M - 340;
 
   // Customer (left column)
-  doc.font('Helvetica').fontSize(10).fillColor('black');
-  doc.text(customer.name, M + 30, y);
-  let cy = y + 14;
+  let cy = y;
+  // Insurance invoices are addressed to the insurer; show that prominently above the customer.
+  if (customer.billTo) {
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+    doc.text(`Invoice to: ${customer.billTo}`, M + 30, cy); cy += 14;
+    doc.font('Helvetica').fontSize(9).fillColor('#444');
+    doc.text(`Re. customer: ${customer.name}`, M + 30, cy); cy += 14;
+    doc.fillColor('black');
+  } else {
+    doc.font('Helvetica').fontSize(10).fillColor('black');
+    doc.text(customer.name, M + 30, cy); cy += 14;
+  }
   for (const line of customer.address_lines || []) {
     doc.text(line, M + 30, cy); cy += 14;
   }

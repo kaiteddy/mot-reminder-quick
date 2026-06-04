@@ -277,6 +277,7 @@ export default function DocumentDetails() {
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
       staffSalesPerson: doc.staffSalesPerson || "", staffTechnician: doc.staffTechnician || "", staffRoadTester: doc.staffRoadTester || "",
       staffMotTester: doc.staffMotTester || "", motClass: doc.motClass || "", motStatus: doc.motStatus || "",
+      insuranceCompany: doc.insuranceCompany || "",
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
@@ -419,7 +420,7 @@ export default function DocumentDetails() {
       dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
-      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus,
+      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany,
       lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
     };
   }
@@ -587,6 +588,14 @@ export default function DocumentDetails() {
           {isExcess && (
             <div className="bg-fuchsia-50 border-b border-fuchsia-200 text-center py-2 text-[14px] font-semibold text-fuchsia-900">
               This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || relatedDoc?.docNo || "—"}
+              <span className="block text-[11px] font-normal text-fuchsia-700">Billed to the customer: {form.customerName || (data as any)?.customer?.name || "—"}</span>
+            </div>
+          )}
+          {/* insurance bill-to banner (main invoice addressed to the insurer) */}
+          {!isExcess && String(form.insuranceCompany ?? "").trim() && (
+            <div className="bg-sky-50 border-b border-sky-200 text-center py-2 text-[13px] font-semibold text-sky-900">
+              Insurance invoice — billed to: {form.insuranceCompany}
+              <span className="font-normal text-sky-700"> · re. customer {form.customerName || (data as any)?.customer?.name || "—"}{relatedDoc ? ` · excess invoice ${relatedDoc.docNo}` : ""}</span>
             </div>
           )}
 
@@ -680,6 +689,7 @@ export default function DocumentDetails() {
                 <EF label="Order Ref" field="orderRef" w="w-20" {...{ form, set, editing }} />
                 <EF label="Department" field="department" w="w-20" {...{ form, set, editing }} />
                 <EF label="Terms" field="terms" w="w-20" {...{ form, set, editing }} />
+                {!isExcess && <EF label="Insurance Co." field="insuranceCompany" w="w-20" {...{ form, set, editing }} />}
                 <SelectField label="Sales Advisor" field="staffSalesPerson" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
                 <SelectField label="Technician" field="staffTechnician" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
                 <SelectField label="Road Tester" field="staffRoadTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
