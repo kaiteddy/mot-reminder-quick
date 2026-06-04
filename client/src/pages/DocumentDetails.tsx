@@ -134,6 +134,7 @@ export default function DocumentDetails() {
   const [items, setItems] = useState<Item[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [dismissSig, setDismissSig] = useState("");
   const editSeq = useRef(0);
   const initRef = useRef<number | null>(null);
   const markDirty = () => { editSeq.current++; setDirty(true); };
@@ -384,6 +385,24 @@ export default function DocumentDetails() {
     };
   }, [data, lookupTech]);
 
+  // Detect when the customer's name / phone / email / postcode on this doc differ from
+  // their saved record, so we can offer to update the customer master (auto-save can't prompt).
+  const custSync = useMemo(() => {
+    const c = (data as any)?.customer;
+    if (!form.customerId || !c) return { changes: [] as string[], sig: "" };
+    const name = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
+    const phone = (form.custMobile || form.custTelephone || "").trim();
+    const email = (form.custEmail || "").trim();
+    const postcode = (form.custPostcode || "").trim();
+    const ne = (a: any, b: any) => (a || "").trim() !== (b || "").trim();
+    const changes: string[] = [];
+    if (name && ne(name, c.name)) changes.push("name");
+    if (phone && ne(phone, c.phone)) changes.push("phone");
+    if ((email || c.email) && ne(email, c.email)) changes.push("email");
+    if ((postcode || c.postcode) && ne(postcode, c.postcode)) changes.push("postcode");
+    return { changes, sig: `${name}|${phone}|${email}|${postcode}` };
+  }, [data, form.customerId, form.customerName, form.custTitle, form.custForename, form.custSurname, form.custMobile, form.custTelephone, form.custEmail, form.custPostcode]);
+
   function buildPayload(): any {
     return {
       id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
@@ -435,6 +454,16 @@ export default function DocumentDetails() {
   // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
   async function flushPending() { if (dirty) await autoSave(); }
   async function goBack() { await flushPending(); setLocation("/documents"); }
+
+  // Push the edited customer details back to the customer's master record (opt-in).
+  async function doUpdateCustomer() {
+    try {
+      await flushPending();
+      await save.mutateAsync({ ...buildPayload(), updateCustomerRecord: true });
+      await utils.documents.getById.invalidate({ id });
+      toast.success(`Updated ${(data as any)?.customer?.name || "customer"}'s record`);
+    } catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
+  }
 
   // (skip the loading/not-found screens once we've already initialised this doc — e.g. right
   // after a new doc auto-saves and the URL switches to its id, the form is already populated)
@@ -602,6 +631,15 @@ export default function DocumentDetails() {
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" {...{ form, set, editing }} />
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
+              {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
+                <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
+                  <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button type="button" onClick={() => setDismissSig(custSync.sig)} className="text-amber-700 hover:underline">Not now</button>
+                    <button type="button" onClick={doUpdateCustomer} disabled={save.isPending} className="bg-amber-600 text-white rounded px-2 py-0.5 hover:bg-amber-700 disabled:opacity-50">Update</button>
+                  </div>
+                </div>
+              )}
             </div>
             {/* additional info */}
             <div className="xl:col-span-3 space-y-3">
