@@ -9,6 +9,10 @@ import { eq, like, desc } from "drizzle-orm";
 
 const fallbackKey = "sk-" + "proj" + "-D0hxv1znK5LY35z9iIngC_DrLg" + "HXYLI5T2u8BzHPGfYd4VSvmNyTMPaYry8r" + "GkH0Zr7GTWCccYT3BlbkFJfi" + "H130_7pYUo--tdjc-RkoMzsZ" + "-xEJNbwbOi4Ns29u-Ze04XRgu2Y1ED8useJvQBdyS3Bd9NoA";
 
+// Current OpenAI cost-optimized small model (replaces the legacy gpt-4o-mini).
+// Override via AI_MODEL env without a code change.
+const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-mini";
+
 const getRuntimeProvider = () => {
   let activeKey = process.env.OPENAI_API_KEY;
   
@@ -126,7 +130,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       try {
         const provider = getRuntimeProvider();
         const { object } = await generateObject({
-          model: provider('gpt-4o-mini'),
+          model: provider(AI_MODEL),
           system: "You are an expert UK mechanic and garage manager.",
           prompt: prompt,
           schema: z.object({
@@ -182,7 +186,7 @@ CRITICAL INSTRUCTIONS:
       try {
         const provider = getRuntimeProvider();
         const { text } = await generateText({
-          model: provider('gpt-4o-mini'),
+          model: provider(AI_MODEL),
           system: "You are a helpful, friendly UK mechanic.",
           prompt: prompt,
         });
@@ -220,7 +224,7 @@ Write a professional job specification for the job sheet / invoice describing th
       try {
         const provider = getRuntimeProvider();
         const { object } = await generateObject({
-          model: provider('gpt-4o-mini'),
+          model: provider(AI_MODEL),
           system: "You are an expert UK master technician writing precise, concise workshop job specifications.",
           prompt,
           schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(3).max(10) }),
