@@ -69,8 +69,18 @@ export default function EmailSettings() {
             <Field label="Auth Method" value={f.authMethod} onChange={(v) => set("authMethod", v)} placeholder="LOGIN" />
             <Field label="Timeout (secs)" value={f.timeout} onChange={(v) => set("timeout", v)} type="number" placeholder="60" />
             <div className="bg-blue-50 border border-blue-100 rounded p-3 text-xs text-slate-600 space-y-2">
-              <p>Defaults: SSL <b>Yes</b>, Auth <b>LOGIN</b>, Port <b>587</b>. For <b>Gmail</b> you must use an <b>App Password</b> (Google Account → Security → 2-Step Verification → App passwords), not your normal password.</p>
-              <div className="flex gap-3">Quick set: {COMMON.map((c) => (<button key={c.name} type="button" onClick={() => { set("host", c.host); set("port", c.port); }} className="underline text-violet-700">{c.name}</button>))}</div>
+              <p>Defaults: SSL <b>Yes</b>, Auth <b>LOGIN</b>, Port <b>587</b>. For <b>Gmail</b> you must use a 16-character <b>App Password</b> — not your normal mailbox password (Google blocks that for SMTP).</p>
+              <p>
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-violet-700 underline font-semibold">Create a Gmail App Password ↗</a>
+                {" "}— requires 2-Step Verification turned on. Paste the 16-char code into the Password field above.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>Quick-fill server:</span>
+                {COMMON.map((c) => (
+                  <button key={c.name} type="button" onClick={() => { set("host", c.host); set("port", c.port); set("secure", true); }}
+                    className="border border-slate-300 bg-white rounded px-2 py-0.5 hover:bg-violet-50 hover:border-violet-400">{c.name}</button>
+                ))}
+              </div>
             </div>
             <div className="flex gap-2 pt-2">
               <Button onClick={onSave} disabled={save.isPending}>{save.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Save</Button>
