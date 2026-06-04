@@ -622,7 +622,7 @@ export default function DocumentDetails() {
                     <TRow label="Receipts" value={docReceipts} bold />
                     <div className="flex items-center gap-2">
                       <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
-                      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>{money(docBalance)}</div>
+                      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
                     </div>
                   </div>
                 )}
@@ -912,7 +912,7 @@ function TRow({ label, value, bold }: { label: string; value: any; bold?: boolea
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
-      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white ${bold ? "font-semibold" : ""}`}>{money(value)}</div>
+      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white ${bold ? "font-semibold" : ""}`}>£{money(value)}</div>
     </div>
   );
 }
