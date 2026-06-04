@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useReactToPrint } from "react-to-print";
-import PrintableDocument from "@/components/PrintableDocument";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -19,6 +17,12 @@ const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleSt
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
 const dateInput = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "");
+// A/C refrigerant charge: SWS gives a unit-bearing string ("430 ± 20 (g)"); heuristic gives grams as a number.
+const fmtGasQty = (q: any): string | undefined => {
+  if (q == null || q === "") return undefined;
+  const s = String(q).trim();
+  return `Charge ${/[a-z(]/i.test(s) ? s : `${s} g`}`;
+};
 const TITLES = ["MR", "MRS", "MS", "MISS", "DR", "PROF", "REV", "SIR"];
 function splitName(full?: string) {
   const parts = (full || "").trim().split(/\s+/).filter(Boolean);
@@ -124,8 +128,26 @@ export default function DocumentDetails() {
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
-  const printRef = useRef<HTMLDivElement>(null);
-  const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: `${(data as any)?.doc?.docType || "Doc"}_${(data as any)?.doc?.docNo || "draft"}` });
+  const [printing, setPrinting] = useState(false);
+  // Print the SAME server-rendered PDF that gets emailed, so print & email always match.
+  async function handlePrint() {
+    if (isNew || !id) return;
+    setPrinting(true);
+    try {
+      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
+      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+      const bytes = atob(res.content);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      const w = window.open(url, "_blank");
+      if (!w) { // popup blocked — fall back to a download
+        const a = document.createElement("a"); a.href = url; a.download = res.filename || "document.pdf"; a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
+    finally { setPrinting(false); }
+  }
   const convert = trpc.documents.convert.useMutation();
   const [convertOpen, setConvertOpen] = useState(false);
   async function doConvert(toType: string) {
@@ -260,7 +282,7 @@ export default function DocumentDetails() {
       oilSpec: lookupTech?.oilSpec ?? oil?.specification,
       oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
       airconType: lookupTech?.airconType ?? td.aircon?.type,
-      airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.capacity,
+      airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity,
       motExpiry: lookupTech?.motExpiry ?? v?.motExpiryDate,
       taxStatus: lookupTech?.taxStatus ?? v?.taxStatus,
       taxDueDate: lookupTech?.taxDueDate ?? v?.taxDueDate,
@@ -331,7 +353,7 @@ export default function DocumentDetails() {
                 {!isNew && (
                   <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
                 )}
-                <button onClick={handlePrint} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
+                <button onClick={handlePrint} disabled={printing} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
                 {!isNew && (
                   <div className="relative">
                     <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
@@ -411,7 +433,16 @@ export default function DocumentDetails() {
                 <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1 self-end"} />
               </div>
               <EF label="Derivative" field="derivative" {...{ form, set, editing }} grow />
-              <div className="flex gap-2"><EF label="Chassis" field="vin" {...{ form, set, editing }} grow /></div>
+              <div className="flex gap-2 items-center">
+                <EF label="Chassis" field="vin" {...{ form, set, editing }} grow />
+                {form.vin && (
+                  <button type="button" title="Search this VIN on PartSouq"
+                    onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
+                    className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
+                    <ExternalLink className="w-3.5 h-3.5" /> PartSouq
+                  </button>
+                )}
+              </div>
               <div className="flex gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Engine Code" field="engineCode" {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Colour" field="colour" {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" {...{ form, set, editing }} /></div>
@@ -514,7 +545,7 @@ export default function DocumentDetails() {
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilSpec || "—"} sub={vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
-                main={vehInfo.airconType || "—"} sub={vehInfo.airconCapacity ? `${vehInfo.airconCapacity}` : undefined} />
+                main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
                 main={form.mileage ? Number(form.mileage).toLocaleString("en-GB") : "—"} sub={form.mileage ? "miles (last)" : undefined} />
               <InfoCard icon={<CalendarClock className="w-4 h-4" />} tone={motTone(vehInfo.motExpiry)} label="MOT Expiry"
@@ -638,12 +669,6 @@ export default function DocumentDetails() {
           <ExcessCreateDialog mainDocNo={docNo} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
         )}
 
-        {/* off-screen printable replica (react-to-print) */}
-        <div style={{ position: "absolute", left: "-99999px", top: 0 }} aria-hidden="true">
-          <div ref={printRef}>
-            <PrintableDocument doc={(data as any)?.doc} vehicle={(data as any)?.vehicle} customer={(data as any)?.customer} lineItems={(data as any)?.lineItems} />
-          </div>
-        </div>
       </div>
     </DashboardLayout>
   );

@@ -370,6 +370,17 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   }
   y += 10;
 
+  // Car diagram (vehicle inspection image) — matches estimate / job sheet
+  const invDiagram = findImg('car_diagram.png');
+  if (invDiagram) {
+    const dw = CW * 0.48;
+    const dh = dw * (274 / 355);
+    y += 6;
+    y = checkBreak(dh);
+    doc.image(invDiagram, M, y, { width: dw });
+    y += dh + 10;
+  }
+
   // MOT table (optional)
   if (data.mot && data.mot.length > 0) {
     const motRows = data.mot.map((m: any) => [m.description, String(m.qty ?? ''), String(m.status ?? '')]);

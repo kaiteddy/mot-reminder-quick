@@ -981,7 +981,7 @@ export async function lookupVehicleForReg(registration: string) {
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
     if (oil || sws?.aircon) {
-      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.capacity || null };
+      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
     }
   } catch (e) { /* SWS/UKVD unavailable */ }
   try {
