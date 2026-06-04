@@ -136,6 +136,19 @@ export default function DocumentDetails() {
   // Print the SAME server-rendered PDF that gets emailed, so print & email always match.
   async function handlePrint() {
     if (isNew || !id) return;
+    // an invoice must have the customer details + mileage before it goes out
+    if (form.docType === "SI" || form.docType === "XS") {
+      const missing: string[] = [];
+      if (!(form.custSurname || form.custForename || form.company || form.customerName)) missing.push("Customer name");
+      if (!String(form.custRoad ?? "").trim()) missing.push("Address");
+      if (!String(form.custPostcode ?? "").trim()) missing.push("Postcode");
+      if (!String(form.mileage ?? "").trim()) missing.push("Mileage");
+      if (missing.length) {
+        toast.error(`Cannot print — complete the fields shown in red: ${missing.join(", ")}.`);
+        if (!editing) setEditing(true);
+        return;
+      }
+    }
     setPrinting(true);
     try {
       const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
@@ -337,6 +350,7 @@ export default function DocumentDetails() {
   const history = (data as any)?.history ?? [];
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
+  const nameMissing = isInvoice && !(form.custSurname || form.custForename || form.company || form.customerName);
   const relatedDoc = (data as any)?.relatedDoc;
   const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
   const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
@@ -451,7 +465,7 @@ export default function DocumentDetails() {
               <div className="flex gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Mileage" field="mileage" {...{ form, set, editing }} /><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /></div>
+              <div className="flex gap-2"><EF label="Mileage" field="mileage" required={isInvoice} {...{ form, set, editing }} /><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /></div>
             </div>
             {/* customer */}
             <div className="xl:col-span-4 space-y-1.5">
@@ -480,10 +494,12 @@ export default function DocumentDetails() {
                 <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Name</span>
                 <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
                 <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
-                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing} placeholder="Surname" className={boxCls(editing) + " flex-1"} />
+                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
+                  placeholder={nameMissing ? "Required" : "Surname"}
+                  className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
               </div>
-              <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} /></div>
-              <EF label="Road" field="custRoad" {...{ form, set, editing }} />
+              <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" required={isInvoice} {...{ form, set, editing }} /></div>
+              <EF label="Road" field="custRoad" required={isInvoice} {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
@@ -878,11 +894,14 @@ function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
   );
 }
 
-function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean }) {
+function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
+  const empty = !String(form[field] ?? "").trim();
   return (
     <div className={`flex items-center gap-2 ${grow ? "flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
-      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1" + (upper ? " uppercase" : "")} />
+      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
+        placeholder={required ? "Required" : undefined}
+        className={boxCls(editing) + " flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
     </div>
   );
 }
