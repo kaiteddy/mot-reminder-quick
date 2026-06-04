@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
+import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -455,6 +456,20 @@ export default function DocumentDetails() {
   async function flushPending() { if (dirty) await autoSave(); }
   async function goBack() { await flushPending(); setLocation("/documents"); }
 
+  // Open-document "tabs" — keep several docs on the go and jump between them.
+  const openDocs = useOpenDocs();
+  useEffect(() => {
+    const doc = (data as any)?.doc;
+    if (isNew || !doc?.id) return;
+    upsertOpenDoc({ id: doc.id, docNo: doc.docNo, reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.registration]);
+  async function switchTo(to: string) { await flushPending(); setLocation(to); }
+  function closeTab(tabId: number) {
+    removeOpenDoc(tabId);
+    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `/documents/${rest[0].id}` : "/documents"); }
+  }
+
   // Push the edited customer details back to the customer's master record (opt-in).
   async function doUpdateCustomer() {
     try {
@@ -485,6 +500,23 @@ export default function DocumentDetails() {
   return (
     <DashboardLayout>
       <div className="space-y-3 text-slate-800">
+        {/* open-document tabs */}
+        {openDocs.length > 0 && (
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-px -mb-1">
+            {openDocs.map((d) => {
+              const active = d.id === id;
+              return (
+                <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
+                  className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
+                  <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
+                  <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
+                  <button type="button" title="Close tab" onClick={(e) => { e.stopPropagation(); closeTab(d.id); }} className="opacity-40 hover:opacity-100"><X className="w-3 h-3" /></button>
+                </div>
+              );
+            })}
+            <button type="button" onClick={() => switchTo("/documents/new")} title="New job sheet" className="inline-flex items-center gap-1 px-2 py-1.5 text-[12px] text-violet-700 hover:bg-violet-50 rounded-t-md shrink-0"><Plus className="w-3.5 h-3.5" /> New</button>
+          </div>
+        )}
         {/* toolbar */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -563,7 +595,7 @@ export default function DocumentDetails() {
             {/* vehicle */}
             <div className="xl:col-span-5 space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Registration</span>
+                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
                   className="flex-1 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
                 {editing && (
@@ -617,7 +649,7 @@ export default function DocumentDetails() {
               <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
               <EF label="Company" field="company" {...{ form, set, editing }} />
               <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Name</span>
+                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Name</span>
                 <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
                 <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
                 <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
@@ -840,7 +872,7 @@ export default function DocumentDetails() {
 }
 
 const boxCls = (editing: boolean) =>
-  `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[26px] truncate outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
+  `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[14px] h-[32px] outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
 
 // A right-aligned numeric input with a leading £ symbol, used for every amount entry.
 function MoneyInput({ value, onChange, readOnly = false, w = "w-24", big = false, placeholder = "0.00" }: { value: any; onChange: (v: string) => void; readOnly?: boolean; w?: string; big?: boolean; placeholder?: string }) {
@@ -1034,7 +1066,7 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
   const empty = !String(form[field] ?? "").trim();
   return (
     <div className={`flex items-center gap-2 ${grow ? "flex-1" : ""}`}>
-      <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
+      <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
       <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
         placeholder={required ? "Required" : undefined}
         className={boxCls(editing) + " flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
@@ -1045,7 +1077,7 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
 function SelectField({ label, field, form, set, editing, options, w = "w-24" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; options: string[]; w?: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
+      <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
       <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
         <option value=""></option>
         {(form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
@@ -1078,7 +1110,7 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   return (
     <div className="relative">
       <div className="flex items-center gap-2">
-        <span className="w-24 shrink-0 text-[11px] text-slate-600 text-right">Find customer</span>
+        <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Find customer</span>
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name / phone / postcode…"

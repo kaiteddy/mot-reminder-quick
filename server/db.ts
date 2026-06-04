@@ -962,18 +962,27 @@ export async function lookupVehicleForReg(registration: string) {
     const v: any = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
     if (v) {
       const cust = v.customerId ? (await db.select().from(customers).where(eq(customers.id, v.customerId)).limit(1))[0] ?? null : null;
-      // A known vehicle won't have the SWS-derived fields filled in (derivative, A/C charge,
-      // oil spec) — they're only fetched for brand-new regs. Supplement from SWS+DVLA when the
-      // derivative is missing, then cache the derivative back so we don't refetch next time.
-      if (!v.derivative) {
+      // A known vehicle imported from GA4 is often sparse (e.g. only the make). The SWS-derived
+      // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
+      // regs — so backfill any MISSING fields from SWS+DVLA on lookup, then cache them back.
+      const empty = (s: any) => !String(s ?? "").trim();
+      if (empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode)) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
-          const deriv = sws?.specs?.fullName || sws?.specs?.name || null;
-          if (deriv) {
-            v.derivative = deriv;
-            await db.update(vehicles).set({ derivative: deriv }).where(eq(vehicles.id, v.id));
-          }
+          const u = sws?.ukvd || {}; const sp = sws?.specs || {};
+          const fn = sp.fullName || "";
+          // model: prefer UKVD, else parse the SWS full name (strip make + engine spec)
+          const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && (v.make || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
+          const updates: any = {};
+          if (empty(v.derivative) && (fn || sp.name)) v.derivative = updates.derivative = (fn || sp.name);
+          if (empty(v.model)) { const m = (u.model || (fn ? stripMake(fn).split("(")[0].trim() : "")) || ""; if (m) v.model = updates.model = m; }
+          if (empty(v.fuelType) && (u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = (u.fuelType || sp.fuelType);
+          if (empty(v.engineCode) && sp.engineCode) v.engineCode = updates.engineCode = sp.engineCode;
+          if (empty(v.colour) && u.colour) v.colour = updates.colour = u.colour;
+          if (empty(v.vin) && (u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = (u.vin || sp.vin || sws?.raw?.vinNumber);
+          if (empty(v.engineCC) && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
+          if (Object.keys(updates).length) await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
           if (oil || sws?.aircon) {
             v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
