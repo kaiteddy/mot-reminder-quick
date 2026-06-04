@@ -7,8 +7,8 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs,
-  InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog
+  descriptionPresets, customerLogs, payments,
+  InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -920,7 +920,10 @@ export async function getDocumentDetail(id: number) {
       .from(serviceHistory).where(eq(serviceHistory.vehicleId, doc.vehicleId));
     vehLastInvoiced = r[0]?.last ?? null;
   }
-  return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced };
+  const docPayments = await db.select().from(payments).where(eq(payments.documentId, id)).orderBy(desc(payments.paymentDate));
+  let relatedDoc: any = null;
+  if (doc.relatedDocId) relatedDoc = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, doc.relatedDocId)).limit(1))[0] ?? null;
+  return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced, payments: docPayments, relatedDoc };
 }
 
 /** All parts ever fitted to a vehicle (across every document), with the price charged. */
@@ -1253,6 +1256,167 @@ export async function convertDocument(id: number, toType: string) {
       quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
     })),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Payments / receipts + Issue invoice
+// ---------------------------------------------------------------------------
+
+export async function getDocumentPayments(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payments).where(eq(payments.documentId, documentId)).orderBy(desc(payments.paymentDate));
+}
+
+/** Recompute totalReceipts / balance / paid status on a document from its payments. */
+async function recomputeDocBalance(documentId: number) {
+  const db = await getDb();
+  if (!db) return { receipts: 0, balance: 0 };
+  const doc = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, documentId)).limit(1))[0];
+  if (!doc) return { receipts: 0, balance: 0 };
+  const r = await db.select({ sum: sql<number>`COALESCE(SUM(${payments.amount}),0)` }).from(payments).where(eq(payments.documentId, documentId));
+  const receipts = Number(r[0]?.sum) || 0;
+  const gross = Number(doc.totalGross) || 0;
+  const balance = +(gross - receipts).toFixed(2);
+  const methods = await db.selectDistinct({ m: payments.method }).from(payments).where(eq(payments.documentId, documentId));
+  const set: any = {
+    totalReceipts: String(receipts.toFixed(2)), balance: String(balance.toFixed(2)),
+    paymentMethods: methods.map((x: any) => x.m).filter(Boolean).join(", ") || null,
+  };
+  // mark fully-paid issued invoices as Paid
+  if (doc.dateIssued && balance <= 0 && receipts > 0) { set.docStatus = "Paid"; set.datePaid = new Date(); }
+  await db.update(serviceHistory).set(set).where(eq(serviceHistory.id, documentId));
+  return { receipts, balance };
+}
+
+export async function addPayment(input: { documentId: number; customerId?: number | null; method: string; amount: number; note?: string; paymentDate?: any }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(payments).values({
+    documentId: input.documentId,
+    customerId: input.customerId ?? null,
+    method: input.method || "Cash",
+    amount: String(Number(input.amount).toFixed(2)),
+    paymentDate: input.paymentDate ? new Date(input.paymentDate) : new Date(),
+    note: input.note ?? null,
+  } as InsertPayment);
+  return recomputeDocBalance(input.documentId);
+}
+
+export async function deletePayment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const row = (await db.select().from(payments).where(eq(payments.id, id)).limit(1))[0];
+  await db.delete(payments).where(eq(payments.id, id));
+  if (row) await recomputeDocBalance(row.documentId);
+  return { ok: true };
+}
+
+/** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance). */
+export async function issueDocument(documentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const doc = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, documentId)).limit(1))[0];
+  if (!doc) throw new Error("Document not found");
+  const set: any = {};
+  if (!doc.dateIssued) set.dateIssued = new Date();
+  const { balance, receipts } = await recomputeDocBalance(documentId);
+  set.docStatus = balance <= 0 && (receipts > 0 || Number(doc.totalGross) === 0) ? "Paid" : "Issued";
+  await db.update(serviceHistory).set(set).where(eq(serviceHistory.id, documentId));
+  return { id: documentId, status: set.docStatus };
+}
+
+// ---------------------------------------------------------------------------
+// Policy-excess insurance split
+// ---------------------------------------------------------------------------
+
+/**
+ * From a main (insurance) invoice, raise a related Policy Excess Invoice (docType XS)
+ * billed to the customer for their excess, and deduct that excess from the main invoice
+ * (which the insurer pays). Returns the new excess invoice id.
+ */
+export async function createExcessInvoice(input: { mainDocId: number; excessNet: number; discount?: number; vatRegistered?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const main = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.mainDocId)).limit(1))[0];
+  if (!main) throw new Error("Main invoice not found");
+
+  const discount = Math.max(0, Number(input.discount) || 0);
+  const net = +(Math.max(0, Number(input.excessNet) || 0) - discount).toFixed(2);
+  const vatRate = input.vatRegistered ? 20 : 0;
+  const tax = +(net * vatRate / 100).toFixed(2);
+  const gross = +(net + tax).toFixed(2);
+
+  // 1) create the excess invoice (XS) for the customer
+  const docNo = await getNextDocNo("XS");
+  const externalId = `WEB-XS-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const xsFields: any = undef({
+    docType: "XS", docNo, externalId,
+    customerId: main.customerId, vehicleId: main.vehicleId, registration: main.registration,
+    customerName: main.customerName, custTitle: main.custTitle, custForename: main.custForename, custSurname: main.custSurname,
+    custEmail: main.custEmail, company: main.company, accountNumber: main.accountNumber,
+    custHouseNo: main.custHouseNo, custRoad: main.custRoad, custLocality: main.custLocality,
+    custTown: main.custTown, custCounty: main.custCounty, custPostcode: main.custPostcode,
+    custTelephone: main.custTelephone, custMobile: main.custMobile,
+    mileage: main.mileage, dateCreated: new Date(), docStatus: "New",
+    relatedDocId: main.id, relatedDocNo: main.docNo,
+    excessDiscount: String(discount.toFixed(2)), custVatRegistered: input.vatRegistered ? 1 : 0,
+    excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+    totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
+    balance: String(gross.toFixed(2)), description: `Policy excess re. Invoice ${main.docNo}`,
+  });
+  const [{ id: xsId }] = await db.insert(serviceHistory).values(xsFields).$returningId();
+  await db.insert(serviceLineItems).values({
+    documentId: xsId, externalId: `WEB-LI-XS-${xsId}-${Date.now()}`,
+    itemType: "Excess", description: `Insurance policy excess (re. Invoice ${main.docNo})`,
+    quantity: "1", unitPrice: String(net.toFixed(2)), subNet: String(net.toFixed(2)),
+    taxAmount: String(tax.toFixed(2)), vatRate: String(vatRate.toFixed(2)),
+  } as any);
+
+  // 2) record the excess on the main invoice and deduct it (insurer pays the reduced amount)
+  await db.update(serviceHistory).set({
+    relatedDocId: xsId, relatedDocNo: docNo,
+    excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+  }).where(eq(serviceHistory.id, main.id));
+
+  return { id: xsId, docNo };
+}
+
+/** Recompute an existing XS excess invoice's figures (and its main invoice's excess) after editing. */
+export async function updateExcessInvoice(input: { docId: number; excessNet: number; discount?: number; vatRegistered?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const xs = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.docId)).limit(1))[0];
+  if (!xs) throw new Error("Excess invoice not found");
+  const discount = Math.max(0, Number(input.discount) || 0);
+  const net = +(Math.max(0, Number(input.excessNet) || 0) - discount).toFixed(2);
+  const vatRate = input.vatRegistered ? 20 : 0;
+  const tax = +(net * vatRate / 100).toFixed(2);
+  const gross = +(net + tax).toFixed(2);
+
+  await db.update(serviceHistory).set({
+    excessDiscount: String(discount.toFixed(2)), custVatRegistered: input.vatRegistered ? 1 : 0,
+    excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+    totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
+    balance: String(gross.toFixed(2)),
+  }).where(eq(serviceHistory.id, input.docId));
+
+  // refresh the single excess line item
+  await db.delete(serviceLineItems).where(eq(serviceLineItems.documentId, input.docId));
+  await db.insert(serviceLineItems).values({
+    documentId: input.docId, externalId: `WEB-LI-XS-${input.docId}-${Date.now()}`,
+    itemType: "Excess", description: `Insurance policy excess${xs.relatedDocNo ? ` (re. Invoice ${xs.relatedDocNo})` : ""}`,
+    quantity: "1", unitPrice: String(net.toFixed(2)), subNet: String(net.toFixed(2)),
+    taxAmount: String(tax.toFixed(2)), vatRate: String(vatRate.toFixed(2)),
+  } as any);
+
+  // mirror the excess onto the main insurance invoice
+  if (xs.relatedDocId) {
+    await db.update(serviceHistory).set({
+      excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+    }).where(eq(serviceHistory.id, xs.relatedDocId));
+  }
+  return { id: input.docId };
 }
 
 export async function getServiceDocumentById(id: number) {

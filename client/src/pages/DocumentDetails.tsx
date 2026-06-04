@@ -4,7 +4,7 @@ import PrintableDocument from "@/components/PrintableDocument";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -122,6 +122,28 @@ export default function DocumentDetails() {
   const emailMut = trpc.email.sendDocument.useMutation();
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+  const issueMut = trpc.documents.issue.useMutation();
+  const createExcessMut = trpc.documents.createExcess.useMutation();
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [excessOpen, setExcessOpen] = useState(false);
+  async function doIssue(after: "none" | "print" | "email" | "both") {
+    try {
+      await issueMut.mutateAsync({ id });
+      await utils.documents.getById.invalidate({ id });
+      setIssueOpen(false);
+      toast.success("Invoice issued");
+      if (after === "print" || after === "both") setTimeout(() => handlePrint(), 200);
+      if (after === "email" || after === "both") openEmail();
+    } catch (e: any) { toast.error("Issue failed: " + (e.message || "")); }
+  }
+  async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean }) {
+    try {
+      const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
+      setExcessOpen(false);
+      toast.success(`Policy excess invoice ${res.docNo} created`);
+      setLocation(`/documents/${res.id}`);
+    } catch (e: any) { toast.error("Create excess failed: " + (e.message || "")); }
+  }
   function emailCtx() {
     const d = (data as any)?.doc; const cust = (data as any)?.customer; const veh = (data as any)?.vehicle;
     return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
@@ -193,11 +215,14 @@ export default function DocumentDetails() {
   }
 
   const liveTotals = useMemo(() => {
+    const sumNet = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
     const net = items.reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
     const tax = items.reduce((a, i) => a + (num(i.taxAmount) ?? 0), 0);
-    const partsNet = items.filter((i) => i.itemType === "Part").reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
-    const labourNet = items.filter((i) => i.itemType === "Labour").reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
-    return { net, tax, gross: +(net + tax).toFixed(2), partsNet, labourNet };
+    return {
+      net, tax, gross: +(net + tax).toFixed(2),
+      labourNet: sumNet("Labour"), partsNet: sumNet("Part"),
+      sundriesNet: sumNet("Sundries"), paintNet: sumNet("Paint"), lubricantNet: sumNet("Lubricant"), motNet: sumNet("MOT"),
+    };
   }, [items]);
 
   const vehInfo = useMemo(() => {
@@ -257,6 +282,12 @@ export default function DocumentDetails() {
   const typeLabel = TYPE_LABEL[form.docType] || form.docType || "Job Sheet";
   const docNo = (data as any)?.doc?.docNo;
   const history = (data as any)?.history ?? [];
+  const isInvoice = form.docType === "SI" || form.docType === "XS";
+  const isExcess = form.docType === "XS";
+  const relatedDoc = (data as any)?.relatedDoc;
+  const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
+  const docBalance = +((liveTotals.gross - docReceipts)).toFixed(2);
+  const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
   return (
     <DashboardLayout>
@@ -279,15 +310,24 @@ export default function DocumentDetails() {
                       {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
                     </button>
                     {convertOpen && (
-                      <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[160px] py-1">
+                      <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
                         {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
                           .filter(([code]) => code !== (data as any)?.doc?.docType)
                           .map(([code, label]) => (
                             <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
                           ))}
+                        {(data as any)?.doc?.docType === "SI" && (
+                          <>
+                            <div className="border-t my-1" />
+                            <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
+                )}
+                {!isNew && isInvoice && (
+                  <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
                 )}
                 <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1.5 text-sm hover:bg-violet-800"><Pencil className="w-4 h-4" /> Edit</button>
               </>
@@ -309,8 +349,20 @@ export default function DocumentDetails() {
               <span className="text-amber-300">★</span>
               {typeLabel}{docNo ? `: ${docNo}` : isNew ? " (new)" : ""}
             </div>
-            <span className="text-[11px] text-white/70">{editing ? "Editing" : "Read-only"}</span>
+            <div className="flex items-center gap-3">
+              {!isNew && isInvoice && (
+                <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
+              )}
+              <span className="text-[11px] text-white/70">{editing ? "Editing" : "Read-only"}</span>
+            </div>
           </div>
+
+          {/* policy-excess banner */}
+          {isExcess && (
+            <div className="bg-fuchsia-50 border-b border-fuchsia-200 text-center py-2 text-[14px] font-semibold text-fuchsia-900">
+              This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || relatedDoc?.docNo || "—"}
+            </div>
+          )}
 
           {/* top form */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 p-3">
@@ -391,6 +443,26 @@ export default function DocumentDetails() {
                 <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
                 <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
+              {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
+              {isExcess && relatedDoc && (
+                <Panel title="Insurance Invoice">
+                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
+                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+                  </button>
+                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
+                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
+                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
+                </Panel>
+              )}
+              {!isExcess && relatedDoc && (
+                <Panel title="Policy Excess Invoice">
+                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
+                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+                  </button>
+                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
+                  <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
+                </Panel>
+              )}
               {!isNew && (
                 <Panel title="Account">
                   <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
@@ -422,7 +494,7 @@ export default function DocumentDetails() {
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["sundries", "Sundries"], ["paint", "Paint & Mat."], ["lubricants", "Lubricants"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -435,6 +507,9 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Labour" editing={editing} /></TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
+                  <TabsContent value="sundries" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Sundries" editing={editing} /></TabsContent>
+                  <TabsContent value="paint" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Paint" editing={editing} /></TabsContent>
+                  <TabsContent value="lubricants" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Lubricant" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
@@ -460,11 +535,21 @@ export default function DocumentDetails() {
             </div>
             <div className="xl:col-span-3 space-y-3">
               <Panel title="Totals">
-                <TRow label="Parts" value={liveTotals.partsNet} />
                 <TRow label="Labour" value={liveTotals.labourNet} />
+                <TRow label="Parts" value={liveTotals.partsNet} />
+                {liveTotals.sundriesNet > 0 && <TRow label="Sundries" value={liveTotals.sundriesNet} />}
+                {liveTotals.paintNet > 0 && <TRow label="Paint & Mat." value={liveTotals.paintNet} />}
+                {liveTotals.lubricantNet > 0 && <TRow label="Lubricants" value={liveTotals.lubricantNet} />}
+                {liveTotals.motNet > 0 && <TRow label="MOT" value={liveTotals.motNet} />}
                 <TRow label="Subtotal" value={liveTotals.net} />
                 <TRow label="VAT" value={liveTotals.tax} />
                 <TRow label="Total" value={liveTotals.gross} bold />
+                {(isInvoice || docReceipts > 0) && (
+                  <div className="border-t mt-1 pt-1">
+                    <TRow label="Receipts" value={docReceipts} />
+                    <div className="flex justify-between text-[13px] font-bold"><span>Balance</span><span className={docBalance > 0 ? "bg-yellow-100 px-1" : ""}>£{money(docBalance)}</span></div>
+                  </div>
+                )}
               </Panel>
             </div>
           </div>
@@ -509,6 +594,18 @@ export default function DocumentDetails() {
           </div>
         )}
 
+        {/* issue invoice / add payments dialog */}
+        {issueOpen && (
+          <IssueDialog id={id} docNo={docNo} statusLabel={docStatusLabel} gross={liveTotals.gross} customerId={(data as any)?.doc?.customerId}
+            payments={(data as any)?.payments || []} onClose={() => setIssueOpen(false)} onIssue={doIssue} issuing={issueMut.isPending}
+            onChanged={() => utils.documents.getById.invalidate({ id })} />
+        )}
+
+        {/* raise policy excess dialog */}
+        {excessOpen && (
+          <ExcessCreateDialog mainDocNo={docNo} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
+        )}
+
         {/* off-screen printable replica (react-to-print) */}
         <div style={{ position: "absolute", left: "-99999px", top: 0 }} aria-hidden="true">
           <div ref={printRef}>
@@ -522,6 +619,171 @@ export default function DocumentDetails() {
 
 const boxCls = (editing: boolean) =>
   `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[26px] truncate outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
+
+const PAYMENT_METHODS = ["Cash", "Card", "Bank Transfer", "Cheque", "Account", "Online"];
+
+function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onClose, onIssue, issuing, onChanged }: {
+  id: number; docNo?: string; statusLabel: string; gross: number; customerId?: number; payments: any[];
+  onClose: () => void; onIssue: (after: "none" | "print" | "email" | "both") => void; issuing: boolean; onChanged: () => void;
+}) {
+  const addP = trpc.documents.addPayment.useMutation();
+  const delP = trpc.documents.deletePayment.useMutation();
+  const [method, setMethod] = useState("Cash");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const paid = (payments || []).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+  const outstanding = +(gross - paid).toFixed(2);
+  async function add() {
+    const amt = num(amount); if (!amt) { toast.error("Enter a payment amount"); return; }
+    try { await addP.mutateAsync({ documentId: id, customerId: customerId ?? null, method, amount: amt, note: note || undefined }); setAmount(""); setNote(""); onChanged(); toast.success("Payment recorded"); }
+    catch (e: any) { toast.error("Add payment failed: " + (e.message || "")); }
+  }
+  async function remove(pid: number) { try { await delP.mutateAsync({ id: pid }); onChanged(); } catch (e: any) { toast.error(e.message); } }
+  const issueBtns: [string, "print" | "email" | "both" | "none"][] = [["Issue & Print", "print"], ["Issue & Email", "email"], ["Issue Print & Email", "both"], ["Issue Only", "none"]];
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-slate-800 text-white px-4 py-2.5 flex items-center justify-between">
+          <h3 className="font-semibold">Issue Invoice / Add Payments {docNo ? `· ${docNo}` : ""} <span className={`ml-1 text-[12px] ${statusLabel === "Not Issued" ? "text-amber-300" : "text-green-300"}`}>{statusLabel}</span></h3>
+          <button onClick={onClose} className="bg-fuchsia-700 hover:bg-fuchsia-800 rounded p-1"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex border-b bg-slate-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm hover:bg-slate-200 border-r">Close</button>
+          {issueBtns.map(([label, after]) => (
+            <button key={after} onClick={() => onIssue(after)} disabled={issuing} className="px-4 py-2 text-sm hover:bg-violet-100 border-r disabled:opacity-50 inline-flex items-center gap-1.5">
+              {issuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}{label}
+            </button>
+          ))}
+        </div>
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="text-sm text-slate-600 pt-2">
+              {outstanding <= 0 ? <p>The invoice balance is zero.<br />No further payments are required.</p>
+                : <p>Record any payments taken below,<br />then issue the invoice.</p>}
+            </div>
+            <div className="border rounded-md px-5 py-3 text-center min-w-[180px]">
+              <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide">Outstanding Balance</div>
+              <div className={`text-2xl font-bold ${outstanding > 0 ? "text-red-600" : "text-green-600"}`}>£{money(outstanding)}</div>
+            </div>
+          </div>
+          {/* add a payment */}
+          <div className="mt-4 flex items-end gap-2 flex-wrap">
+            <label className="text-xs text-slate-600">Method
+              <select value={method} onChange={(e) => setMethod(e.target.value)} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-36">{PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}</select>
+            </label>
+            <label className="text-xs text-slate-600">Amount £
+              <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={outstanding > 0 ? money(outstanding) : "0.00"} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-28 text-right outline-none focus:border-violet-500" />
+            </label>
+            <label className="text-xs text-slate-600 flex-1 min-w-[140px]">Note
+              <input value={note} onChange={(e) => setNote(e.target.value)} className="block border rounded px-2 py-1.5 text-sm mt-0.5 w-full outline-none focus:border-violet-500" />
+            </label>
+            <button onClick={add} disabled={addP.isPending} className="bg-violet-700 text-white rounded px-3 py-1.5 text-sm disabled:opacity-50 inline-flex items-center gap-1.5">{addP.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add</button>
+          </div>
+        </div>
+        {/* payments list */}
+        <div className="border-t">
+          <div className="bg-slate-700 text-white px-4 py-1.5 text-sm font-semibold">Payments</div>
+          <div className="grid grid-cols-[1fr_1fr_1fr_2fr_auto] text-[12px] font-semibold text-slate-500 px-4 py-1 border-b">
+            <span>Method</span><span>Date</span><span className="text-right">Amount</span><span>Note</span><span />
+          </div>
+          {(payments || []).length === 0 ? <p className="text-sm text-muted-foreground text-center py-4">No payments recorded.</p>
+            : (payments || []).map((p) => (
+              <div key={p.id} className="grid grid-cols-[1fr_1fr_1fr_2fr_auto] text-[13px] px-4 py-1.5 border-b last:border-0 items-center">
+                <span>{p.method}</span><span>{fmtDate(p.paymentDate)}</span><span className="text-right">£{money(p.amount)}</span>
+                <span className="truncate text-slate-500">{p.note || ""}</span>
+                <button onClick={() => remove(p.id)} className="text-red-500 hover:text-red-700 justify-self-end"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDocNo?: string; pending: boolean; onClose: () => void; onCreate: (a: { excessNet: number; discount: number; vatRegistered: boolean }) => void }) {
+  const [vatReg, setVatReg] = useState(false);
+  const [excess, setExcess] = useState("");
+  const [discount, setDiscount] = useState("");
+  const net = Math.max(0, (num(excess) || 0) - (num(discount) || 0));
+  const vat = vatReg ? +(net * 0.2).toFixed(2) : 0;
+  const gross = +(net + vat).toFixed(2);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-slate-800 text-white px-4 py-2.5 flex items-center justify-between">
+          <h3 className="font-semibold flex items-center gap-2"><FileText className="w-4 h-4" /> Raise Policy Excess Invoice</h3>
+          <button onClick={onClose} className="bg-fuchsia-700 hover:bg-fuchsia-800 rounded p-1"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-center text-[14px] font-semibold text-fuchsia-900">This excess invoice will relate to: Invoice {mainDocNo || "—"}</p>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-700">Is the customer VAT registered?</span>
+            <div className="flex rounded overflow-hidden border">
+              <button onClick={() => setVatReg(true)} className={`px-4 py-1 text-sm ${vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>Y</button>
+              <button onClick={() => setVatReg(false)} className={`px-4 py-1 text-sm ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>N</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-700">Insurance Policy Excess</span>
+            <input value={excess} onChange={(e) => setExcess(e.target.value)} placeholder="0.00" className="w-32 text-right border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-700">Discount Amount</span>
+            <input value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0.00" className="w-32 text-right border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+          </div>
+          <p className="text-[12px] italic text-slate-500">This discount only applies to the policy excess NET figure. It will discount the excess invoice, without it showing a discount on the insurance invoice.</p>
+          <div className="bg-slate-50 border rounded p-3 text-[13px] space-y-1">
+            <div className="flex justify-between"><span className="text-slate-600">Excess NET</span><span>£{money(net)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-600">VAT {vatReg ? "(20%)" : "(0%)"}</span><span>£{money(vat)}</span></div>
+            <div className="flex justify-between font-semibold border-t pt-1"><span>Excess invoice total</span><span>£{money(gross)}</span></div>
+          </div>
+          <p className="text-[12px] text-slate-500 border-t pt-2">The excess amount will automatically be deducted from the main invoice to the insurance company.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
+            <button onClick={() => onCreate({ excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg })} disabled={pending || net <= 0} className="bg-fuchsia-700 text-white rounded px-4 py-1.5 text-sm hover:bg-fuchsia-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+              {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Create Excess Invoice
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
+  const upd = trpc.documents.updateExcess.useMutation();
+  const [vatReg, setVatReg] = useState(!!doc?.custVatRegistered);
+  const [excess, setExcess] = useState(String((((Number(doc?.excessNet) || 0) + (Number(doc?.excessDiscount) || 0))).toFixed(2)));
+  const [discount, setDiscount] = useState(String((Number(doc?.excessDiscount) || 0).toFixed(2)));
+  const net = Math.max(0, (num(excess) || 0) - (num(discount) || 0));
+  const vat = vatReg ? +(net * 0.2).toFixed(2) : 0;
+  const gross = +(net + vat).toFixed(2);
+  async function apply() {
+    try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg }); onSaved(); toast.success("Excess updated"); }
+    catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
+  }
+  return (
+    <Panel title="Policy Excess">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] text-slate-600">Customer VAT registered?</span>
+        <div className="flex rounded overflow-hidden border text-[12px]">
+          <button onClick={() => setVatReg(true)} className={`px-3 py-0.5 ${vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>Y</button>
+          <button onClick={() => setVatReg(false)} className={`px-3 py-0.5 ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>N</button>
+        </div>
+      </div>
+      <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Policy Excess</span>
+        <input value={excess} onChange={(e) => setExcess(e.target.value)} className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px]" /></div>
+      <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Discount</span>
+        <input value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px]" /></div>
+      <div className="border-t pt-1 mt-1 space-y-0.5">
+        <div className="flex justify-between text-[12px]"><span className="text-slate-600">NET</span><span>£{money(net)}</span></div>
+        <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT</span><span>£{money(vat)}</span></div>
+        <div className="flex justify-between text-[13px] font-semibold"><span>Total</span><span>£{money(gross)}</span></div>
+      </div>
+      <button onClick={apply} disabled={upd.isPending} className="w-full mt-1 bg-fuchsia-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 inline-flex items-center justify-center gap-1.5">{upd.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Apply</button>
+    </Panel>
+  );
+}
 
 function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string }) {
   return (
@@ -732,14 +994,17 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: kind === "Labour" ? 1 : 1, unitPrice: 0, vatRate: 20 })]);
   const remove = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const inp = "w-full bg-white border border-slate-300 rounded-sm px-1.5 py-1 text-[13px] outline-none focus:border-violet-500";
+  const KIND_NOUN: Record<string, string> = { Part: "parts", Labour: "labour", Sundries: "sundries", Paint: "paint & materials", Lubricant: "lubricants", Other: "advisories" };
+  const noun = KIND_NOUN[kind] || "lines";
+  const showPartNo = kind === "Part" || kind === "Lubricant";
 
-  if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {kind === "Part" ? "parts" : kind === "Labour" ? "labour" : "advisories"}.</p>;
+  if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
   return (
     <div>
       <Table>
         <TableHeader>
           <TableRow>
-            {kind === "Part" && <TableHead className="h-8">Part No</TableHead>}
+            {showPartNo && <TableHead className="h-8">{kind === "Lubricant" ? "Code" : "Part No"}</TableHead>}
             <TableHead className="h-8">Description</TableHead>
             <TableHead className="h-8 text-right w-16">{kind === "Labour" ? "Hrs" : "Qty"}</TableHead>
             <TableHead className="h-8 text-right w-20">{kind === "Labour" ? "Rate" : "Unit"}</TableHead>
@@ -754,7 +1019,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
             return (
               <TableRow key={idx}>
-                {kind === "Part" && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
+                {showPartNo && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
                 <TableCell>{editing ? <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} /> : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.unitPrice ?? ""} onChange={(e) => update(idx, { unitPrice: e.target.value })} /> : `£${money(it.unitPrice)}`}</TableCell>
@@ -768,7 +1033,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
           {rows.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-4">None yet</TableCell></TableRow>}
         </TableBody>
       </Table>
-      {editing && <button onClick={add} className="mt-2 inline-flex items-center gap-1.5 text-sm text-violet-700 hover:underline"><Plus className="w-4 h-4" /> Add {kind === "Part" ? "part" : kind === "Labour" ? "labour" : "line"}</button>}
+      {editing && <button onClick={add} className="mt-2 inline-flex items-center gap-1.5 text-sm text-violet-700 hover:underline"><Plus className="w-4 h-4" /> Add {kind === "Labour" ? "labour" : kind === "Part" ? "part" : "line"}</button>}
     </div>
   );
 }

@@ -236,6 +236,11 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   excessNet: decimal("excessNet", { precision: 10, scale: 2 }),
   excessTax: decimal("excessTax", { precision: 10, scale: 2 }),
   excessGross: decimal("excessGross", { precision: 10, scale: 2 }),
+  // --- Policy-excess insurance split (XS doc links back to its main insurance invoice) ---
+  relatedDocId: int("relatedDocId"), // for an XS excess invoice: the main insurance invoice id (and vice-versa)
+  relatedDocNo: varchar("relatedDocNo", { length: 50 }),
+  excessDiscount: decimal("excessDiscount", { precision: 10, scale: 2 }), // discount applied to the excess NET only
+  custVatRegistered: int("custVatRegistered"), // 1 = customer is VAT registered (affects excess VAT)
   terms: varchar("terms", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
@@ -368,3 +373,24 @@ export const customerLogs = mysqlTable("customerLogs", {
 
 export type CustomerLog = typeof customerLogs.$inferSelect;
 export type InsertCustomerLog = typeof customerLogs.$inferInsert;
+
+/**
+ * Payments / receipts recorded against a document when it is issued.
+ * Sum of a document's payments = its totalReceipts; total - receipts = balance.
+ */
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  documentId: int("documentId").notNull(),
+  customerId: int("customerId"),
+  method: varchar("method", { length: 50 }).notNull(), // Cash, Card, Bank Transfer, Cheque, Account
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: datetime("paymentDate"),
+  note: varchar("note", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  documentIdIdx: index("payments_document_id_idx").on(table.documentId),
+  customerIdIdx: index("payments_customer_id_idx").on(table.customerId),
+}));
+
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = typeof payments.$inferInsert;

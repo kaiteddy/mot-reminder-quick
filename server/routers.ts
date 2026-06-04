@@ -209,6 +209,46 @@ export const appRouter = router({
         const { addCustomerLog } = await import("./db");
         return addCustomerLog(input as any);
       }),
+
+    // --- payments / receipts + issue invoice ---
+    payments: publicProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDocumentPayments } = await import("./db");
+        return getDocumentPayments(input.documentId);
+      }),
+    addPayment: publicProcedure
+      .input(z.object({ documentId: z.number(), customerId: z.number().nullable().optional(), method: z.string(), amount: z.number(), note: z.string().optional(), paymentDate: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const { addPayment } = await import("./db");
+        return addPayment(input);
+      }),
+    deletePayment: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deletePayment } = await import("./db");
+        return deletePayment(input.id);
+      }),
+    issue: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { issueDocument } = await import("./db");
+        return issueDocument(input.id);
+      }),
+
+    // --- policy-excess insurance split ---
+    createExcess: publicProcedure
+      .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        const { createExcessInvoice } = await import("./db");
+        return createExcessInvoice(input);
+      }),
+    updateExcess: publicProcedure
+      .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        const { updateExcessInvoice } = await import("./db");
+        return updateExcessInvoice(input);
+      }),
   }),
 
   descriptionPresets: router({

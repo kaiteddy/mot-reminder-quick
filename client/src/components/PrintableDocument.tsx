@@ -27,7 +27,11 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
 
   const labour = lineItems.filter((i) => i.itemType === "Labour");
   const parts = lineItems.filter((i) => i.itemType === "Part");
+  const sundries = lineItems.filter((i) => i.itemType === "Sundries");
+  const paint = lineItems.filter((i) => i.itemType === "Paint");
+  const lubricants = lineItems.filter((i) => i.itemType === "Lubricant");
   const advisories = lineItems.filter((i) => i.itemType === "Other");
+  const sumNet = (rows: any[]) => rows.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
 
   const addressLines = [doc.custHouseNo && doc.custRoad ? `${doc.custHouseNo} ${doc.custRoad}` : doc.custRoad, doc.custLocality, doc.custTown, doc.custCounty]
     .filter(Boolean);
@@ -211,6 +215,9 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
 
       {labour.length > 0 && <ItemTable heading="Labour" rows={labour} />}
       {parts.length > 0 && <ItemTable heading="Parts" rows={parts} />}
+      {sundries.length > 0 && <ItemTable heading="Sundries" rows={sundries} />}
+      {paint.length > 0 && <ItemTable heading="Paint & Materials" rows={paint} />}
+      {lubricants.length > 0 && <ItemTable heading="Lubricants" rows={lubricants} />}
       {advisories.length > 0 && (
         <div className="desc"><div className="h">Advisories</div><ul>{advisories.map((a, i) => <li key={i}>{a.description}</li>)}</ul></div>
       )}
@@ -220,6 +227,9 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
         <div className="box">
           {subLabour > 0 && <div className="r"><span>Labour</span><span className="v">{gbp(subLabour)}</span></div>}
           {subParts > 0 && <div className="r"><span>Parts</span><span className="v">{gbp(subParts)}</span></div>}
+          {sumNet(sundries) > 0 && <div className="r"><span>Sundries</span><span className="v">{gbp(sumNet(sundries))}</span></div>}
+          {sumNet(paint) > 0 && <div className="r"><span>Paint &amp; Mat.</span><span className="v">{gbp(sumNet(paint))}</span></div>}
+          {sumNet(lubricants) > 0 && <div className="r"><span>Lubricants</span><span className="v">{gbp(sumNet(lubricants))}</span></div>}
           <div className="r b"><span>SubTotal</span><span className="v">{gbp(doc.totalNet)}</span></div>
           {subMot > 0 && <div className="r"><span>MOT</span><span className="v">{gbp(subMot)}</span></div>}
           <div className="r"><span>VAT (20%)</span><span className="v">{gbp(doc.totalTax)}</span></div>
