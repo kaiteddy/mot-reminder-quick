@@ -134,6 +134,13 @@ export const appRouter = router({
         return lookupVehicleForReg(input.registration);
       }),
 
+    liveVehicleTech: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { liveVehicleTech } = await import("./db");
+        return liveVehicleTech(input.registration);
+      }),
+
     save: publicProcedure
       .input(z.object({
         id: z.number().optional(),

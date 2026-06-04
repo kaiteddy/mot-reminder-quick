@@ -1024,6 +1024,28 @@ export async function lookupVehicleForReg(registration: string) {
   return { found: false, source: sources.join("+") || "none", customer: null, vehicle: v };
 }
 
+/** Latest live technical data (engine oil, A/C charge, MOT, tax) for the info cards. */
+export async function liveVehicleTech(registration: string) {
+  const reg = normReg(registration);
+  if (!reg) return null;
+  const out: any = {};
+  try {
+    const { fetchRichVehicleData } = await import("./sws");
+    const sws: any = await fetchRichVehicleData(reg, true);
+    const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    out.oilSpec = oil?.specification ?? null;
+    out.oilCapacity = oil?.capacity ?? null;
+    out.airconType = sws?.aircon?.type ?? null;
+    out.airconCapacity = sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null;
+  } catch { /* SWS unavailable */ }
+  try {
+    const { getVehicleDetails } = await import("./dvlaApi");
+    const d: any = await getVehicleDetails(reg);
+    if (d) { out.motExpiry = d.motExpiryDate ?? null; out.taxStatus = d.taxStatus ?? null; out.taxDueDate = d.taxDueDate ?? null; }
+  } catch { /* DVLA unavailable */ }
+  return out;
+}
+
 /** Next sequential document number for a given GA4 doc type. */
 export async function getNextDocNo(docType: string) {
   const db = await getDb();

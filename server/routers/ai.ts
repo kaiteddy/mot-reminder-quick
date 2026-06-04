@@ -194,6 +194,44 @@ CRITICAL INSTRUCTIONS:
       }
     }),
 
+  // Smart job specification: the technician types what job was done; the AI returns a
+  // vehicle-aware bullet-point breakdown of the work carried out, for the job-sheet/invoice.
+  generateJobSpec: publicProcedure
+    .input(z.object({
+      job: z.string().min(2),
+      make: z.string().optional(), model: z.string().optional(), derivative: z.string().optional(),
+      year: z.number().optional(), fuelType: z.string().optional(), engineCode: z.string().optional(), engineCC: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+      }
+      const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
+      const detail = [input.engineCode && `engine ${input.engineCode}`, input.engineCC && `${input.engineCC}cc`, input.fuelType].filter(Boolean).join(", ");
+      const prompt = `A UK garage technician carried out this job on ${veh}${detail ? ` (${detail})` : ""}:
+
+"${input.job}"
+
+Write a professional job specification for the job sheet / invoice describing the work that was carried out.
+- 4 to 8 short bullet points, each starting with a past-tense action verb (e.g. Removed, Inspected, Replaced, Refitted, Torqued, Bled, Road tested).
+- Be specific to THIS vehicle where it matters (correct components, fluids/specs, torque or calibration checks, things commonly required on this model).
+- UK terminology. No prices, no part numbers, no headings or preamble — just the work performed.
+- Provide a short title line summarising the job (e.g. "Front Brake Discs & Pads Replacement").`;
+      try {
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider('gpt-4o-mini'),
+          system: "You are an expert UK master technician writing precise, concise workshop job specifications.",
+          prompt,
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(3).max(10) }),
+        });
+        return object;
+      } catch (e: any) {
+        console.error("AI Generation Error:", e);
+        throw new Error("Failed to generate job spec: " + e.message);
+      }
+    }),
+
   getPricingKnowledge: publicProcedure
     .query(async () => {
       const db = await getDb();

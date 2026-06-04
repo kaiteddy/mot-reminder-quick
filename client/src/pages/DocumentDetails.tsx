@@ -3,7 +3,7 @@ import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -287,6 +287,20 @@ export default function DocumentDetails() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew]);
+
+  // On opening an EXISTING job sheet, refresh the live engine-oil / A/C / MOT / tax
+  // for the info cards (new sheets get this from the Lookup automatically).
+  useEffect(() => {
+    if (isNew) return;
+    const reg = (data as any)?.vehicle?.registration || (data as any)?.doc?.registration;
+    if (!reg) return;
+    let cancelled = false;
+    utils.documents.liveVehicleTech.fetch({ registration: reg })
+      .then((t: any) => { if (!cancelled && t) setLookupTech((prev: any) => ({ ...(prev || {}), ...t })); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, (data as any)?.doc?.id]);
 
   async function lookup(regOverride?: string) {
     const reg = (regOverride || form.registration || "").trim();
@@ -635,6 +649,7 @@ export default function DocumentDetails() {
                 </TabsList>
                 <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
                   <TabsContent value="description" className="mt-0">
+                    {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     <textarea value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} readOnly={!editing} rows={10}
                       placeholder={editing ? "Describe the work to be carried out…" : ""}
@@ -1000,6 +1015,38 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (text: string) => void }) {
+  const [job, setJob] = useState("");
+  const gen = trpc.ai.generateJobSpec.useMutation();
+  async function generate() {
+    const j = job.trim();
+    if (j.length < 2) { toast.error("Describe the job that was carried out"); return; }
+    try {
+      const res: any = await gen.mutateAsync({
+        job: j, make: form.make || undefined, model: form.model || undefined, derivative: form.derivative || undefined,
+        fuelType: form.fuelType || undefined, engineCode: form.engineCode || undefined,
+        engineCC: form.engineCC ? String(form.engineCC) : undefined,
+        year: form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined,
+      });
+      const block = [res.title, ...((res.bullets || []) as string[]).map((b) => `- ${b}`)].filter(Boolean).join("\n");
+      onInsert(block);
+      setJob("");
+      toast.success("Job spec added to the description");
+    } catch (e: any) { toast.error(e.message || "AI generation failed"); }
+  }
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50/60 p-2">
+      <Sparkles className="w-4 h-4 text-violet-600 shrink-0" />
+      <input value={job} onChange={(e) => setJob(e.target.value)} placeholder="Describe the job done — e.g. replaced front brake discs & pads — and let AI write the spec"
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); generate(); } }}
+        className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500" />
+      <button type="button" onClick={generate} disabled={gen.isPending} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 shrink-0 hover:bg-violet-800">
+        {gen.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} AI job spec
+      </button>
     </div>
   );
 }
