@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -125,13 +125,20 @@ export default function DocumentDetails() {
   const { data, isLoading } = trpc.documents.getById.useQuery({ id }, { enabled: !isNew && !!id });
   const save = trpc.documents.save.useMutation();
 
-  const [editing, setEditing] = useState(isNew);
+  // The document is always editable — changes auto-save (no Edit/Save step).
+  const editing = true;
   const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
-  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const [dirty, setDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const editSeq = useRef(0);
+  const initRef = useRef<number | null>(null);
+  const markDirty = () => { editSeq.current++; setDirty(true); };
+  const set = (k: string, v: any) => { setForm((f) => ({ ...f, [k]: v })); markDirty(); };
+  const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
   const [printing, setPrinting] = useState(false);
   // An invoice must have the customer name + vehicle mileage before it goes to the customer.
   function requiredMissing(): string[] {
@@ -145,7 +152,6 @@ export default function DocumentDetails() {
     const missing = requiredMissing();
     if (missing.length) {
       toast.error(`Cannot ${action} — complete the fields shown in red: ${missing.join(", ")}.`);
-      if (!editing) setEditing(true);
       return true;
     }
     return false;
@@ -157,6 +163,7 @@ export default function DocumentDetails() {
     if (blockIfIncomplete("print")) return;
     setPrinting(true);
     try {
+      await flushPending(); // make sure the latest edits are in the PDF
       const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
       if (!res?.content) { toast.error("Could not generate the PDF"); return; }
       const bytes = atob(res.content);
@@ -180,6 +187,7 @@ export default function DocumentDetails() {
   async function doConvert(toType: string) {
     setConvertOpen(false);
     try {
+      await flushPending();
       const res: any = await convert.mutateAsync({ id, toType });
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
       setLocation(`/documents/${res.id}`);
@@ -206,6 +214,7 @@ export default function DocumentDetails() {
   }
   async function doIssue(after: "none" | "print" | "email" | "both") {
     try {
+      await flushPending();
       await issueMut.mutateAsync({ id });
       await utils.documents.getById.invalidate({ id });
       setIssueOpen(false);
@@ -235,13 +244,15 @@ export default function DocumentDetails() {
   }
   async function sendEmail() {
     if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
-    try { await emailMut.mutateAsync({ docId: id, to: emailForm.to, subject: emailForm.subject, message: emailForm.message }); toast.success(`Emailed to ${emailForm.to}`); setEmailOpen(false); }
+    try { await flushPending(); await emailMut.mutateAsync({ docId: id, to: emailForm.to, subject: emailForm.subject, message: emailForm.message }); toast.success(`Emailed to ${emailForm.to}`); setEmailOpen(false); }
     catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
   }
 
-  // initialise the form once data arrives
+  // initialise the form once per document (guard against auto-save refetches clobbering edits)
   useEffect(() => {
     if (isNew || !data?.doc) return;
+    if (initRef.current === (data as any).doc.id) return;
+    initRef.current = (data as any).doc.id;
     setNewCust(false);
     const { doc, vehicle, customer } = data as any;
     const nm = splitName(doc.customerName || customer?.name);
@@ -284,7 +295,7 @@ export default function DocumentDetails() {
     if (docType) setForm((f) => ({ ...f, docType }));
     if (reg) {
       setForm((f) => ({ ...f, registration: reg.toUpperCase() }));
-      lookup(reg); // fills the vehicle and its linked customer
+      lookup(reg, true); // fills the vehicle and its linked customer (silent — no auto-create yet)
     } else if (customerId) {
       (async () => {
         try {
@@ -314,7 +325,7 @@ export default function DocumentDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, (data as any)?.doc?.id]);
 
-  async function lookup(regOverride?: string) {
+  async function lookup(regOverride?: string, silent?: boolean) {
     const reg = (regOverride || form.registration || "").trim();
     if (!reg) return;
     setLooking(true);
@@ -332,6 +343,7 @@ export default function DocumentDetails() {
         ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
       }));
       setLookupTech({ ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate });
+      if (!silent) markDirty();
       const src = String(res.source || "");
       if (res.found) toast.success("Loaded from your records");
       else if (src.includes("sws")) toast.success("Loaded from SWS vehicle data" + (src.includes("dvla") ? " + DVLA" : ""));
@@ -372,44 +384,62 @@ export default function DocumentDetails() {
     };
   }, [data, lookupTech]);
 
-  async function onSave() {
-    try {
-      const payload: any = {
-        id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
-        customerId: form.customerId || undefined,
-        createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
-        vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
-        customerName: [form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName,
-        custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
-        company: form.company, accountNumber: form.accountNumber,
-        custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
-        custCounty: form.custCounty, custPostcode: form.custPostcode, custTelephone: form.custTelephone, custMobile: form.custMobile, custEmail: form.custEmail,
-        mileage: form.mileage ? Number(String(form.mileage).replace(/\D/g, "")) || null : null,
-        dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
-        docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
-        staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
-        staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus,
-        lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
-      };
-      // If the customer details were edited and a customer is linked, offer to update their record
-      const cust = (data as any)?.customer;
-      if (form.customerId && cust) {
-        const changed =
-          (form.customerName || "") !== (cust.name || "") ||
-          (form.custMobile || form.custTelephone || "") !== (cust.phone || "") ||
-          (form.custEmail || "") !== (cust.email || "") ||
-          (form.custPostcode || "") !== (cust.postcode || "");
-        if (changed) payload.updateCustomerRecord = window.confirm(`Customer details have changed.\n\nUpdate ${cust.name || "the customer"}'s record with the new details?`);
-      }
-      const res = await save.mutateAsync(payload);
-      toast.success("Job sheet saved");
-      if (isNew) { setLocation(`/documents/${res.id}`); }
-      else { await utils.documents.getById.invalidate({ id }); setEditing(false); }
-    } catch (e: any) { toast.error(`Save failed: ${e.message}`); }
+  function buildPayload(): any {
+    return {
+      id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
+      customerId: form.customerId || undefined,
+      createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
+      vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
+      customerName: [form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName,
+      custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
+      company: form.company, accountNumber: form.accountNumber,
+      custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
+      custCounty: form.custCounty, custPostcode: form.custPostcode, custTelephone: form.custTelephone, custMobile: form.custMobile, custEmail: form.custEmail,
+      mileage: form.mileage ? Number(String(form.mileage).replace(/\D/g, "")) || null : null,
+      dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
+      docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
+      staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
+      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus,
+      lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
+    };
   }
 
-  if (!isNew && isLoading) return <DashboardLayout><div className="p-8 text-muted-foreground">Loading…</div></DashboardLayout>;
-  if (!isNew && !data?.doc) return <DashboardLayout><div className="p-8">Document not found.</div></DashboardLayout>;
+  async function autoSave() {
+    // a brand-new doc only gets created once there's something worth saving
+    if (isNew && !(String(form.registration ?? "").trim() || form.customerName || form.custSurname || items.length)) return;
+    const seq = editSeq.current;
+    setSaveStatus("saving");
+    try {
+      const res = await save.mutateAsync(buildPayload());
+      if (editSeq.current === seq) setDirty(false); // nothing changed during the save
+      setSaveStatus("saved");
+      if (isNew && res?.id) {
+        initRef.current = res.id;                    // don't let the re-fetch re-init the form
+        setLocation(`/documents/${res.id}`, { replace: true });
+      } else {
+        utils.documents.list.invalidate();
+        utils.documents.stats.invalidate();
+        utils.documents.getById.invalidate({ id });  // refresh server-derived fields (balance, account…)
+      }
+    } catch (e: any) { setSaveStatus("error"); toast.error(`Auto-save failed: ${e.message}`); }
+  }
+
+  // Debounced auto-save whenever the form / line items change.
+  useEffect(() => {
+    if (!dirty) return;
+    const t = setTimeout(() => { autoSave(); }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, form, items]);
+
+  // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
+  async function flushPending() { if (dirty) await autoSave(); }
+  async function goBack() { await flushPending(); setLocation("/documents"); }
+
+  // (skip the loading/not-found screens once we've already initialised this doc — e.g. right
+  // after a new doc auto-saves and the URL switches to its id, the form is already populated)
+  if (!isNew && isLoading && initRef.current !== id) return <DashboardLayout><div className="p-8 text-muted-foreground">Loading…</div></DashboardLayout>;
+  if (!isNew && !isLoading && !data?.doc && initRef.current !== id) return <DashboardLayout><div className="p-8">Document not found.</div></DashboardLayout>;
 
   const typeLabel = TYPE_LABEL[form.docType] || form.docType || "Job Sheet";
   const docNo = (data as any)?.doc?.docNo;
@@ -428,55 +458,51 @@ export default function DocumentDetails() {
       <div className="space-y-3 text-slate-800">
         {/* toolbar */}
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <button onClick={() => setLocation("/documents")} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-4 h-4" /> Back to documents
           </button>
           <div className="flex items-center gap-2">
-            {!editing ? (
-              <>
-                {!isNew && (
-                  <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
-                )}
-                <button onClick={handlePrint} disabled={printing} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
-                {!isNew && (
-                  <div className="relative">
-                    <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
-                      {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                    {convertOpen && (
-                      <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
-                        {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
-                          .filter(([code]) => code !== (data as any)?.doc?.docType)
-                          .map(([code, label]) => (
-                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
-                          ))}
-                        {(data as any)?.doc?.docType === "SI" && (
-                          <>
-                            <div className="border-t my-1" />
-                            <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
-                          </>
-                        )}
-                      </div>
+            {/* auto-save status */}
+            <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
+              {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+                : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
+                : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
+                : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
+                : null}
+            </span>
+            {!isNew && (
+              <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+            )}
+            <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
+            {!isNew && (
+              <div className="relative">
+                <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+                  {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {convertOpen && (
+                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
+                    {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                      .filter(([code]) => code !== (data as any)?.doc?.docType)
+                      .map(([code, label]) => (
+                        <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
+                      ))}
+                    {(data as any)?.doc?.docType === "SI" && (
+                      <>
+                        <div className="border-t my-1" />
+                        <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                      </>
                     )}
                   </div>
                 )}
-                {!isNew && isInvoice && (
-                  <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
-                )}
-                {!isNew && (
-                  <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
-                    {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
-                  </button>
-                )}
-                <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1.5 text-sm hover:bg-violet-800"><Pencil className="w-4 h-4" /> Edit</button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => (isNew ? setLocation("/documents") : setEditing(false))} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><X className="w-4 h-4" /> Cancel</button>
-                <button disabled={save.isPending} onClick={onSave} className="inline-flex items-center gap-1.5 bg-green-600 text-white rounded px-3 py-1.5 text-sm hover:bg-green-700 disabled:opacity-50">
-                  {save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
-                </button>
-              </>
+              </div>
+            )}
+            {!isNew && isInvoice && (
+              <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
+            )}
+            {!isNew && (
+              <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
+                {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
+              </button>
             )}
           </div>
         </div>
@@ -492,7 +518,7 @@ export default function DocumentDetails() {
               {!isNew && isInvoice && (
                 <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
               )}
-              <span className="text-[11px] text-white/70">{editing ? "Editing" : "Read-only"}</span>
+              <span className="text-[11px] text-white/70">Auto-saves</span>
             </div>
           </div>
 
@@ -547,14 +573,14 @@ export default function DocumentDetails() {
                     custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
                     custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
                     custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
-                  })); }} />
+                  })); markDirty(); }} />
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
                       <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
                     ) : (isNew || newCust) && form.customerName ? (
                       <span className="text-[11px] text-green-700">New customer will be created</span>
                     ) : null}
-                    <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", custTitle: "", custForename: "", custSurname: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); }}
+                    <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", custTitle: "", custForename: "", custSurname: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); markDirty(); }}
                       className="text-[11px] text-violet-700 hover:underline inline-flex items-center gap-1"><Plus className="w-3 h-3" /> New customer</button>
                   </div>
                 </>
@@ -672,9 +698,9 @@ export default function DocumentDetails() {
                       placeholder={editing ? "Describe the work to be carried out…" : ""}
                       className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none read-only:border-transparent read-only:p-0 focus:border-violet-400 resize-y" />
                   </TabsContent>
-                  <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Labour" editing={editing} /></TabsContent>
-                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
-                  <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
+                  <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} /></TabsContent>
+                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
+                  <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
                   <TabsContent value="mileage" className="mt-0"><MileageTab registration={form.registration} /></TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
