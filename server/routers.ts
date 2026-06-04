@@ -192,6 +192,23 @@ export const appRouter = router({
         const { getVehiclePartsHistory } = await import("./db");
         return getVehiclePartsHistory(input.vehicleId);
       }),
+    customerLog: publicProcedure
+      .input(z.object({ customerId: z.number().optional(), vehicleId: z.number().optional() }))
+      .query(async ({ input }) => {
+        const { getCustomerLog } = await import("./db");
+        return getCustomerLog(input.customerId, input.vehicleId);
+      }),
+    addLog: publicProcedure
+      .input(z.object({
+        customerId: z.number().optional(), vehicleId: z.number().optional(), documentId: z.number().optional(),
+        type: z.enum(["note", "email", "sms", "call", "letter", "system"]).optional(),
+        direction: z.enum(["in", "out", "internal"]).optional(),
+        subject: z.string().optional(), body: z.string().optional(), createdBy: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { addCustomerLog } = await import("./db");
+        return addCustomerLog(input as any);
+      }),
   }),
 
   descriptionPresets: router({
@@ -238,7 +255,21 @@ export const appRouter = router({
       .input(z.object({ docId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { sendDocumentEmail } = await import("./services/email");
-        return sendDocumentEmail(input);
+        const result = await sendDocumentEmail(input);
+        // record the email in the customer communication log (best-effort)
+        try {
+          const { getDocumentDetail, addCustomerLog } = await import("./db");
+          const detail: any = await getDocumentDetail(input.docId);
+          await addCustomerLog({
+            customerId: detail?.doc?.customerId ?? detail?.customer?.id ?? null,
+            vehicleId: detail?.doc?.vehicleId ?? null,
+            documentId: input.docId,
+            type: "email", direction: "out",
+            subject: input.subject || `Emailed document to ${input.to}`,
+            body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
+          } as any);
+        } catch { /* logging must never block the send */ }
+        return result;
       }),
   }),
 

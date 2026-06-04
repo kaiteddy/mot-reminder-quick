@@ -7,8 +7,8 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets,
-  InsertUser, InsertReminder, InsertCustomer, InsertReminderLog
+  descriptionPresets, customerLogs,
+  InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -976,6 +976,10 @@ export async function lookupVehicleForReg(registration: string) {
       v.derivative = sws?.specs?.name || sws?.specs?.fullName || null;
       sources.push("sws");
     }
+    const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    if (oil || sws?.aircon) {
+      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.capacity || null };
+    }
   } catch (e) { /* SWS/UKVD unavailable */ }
   try {
     const { getVehicleDetails } = await import("./dvlaApi");
@@ -984,6 +988,8 @@ export async function lookupVehicleForReg(registration: string) {
       v.make = v.make ?? d.make ?? null; v.model = v.model ?? d.model ?? null; v.colour = v.colour ?? d.colour ?? null;
       v.fuelType = v.fuelType ?? d.fuelType ?? null; v.engineCC = v.engineCC ?? d.engineCapacity ?? null;
       v.motExpiryDate = d.motExpiryDate ?? null;
+      v.taxStatus = (d as any).taxStatus ?? null;
+      v.taxDueDate = (d as any).taxDueDate ?? null;
       if (d.yearOfManufacture) v.dateOfRegistration = new Date(d.yearOfManufacture, 0, 1);
       sources.push("dvla");
     }
@@ -1029,6 +1035,63 @@ export async function deleteDescriptionPreset(id: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(descriptionPresets).where(eq(descriptionPresets.id, id));
+}
+
+/** Unified customer communication timeline: manual logs + reminders sent + messages received. */
+export async function getCustomerLog(customerId?: number, vehicleId?: number) {
+  const db = await getDb();
+  if (!db || (!customerId && !vehicleId)) return [] as any[];
+  type Entry = { key: string; date: Date | null; type: string; direction: string; channel: string; title: string; body: string; status?: string | null; createdBy?: string | null };
+  const out: Entry[] = [];
+
+  // 1) manual / system logs (customerLogs)
+  const logConds: any[] = [];
+  if (customerId) logConds.push(eq(customerLogs.customerId, customerId));
+  if (vehicleId) logConds.push(eq(customerLogs.vehicleId, vehicleId));
+  const logs = await db.select().from(customerLogs).where(logConds.length > 1 ? or(...logConds) : logConds[0]).orderBy(desc(customerLogs.createdAt)).limit(300);
+  for (const l of logs as any[]) {
+    out.push({ key: `log-${l.id}`, date: l.createdAt, type: l.type, direction: l.direction, channel: l.type,
+      title: l.subject || ({ note: "Note", email: "Email", sms: "SMS", call: "Phone call", letter: "Letter", system: "System" } as any)[l.type] || "Log",
+      body: l.body || "", createdBy: l.createdBy });
+  }
+
+  // 2) reminders sent (reminderLogs) — outbound
+  if (customerId) {
+    const rls = await db.select().from(reminderLogs).where(eq(reminderLogs.customerId, customerId)).orderBy(desc(reminderLogs.sentAt)).limit(200);
+    for (const r of rls as any[]) {
+      out.push({ key: `rl-${r.id}`, date: r.sentAt, type: "sms", direction: "out", channel: "reminder",
+        title: `${r.messageType} reminder${r.registration ? ` · ${r.registration}` : ""}`,
+        body: r.messageContent || "", status: r.status });
+    }
+  }
+
+  // 3) messages received (customerMessages) — inbound
+  if (customerId) {
+    const cms = await db.select().from(customerMessages).where(eq(customerMessages.customerId, customerId)).orderBy(desc(customerMessages.receivedAt)).limit(200);
+    for (const m of cms as any[]) {
+      out.push({ key: `cm-${m.id}`, date: m.receivedAt, type: "sms", direction: "in", channel: "reply",
+        title: `Reply from ${m.fromNumber || "customer"}`, body: m.messageBody || "", status: m.read ? "read" : "unread" });
+    }
+  }
+
+  out.sort((a, b) => (new Date(b.date || 0).getTime()) - (new Date(a.date || 0).getTime()));
+  return out;
+}
+
+export async function addCustomerLog(input: InsertCustomerLog) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [{ id }] = await db.insert(customerLogs).values({
+    customerId: input.customerId ?? null,
+    vehicleId: input.vehicleId ?? null,
+    documentId: input.documentId ?? null,
+    type: input.type ?? "note",
+    direction: input.direction ?? "internal",
+    subject: input.subject ?? null,
+    body: input.body ?? null,
+    createdBy: input.createdBy ?? null,
+  }).$returningId();
+  return { id };
 }
 
 export interface SaveDocInput {

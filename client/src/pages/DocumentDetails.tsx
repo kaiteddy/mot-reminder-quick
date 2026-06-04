@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReactToPrint } from "react-to-print";
 import PrintableDocument from "@/components/PrintableDocument";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -26,6 +26,44 @@ function splitName(full?: string) {
   const surname = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || "");
   const forename = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
   return { title, forename, surname };
+}
+
+function daysUntil(d: any): number | null {
+  if (!d) return null;
+  const t = new Date(d).getTime();
+  if (isNaN(t)) return null;
+  return Math.ceil((t - Date.now()) / 86400000);
+}
+function daysLabel(d: any): string | undefined {
+  const n = daysUntil(d);
+  if (n == null) return undefined;
+  if (n < 0) return `Expired ${-n}d ago`;
+  if (n === 0) return "Expires today";
+  return `${n} days left`;
+}
+function motTone(d: any): InfoTone {
+  const n = daysUntil(d);
+  if (n == null) return "slate";
+  if (n < 0) return "red";
+  if (n <= 30) return "amber";
+  return "green";
+}
+type InfoTone = "amber" | "sky" | "slate" | "green" | "red";
+const TONES: Record<InfoTone, string> = {
+  amber: "border-amber-200 bg-amber-50 text-amber-700",
+  sky: "border-sky-200 bg-sky-50 text-sky-700",
+  slate: "border-slate-200 bg-slate-50 text-slate-600",
+  green: "border-green-200 bg-green-50 text-green-700",
+  red: "border-red-200 bg-red-50 text-red-700",
+};
+function InfoCard({ icon, label, main, sub, tone }: { icon: ReactNode; label: string; main: string; sub?: string; tone: InfoTone }) {
+  return (
+    <div className={`rounded-md border px-2.5 py-1.5 ${TONES[tone]}`}>
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80">{icon}{label}</div>
+      <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5 truncate" title={main}>{main}</div>
+      {sub && <div className="text-[10.5px] text-slate-500 truncate" title={sub}>{sub}</div>}
+    </div>
+  );
 }
 
 const EMAIL_TEMPLATES: { name: string; types?: string[]; subject: string; body: string }[] = [
@@ -65,6 +103,7 @@ export default function DocumentDetails() {
   const [editing, setEditing] = useState(isNew);
   const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
+  const [lookupTech, setLookupTech] = useState<any>(null);
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -143,6 +182,7 @@ export default function DocumentDetails() {
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : f.dateOfRegistration,
         ...(c ? { customerName: c.name || f.customerName, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
       }));
+      setLookupTech({ ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate });
       const src = String(res.source || "");
       if (res.found) toast.success("Loaded from your records");
       else if (src.includes("sws")) toast.success("Loaded from SWS vehicle data" + (src.includes("dvla") ? " + DVLA" : ""));
@@ -159,6 +199,21 @@ export default function DocumentDetails() {
     const labourNet = items.filter((i) => i.itemType === "Labour").reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
     return { net, tax, gross: +(net + tax).toFixed(2), partsNet, labourNet };
   }, [items]);
+
+  const vehInfo = useMemo(() => {
+    const v = (data as any)?.vehicle;
+    const td = (v?.comprehensiveTechnicalData as any) || {};
+    const oil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    return {
+      oilSpec: lookupTech?.oilSpec ?? oil?.specification,
+      oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
+      airconType: lookupTech?.airconType ?? td.aircon?.type,
+      airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.capacity,
+      motExpiry: lookupTech?.motExpiry ?? v?.motExpiryDate,
+      taxStatus: lookupTech?.taxStatus ?? v?.taxStatus,
+      taxDueDate: lookupTech?.taxDueDate ?? v?.taxDueDate,
+    };
+  }, [data, lookupTech]);
 
   async function onSave() {
     try {
@@ -346,12 +401,28 @@ export default function DocumentDetails() {
             </div>
           </div>
 
+          {/* vehicle info cards (pulled from MOT/SWS lookup) */}
+          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus) && (
+            <div className="px-3 pb-1 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+              <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
+                main={vehInfo.oilSpec || "—"} sub={vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : undefined} />
+              <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
+                main={vehInfo.airconType || "—"} sub={vehInfo.airconCapacity ? `${vehInfo.airconCapacity}` : undefined} />
+              <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
+                main={form.mileage ? Number(form.mileage).toLocaleString("en-GB") : "—"} sub={form.mileage ? "miles (last)" : undefined} />
+              <InfoCard icon={<CalendarClock className="w-4 h-4" />} tone={motTone(vehInfo.motExpiry)} label="MOT Expiry"
+                main={vehInfo.motExpiry ? fmtDate(vehInfo.motExpiry) : "—"} sub={daysLabel(vehInfo.motExpiry)} />
+              <InfoCard icon={<ShieldCheck className="w-4 h-4" />} tone={vehInfo.taxStatus && /tax/i.test(vehInfo.taxStatus) && !/not/i.test(vehInfo.taxStatus) ? "green" : vehInfo.taxStatus ? "red" : "slate"} label="Tax"
+                main={vehInfo.taxStatus || "—"} sub={vehInfo.taxDueDate ? `Due ${fmtDate(vehInfo.taxDueDate)}` : undefined} />
+            </div>
+          )}
+
           {/* body: tabs + totals */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -366,6 +437,7 @@ export default function DocumentDetails() {
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
+                  <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
                     {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
                       <Table>
@@ -577,6 +649,78 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
               ))}
             </TableBody>
           </Table>
+        )}
+    </div>
+  );
+}
+
+function logIcon(type: string, direction: string) {
+  if (type === "email") return <Mail className="w-3.5 h-3.5" />;
+  if (type === "call") return <Phone className="w-3.5 h-3.5" />;
+  if (type === "note") return <StickyNote className="w-3.5 h-3.5" />;
+  if (direction === "in") return <ArrowDownLeft className="w-3.5 h-3.5" />;
+  return <MessageSquare className="w-3.5 h-3.5" />;
+}
+const LOG_TONE: Record<string, string> = {
+  in: "bg-green-100 text-green-700",
+  out: "bg-violet-100 text-violet-700",
+  internal: "bg-slate-100 text-slate-600",
+};
+function fmtDateTime(d: any) { return d ? new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; }
+
+function CustomerLog({ customerId, vehicleId, documentId }: { customerId?: number; vehicleId?: number; documentId?: number }) {
+  const utils = trpc.useUtils();
+  const enabled = !!customerId || !!vehicleId;
+  const { data: log, isLoading } = trpc.documents.customerLog.useQuery({ customerId, vehicleId }, { enabled });
+  const addLog = trpc.documents.addLog.useMutation();
+  const [note, setNote] = useState("");
+  const [kind, setKind] = useState<"note" | "call" | "letter">("note");
+
+  if (!enabled) return <p className="text-sm text-muted-foreground py-6 text-center">No customer linked to this document.</p>;
+
+  async function add() {
+    const body = note.trim();
+    if (!body) return;
+    await addLog.mutateAsync({ customerId, vehicleId, documentId, type: kind, direction: kind === "note" ? "internal" : "out", body });
+    setNote("");
+    await utils.documents.customerLog.invalidate();
+    toast.success("Logged");
+  }
+
+  const entries = (log as any[]) || [];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-2">
+        <select value={kind} onChange={(e) => setKind(e.target.value as any)} className="border border-slate-300 rounded-sm px-2 py-1.5 text-[13px] bg-white">
+          <option value="note">Note</option>
+          <option value="call">Phone call</option>
+          <option value="letter">Letter</option>
+        </select>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Add a note or log a call / letter…"
+          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") add(); }}
+          className="flex-1 border border-slate-300 rounded-sm px-2 py-1.5 text-[13px] outline-none focus:border-violet-500 resize-y" />
+        <button onClick={add} disabled={addLog.isPending || !note.trim()} className="bg-violet-700 text-white rounded px-3 py-1.5 text-[13px] disabled:opacity-50 inline-flex items-center gap-1.5 self-stretch">
+          {addLog.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add
+        </button>
+      </div>
+
+      {isLoading ? <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
+        : entries.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No communication logged for this customer yet.</p>
+        : (
+          <ol className="relative border-l border-slate-200 ml-3 space-y-3">
+            {entries.map((e) => (
+              <li key={e.key} className="ml-4">
+                <span className={`absolute -left-[11px] flex items-center justify-center w-[22px] h-[22px] rounded-full ring-4 ring-white ${LOG_TONE[e.direction] || LOG_TONE.internal}`}>{logIcon(e.type, e.direction)}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13px] font-semibold text-slate-800">{e.title}</span>
+                  {e.status && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{e.status}</span>}
+                  <span className="text-[11px] text-muted-foreground">{fmtDateTime(e.date)}</span>
+                  {e.createdBy && <span className="text-[11px] text-muted-foreground">· {e.createdBy}</span>}
+                </div>
+                {e.body && <p className="text-[12.5px] text-slate-600 whitespace-pre-wrap mt-0.5">{e.body}</p>}
+              </li>
+            ))}
+          </ol>
         )}
     </div>
   );

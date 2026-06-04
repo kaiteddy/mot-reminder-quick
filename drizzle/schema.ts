@@ -343,3 +343,28 @@ export const descriptionPresets = mysqlTable("descriptionPresets", {
 
 export type DescriptionPreset = typeof descriptionPresets.$inferSelect;
 export type InsertDescriptionPreset = typeof descriptionPresets.$inferInsert;
+
+/**
+ * Customer communication / activity log — notes, emails, calls logged against a
+ * customer (and optionally a vehicle / document). Merged with reminderLogs and
+ * customerMessages to form a full timeline in the document view.
+ */
+export const customerLogs = mysqlTable("customerLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  customerId: int("customerId"),
+  vehicleId: int("vehicleId"),
+  documentId: int("documentId"),
+  type: mysqlEnum("type", ["note", "email", "sms", "call", "letter", "system"]).default("note").notNull(),
+  direction: mysqlEnum("direction", ["in", "out", "internal"]).default("out").notNull(),
+  subject: varchar("subject", { length: 255 }),
+  body: text("body"),
+  createdBy: varchar("createdBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  customerIdIdx: index("customer_logs_customer_id_idx").on(table.customerId),
+  vehicleIdIdx: index("customer_logs_vehicle_id_idx").on(table.vehicleId),
+  createdAtIdx: index("customer_logs_created_at_idx").on(table.createdAt),
+}));
+
+export type CustomerLog = typeof customerLogs.$inferSelect;
+export type InsertCustomerLog = typeof customerLogs.$inferInsert;
