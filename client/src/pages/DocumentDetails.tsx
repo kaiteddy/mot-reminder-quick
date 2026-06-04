@@ -433,12 +433,12 @@ export default function DocumentDetails() {
                 )}
               </div>
               <div className="flex gap-2">
-                <EF label="Make / Model" field="make" {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1 self-end"} />
+                <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1 self-end uppercase"} />
               </div>
-              <EF label="Derivative" field="derivative" {...{ form, set, editing }} grow />
+              <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
               <div className="flex gap-2 items-center">
-                <EF label="Chassis" field="vin" {...{ form, set, editing }} grow />
+                <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
                 {form.vin && (
                   <button type="button" title="Search this VIN on PartSouq"
                     onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
@@ -447,10 +447,10 @@ export default function DocumentDetails() {
                   </button>
                 )}
               </div>
-              <div className="flex gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Engine Code" field="engineCode" {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Colour" field="colour" {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Key Code" field="keyCode" {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" {...{ form, set, editing }} /></div>
+              <div className="flex gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Mileage" field="mileage" {...{ form, set, editing }} /><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /></div>
             </div>
             {/* customer */}
@@ -503,7 +503,17 @@ export default function DocumentDetails() {
               </Panel>
               {!isExcess && (
                 <Panel title="Extras">
-                  <AmountField label="MOT" field="motAmount" {...{ form, set, editing }} />
+                  {/* MOT: tick to include an MOT on this job (defaults the statutory fee, editable) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
+                      <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
+                        onChange={(e) => set("motAmount", e.target.checked ? (num(form.motAmount) ? form.motAmount : "54.85") : "")}
+                        className="accent-violet-600 w-3.5 h-3.5" />
+                      MOT
+                    </label>
+                    <input value={form.motAmount ?? ""} onChange={(e) => set("motAmount", e.target.value)} readOnly={!editing} inputMode="decimal" placeholder="0.00"
+                      className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white read-only:bg-slate-50 outline-none focus:border-violet-500" />
+                  </div>
                   <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
                   <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
                   <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
@@ -856,11 +866,11 @@ function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
   );
 }
 
-function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string }) {
+function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean }) {
   return (
     <div className={`flex items-center gap-2 ${grow ? "flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[11px] text-slate-600 text-right`}>{label}</span>
-      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1"} />
+      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1" + (upper ? " uppercase" : "")} />
     </div>
   );
 }
