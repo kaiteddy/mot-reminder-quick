@@ -90,6 +90,22 @@ function recalc(i: Item): Item {
   return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
 }
 
+// "Extras" categories surfaced as single £ amounts (not itemised line tables).
+const EXTRA_KINDS = ["MOT", "Sundries", "Lubricant", "Paint"];
+const EXTRA_VAT: Record<string, number> = { MOT: 0, Sundries: 20, Lubricant: 20, Paint: 20 };
+const sumNetOf = (lis: any[], kind: string) => (lis || []).filter((i) => i.itemType === kind).reduce((a, i) => a + (Number(i.subNet) || 0), 0);
+const extraSum = (lis: any[], kind: string) => { const v = sumNetOf(lis, kind); return v ? String(v.toFixed(2)) : ""; };
+/** Build synthetic line items for the Extras amounts entered on the form. */
+function extrasToLineItems(form: Record<string, any>): Item[] {
+  const map: [string, string][] = [["MOT", "motAmount"], ["Sundries", "sundriesAmount"], ["Lubricant", "lubricantsAmount"], ["Paint", "paintAmount"]];
+  const out: Item[] = [];
+  for (const [kind, field] of map) {
+    const amt = num(form[field]);
+    if (amt && amt !== 0) out.push(recalc({ itemType: kind, description: kind === "MOT" ? "MOT Test" : kind === "Paint" ? "Paint & Materials" : kind, quantity: 1, unitPrice: amt, vatRate: EXTRA_VAT[kind] ?? 20 }));
+  }
+  return out;
+}
+
 export default function DocumentDetails() {
   const params = useParams();
   const isNew = params.id === "new";
@@ -185,8 +201,13 @@ export default function DocumentDetails() {
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
       staffSalesPerson: doc.staffSalesPerson || "", staffTechnician: doc.staffTechnician || "", staffRoadTester: doc.staffRoadTester || "",
       staffMotTester: doc.staffMotTester || "", motClass: doc.motClass || "", motStatus: doc.motStatus || "",
+      motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
+      lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
-    setItems((data as any).lineItems.map((li: any) => ({ ...li })));
+    // Labour/Parts/Advisories stay in the line-item tabs; MOT/Sundries/Lubricant/Paint
+    // are surfaced as single Extras amounts (XS excess docs keep all their lines).
+    const all = (data as any).lineItems as any[];
+    setItems((doc.docType === "XS" ? all : all.filter((li) => !EXTRA_KINDS.includes(li.itemType))).map((li) => ({ ...li })));
   }, [data, isNew]);
 
   async function lookup() {
@@ -215,15 +236,20 @@ export default function DocumentDetails() {
   }
 
   const liveTotals = useMemo(() => {
-    const sumNet = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
-    const net = items.reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
-    const tax = items.reduce((a, i) => a + (num(i.taxAmount) ?? 0), 0);
+    const itemNet = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
+    const itemTax = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.taxAmount) ?? 0), 0);
+    const labourNet = itemNet("Labour"), partsNet = itemNet("Part"), otherNet = itemNet("Other"), excessLineNet = itemNet("Excess");
+    // Extras entered as single amounts on the form
+    const mot = num(form.motAmount) || 0, sundries = num(form.sundriesAmount) || 0, lubricants = num(form.lubricantsAmount) || 0, paint = num(form.paintAmount) || 0;
+    const subTotal = +(labourNet + partsNet + otherNet + excessLineNet + sundries + lubricants + paint).toFixed(2);
+    const vat = +(itemTax("Labour") + itemTax("Part") + itemTax("Other") + itemTax("Excess") + (sundries + lubricants + paint) * 0.2).toFixed(2);
+    const motGross = +mot.toFixed(2); // MOT fee is outside the scope of VAT
+    const gross = +(subTotal + vat + motGross).toFixed(2);
     return {
-      net, tax, gross: +(net + tax).toFixed(2),
-      labourNet: sumNet("Labour"), partsNet: sumNet("Part"),
-      sundriesNet: sumNet("Sundries"), paintNet: sumNet("Paint"), lubricantNet: sumNet("Lubricant"), motNet: sumNet("MOT"),
+      subTotal, vat, motGross, gross, net: subTotal, tax: vat,
+      labourNet, partsNet, sundriesNet: sundries, paintNet: paint, lubricantNet: lubricants,
     };
-  }, [items]);
+  }, [items, form.motAmount, form.sundriesAmount, form.lubricantsAmount, form.paintAmount]);
 
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
@@ -257,7 +283,7 @@ export default function DocumentDetails() {
         docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
         staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
         staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus,
-        lineItems: items.map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
+        lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
       };
       // If the customer details were edited and a customer is linked, offer to update their record
       const cust = (data as any)?.customer;
@@ -286,7 +312,8 @@ export default function DocumentDetails() {
   const isExcess = form.docType === "XS";
   const relatedDoc = (data as any)?.relatedDoc;
   const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
-  const docBalance = +((liveTotals.gross - docReceipts)).toFixed(2);
+  const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
+  const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
   return (
@@ -438,11 +465,18 @@ export default function DocumentDetails() {
                 <EF label="Technician" field="staffTechnician" w="w-20" {...{ form, set, editing }} />
                 <EF label="Road Tester" field="staffRoadTester" w="w-20" {...{ form, set, editing }} />
               </Panel>
-              <Panel title="MOT">
-                <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
-                <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
-                <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
-              </Panel>
+              {!isExcess && (
+                <Panel title="Extras">
+                  <AmountField label="MOT" field="motAmount" {...{ form, set, editing }} />
+                  <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
+                  <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
+                  <EF label="MOT Tester" field="staffMotTester" w="w-20" {...{ form, set, editing }} />
+                  <div className="border-t my-1.5" />
+                  <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
+                  <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
+                  <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
+                </Panel>
+              )}
               {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
               {isExcess && relatedDoc && (
                 <Panel title="Insurance Invoice">
@@ -494,7 +528,7 @@ export default function DocumentDetails() {
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["sundries", "Sundries"], ["paint", "Paint & Mat."], ["lubricants", "Lubricants"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -507,9 +541,6 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Labour" editing={editing} /></TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
-                  <TabsContent value="sundries" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Sundries" editing={editing} /></TabsContent>
-                  <TabsContent value="paint" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Paint" editing={editing} /></TabsContent>
-                  <TabsContent value="lubricants" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Lubricant" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
@@ -535,19 +566,18 @@ export default function DocumentDetails() {
             </div>
             <div className="xl:col-span-3 space-y-3">
               <Panel title="Totals">
-                <TRow label="Labour" value={liveTotals.labourNet} />
-                <TRow label="Parts" value={liveTotals.partsNet} />
-                {liveTotals.sundriesNet > 0 && <TRow label="Sundries" value={liveTotals.sundriesNet} />}
-                {liveTotals.paintNet > 0 && <TRow label="Paint & Mat." value={liveTotals.paintNet} />}
-                {liveTotals.lubricantNet > 0 && <TRow label="Lubricants" value={liveTotals.lubricantNet} />}
-                {liveTotals.motNet > 0 && <TRow label="MOT" value={liveTotals.motNet} />}
-                <TRow label="Subtotal" value={liveTotals.net} />
-                <TRow label="VAT" value={liveTotals.tax} />
+                <TRow label="SubTotal" value={liveTotals.subTotal} />
+                <TRow label="VAT" value={liveTotals.vat} />
+                <TRow label="MOT" value={liveTotals.motGross} />
                 <TRow label="Total" value={liveTotals.gross} bold />
-                {(isInvoice || docReceipts > 0) && (
-                  <div className="border-t mt-1 pt-1">
-                    <TRow label="Receipts" value={docReceipts} />
-                    <div className="flex justify-between text-[13px] font-bold"><span>Balance</span><span className={docBalance > 0 ? "bg-yellow-100 px-1" : ""}>£{money(docBalance)}</span></div>
+                {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+                  <div className="border-t mt-1 pt-1 space-y-1.5">
+                    {!isExcess && <TRow label="Excess" value={excessDeduction} />}
+                    <TRow label="Receipts" value={docReceipts} bold />
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>{money(docBalance)}</div>
+                    </div>
                   </div>
                 )}
               </Panel>
@@ -619,6 +649,16 @@ export default function DocumentDetails() {
 
 const boxCls = (editing: boolean) =>
   `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[26px] truncate outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
+
+function AmountField({ label, field, form, set, editing }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[12px] text-slate-600">{label}</span>
+      <input value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing} inputMode="decimal" placeholder="0.00"
+        className="w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white read-only:bg-slate-50 outline-none focus:border-violet-500" />
+    </div>
+  );
+}
 
 const PAYMENT_METHODS = ["Cash", "Card", "Bank Transfer", "Cheque", "Account", "Online"];
 

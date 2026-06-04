@@ -42,8 +42,13 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
 
   const subLabour = Number(doc.subLabourNet) || labour.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
   const subParts = Number(doc.subPartsNet) || parts.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
-  const subMot = Number(doc.subMotGross) || 0;
+  const motRows = lineItems.filter((i) => i.itemType === "MOT");
+  const subMot = Number(doc.subMotGross) || sumNet(motRows);
   const hasMot = subMot > 0 || !!doc.motStatus || !!doc.motClass;
+  // SubTotal shown excludes the MOT fee (listed separately, outside VAT)
+  const subTotalExMot = +(((Number(doc.totalNet) || 0) - sumNet(motRows))).toFixed(2);
+  const excessGross = Number(doc.excessGross) || 0;
+  const receipts = Number(doc.totalReceipts) || 0;
 
   const ItemTable = ({ heading, rows }: { heading: string; rows: any[] }) => (
     <table className="lines">
@@ -215,9 +220,6 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
 
       {labour.length > 0 && <ItemTable heading="Labour" rows={labour} />}
       {parts.length > 0 && <ItemTable heading="Parts" rows={parts} />}
-      {sundries.length > 0 && <ItemTable heading="Sundries" rows={sundries} />}
-      {paint.length > 0 && <ItemTable heading="Paint & Materials" rows={paint} />}
-      {lubricants.length > 0 && <ItemTable heading="Lubricants" rows={lubricants} />}
       {advisories.length > 0 && (
         <div className="desc"><div className="h">Advisories</div><ul>{advisories.map((a, i) => <li key={i}>{a.description}</li>)}</ul></div>
       )}
@@ -230,10 +232,12 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
           {sumNet(sundries) > 0 && <div className="r"><span>Sundries</span><span className="v">{gbp(sumNet(sundries))}</span></div>}
           {sumNet(paint) > 0 && <div className="r"><span>Paint &amp; Mat.</span><span className="v">{gbp(sumNet(paint))}</span></div>}
           {sumNet(lubricants) > 0 && <div className="r"><span>Lubricants</span><span className="v">{gbp(sumNet(lubricants))}</span></div>}
-          <div className="r b"><span>SubTotal</span><span className="v">{gbp(doc.totalNet)}</span></div>
-          {subMot > 0 && <div className="r"><span>MOT</span><span className="v">{gbp(subMot)}</span></div>}
+          <div className="r b"><span>SubTotal</span><span className="v">{gbp(subTotalExMot)}</span></div>
           <div className="r"><span>VAT (20%)</span><span className="v">{gbp(doc.totalTax)}</span></div>
+          {subMot > 0 && <div className="r"><span>MOT</span><span className="v">{gbp(subMot)}</span></div>}
           <div className="r b"><span>Total</span><span className="v">{gbp(doc.totalGross)}</span></div>
+          {excessGross > 0 && <div className="r"><span>Excess</span><span className="v">{gbp(excessGross)}</span></div>}
+          {receipts > 0 && <div className="r"><span>Receipts</span><span className="v">{gbp(receipts)}</span></div>}
           <div className="r b"><span>Balance</span><span className="v">{gbp(doc.balance ?? doc.totalGross)}</span></div>
         </div>
       </div>

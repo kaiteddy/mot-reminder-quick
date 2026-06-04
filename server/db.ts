@@ -1277,7 +1277,9 @@ async function recomputeDocBalance(documentId: number) {
   const r = await db.select({ sum: sql<number>`COALESCE(SUM(${payments.amount}),0)` }).from(payments).where(eq(payments.documentId, documentId));
   const receipts = Number(r[0]?.sum) || 0;
   const gross = Number(doc.totalGross) || 0;
-  const balance = +(gross - receipts).toFixed(2);
+  // a main insurance invoice has its excess paid on the separate XS invoice, so deduct it here
+  const excess = doc.docType === "XS" ? 0 : (Number(doc.excessGross) || 0);
+  const balance = +(gross - excess - receipts).toFixed(2);
   const methods = await db.selectDistinct({ m: payments.method }).from(payments).where(eq(payments.documentId, documentId));
   const set: any = {
     totalReceipts: String(receipts.toFixed(2)), balance: String(balance.toFixed(2)),
@@ -1378,6 +1380,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     relatedDocId: xsId, relatedDocNo: docNo,
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
   }).where(eq(serviceHistory.id, main.id));
+  await recomputeDocBalance(main.id);
 
   return { id: xsId, docNo };
 }
@@ -1415,6 +1418,7 @@ export async function updateExcessInvoice(input: { docId: number; excessNet: num
     await db.update(serviceHistory).set({
       excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
     }).where(eq(serviceHistory.id, xs.relatedDocId));
+    await recomputeDocBalance(xs.relatedDocId);
   }
   return { id: input.docId };
 }
