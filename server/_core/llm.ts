@@ -280,7 +280,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.0-flash",
+    // Cheap, current, vision-capable (used by the GA4 image scanner).
+    // Override via CHAT_MODEL env (e.g. gemini-2.5-flash-lite for even lower cost).
+    model: process.env.CHAT_MODEL || "gemini-2.5-flash",
     messages: messages.map(normalizeMessage),
   };
 
