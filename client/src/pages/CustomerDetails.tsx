@@ -179,7 +179,7 @@ export default function CustomerDetails() {
                         <Button
                             variant="default"
                             size="sm"
-                            onClick={() => window.location.href = `/generate-document?customerId=${customer.id}`}
+                            onClick={() => window.location.href = `/documents/new?customerId=${customer.id}`}
                         >
                             <Plus className="w-4 h-4 mr-2" />
                             New Job
@@ -375,7 +375,7 @@ export default function CustomerDetails() {
                                                                     size="icon"
                                                                     className="h-7 w-7 text-primary"
                                                                     title="New Job"
-                                                                    onClick={() => window.location.href = `/generate-document?vehicleId=${v.id}&customerId=${customer.id}&reg=${v.registration}`}
+                                                                    onClick={() => window.location.href = `/documents/new?reg=${encodeURIComponent(v.registration)}`}
                                                                 >
                                                                     <Plus className="w-3.5 h-3.5" />
                                                                 </Button>

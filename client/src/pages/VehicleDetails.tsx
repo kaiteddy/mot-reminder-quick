@@ -149,7 +149,7 @@ export default function VehicleDetails() {
                         <Button
                             variant="outline"
                             className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
-                            onClick={() => setLocation(`/generate-document?vehicleId=${vehicle.id}&customerId=${customer?.id}&reg=${vehicle.registration}`)}
+                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             Create Estimate/Invoice

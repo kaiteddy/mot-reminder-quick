@@ -285,7 +285,7 @@ export default function Analytics() {
                                                                 £{js.totalGross.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </TableCell>
                                                             <TableCell className="text-right">
-                                                                <Link href={`/generate-document?editId=${js.id}`}>
+                                                                <Link href={`/documents/${js.id}`}>
                                                                     <Button variant="ghost" size="sm" className="h-7 text-amber-700 hover:text-amber-800 hover:bg-amber-100 px-2 text-xs font-bold">
                                                                         Open <ExternalLink className="h-3 w-3 ml-1.5" />
                                                                     </Button>

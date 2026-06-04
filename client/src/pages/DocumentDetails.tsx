@@ -261,20 +261,49 @@ export default function DocumentDetails() {
     setItems((doc.docType === "XS" ? all : all.filter((li) => !EXTRA_KINDS.includes(li.itemType))).map((li) => ({ ...li })));
   }, [data, isNew]);
 
-  async function lookup() {
-    if (!form.registration) return;
+  // Prefill a brand-new document from ?reg= / ?customerId= (e.g. the "Generate Doc"
+  // buttons on the Customer / Vehicle pages now point here).
+  useEffect(() => {
+    if (!isNew) return;
+    const q = new URLSearchParams(window.location.search);
+    const reg = q.get("reg");
+    const customerId = q.get("customerId");
+    const docType = q.get("docType");
+    if (docType) setForm((f) => ({ ...f, docType }));
+    if (reg) {
+      setForm((f) => ({ ...f, registration: reg.toUpperCase() }));
+      lookup(reg); // fills the vehicle and its linked customer
+    } else if (customerId) {
+      (async () => {
+        try {
+          const res: any = await utils.customers.getById.fetch({ id: Number(customerId) });
+          const c = res?.customer;
+          if (c) {
+            const sn = splitName(c.name);
+            setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || "", custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || "", custPostcode: c.postcode || "", custTelephone: c.phone || "", custRoad: c.address || "" }));
+          }
+        } catch { /* customer prefill is best-effort */ }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew]);
+
+  async function lookup(regOverride?: string) {
+    const reg = (regOverride || form.registration || "").trim();
+    if (!reg) return;
     setLooking(true);
     try {
-      const res: any = await utils.documents.lookupVehicle.fetch({ registration: form.registration });
+      const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg });
       const v = res?.vehicle, c = res?.customer;
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
+      const sn = c ? splitName(c.name) : null;
       setForm((f) => ({
-        ...f, registration: v.registration || f.registration,
+        ...f, registration: v.registration || reg,
         make: v.make ?? f.make, model: v.model ?? f.model, derivative: v.derivative ?? f.derivative, colour: v.colour ?? f.colour, fuelType: v.fuelType ?? f.fuelType,
         engineCC: v.engineCC ?? f.engineCC, engineNo: v.engineNo ?? f.engineNo, engineCode: v.engineCode ?? f.engineCode,
         vin: v.vin ?? f.vin, paintCode: v.paintCode ?? f.paintCode, keyCode: v.keyCode ?? f.keyCode, radioCode: v.radioCode ?? f.radioCode,
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : f.dateOfRegistration,
-        ...(c ? { customerName: c.name || f.customerName, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
+        ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
       }));
       setLookupTech({ ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate });
       const src = String(res.source || "");
@@ -452,7 +481,7 @@ export default function DocumentDetails() {
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
                   className="flex-1 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
                 {editing && (
-                  <button onClick={lookup} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
+                  <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
                     {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
                   </button>
                 )}

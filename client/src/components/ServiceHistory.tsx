@@ -166,7 +166,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setLocation(`/generate-document?editId=${doc.id}`);
+                                            setLocation(`/documents/${doc.id}`);
                                         }}
                                     >
                                         <Edit className="h-4 w-4 mr-2" />
@@ -214,7 +214,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => setLocation(`/generate-document?editId=${selectedDoc}`)}
+                                    onClick={() => setLocation(`/documents/${selectedDoc}`)}
                                 >
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit Document
