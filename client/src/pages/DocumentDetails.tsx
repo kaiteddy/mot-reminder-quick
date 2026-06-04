@@ -190,8 +190,20 @@ export default function DocumentDetails() {
   const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
+  const delMut = trpc.documents.delete.useMutation();
   const [issueOpen, setIssueOpen] = useState(false);
   const [excessOpen, setExcessOpen] = useState(false);
+  async function doDelete() {
+    if (isNew || !id) return;
+    const dn = (data as any)?.doc?.docNo;
+    if (!window.confirm(`Delete this document${dn ? ` (${dn})` : ""}?\n\nThis permanently removes it and its line items & payments. This cannot be undone.`)) return;
+    try {
+      await delMut.mutateAsync({ ids: [id] });
+      await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
+      toast.success("Document deleted");
+      setLocation("/documents");
+    } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
+  }
   async function doIssue(after: "none" | "print" | "email" | "both") {
     try {
       await issueMut.mutateAsync({ id });
@@ -450,6 +462,11 @@ export default function DocumentDetails() {
                 )}
                 {!isNew && isInvoice && (
                   <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
+                )}
+                {!isNew && (
+                  <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
+                    {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
+                  </button>
                 )}
                 <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1.5 text-sm hover:bg-violet-800"><Pencil className="w-4 h-4" /> Edit</button>
               </>
