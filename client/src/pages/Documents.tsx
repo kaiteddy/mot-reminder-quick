@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Search } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -33,11 +34,32 @@ export default function Documents() {
   const [search, setSearch] = useState("");
   const [docType, setDocType] = useState("all");
   const [, setLocation] = useLocation();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const utils = trpc.useUtils();
 
   const { data: stats } = trpc.documents.stats.useQuery();
   const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200 });
+  const del = trpc.documents.delete.useMutation();
 
   const typeCount = (code: string) => stats?.byType.find((t) => t.docType === code)?.n ?? 0;
+
+  const rows: any[] = docs ?? [];
+  const allSelected = rows.length > 0 && rows.every((d) => selected.has(d.id));
+  const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelected((s) => (rows.every((d) => s.has(d.id)) ? new Set() : new Set(rows.map((d) => d.id))));
+  const clearSel = () => setSelected(new Set());
+
+  async function deleteSelected() {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} document${ids.length === 1 ? "" : "s"}? This permanently removes them and their line items & payments. This cannot be undone.`)) return;
+    try {
+      await del.mutateAsync({ ids });
+      await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
+      clearSel();
+      toast.success(`Deleted ${ids.length} document${ids.length === 1 ? "" : "s"}`);
+    } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
+  }
 
   return (
     <DashboardLayout>
@@ -94,10 +116,24 @@ export default function Documents() {
             </div>
           </CardHeader>
           <CardContent>
+            {selected.size > 0 && (
+              <div className="flex items-center justify-between gap-2 mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                <span className="text-sm font-medium text-red-800">{selected.size} selected</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={clearSel}><X className="w-4 h-4 mr-1" /> Clear</Button>
+                  <Button variant="destructive" size="sm" onClick={deleteSelected} disabled={del.isPending}>
+                    {del.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />} Delete{selected.size > 1 ? ` (${selected.size})` : ""}
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8">
+                      <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
+                    </TableHead>
                     <TableHead>Doc No</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Date</TableHead>
@@ -110,13 +146,16 @@ export default function Documents() {
                 </TableHeader>
                 <TableBody>
                   {isLoading && (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!isLoading && (docs?.length ?? 0) === 0 && (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
-                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/documents/${d.id}`)}>
+                    <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
+                      <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
+                      </TableCell>
                       <TableCell className="font-medium">{d.docNo || "-"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={TYPE_COLOR[d.docType] || ""}>

@@ -1747,16 +1747,25 @@ export async function getServiceHistoryPDF(vehicleId: number) {
 }
 
 export async function deleteServiceDocument(id: number) {
+  return deleteDocuments([id]);
+}
+
+/** Delete one or more documents and their line items, payments, and dangling excess links. */
+export async function deleteDocuments(ids: number[]) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const clean = (ids || []).filter((n) => Number.isFinite(n));
+  if (!clean.length) return { success: true, deleted: 0 };
 
-  return await db.transaction(async (tx) => {
-    // Delete line items first due to relationship
-    await tx.delete(serviceLineItems).where(eq(serviceLineItems.documentId, id));
-    // Delete the document header
-    await tx.delete(serviceHistory).where(eq(serviceHistory.id, id));
-    return { success: true };
+  await db.transaction(async (tx) => {
+    await tx.delete(serviceLineItems).where(inArray(serviceLineItems.documentId, clean));
+    await tx.delete(payments).where(inArray(payments.documentId, clean));
+    // remove dangling links from any document that referenced a deleted one (e.g. an
+    // insurance invoice ↔ its policy-excess invoice)
+    await tx.update(serviceHistory).set({ relatedDocId: null, relatedDocNo: null }).where(inArray(serviceHistory.relatedDocId, clean));
+    await tx.delete(serviceHistory).where(inArray(serviceHistory.id, clean));
   });
+  return { success: true, deleted: clean.length };
 }
 
 export async function getAppSetting(keyName: string) {

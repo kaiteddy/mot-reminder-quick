@@ -257,6 +257,12 @@ export const appRouter = router({
         const { createExcessInvoice } = await import("./db");
         return createExcessInvoice(input);
       }),
+    delete: publicProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { deleteDocuments } = await import("./db");
+        return deleteDocuments(input.ids);
+      }),
     updateExcess: publicProcedure
       .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
       .mutation(async ({ input }) => {
