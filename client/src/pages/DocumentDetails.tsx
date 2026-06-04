@@ -133,22 +133,28 @@ export default function DocumentDetails() {
   const [items, setItems] = useState<Item[]>([]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const [printing, setPrinting] = useState(false);
-  // Print the SAME server-rendered PDF that gets emailed, so print & email always match.
+  // An invoice must have the customer name + vehicle mileage before it goes to the customer.
+  function requiredMissing(): string[] {
+    if (form.docType !== "SI" && form.docType !== "XS") return [];
+    const m: string[] = [];
+    if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
+    if (!String(form.mileage ?? "").trim()) m.push("Mileage");
+    return m;
+  }
+  function blockIfIncomplete(action: string): boolean {
+    const missing = requiredMissing();
+    if (missing.length) {
+      toast.error(`Cannot ${action} — complete the fields shown in red: ${missing.join(", ")}.`);
+      if (!editing) setEditing(true);
+      return true;
+    }
+    return false;
+  }
+  // Print the SAME server-rendered PDF that gets emailed (print & email always match),
+  // and open the browser print dialog directly via a hidden iframe.
   async function handlePrint() {
     if (isNew || !id) return;
-    // an invoice must have the customer details + mileage before it goes out
-    if (form.docType === "SI" || form.docType === "XS") {
-      const missing: string[] = [];
-      if (!(form.custSurname || form.custForename || form.company || form.customerName)) missing.push("Customer name");
-      if (!String(form.custRoad ?? "").trim()) missing.push("Address");
-      if (!String(form.custPostcode ?? "").trim()) missing.push("Postcode");
-      if (!String(form.mileage ?? "").trim()) missing.push("Mileage");
-      if (missing.length) {
-        toast.error(`Cannot print — complete the fields shown in red: ${missing.join(", ")}.`);
-        if (!editing) setEditing(true);
-        return;
-      }
-    }
+    if (blockIfIncomplete("print")) return;
     setPrinting(true);
     try {
       const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
@@ -157,11 +163,15 @@ export default function DocumentDetails() {
       const arr = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
-      const w = window.open(url, "_blank");
-      if (!w) { // popup blocked — fall back to a download
-        const a = document.createElement("a"); a.href = url; a.download = res.filename || "document.pdf"; a.click();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      iframe.src = url;
+      iframe.onload = () => {
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
+        catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
+      };
+      document.body.appendChild(iframe);
+      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
     } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
     finally { setPrinting(false); }
   }
@@ -205,6 +215,7 @@ export default function DocumentDetails() {
     return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
   }
   function openEmail() {
+    if (blockIfIncomplete("email")) return;
     const d = (data as any)?.doc; const cust = (data as any)?.customer;
     const t = EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
     setEmailForm({ to: d?.custEmail || cust?.email || "", ...applyTemplate(t, emailCtx()) });
@@ -498,8 +509,8 @@ export default function DocumentDetails() {
                   placeholder={nameMissing ? "Required" : "Surname"}
                   className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
               </div>
-              <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" required={isInvoice} {...{ form, set, editing }} /></div>
-              <EF label="Road" field="custRoad" required={isInvoice} {...{ form, set, editing }} />
+              <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} /></div>
+              <EF label="Road" field="custRoad" {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
