@@ -507,7 +507,7 @@ export default function DocumentDetails() {
                   <div className="flex items-center justify-between gap-2">
                     <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
                       <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
-                        onChange={(e) => set("motAmount", e.target.checked ? (num(form.motAmount) ? form.motAmount : "54.85") : "")}
+                        onChange={(e) => set("motAmount", e.target.checked ? (num(form.motAmount) ? form.motAmount : "45") : "")}
                         className="accent-violet-600 w-3.5 h-3.5" />
                       MOT
                     </label>

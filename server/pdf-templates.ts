@@ -194,13 +194,15 @@ function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number):
     });
   };
 
+  const up = (s: any) => String(s ?? '').toUpperCase();
+
   drawRow(['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'], true, y);
   y += ROW_H;
-  drawRow([v.reg, v.make, v.model, v.chassis, String(v.mileage || '')], false, y);
+  drawRow([up(v.reg), up(v.make), up(v.model), up(v.chassis), String(v.mileage || '')], false, y);
   y += ROW_H;
   drawRow(['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'], true, y);
   y += ROW_H;
-  drawRow([v.engine_no, v.engine_code, String(v.engine_cc || ''), v.date_reg, v.colour], false, y);
+  drawRow([up(v.engine_no), up(v.engine_code), String(v.engine_cc || ''), v.date_reg, up(v.colour)], false, y);
   y += ROW_H;
 
   return y;
