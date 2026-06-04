@@ -294,7 +294,7 @@ export default function DocumentDetails() {
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -308,6 +308,7 @@ export default function DocumentDetails() {
                   <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Labour" editing={editing} /></TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
+                  <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
                     {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
                       <Table>
@@ -438,6 +439,49 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
           + Save as preset
         </button>
       )}
+    </div>
+  );
+}
+
+function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: number) => void }) {
+  const [q, setQ] = useState("");
+  const { data: parts, isLoading } = trpc.documents.partsHistory.useQuery({ vehicleId: vehicleId! }, { enabled: !!vehicleId });
+  if (!vehicleId) return <p className="text-sm text-muted-foreground py-6 text-center">No vehicle linked to this document.</p>;
+  const s = q.trim().toLowerCase();
+  const filtered = ((parts as any[]) || []).filter((p) => !s || (p.description || "").toLowerCase().includes(s) || (p.partNumber || "").toLowerCase().includes(s));
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <div className="relative w-64">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search parts fitted to this vehicle…" className="w-full border border-slate-300 rounded-sm pl-7 pr-2 py-1 text-[13px] outline-none focus:border-violet-500" />
+        </div>
+        <span className="text-xs text-muted-foreground">{filtered.length} part{filtered.length === 1 ? "" : "s"}</span>
+      </div>
+      {isLoading ? <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
+        : filtered.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No parts found for this vehicle.</p>
+        : (
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead className="h-8">Date</TableHead><TableHead className="h-8">Doc No</TableHead>
+              <TableHead className="h-8">Part No</TableHead><TableHead className="h-8">Description</TableHead>
+              <TableHead className="h-8 text-right">Qty</TableHead><TableHead className="h-8 text-right">Unit £</TableHead><TableHead className="h-8 text-right">Net £</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {filtered.map((p) => (
+                <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onOpen(p.docId)}>
+                  <TableCell>{fmtDate(p.dateIssued || p.dateCreated)}</TableCell>
+                  <TableCell>{p.docNo}</TableCell>
+                  <TableCell className="font-mono text-xs">{p.partNumber || "—"}</TableCell>
+                  <TableCell className="max-w-[300px] truncate">{p.description || "—"}</TableCell>
+                  <TableCell className="text-right">{p.quantity ?? ""}</TableCell>
+                  <TableCell className="text-right">{money(p.unitPrice)}</TableCell>
+                  <TableCell className="text-right">{money(p.subNet)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
     </div>
   );
 }

@@ -182,6 +182,13 @@ export const appRouter = router({
         const { convertDocument } = await import("./db");
         return convertDocument(input.id, input.toType);
       }),
+
+    partsHistory: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .query(async ({ input }) => {
+        const { getVehiclePartsHistory } = await import("./db");
+        return getVehiclePartsHistory(input.vehicleId);
+      }),
   }),
 
   descriptionPresets: router({

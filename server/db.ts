@@ -923,6 +923,31 @@ export async function getDocumentDetail(id: number) {
   return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced };
 }
 
+/** All parts ever fitted to a vehicle (across every document), with the price charged. */
+export async function getVehiclePartsHistory(vehicleId: number, limit = 400) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: serviceLineItems.id,
+    docId: serviceHistory.id,
+    docNo: serviceHistory.docNo,
+    docType: serviceHistory.docType,
+    dateCreated: serviceHistory.dateCreated,
+    dateIssued: serviceHistory.dateIssued,
+    mileage: serviceHistory.mileage,
+    description: serviceLineItems.description,
+    partNumber: serviceLineItems.partNumber,
+    quantity: serviceLineItems.quantity,
+    unitPrice: serviceLineItems.unitPrice,
+    subNet: serviceLineItems.subNet,
+  })
+    .from(serviceLineItems)
+    .innerJoin(serviceHistory, eq(serviceLineItems.documentId, serviceHistory.id))
+    .where(and(eq(serviceHistory.vehicleId, vehicleId), eq(serviceLineItems.itemType, "Part")))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(limit);
+}
+
 const normReg = (r?: string) => (r || "").toUpperCase().replace(/\s+/g, "");
 
 /** Reg lookup for the job sheet form: DB first, then DVLA (like GA4's VRM lookup). */
