@@ -9,9 +9,9 @@ import { eq, like, desc } from "drizzle-orm";
 
 const fallbackKey = "sk-" + "proj" + "-D0hxv1znK5LY35z9iIngC_DrLg" + "HXYLI5T2u8BzHPGfYd4VSvmNyTMPaYry8r" + "GkH0Zr7GTWCccYT3BlbkFJfi" + "H130_7pYUo--tdjc-RkoMzsZ" + "-xEJNbwbOi4Ns29u-Ze04XRgu2Y1ED8useJvQBdyS3Bd9NoA";
 
-// Current OpenAI cost-optimized small model (replaces the legacy gpt-4o-mini).
-// Override via AI_MODEL env without a code change.
-const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-mini";
+// Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
+// Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
+const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-nano";
 
 const getRuntimeProvider = () => {
   let activeKey = process.env.OPENAI_API_KEY;
