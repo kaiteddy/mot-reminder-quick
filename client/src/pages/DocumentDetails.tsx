@@ -4,7 +4,7 @@ import PrintableDocument from "@/components/PrintableDocument";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown } from "lucide-react";
+import { ArrowLeft, Printer, Pencil, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -54,6 +54,14 @@ export default function DocumentDetails() {
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
       setLocation(`/documents/${res.id}`);
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
+  }
+  const emailMut = trpc.email.sendDocument.useMutation();
+  async function doEmail() {
+    const def = (data as any)?.doc?.custEmail || (data as any)?.customer?.email || "";
+    const to = window.prompt("Email this document (PDF attached) to:", def);
+    if (!to) return;
+    try { await emailMut.mutateAsync({ docId: id, to }); toast.success(`Emailed to ${to}`); }
+    catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
   }
 
   // initialise the form once data arrives
@@ -166,6 +174,9 @@ export default function DocumentDetails() {
           <div className="flex items-center gap-2">
             {!editing ? (
               <>
+                {!isNew && (
+                  <button onClick={doEmail} disabled={emailMut.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{emailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Email</button>
+                )}
                 <button onClick={handlePrint} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Printer className="w-4 h-4" /> Print</button>
                 {!isNew && (
                   <div className="relative">

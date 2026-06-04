@@ -211,6 +211,34 @@ export const appRouter = router({
       }),
   }),
 
+  email: router({
+    getSettings: publicProcedure.query(async () => {
+      const { getEmailSettings } = await import("./services/email");
+      const { pass, ...safe } = (await getEmailSettings()) as any;
+      return { ...safe, hasPassword: !!pass };
+    }),
+    saveSettings: publicProcedure
+      .input(z.object({
+        fromAddress: z.string().optional(), fromName: z.string().optional(), copyTo: z.string().optional(),
+        host: z.string().optional(), port: z.number().optional(), secure: z.boolean().optional(),
+        authMethod: z.string().optional(), user: z.string().optional(), pass: z.string().optional(), timeout: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { saveEmailSettings } = await import("./services/email");
+        return saveEmailSettings(input);
+      }),
+    test: publicProcedure.mutation(async () => {
+      const { testEmailConnection } = await import("./services/email");
+      return testEmailConnection();
+    }),
+    sendDocument: publicProcedure
+      .input(z.object({ docId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const { sendDocumentEmail } = await import("./services/email");
+        return sendDocumentEmail(input);
+      }),
+  }),
+
   vehicles: router({
     list: publicProcedure.query(async () => {
       const { getAllVehicles } = await import("./db");

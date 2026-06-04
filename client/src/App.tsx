@@ -10,6 +10,7 @@ import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
 import Documents from "./pages/Documents";
 import DocumentDetails from "./pages/DocumentDetails";
+import EmailSettings from "./pages/EmailSettings";
 import Analytics from "./pages/Analytics";
 import Vehicles from "./pages/Vehicles";
 import VehicleDetails from "./pages/VehicleDetails";
@@ -53,6 +54,7 @@ function Router() {
       <Route path="/customers" component={Customers} />
       <Route path="/documents/:id" component={DocumentDetails} />
       <Route path="/documents" component={Documents} />
+      <Route path="/email-settings" component={EmailSettings} />
 
       {/* Other routes */}
       <Route path="/analytics" component={Analytics} />
