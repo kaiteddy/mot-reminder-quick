@@ -1553,14 +1553,26 @@ export async function getRichPDF(documentId: number) {
     status: '',
   }));
 
+  // "Extras" categories (entered as single amounts on the job sheet)
+  const sumNet = (t: string) => items.filter(i => i.itemType === t).reduce((a, i) => a + (Number(i.subNet) || 0), 0);
+  const sundries = sumNet('Sundries'), lubricants = sumNet('Lubricant'), paint = sumNet('Paint'), motNet = sumNet('MOT');
+  const isInvoice = doc.docType === 'SI' || doc.docType === 'XS';
+  const excess = doc.docType === 'XS' ? 0 : (Number(doc.excessGross) || 0); // deducted from a main insurance invoice
+  const receipts = Number(doc.totalReceipts) || 0;
+  const totalGross = Number(doc.totalGross) || 0;
+
   const totals = {
     labour: labour.reduce((acc, i) => acc + i.subtotal, 0),
     parts: parts.reduce((acc, i) => acc + i.subtotal, 0),
-    subtotal: Number(doc.totalNet),
+    sundries, lubricants, paint,
+    subtotal: +((Number(doc.totalNet) || 0) - motNet).toFixed(2), // SubTotal excludes the MOT fee (shown separately, 0% VAT)
     vat_rate: 20,
-    vat: Number(doc.totalTax),
-    total: Number(doc.totalGross),
-    balance: Number(doc.totalGross),
+    vat: Number(doc.totalTax) || 0,
+    mot: motNet > 0 ? motNet : null,
+    total: totalGross,
+    excess: excess > 0 ? excess : null,
+    receipts: (isInvoice || receipts > 0) ? receipts : null,
+    balance: isInvoice ? +(totalGross - excess - receipts).toFixed(2) : totalGross,
   };
 
   // Split description into title + work items

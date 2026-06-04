@@ -261,11 +261,16 @@ function tcAndTotals(
   const tRows: [string, string, boolean, boolean][] = [];
   if (Number(totals.labour) > 0) tRows.push(['Labour', Number(totals.labour).toFixed(2), false, false]);
   if (Number(totals.parts) > 0) tRows.push(['Parts', Number(totals.parts).toFixed(2), false, false]);
+  if (Number(totals.sundries) > 0) tRows.push(['Sundries', Number(totals.sundries).toFixed(2), false, false]);
+  if (Number(totals.lubricants) > 0) tRows.push(['Lubricants', Number(totals.lubricants).toFixed(2), false, false]);
+  if (Number(totals.paint) > 0) tRows.push(['Paint & Mat.', Number(totals.paint).toFixed(2), false, false]);
   tRows.push(['SubTotal', Number(totals.subtotal).toFixed(2), true, false]);
   tRows.push([`VAT (${totals.vat_rate}%)`, Number(totals.vat).toFixed(2), false, false]);
   if (totals.mot != null) tRows.push(['MOT', Number(totals.mot).toFixed(2), false, false]);
   tRows.push([totalLabel, Number(totals.total).toFixed(2), true, true]);
-  if (totals.balance != null) tRows.push(['Balance', Number(totals.balance).toFixed(2), false, false]);
+  if (totals.excess != null && Number(totals.excess) > 0) tRows.push(['Excess', Number(totals.excess).toFixed(2), false, false]);
+  if (totals.receipts != null) tRows.push(['Receipts', Number(totals.receipts).toFixed(2), false, false]);
+  if (totals.balance != null) tRows.push(['Balance', Number(totals.balance).toFixed(2), true, false]);
 
   const rowH = 18;
   const totalsW = CW * 0.35;
