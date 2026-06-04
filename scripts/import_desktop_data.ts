@@ -169,6 +169,8 @@ async function runImport() {
                     fuelType: ga4Vehicle.FuelType || null,
                     vin: vin || null,
                     engineCC: engineCCVal ? parseInt(engineCCVal) : null,
+                    engineNo: ga4Vehicle.EngineNo || null,
+                    engineCode: ga4Vehicle.EngineCode || null,
                     notes: ga4Vehicle.Notes || null,
                     externalId: vehicleId,
                     customerId,
@@ -193,6 +195,8 @@ async function runImport() {
                     if (vehicleData.fuelType && !existing.fuelType) updates.fuelType = vehicleData.fuelType;
                     if (vehicleData.vin && !existing.vin) updates.vin = vehicleData.vin;
                     if (vehicleData.engineCC && !existing.engineCC) updates.engineCC = vehicleData.engineCC;
+                    if (vehicleData.engineNo && !existing.engineNo) updates.engineNo = vehicleData.engineNo;
+                    if (vehicleData.engineCode && !existing.engineCode) updates.engineCode = vehicleData.engineCode;
                     if (vehicleData.dateOfRegistration && !existing.dateOfRegistration) updates.dateOfRegistration = vehicleData.dateOfRegistration;
                     if (vehicleData.motExpiryDate && !existing.motExpiryDate) updates.motExpiryDate = vehicleData.motExpiryDate;
                     if (!existing.externalId) updates.externalId = vehicleId;
