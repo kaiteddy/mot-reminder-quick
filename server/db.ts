@@ -959,9 +959,32 @@ export async function lookupVehicleForReg(registration: string) {
   const reg = normReg(registration);
   if (!reg) return { found: false, source: "none", vehicle: null, customer: null };
   if (db) {
-    const v = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
+    const v: any = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
     if (v) {
       const cust = v.customerId ? (await db.select().from(customers).where(eq(customers.id, v.customerId)).limit(1))[0] ?? null : null;
+      // A known vehicle won't have the SWS-derived fields filled in (derivative, A/C charge,
+      // oil spec) — they're only fetched for brand-new regs. Supplement from SWS+DVLA when the
+      // derivative is missing, then cache the derivative back so we don't refetch next time.
+      if (!v.derivative) {
+        try {
+          const { fetchRichVehicleData } = await import("./sws");
+          const sws: any = await fetchRichVehicleData(reg, true);
+          const deriv = sws?.specs?.name || sws?.specs?.fullName || null;
+          if (deriv) {
+            v.derivative = deriv;
+            await db.update(vehicles).set({ derivative: deriv }).where(eq(vehicles.id, v.id));
+          }
+          const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+          if (oil || sws?.aircon) {
+            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
+          }
+        } catch { /* SWS unavailable — keep stored record */ }
+        try {
+          const { getVehicleDetails } = await import("./dvlaApi");
+          const d: any = await getVehicleDetails(reg);
+          if (d) { v.motExpiryDate = v.motExpiryDate ?? d.motExpiryDate ?? null; v.taxStatus = d.taxStatus ?? null; v.taxDueDate = d.taxDueDate ?? null; }
+        } catch { /* DVLA unavailable */ }
+      }
       return { found: true, source: "database", vehicle: v, customer: cust };
     }
   }
