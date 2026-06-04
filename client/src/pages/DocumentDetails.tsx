@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReactToPrint } from "react-to-print";
 import PrintableDocument from "@/components/PrintableDocument";
+import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -509,7 +510,7 @@ export default function DocumentDetails() {
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
           {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus) && (
-            <div className="px-3 pb-1 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+            <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilSpec || "—"} sub={vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
@@ -528,7 +529,7 @@ export default function DocumentDetails() {
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -543,6 +544,7 @@ export default function DocumentDetails() {
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItems} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
+                  <TabsContent value="mileage" className="mt-0"><MileageTab registration={form.registration} /></TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
                     {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
@@ -952,6 +954,45 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
             </TableBody>
           </Table>
         )}
+    </div>
+  );
+}
+
+function MileageTab({ registration }: { registration?: string }) {
+  const reg = (registration || "").trim();
+  const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
+  if (!reg) return <p className="text-sm text-muted-foreground py-6 text-center">No registration on this document.</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground py-6 text-center">Loading MOT mileage history…</p>;
+  const tests = ((data as any[]) || []);
+  const withOdo = tests
+    .filter((t) => t.odometerValue != null && !isNaN(Number(t.odometerValue)))
+    .sort((a, b) => new Date(b.completedDate).getTime() - new Date(a.completedDate).getTime());
+  if (withOdo.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No MOT mileage history found for {reg}.</p>;
+  return (
+    <div>
+      <MOTMileageChart tests={tests} />
+      <Table>
+        <TableHeader><TableRow>
+          <TableHead className="h-8">Test Date</TableHead><TableHead className="h-8">Result</TableHead>
+          <TableHead className="h-8 text-right">Odometer</TableHead><TableHead className="h-8 text-right">Change</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>
+          {withOdo.map((t, i) => {
+            const next = withOdo[i + 1]; // the previous (older) test
+            const cur = Number(t.odometerValue), prev = next ? Number(next.odometerValue) : null;
+            const delta = prev != null ? cur - prev : null;
+            const pass = /pass/i.test(t.testResult || "");
+            return (
+              <TableRow key={i}>
+                <TableCell>{fmtDate(t.completedDate)}</TableCell>
+                <TableCell><span className={pass ? "text-green-700" : "text-red-600"}>{(t.testResult || "").replace(/_/g, " ")}</span></TableCell>
+                <TableCell className="text-right">{cur.toLocaleString("en-GB")} {t.odometerUnit === "km" ? "km" : "mi"}</TableCell>
+                <TableCell className="text-right">{delta != null && delta > 0 ? `+${delta.toLocaleString("en-GB")}` : delta != null && delta < 0 ? delta.toLocaleString("en-GB") : "—"}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }

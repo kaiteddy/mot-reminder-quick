@@ -198,6 +198,13 @@ export const appRouter = router({
         const { getCustomerLog } = await import("./db");
         return getCustomerLog(input.customerId, input.vehicleId);
       }),
+    motTests: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { getMOTHistory } = await import("./motApi");
+        const data = await getMOTHistory(input.registration).catch(() => null);
+        return data?.motTests || [];
+      }),
     addLog: publicProcedure
       .input(z.object({
         customerId: z.number().optional(), vehicleId: z.number().optional(), documentId: z.number().optional(),
