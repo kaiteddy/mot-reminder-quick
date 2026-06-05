@@ -131,7 +131,7 @@ export default function DocumentDetails() {
   const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
-  const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean }>({ loading: false, results: [], open: false });
+  const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean; searchedPc?: string }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -333,10 +333,13 @@ export default function DocumentDetails() {
   async function findAddress() {
     const pc = (form.custPostcode || "").trim();
     if (!pc) { toast.error("Enter a postcode first"); return; }
+    const norm = pc.toUpperCase().replace(/\s+/g, "");
+    // Don't spend another lookup credit if we already searched this exact postcode.
+    if (addr.searchedPc === norm && addr.results.length) { setAddr((a) => ({ ...a, open: true })); return; }
     setAddr((a) => ({ ...a, loading: true, open: true }));
     try {
       const res: any = await utils.documents.lookupAddress.fetch({ postcode: pc });
-      setAddr({ loading: false, results: res.addresses || [], note: res.note, open: true });
+      setAddr({ loading: false, results: res.addresses || [], note: res.note, open: true, searchedPc: norm });
       if (!res.addresses?.length && res.note) toast.message(res.note);
     } catch { setAddr((a) => ({ ...a, loading: false })); toast.error("Address lookup failed"); }
   }
