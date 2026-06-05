@@ -126,8 +126,8 @@ function resolveOwner(buf: Buffer, id: string): Owner | null {
   // contains id-looking fields mid-record, so record-bounding would clip the address)
   const fields = parseWindow(buf, at, 0, 1100, false);
   const vals = fields.map((f) => f.val);
-  const name = fields.find((f) => f.fid === 31 && /^(Mr|Mrs|Miss|Ms|Dr|Sir|Lady|Messrs)/i.test(f.val))?.val
-    || vals.find((v) => /^(Mr|Mrs|Miss|Ms|Dr)\b/i.test(v) && v.length < 40);
+  const name = fields.find((f) => f.fid === 31 && /^(Mr|Mrs|Miss|Ms|Dr|Sir|Lady|Messrs)\.?\s+[A-Za-z]/i.test(f.val))?.val
+    || vals.find((v) => /^(Mr|Mrs|Miss|Ms|Dr|Sir|Lady|Messrs)\.?\s+[A-Za-z]/i.test(v) && v.length < 40);
   // prefer the distinctive combined contact line (closest to record start, so it's THIS owner's)
   const address = fields.find((f) => f.fid === 29)?.val
     || fields.find((f) => f.fid === 56)?.val?.replace(/\r/g, ", ")
@@ -140,6 +140,27 @@ function resolveOwner(buf: Buffer, id: string): Owner | null {
   // (no trailing \b: the next field's bytes butt right up against "018")
   const account = decode(buf.subarray(at, Math.min(buf.length, at + 1100))).match(/(?<![A-Z0-9])[A-Z]{3}\d{3}(?![0-9])/)?.[0];
   return name || address || phone ? { name, account, address, phone } : null;
+}
+
+// ---- detect an insurer / company bill-to on the vehicle's documents ----
+// Keyed STRICTLY on the vehicle's own _ID (found in its documents), never on file proximity.
+// An insurance/fleet job bills a company (…Ltd / Insurance / Accident Management) that is
+// NOT the registered owner.
+const COMPANY_RE = /\b(Ltd|Limited|Insurance|Assurance|PLC|Accident|Claims|Motability|Fleet Management|Leasing|Contract Hire)\b/i;
+function findInsurer(buf: Buffer, vehId?: string, ownerName?: string): string | null {
+  if (!vehId) return null;
+  const tally = new Map<string, number>();
+  let hits = 0;
+  for (let i = buf.indexOf(encode(vehId)); i !== -1 && hits < 60; i = buf.indexOf(encode(vehId), i + 1), hits++) {
+    // BOUND to the document record that actually references this vehicle (no proximity bleed)
+    for (const f of parseWindow(buf, i, 220, 520)) {
+      const v = f.val.replace(/^\s+/, "").trim();
+      if (v.length < 60 && COMPANY_RE.test(v) && !/ELI\s*Motors|\bEli\b/i.test(v) && (!ownerName || !v.includes(ownerName)))
+        tally.set(v, (tally.get(v) || 0) + 1);
+    }
+  }
+  if (!tally.size) return null;
+  return [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
 
 // ---- turn a field list into a friendly record ----
@@ -159,7 +180,7 @@ const normReg = (r: string) => {
 };
 const isPhone = (v: string) => /^[\d ]+$/.test(v) && v.replace(/\D/g, "").length >= 7 && (/^0/.test(v) || v.includes(" "));
 
-function classify(fields: Field[]): { kind: string; lines: [string, string][]; title: string; key: string; ownerGuid?: string } | null {
+function classify(fields: Field[]): { kind: string; lines: [string, string][]; title: string; key: string; ownerGuid?: string; vehId?: string } | null {
   const vals = Array.from(new Set(fields.map((f) => f.val).filter((v) => v && !RE.hex32.test(v))));
   const pick = (test: (v: string) => boolean) => vals.filter(test);
 
@@ -179,7 +200,8 @@ function classify(fields: Field[]): { kind: string; lines: [string, string][]; t
     const make = fields.find((f) => f.fid === 3 && RE.colour.test(f.val))?.val || makes[0];
     const model = fields.find((f) => f.fid === 4 && /[A-Za-z]/.test(f.val))?.val;
     const combined = fields.find((f) => f.fid === 28 && /[A-Za-z]/.test(f.val) && !f.val.includes(":"))?.val;
-    const makeModel = model ? [make, model].filter(Boolean).join(" ") : (combined || make || "");
+    // fid 28 reliably holds "Make Model …"; prefer it, else build from make + model
+    const makeModel = combined || (model ? [make, model].filter(Boolean).join(" ") : make) || "";
     const colour = fields.find((f) => f.fid === 19 && RE.colour.test(f.val))?.val;
     const fuel = fields.find((f) => f.fid === 20 && RE.colour.test(f.val))?.val;
     const cc = pick((v) => /^\d{3,4}$/.test(v) && +v >= 600 && +v <= 6500)[0];
@@ -193,7 +215,8 @@ function classify(fields: Field[]): { kind: string; lines: [string, string][]; t
     add("Date reg.", dates.find((d) => /\b(19|20)\d\d\b/.test(d) && !/:/.test(d)));
     if (lines.length < 2) return null; // reg only = index stub, skip
     const ownerGuid = fields.find((f) => f.fid === 6 && /^([0-9A-F]{32}|[A-Z0-9]{18,22})$/.test(f.val))?.val;
-    return { kind: "Vehicle", key: `V:${reg}`, title: `${reg}  ${makeModel}`.trim(), lines, ownerGuid };
+    const vehId = fields.find((f) => f.fid === 1 && ID_RE.test(f.val))?.val; // this vehicle's _ID, for finding its docs
+    return { kind: "Vehicle", key: `V:${reg}`, title: `${reg}  ${makeModel}`.trim(), lines, ownerGuid, vehId };
   }
 
   // customer-ish — need a name, address or real phone to be worth showing
@@ -238,7 +261,7 @@ const clusters: number[] = [];
 for (const h of hits) if (!clusters.length || h - clusters[clusters.length - 1] > 700) clusters.push(h);
 
 // parse every cluster, keep the RICHEST record per dedup key
-type Rec = NonNullable<ReturnType<typeof classify>> & { fields: Field[]; owner?: Owner | null };
+type Rec = NonNullable<ReturnType<typeof classify>> & { fields: Field[]; owner?: Owner | null; insurer?: string | null };
 const byKey = new Map<string, Rec>();
 for (const c of clusters) {
   const fields = parseWindow(buf, c);
@@ -250,7 +273,8 @@ for (const c of clusters) {
   const score = (r: { ownerGuid?: string; lines: unknown[] }) => (r.ownerGuid ? 1000 : 0) + r.lines.length;
   if (!prev || score(rec) > score(prev)) {
     const owner = rec.ownerGuid ? resolveOwner(buf, rec.ownerGuid) : null;
-    byKey.set(rec.key, { ...rec, fields, owner });
+    const insurer = rec.kind === "Vehicle" ? findInsurer(buf, rec.vehId, owner?.name) : null;
+    byKey.set(rec.key, { ...rec, fields, owner, insurer });
   }
 }
 
@@ -286,6 +310,7 @@ function show(group: Rec[], heading: string) {
       if (o.address) console.log(`   ${"".padEnd(16)} ${o.address}`);
       else if (o.phone) console.log(`   ${"".padEnd(16)} ${o.phone}`);
     }
+    if (rec.insurer) console.log(`   ${"Bill-to (co.)".padEnd(16)} ${rec.insurer}  — a job was billed to this company, not the owner (insurer/fleet)`);
     if (RAW) for (const f of rec.fields) if (f.val.length > 1 && !RE.hex32.test(f.val)) console.log(`   · [${String(f.fid).padStart(3)}] ${f.val}`);
     console.log();
   }
