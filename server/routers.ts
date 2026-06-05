@@ -145,8 +145,18 @@ export const appRouter = router({
       .input(z.object({ postcode: z.string() }))
       .query(async ({ input }) => {
         const { lookupAddresses } = await import("./addressApi");
-        return lookupAddresses(input.postcode);
+        const res = await lookupAddresses(input.postcode);
+        // a paid (Ideal Postcodes) lookup that returns results = 1 credit — log it
+        if (res.source === "Ideal Postcodes" && res.addresses.length > 0) {
+          const { recordAddressLookup } = await import("./db");
+          recordAddressLookup(input.postcode, res.addresses.length, res.source);
+        }
+        return res;
       }),
+    addressLookupStats: publicProcedure.query(async () => {
+      const { getAddressLookupStats } = await import("./db");
+      return getAddressLookupStats();
+    }),
 
     save: publicProcedure
       .input(z.object({

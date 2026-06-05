@@ -39,6 +39,7 @@ export default function Documents() {
 
   const { data: stats } = trpc.documents.stats.useQuery();
   const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200 });
+  const { data: addrStats } = trpc.documents.addressLookupStats.useQuery();
   const del = trpc.documents.delete.useMutation();
 
   const typeCount = (code: string) => stats?.byType.find((t) => t.docType === code)?.n ?? 0;
@@ -71,9 +72,16 @@ export default function Documents() {
               Job sheets, invoices, estimates &amp; credit notes
             </p>
           </div>
-          <Button onClick={() => setLocation("/documents/new")} className="gap-2">
-            <FileText className="w-4 h-4" /> New Job Sheet
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+            <Button onClick={() => setLocation("/documents/new")} className="gap-2">
+              <FileText className="w-4 h-4" /> New Job Sheet
+            </Button>
+            {addrStats && (
+              <span className="text-xs text-muted-foreground" title="Ideal Postcodes credits used (≈4p each)">
+                Address lookups: <b className="text-foreground">{addrStats.thisMonth}</b> this month · {addrStats.total} total{addrStats.total ? ` (≈£${(addrStats.total * 0.04).toFixed(2)})` : ""}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Summary cards */}

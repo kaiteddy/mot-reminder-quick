@@ -125,6 +125,7 @@ export default function DocumentDetails() {
 
   const { data, isLoading } = trpc.documents.getById.useQuery({ id }, { enabled: !isNew && !!id });
   const save = trpc.documents.save.useMutation();
+  const addrStats = trpc.documents.addressLookupStats.useQuery(undefined, { staleTime: 60_000 });
 
   // The document is always editable — changes auto-save (no Edit/Save step).
   const editing = true;
@@ -340,6 +341,7 @@ export default function DocumentDetails() {
     try {
       const res: any = await utils.documents.lookupAddress.fetch({ postcode: pc });
       setAddr({ loading: false, results: res.addresses || [], note: res.note, open: true, searchedPc: norm });
+      if (res.source === "Ideal Postcodes" && res.addresses?.length) utils.documents.addressLookupStats.invalidate(); // a credit was used
       if (!res.addresses?.length && res.note) toast.message(res.note);
     } catch { setAddr((a) => ({ ...a, loading: false })); toast.error("Address lookup failed"); }
   }
@@ -708,6 +710,9 @@ export default function DocumentDetails() {
                     ))}
                   </div>
                   {addr.note && <div className="px-2 py-1 text-[10.5px] text-amber-700 bg-amber-50 border-t border-amber-100">{addr.note}</div>}
+                  {addrStats.data != null && (
+                    <div className="px-2 py-1 text-[10.5px] text-slate-500 bg-slate-50 border-t border-slate-100">Paid address lookups — {addrStats.data.thisMonth} this month · {addrStats.data.total} total</div>
+                  )}
                 </div>
               )}
               <EF label="Road" field="custRoad" {...{ form, set, editing }} />

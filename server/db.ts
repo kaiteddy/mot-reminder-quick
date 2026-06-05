@@ -7,7 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs, payments,
+  descriptionPresets, customerLogs, payments, addressLookups,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -1031,6 +1031,28 @@ export async function lookupVehicleForReg(registration: string) {
   } catch (e) { /* DVLA unavailable */ }
 
   return { found: false, source: sources.join("+") || "none", customer: null, vehicle: v };
+}
+
+/** Record one billable address lookup (best-effort — never blocks the lookup). */
+export async function recordAddressLookup(postcode: string, results: number, source: string) {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(addressLookups).values({ postcode: (postcode || "").slice(0, 12), results, source });
+  } catch { /* logging must never break the lookup */ }
+}
+
+/** Address-lookup (credit) usage stats — only billable Ideal Postcodes lookups are counted. */
+export async function getAddressLookupStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, thisMonth: 0, today: 0 };
+  const rows = await db.select({
+    total: sql<number>`COUNT(*)`,
+    thisMonth: sql<number>`COALESCE(SUM(${addressLookups.createdAt} >= DATE_FORMAT(NOW(), '%Y-%m-01')), 0)`,
+    today: sql<number>`COALESCE(SUM(${addressLookups.createdAt} >= CURDATE()), 0)`,
+  }).from(addressLookups).where(sql`${addressLookups.source} = 'Ideal Postcodes' AND ${addressLookups.results} > 0`);
+  const r = rows[0];
+  return { total: Number(r?.total) || 0, thisMonth: Number(r?.thisMonth) || 0, today: Number(r?.today) || 0 };
 }
 
 /** Latest live technical data (engine oil, A/C charge, MOT, tax) for the info cards. */

@@ -395,3 +395,16 @@ export const payments = mysqlTable("payments", {
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
+
+/** One row per billable address lookup (Ideal Postcodes), so credit usage can be tracked. */
+export const addressLookups = mysqlTable("addressLookups", {
+  id: int("id").autoincrement().primaryKey(),
+  postcode: varchar("postcode", { length: 12 }),
+  results: int("results"),
+  source: varchar("source", { length: 40 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  createdAtIdx: index("address_lookups_created_at_idx").on(table.createdAt),
+}));
+
+export type AddressLookup = typeof addressLookups.$inferSelect;
