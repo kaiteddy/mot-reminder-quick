@@ -38,21 +38,64 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
     } catch { /* fall through to postcodes.io */ }
   }
 
-  // Free fallback — resolves the area (town/county) only, not the street/house.
+  // --- Free, best-effort lookup (no key) ---
+  // The free postcodes.io gives the area (town/county). OpenStreetMap may also know the
+  // street for some postcodes — UK postcode->street/house is Royal Mail PAF data (licensed),
+  // so it isn't reliably available free.
+  const area = await postcodesIoArea(pc);
+  const roads = await nominatimRoads(pc); // only results that actually carry a road
+  if (roads.length) {
+    const addresses = roads.map((r) => ({
+      houseNo: "",
+      road: r.road,
+      locality: r.locality || area?.locality || "",
+      town: r.town || area?.town || "",
+      county: r.county || area?.county || "",
+      label: [r.road, area?.town || r.town, area?.county || r.county].filter(Boolean).join(", "),
+    }));
+    return { source: "OpenStreetMap + postcodes.io", full: false, addresses,
+      note: "Street(s) found free of charge — enter the house number (a getAddress.io key adds full house-level addresses)." };
+  }
+  if (area) {
+    return { source: "postcodes.io", full: false,
+      addresses: [{ houseNo: "", road: "", locality: area.locality, town: area.town, county: area.county, label: `${area.town}${area.county ? `, ${area.county}` : ""} — enter house & street` }],
+      note: "Area found free. The street/house need a licensed lookup — add a getAddress.io key for full addresses." };
+  }
+  return { source: "none", full: false, addresses: [], note: "Address lookup unavailable" };
+}
+
+/** Free area lookup (town/county/region) via postcodes.io — no street. */
+async function postcodesIoArea(pc: string): Promise<{ locality: string; town: string; county: string } | null> {
   try {
     const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`);
-    if (res.ok) {
-      const data: any = await res.json();
-      const r = data?.result;
-      if (r) {
-        return {
-          source: "postcodes.io", full: false,
-          addresses: [{ houseNo: "", road: "", locality: r.admin_ward || "", town: r.admin_district || r.parish || "", county: r.region || r.country || "", label: `${r.admin_district || ""}${r.region ? `, ${r.region}` : ""} — enter house & street` }],
-          note: "Area found (free lookup). Add a getAddress.io key for full house-level addresses.",
-        };
-      }
-    }
-  } catch { /* ignore */ }
+    if (!res.ok) return null;
+    const r = (await res.json())?.result;
+    if (!r) return null;
+    return { locality: r.admin_ward || "", town: r.admin_district || r.parish || "", county: r.region || r.country || "" };
+  } catch { return null; }
+}
 
-  return { source: "none", full: false, addresses: [], note: "Address lookup unavailable" };
+/** Best-effort free street lookup via OpenStreetMap — only returns results that carry a road. */
+async function nominatimRoads(pc: string): Promise<{ road: string; locality: string; town: string; county: string }[]> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(pc)}&countrycodes=gb&format=jsonv2&addressdetails=1&limit=25`;
+    const res = await fetch(url, { headers: { "User-Agent": "ELI-Motors-Garage-App/1.0 (admin@elimotors.co.uk)", "Accept-Language": "en-GB" } });
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    const seen = new Set<string>();
+    const out: { road: string; locality: string; town: string; county: string }[] = [];
+    for (const r of data || []) {
+      const a = r.address || {};
+      const road = (a.road || a.pedestrian || a.residential || "").trim();
+      if (!road || seen.has(road)) continue;
+      seen.add(road);
+      out.push({
+        road,
+        locality: (a.suburb || a.neighbourhood || "").trim(),
+        town: (a.city || a.town || a.village || "").trim(),
+        county: (a.county || a.state_district || "").trim(),
+      });
+    }
+    return out;
+  } catch { return []; }
 }
