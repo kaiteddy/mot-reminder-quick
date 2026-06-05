@@ -521,7 +521,7 @@ export default function DocumentDetails() {
       <div className="space-y-3 text-slate-800">
         {/* open-document tabs */}
         {openDocs.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-px -mb-1">
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-2 mb-1">
             {openDocs.map((d) => {
               const active = d.id === id;
               return (

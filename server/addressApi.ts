@@ -1,6 +1,8 @@
 // UK postcode -> address finder.
-// Full house-level lookups use getAddress.io (needs GETADDRESS_API_KEY — free trial available).
-// Without a key it falls back to the free postcodes.io, which only resolves town/county/region.
+// Full house-level lookups use Ideal Postcodes (a licensed Royal Mail PAF provider; needs
+// IDEALPOSTCODES_API_KEY). Without a key it falls back to the free, open postcodes.io
+// (town/county) + OpenStreetMap (street where mapped). getAddress.io is deliberately NOT
+// used — an Oct-2025 High Court ruling held its address data infringes Royal Mail/IDDQD rights.
 
 export type FoundAddress = {
   houseNo: string;
@@ -17,25 +19,24 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
   const pc = cleanPostcode(postcode);
   if (!pc || pc.length < 5) return { source: "none", full: false, addresses: [], note: "Enter a full postcode" };
 
-  const key = process.env.GETADDRESS_API_KEY;
+  const key = process.env.IDEALPOSTCODES_API_KEY;
   if (key) {
     try {
-      const res = await fetch(`https://api.getaddress.io/find/${encodeURIComponent(pc)}?api-key=${key}&expand=true`);
+      const res = await fetch(`https://api.ideal-postcodes.co.uk/v1/postcodes/${encodeURIComponent(pc)}?api_key=${key}`);
       if (res.ok) {
         const data: any = await res.json();
-        const addresses: FoundAddress[] = (data?.addresses || []).map((a: any) => {
-          const houseNo = [a.sub_building_name, a.building_name, a.building_number, a.sub_building_number].filter(Boolean).join(" ").trim();
+        const addresses: FoundAddress[] = (data?.result || []).map((a: any) => {
+          const houseNo = [a.sub_building_name, a.building_name, a.building_number].filter(Boolean).join(" ").trim();
           const road = (a.thoroughfare || a.line_1 || "").trim();
-          const town = (a.town_or_city || "").trim();
-          const county = (a.county || a.district || "").trim();
-          const locality = (a.locality || (a.line_2 && a.line_2 !== town ? a.line_2 : "") || "").trim();
-          const label = (Array.isArray(a.formatted_address) ? a.formatted_address.filter(Boolean).join(", ") : [houseNo && `${houseNo} ${road}`.trim(), locality, town, county].filter(Boolean).join(", "));
+          const town = (a.post_town || "").trim();
+          const county = (a.county || a.traditional_county || a.administrative_county || "").trim();
+          const locality = (a.dependant_locality || a.double_dependant_locality || "").trim();
+          const label = [a.line_1, a.line_2, a.line_3, town, county].filter(Boolean).join(", ");
           return { houseNo, road, locality, town, county, label };
         });
-        return { source: "getAddress.io", full: true, addresses };
+        return { source: "Ideal Postcodes", full: true, addresses, note: addresses.length ? undefined : "No addresses found for that postcode" };
       }
-      if (res.status === 404) return { source: "getAddress.io", full: true, addresses: [], note: "No addresses found for that postcode" };
-    } catch { /* fall through to postcodes.io */ }
+    } catch { /* fall through to the free lookup */ }
   }
 
   // --- Free, best-effort lookup (no key) ---
@@ -54,12 +55,12 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
       label: [r.road, area?.town || r.town, area?.county || r.county].filter(Boolean).join(", "),
     }));
     return { source: "OpenStreetMap + postcodes.io", full: false, addresses,
-      note: "Street(s) found free of charge — enter the house number (a getAddress.io key adds full house-level addresses)." };
+      note: "Street(s) found free of charge — enter the house number (an Ideal Postcodes key adds full house-level addresses)." };
   }
   if (area) {
     return { source: "postcodes.io", full: false,
       addresses: [{ houseNo: "", road: "", locality: area.locality, town: area.town, county: area.county, label: `${area.town}${area.county ? `, ${area.county}` : ""} — enter house & street` }],
-      note: "Area found free. The street/house need a licensed lookup — add a getAddress.io key for full addresses." };
+      note: "Area found free. The street/house need a licensed lookup — add an Ideal Postcodes key for full addresses." };
   }
   return { source: "none", full: false, addresses: [], note: "Address lookup unavailable" };
 }
