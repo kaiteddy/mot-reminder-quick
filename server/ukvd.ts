@@ -46,9 +46,16 @@ export interface UKVDResponse {
     raw?: any;
 }
 
+// Last UKVD response status, so callers can distinguish "no data" from an account/billing
+// problem (which blocks VIN/colour for ALL lookups until the UKVD account is sorted).
+let _lastUkvdStatus: string | null = null;
+export const getLastUkvdStatus = () => _lastUkvdStatus;
+
 export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Promise<UKVDResponse | null> {
+    _lastUkvdStatus = null;
     if (!UKVD_CONFIG.apiKey) {
         console.warn("[UKVD] No API key configured. Skipping lookup.");
+        _lastUkvdStatus = "No UKVD API key configured";
         return null;
     }
 
@@ -69,7 +76,8 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
         const data = await response.json();
 
         if (data.ResponseInformation?.StatusCode !== 0) {
-            console.warn(`[UKVD] Lookup failed: ${data.ResponseInformation?.StatusMessage}`);
+            _lastUkvdStatus = data.ResponseInformation?.StatusMessage || "UKVD lookup failed";
+            console.warn(`[UKVD] Lookup failed: ${_lastUkvdStatus}`);
             return null;
         }
 

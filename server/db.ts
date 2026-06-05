@@ -963,13 +963,36 @@ export async function getVehiclePartsHistory(vehicleId: number, limit = 400) {
     .limit(limit);
 }
 
-const normReg = (r?: string) => (r || "").toUpperCase().replace(/\s+/g, "");
+// Canonicalise a UK registration. Current-format plates are AA00 AAA: positions 1-2 letters,
+// 3-4 digits, 5-7 letters. Fix the usual letter/digit confusions PER POSITION so a typo'd reg
+// like "LS09B0V" (zero) resolves to the real "LS09BOV" (letter O) — otherwise the DB match and
+// the SWS/DVLA providers reject it and every derived field comes back empty.
+const TO_LETTER: Record<string, string> = { "0": "O", "1": "I", "2": "Z", "5": "S", "6": "G", "8": "B", "4": "A", "7": "T" };
+const TO_DIGIT: Record<string, string> = { O: "0", Q: "0", D: "0", I: "1", L: "1", Z: "2", S: "5", G: "6", B: "8", T: "7" };
+const normReg = (r?: string) => {
+  const s = (r || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (/^[A-Z0-9]{7}$/.test(s)) {
+    const L = (c: string) => TO_LETTER[c] ?? c, D = (c: string) => TO_DIGIT[c] ?? c;
+    const cand = L(s[0]) + L(s[1]) + D(s[2]) + D(s[3]) + L(s[4]) + L(s[5]) + L(s[6]);
+    if (/^[A-Z]{2}[0-9]{2}[A-Z]{3}$/.test(cand)) return cand; // confidently current-format
+  }
+  return s;
+};
 
 /** Reg lookup for the job sheet form: DB first, then DVLA (like GA4's VRM lookup). */
 export async function lookupVehicleForReg(registration: string) {
   const db = await getDb();
   const reg = normReg(registration);
   if (!reg) return { found: false, source: "none", vehicle: null, customer: null };
+  // surface a UKVD account/billing problem (it silently blocks VIN/colour on every lookup)
+  const ukvdWarning = async (): Promise<string | null> => {
+    try {
+      const { getLastUkvdStatus } = await import("./ukvd");
+      const s = getLastUkvdStatus() || "";
+      return /billing|account|credit|subscription|balance|fund|payment/i.test(s)
+        ? "Vehicle-data provider (UKVD) reports an account/billing problem — VIN & colour are unavailable until it's resolved." : null;
+    } catch { return null; }
+  };
   if (db) {
     const v: any = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
     if (v) {
@@ -978,7 +1001,7 @@ export async function lookupVehicleForReg(registration: string) {
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
       // regs — so backfill any MISSING fields from SWS+DVLA on lookup, then cache them back.
       const empty = (s: any) => !String(s ?? "").trim();
-      if (empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode)) {
+      if (empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
@@ -1006,7 +1029,7 @@ export async function lookupVehicleForReg(registration: string) {
           if (d) { v.motExpiryDate = v.motExpiryDate ?? d.motExpiryDate ?? null; v.taxStatus = d.taxStatus ?? null; v.taxDueDate = d.taxDueDate ?? null; }
         } catch { /* DVLA unavailable */ }
       }
-      return { found: true, source: "database", vehicle: v, customer: cust };
+      return { found: true, source: "database", vehicle: v, customer: cust, warning: await ukvdWarning() };
     }
   }
   // Not in our DB — do a live VRM lookup like GA4: SWS (rich: make/model/colour/
@@ -1042,7 +1065,7 @@ export async function lookupVehicleForReg(registration: string) {
     }
   } catch (e) { /* DVLA unavailable */ }
 
-  return { found: false, source: sources.join("+") || "none", customer: null, vehicle: v };
+  return { found: false, source: sources.join("+") || "none", customer: null, vehicle: v, warning: await ukvdWarning() };
 }
 
 /** Record one billable address lookup (best-effort — never blocks the lookup). */

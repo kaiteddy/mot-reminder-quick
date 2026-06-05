@@ -375,6 +375,7 @@ export default function DocumentDetails() {
       else if (src.includes("sws")) toast.success("Loaded from SWS vehicle data" + (src.includes("dvla") ? " + DVLA" : ""));
       else if (src.includes("dvla")) toast.success("Loaded from DVLA");
       else toast.message("No external data found — registration set");
+      if (res.warning) toast.warning(res.warning, { duration: 8000 });
     } catch { toast.error("Lookup failed"); }
     finally { setLooking(false); }
   }
