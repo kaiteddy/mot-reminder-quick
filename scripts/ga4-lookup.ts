@@ -79,10 +79,11 @@ function findAll(hay: Buffer, needle: Buffer): number[] {
 
 // ---- parse the `06 <fid> <len> <value>` chunks in a window around a hit ----
 type Field = { fid: number; val: string };
-function parseWindow(buf: Buffer, center: number): Field[] {
-  const start = Math.max(0, center - 300);
-  const end = Math.min(buf.length, center + 680);
-  const out: Field[] = [];
+const ID_RE = /^([0-9A-F]{32}|[A-Z0-9]{18,22})$/; // record _ID (32-hex GUID or 20-char OOTOSBT1… id)
+function parseWindow(buf: Buffer, center: number, back = 300, fwd = 680, bound = true): Field[] {
+  const start = Math.max(0, center - back);
+  const end = Math.min(buf.length, center + fwd);
+  const all: (Field & { pos: number })[] = [];
   let p = start;
   while (p < end - 3) {
     if (buf[p] === 0x06) {
@@ -93,7 +94,7 @@ function parseWindow(buf: Buffer, center: number): Field[] {
         const val = decode(raw);
         // keep printable text only (drops binary index/id chunks)
         if (/^[\x09\x0a\x0d\x20-\x7e]+$/.test(val) && !/^Z+/.test(val)) {
-          out.push({ fid, val: val.replace(/\x0b/g, " ").trim() });
+          all.push({ fid, val: val.replace(/\x0b/g, " ").trim(), pos: p });
           p += 3 + len;
           continue;
         }
@@ -101,7 +102,44 @@ function parseWindow(buf: Buffer, center: number): Field[] {
     }
     p++;
   }
-  return out;
+  // bound to the single record containing `center`: a record begins at a fid-1 _ID chunk,
+  // so keep only fields between the start at/just-before center and the next record start.
+  const starts = all.filter((c) => c.fid === 1 && ID_RE.test(c.val)).map((c) => c.pos);
+  if (bound && starts.length) {
+    const lo = Math.max(...starts.filter((s) => s <= center + 3), starts[0]);
+    const hi = Math.min(...starts.filter((s) => s > lo), end + 1);
+    return all.filter((c) => c.pos >= lo && c.pos < hi).map(({ fid, val }) => ({ fid, val }));
+  }
+  return all.map(({ fid, val }) => ({ fid, val }));
+}
+
+// ---- follow a vehicle's owner link (field 6 GUID) to the customer master (field 1 == GUID) ----
+type Owner = { name?: string; account?: string; address?: string; phone?: string };
+// id may be a 32-hex GUID (newer customers) or a 20-char OOTOSBT1… id (older ones);
+// the master record's fid-1 length byte equals the id length either way.
+function resolveOwner(buf: Buffer, id: string): Owner | null {
+  const marker = Buffer.concat([Buffer.from([0x06, 0x01, id.length]), encode(id)]);
+  const at = buf.indexOf(marker);
+  if (process.env.DBG) console.error("  resolveOwner id=", JSON.stringify(id), "len=", id.length, "markerHex=", marker.toString("hex"), "at=", at);
+  if (at === -1) return null;
+  // parse FORWARD from the master record's start (back=0, unbounded — a customer record
+  // contains id-looking fields mid-record, so record-bounding would clip the address)
+  const fields = parseWindow(buf, at, 0, 1100, false);
+  const vals = fields.map((f) => f.val);
+  const name = fields.find((f) => f.fid === 31 && /^(Mr|Mrs|Miss|Ms|Dr|Sir|Lady|Messrs)/i.test(f.val))?.val
+    || vals.find((v) => /^(Mr|Mrs|Miss|Ms|Dr)\b/i.test(v) && v.length < 40);
+  // prefer the distinctive combined contact line (closest to record start, so it's THIS owner's)
+  const address = fields.find((f) => f.fid === 29)?.val
+    || fields.find((f) => f.fid === 56)?.val?.replace(/\r/g, ", ")
+    || vals.find((v) => /\b(Tel|Mob)[:.]/i.test(v) && v.includes(","))
+    || vals.filter((v) => v.includes(",") && v.length > 18).sort((a, b) => b.length - a.length)[0];
+  let phone = vals.filter((v) => /^[\d ]+$/.test(v) && v.replace(/\D/g, "").length >= 7 && (/^0/.test(v) || v.includes(" ")))
+    .sort((a, b) => (/^0/.test(b) ? 1 : 0) - (/^0/.test(a) ? 1 : 0))[0];
+  if (!phone && address) phone = address.match(/(?:Tel|Mob)[:.\s]*([\d ]{7,})/i)?.[1]?.trim(); // pull from "…Mob: 0795…"
+  // account code (e.g. STA018) lives in a short 0x05 chunk → scan the decoded window
+  // (no trailing \b: the next field's bytes butt right up against "018")
+  const account = decode(buf.subarray(at, Math.min(buf.length, at + 1100))).match(/(?<![A-Z0-9])[A-Z]{3}\d{3}(?![0-9])/)?.[0];
+  return name || address || phone ? { name, account, address, phone } : null;
 }
 
 // ---- turn a field list into a friendly record ----
@@ -121,7 +159,7 @@ const normReg = (r: string) => {
 };
 const isPhone = (v: string) => /^[\d ]+$/.test(v) && v.replace(/\D/g, "").length >= 7 && (/^0/.test(v) || v.includes(" "));
 
-function classify(fields: Field[]): { kind: string; lines: [string, string][]; title: string; key: string } | null {
+function classify(fields: Field[]): { kind: string; lines: [string, string][]; title: string; key: string; ownerGuid?: string } | null {
   const vals = Array.from(new Set(fields.map((f) => f.val).filter((v) => v && !RE.hex32.test(v))));
   const pick = (test: (v: string) => boolean) => vals.filter(test);
 
@@ -140,24 +178,27 @@ function classify(fields: Field[]): { kind: string; lines: [string, string][]; t
   if (looksVehicle && regs.length) {
     const make = fields.find((f) => f.fid === 3 && RE.colour.test(f.val))?.val || makes[0];
     const model = fields.find((f) => f.fid === 4 && /[A-Za-z]/.test(f.val))?.val;
+    const combined = fields.find((f) => f.fid === 28 && /[A-Za-z]/.test(f.val) && !f.val.includes(":"))?.val;
+    const makeModel = model ? [make, model].filter(Boolean).join(" ") : (combined || make || "");
     const colour = fields.find((f) => f.fid === 19 && RE.colour.test(f.val))?.val;
     const fuel = fields.find((f) => f.fid === 20 && RE.colour.test(f.val))?.val;
     const cc = pick((v) => /^\d{3,4}$/.test(v) && +v >= 600 && +v <= 6500)[0];
     const reg = normReg(regs[0]);
     add("Registration", reg);
-    add("Make / Model", [make, model].filter(Boolean).join(" ") || null);
+    add("Make / Model", makeModel || null);
     add("VIN", vins.find((v) => v.length >= 11));
     add("Colour", colour);
     add("Fuel", fuel);
     add("Engine CC", cc);
     add("Date reg.", dates.find((d) => /\b(19|20)\d\d\b/.test(d) && !/:/.test(d)));
     if (lines.length < 2) return null; // reg only = index stub, skip
-    return { kind: "Vehicle", key: `V:${reg}`, title: `${reg}  ${[make, model].filter(Boolean).join(" ")}`.trim(), lines };
+    const ownerGuid = fields.find((f) => f.fid === 6 && /^([0-9A-F]{32}|[A-Z0-9]{18,22})$/.test(f.val))?.val;
+    return { kind: "Vehicle", key: `V:${reg}`, title: `${reg}  ${makeModel}`.trim(), lines, ownerGuid };
   }
 
   // customer-ish — need a name, address or real phone to be worth showing
-  const name = names[0];
-  const addr = addrs[0];
+  const name = fields.find((f) => f.fid === 31 && RE.name.test(f.val))?.val || names[0];
+  const addr = fields.find((f) => f.fid === 29 && f.val.includes(","))?.val || addrs[0];
   if (!name && !addr && !phones.length) return null;
   add("Name", name);
   add("Address", addr);
@@ -197,7 +238,7 @@ const clusters: number[] = [];
 for (const h of hits) if (!clusters.length || h - clusters[clusters.length - 1] > 700) clusters.push(h);
 
 // parse every cluster, keep the RICHEST record per dedup key
-type Rec = NonNullable<ReturnType<typeof classify>> & { fields: Field[] };
+type Rec = NonNullable<ReturnType<typeof classify>> & { fields: Field[]; owner?: Owner | null };
 const byKey = new Map<string, Rec>();
 for (const c of clusters) {
   const fields = parseWindow(buf, c);
@@ -205,7 +246,12 @@ for (const c of clusters) {
   const rec = classify(fields);
   if (!rec) continue;
   const prev = byKey.get(rec.key);
-  if (!prev || rec.lines.length > prev.lines.length) byKey.set(rec.key, { ...rec, fields });
+  // prefer the true master record (the one carrying the owner link), then the richest
+  const score = (r: { ownerGuid?: string; lines: unknown[] }) => (r.ownerGuid ? 1000 : 0) + r.lines.length;
+  if (!prev || score(rec) > score(prev)) {
+    const owner = rec.ownerGuid ? resolveOwner(buf, rec.ownerGuid) : null;
+    byKey.set(rec.key, { ...rec, fields, owner });
+  }
 }
 
 let recs = Array.from(byKey.values());
@@ -214,6 +260,15 @@ recs = recs.filter((a) => {
   const av = a.lines.map((l) => l[1]);
   return !recs.some((b) => b !== a && b.kind === a.kind && b.lines.length > a.lines.length &&
     av.every((v) => b.lines.some((l) => l[1].includes(v) || v.includes(l[1]))));
+});
+// drop bare phone/since-only customer stubs whose number is already shown as a vehicle owner
+const ownerPhones = new Set(recs.flatMap((r) => `${r.owner?.phone || ""} ${r.owner?.address || ""}`.match(/\d{9,11}/g) || []));
+recs = recs.filter((r) => {
+  if (r.kind !== "Customer") return true;
+  const hasName = r.lines.some(([k]) => k === "Name");
+  const hasAddr = r.lines.some(([k]) => k === "Address");
+  const phone = r.lines.find(([k]) => k === "Phone")?.[1]?.replace(/\D/g, "");
+  return hasName || hasAddr || !(phone && ownerPhones.has(phone));
 });
 const vehicles = recs.filter((r) => r.kind === "Vehicle");
 const customers = recs.filter((r) => r.kind === "Customer");
@@ -224,6 +279,13 @@ function show(group: Rec[], heading: string) {
   for (const rec of group.slice(0, 12)) {
     console.log(`── ${rec.title} ${"─".repeat(Math.max(2, 50 - rec.title.length))}`);
     for (const [k, v] of rec.lines) console.log(`   ${k.padEnd(16)} ${v}`);
+    if (rec.owner) {
+      const o = rec.owner;
+      const who = [o.name, o.account ? `(${o.account})` : null].filter(Boolean).join(" ");
+      console.log(`   ${"Owner".padEnd(16)} ${who || "—"}`);
+      if (o.address) console.log(`   ${"".padEnd(16)} ${o.address}`);
+      else if (o.phone) console.log(`   ${"".padEnd(16)} ${o.phone}`);
+    }
     if (RAW) for (const f of rec.fields) if (f.val.length > 1 && !RE.hex32.test(f.val)) console.log(`   · [${String(f.fid).padStart(3)}] ${f.val}`);
     console.log();
   }
