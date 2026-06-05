@@ -29,9 +29,10 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
           const houseNo = [a.sub_building_name, a.building_name, a.building_number].filter(Boolean).join(" ").trim();
           const road = (a.thoroughfare || a.line_1 || "").trim();
           const town = (a.post_town || "").trim();
-          const county = (a.county || a.traditional_county || a.administrative_county || "").trim();
+          const countyRaw = (a.county || a.traditional_county || a.administrative_county || "").trim();
+          const county = countyRaw && countyRaw.toLowerCase() !== town.toLowerCase() ? countyRaw : ""; // drop e.g. "London, London"
           const locality = (a.dependant_locality || a.double_dependant_locality || "").trim();
-          const label = [a.line_1, a.line_2, a.line_3, town, county].filter(Boolean).join(", ");
+          const label = [a.line_1, a.line_2, a.line_3, town, county].filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i).join(", ");
           return { houseNo, road, locality, town, county, label };
         });
         return { source: "Ideal Postcodes", full: true, addresses, note: addresses.length ? undefined : "No addresses found for that postcode" };
