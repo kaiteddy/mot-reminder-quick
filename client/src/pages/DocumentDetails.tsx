@@ -227,6 +227,7 @@ export default function DocumentDetails() {
   }
   async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean }) {
     try {
+      await flushPending();
       const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
       setExcessOpen(false);
       toast.success(`Policy excess invoice ${res.docNo} created`);
@@ -548,7 +549,7 @@ export default function DocumentDetails() {
                       .map(([code, label]) => (
                         <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
                       ))}
-                    {(data as any)?.doc?.docType === "SI" && (
+                    {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
                       <>
                         <div className="border-t my-1" />
                         <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
