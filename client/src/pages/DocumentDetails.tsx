@@ -810,12 +810,20 @@ export default function DocumentDetails() {
                 <TRow label="Total" value={liveTotals.gross} bold />
                 {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
                   <div className="border-t mt-1 pt-1 space-y-1.5">
-                    {!isExcess && <TRow label="Excess" value={excessDeduction} />}
-                    <TRow label="Receipts" value={docReceipts} bold />
-                    <div className="flex items-center gap-2">
-                      <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
-                      <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
-                    </div>
+                    {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
+                    {!isExcess && excessDeduction > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                        <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                      </div>
+                    )}
+                    {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+                    {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                        <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                      </div>
+                    )}
                   </div>
                 )}
               </Panel>
