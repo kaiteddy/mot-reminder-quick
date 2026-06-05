@@ -516,6 +516,10 @@ export default function DocumentDetails() {
   const isExcess = form.docType === "XS";
   const nameMissing = isInvoice && !(form.custSurname || form.custForename || form.company || form.customerName);
   const relatedDoc = (data as any)?.relatedDoc;
+  // insurer/bill-to: explicit insuranceCompany, else a company on the doc the server flagged as an insurer
+  const billTo = (data as any)?.billTo;
+  const insurerName = String(form.insuranceCompany ?? "").trim() || (billTo?.isInsurer ? String(billTo.company || "") : "");
+  const insurerDetected = !!insurerName && !String(form.insuranceCompany ?? "").trim(); // detected from bill-to, not yet recorded
   const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
   const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
@@ -615,10 +619,22 @@ export default function DocumentDetails() {
             </div>
           )}
           {/* insurance bill-to banner (main invoice addressed to the insurer) */}
-          {!isExcess && String(form.insuranceCompany ?? "").trim() && (
-            <div className="bg-sky-50 border-b border-sky-200 text-center py-2 text-[13px] font-semibold text-sky-900">
-              Insurance invoice — billed to: {form.insuranceCompany}
-              <span className="font-normal text-sky-700"> · re. customer {form.customerName || (data as any)?.customer?.name || "—"}{relatedDoc ? ` · excess invoice ${relatedDoc.docNo}` : ""}</span>
+          {!isExcess && insurerName && (
+            <div className="bg-sky-50 border-b border-sky-200 py-2 px-4 text-[13px] text-sky-900 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+              <span className="font-semibold">
+                {insurerDetected ? "Insurance job detected" : "Insurance invoice"} — billed to: {insurerName}
+              </span>
+              <span className="font-normal text-sky-700">
+                · re. customer {form.customerName || (data as any)?.customer?.name || "—"}
+                {relatedDoc ? ` · excess invoice ${relatedDoc.docNo}` : ""}
+              </span>
+              {isInvoice && !relatedDoc && !isNew && (
+                <button onClick={() => setExcessOpen(true)}
+                  className="ml-1 inline-flex items-center gap-1 bg-fuchsia-700 text-white rounded px-2 py-[3px] text-[12px] font-medium hover:bg-fuchsia-800">
+                  Raise customer excess…
+                </button>
+              )}
+              {insurerDetected && <span className="text-[11px] text-sky-600 w-full text-center">Detected from the bill-to company — raising the excess records {insurerName} as the insurer and bills the customer for the excess.</span>}
             </div>
           )}
 
@@ -738,6 +754,12 @@ export default function DocumentDetails() {
               {!isExcess && (
                 <Panel title="Insurance">
                   <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
+                  {insurerDetected && (
+                    <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
+                      className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
+                      Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
+                    </button>
+                  )}
                 </Panel>
               )}
               {!isExcess && (

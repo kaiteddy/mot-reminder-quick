@@ -892,6 +892,15 @@ export async function getDocumentStats() {
   return { total, byType: rows.map(r => ({ docType: r.docType, n: Number(r.n) })) };
 }
 
+// An insurance/accident-management/fleet-claims bill-to (the insurer pays the repair; the
+// vehicle owner pays the policy excess). Deliberately insurer-specific so ordinary business
+// customers (e.g. "Doppio Coffee Ltd") are NOT treated as insurance jobs.
+const INSURER_RE = /\b(Insurance|Assurance|Underwrit\w*|Indemnity|Accident|Claims?|Motability|Brokers?|FMG|Auxillis|Acromas|Kindertons|Albany Assistance|Aviva|Admiral|Hastings|Ageas|Allianz|AXA|Zurich|Covea|Esure|Churchill|Hiscox|Markerstudy|Direct Line|Innovation Group|Accident Exchange|Enterprise Rent)\b/i;
+export function detectInsurer(name?: string | null): boolean {
+  const s = String(name ?? "").trim();
+  return !!s && INSURER_RE.test(s);
+}
+
 /** Full document detail: header + customer + vehicle + line items. */
 export async function getDocumentDetail(id: number) {
   const db = await getDb();
@@ -923,7 +932,10 @@ export async function getDocumentDetail(id: number) {
   const docPayments = await db.select().from(payments).where(eq(payments.documentId, id)).orderBy(desc(payments.paymentDate));
   let relatedDoc: any = null;
   if (doc.relatedDocId) relatedDoc = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, doc.relatedDocId)).limit(1))[0] ?? null;
-  return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced, payments: docPayments, relatedDoc };
+  // bill-to summary: a company on the doc, and whether it looks like an insurer/fleet (→ excess split applies)
+  const billToName = String(doc.insuranceCompany || doc.company || "").trim();
+  const billTo = { company: billToName || null, isInsurer: detectInsurer(doc.insuranceCompany) || detectInsurer(doc.company) };
+  return { doc, customer, vehicle, lineItems, history, accBalance, custLastInvoiced, vehLastInvoiced, payments: docPayments, relatedDoc, billTo };
 }
 
 /** All parts ever fitted to a vehicle (across every document), with the price charged. */
@@ -1419,6 +1431,12 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   const main = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.mainDocId)).limit(1))[0];
   if (!main) throw new Error("Main invoice not found");
 
+  // auto-wire: if the bill-to company looks like an insurer and none is recorded yet, treat it
+  // as the insurance bill-to on the main invoice. The XS then bills the person (owner), so don't
+  // carry the insurer's company name onto the excess invoice.
+  const insurer = (String(main.insuranceCompany || "").trim() || (detectInsurer(main.company) ? main.company : "")) || null;
+  const xsCompany = detectInsurer(main.company) ? null : main.company;
+
   const discount = Math.max(0, Number(input.discount) || 0);
   const net = +(Math.max(0, Number(input.excessNet) || 0) - discount).toFixed(2);
   const vatRate = input.vatRegistered ? 20 : 0;
@@ -1432,7 +1450,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     docType: "XS", docNo, externalId,
     customerId: main.customerId, vehicleId: main.vehicleId, registration: main.registration,
     customerName: main.customerName, custTitle: main.custTitle, custForename: main.custForename, custSurname: main.custSurname,
-    custEmail: main.custEmail, company: main.company, accountNumber: main.accountNumber,
+    custEmail: main.custEmail, company: xsCompany, accountNumber: main.accountNumber,
     custHouseNo: main.custHouseNo, custRoad: main.custRoad, custLocality: main.custLocality,
     custTown: main.custTown, custCounty: main.custCounty, custPostcode: main.custPostcode,
     custTelephone: main.custTelephone, custMobile: main.custMobile,
@@ -1451,9 +1469,10 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     taxAmount: String(tax.toFixed(2)), vatRate: String(vatRate.toFixed(2)),
   } as any);
 
-  // 2) record the excess on the main invoice and deduct it (insurer pays the reduced amount)
+  // 2) record the excess on the main invoice and deduct it (insurer pays the reduced amount),
+  //    and stamp the insurer as the main invoice's bill-to so it prints/bills to the insurer
   await db.update(serviceHistory).set({
-    relatedDocId: xsId, relatedDocNo: docNo,
+    relatedDocId: xsId, relatedDocNo: docNo, insuranceCompany: insurer,
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
   }).where(eq(serviceHistory.id, main.id));
   await recomputeDocBalance(main.id);
