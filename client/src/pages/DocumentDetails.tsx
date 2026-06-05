@@ -131,6 +131,7 @@ export default function DocumentDetails() {
   const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
+  const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -328,6 +329,22 @@ export default function DocumentDetails() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, (data as any)?.doc?.id]);
+
+  async function findAddress() {
+    const pc = (form.custPostcode || "").trim();
+    if (!pc) { toast.error("Enter a postcode first"); return; }
+    setAddr((a) => ({ ...a, loading: true, open: true }));
+    try {
+      const res: any = await utils.documents.lookupAddress.fetch({ postcode: pc });
+      setAddr({ loading: false, results: res.addresses || [], note: res.note, open: true });
+      if (!res.addresses?.length && res.note) toast.message(res.note);
+    } catch { setAddr((a) => ({ ...a, loading: false })); toast.error("Address lookup failed"); }
+  }
+  function pickAddress(a: any) {
+    setForm((f) => ({ ...f, custHouseNo: a.houseNo || f.custHouseNo, custRoad: a.road || "", custLocality: a.locality || "", custTown: a.town || "", custCounty: a.county || "" }));
+    markDirty();
+    setAddr({ loading: false, results: [], open: false });
+  }
 
   async function lookup(regOverride?: string, silent?: boolean) {
     const reg = (regOverride || form.registration || "").trim();
@@ -666,7 +683,30 @@ export default function DocumentDetails() {
                   placeholder={nameMissing ? "Required" : "Surname"}
                   className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
               </div>
-              <div className="flex gap-2"><EF label="House No" field="custHouseNo" {...{ form, set, editing }} /><EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} /></div>
+              <div className="flex gap-2 items-center">
+                <EF label="House No" field="custHouseNo" {...{ form, set, editing }} />
+                <EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} />
+                {editing && (
+                  <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
+                    className="shrink-0 h-[32px] inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 text-xs disabled:opacity-50 hover:bg-violet-800">
+                    {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
+                  </button>
+                )}
+              </div>
+              {addr.open && (
+                <div className="border border-slate-300 rounded-sm bg-white shadow-sm overflow-hidden text-[13px]">
+                  <div className="flex items-center justify-between px-2 py-1 bg-slate-100 text-[11px] text-slate-500">
+                    <span>{addr.loading ? "Searching…" : `${addr.results.length} address${addr.results.length === 1 ? "" : "es"}`}</span>
+                    <button type="button" onClick={() => setAddr((a) => ({ ...a, open: false }))} className="hover:text-slate-700"><X className="w-3 h-3" /></button>
+                  </div>
+                  <div className="max-h-44 overflow-auto">
+                    {addr.results.map((a, i) => (
+                      <button key={i} type="button" onClick={() => pickAddress(a)} className="block w-full text-left px-2 py-1.5 hover:bg-violet-50 border-t border-slate-100">{a.label}</button>
+                    ))}
+                  </div>
+                  {addr.note && <div className="px-2 py-1 text-[10.5px] text-amber-700 bg-amber-50 border-t border-amber-100">{addr.note}</div>}
+                </div>
+              )}
               <EF label="Road" field="custRoad" {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>

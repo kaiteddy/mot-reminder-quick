@@ -141,6 +141,13 @@ export const appRouter = router({
         return liveVehicleTech(input.registration);
       }),
 
+    lookupAddress: publicProcedure
+      .input(z.object({ postcode: z.string() }))
+      .query(async ({ input }) => {
+        const { lookupAddresses } = await import("./addressApi");
+        return lookupAddresses(input.postcode);
+      }),
+
     save: publicProcedure
       .input(z.object({
         id: z.number().optional(),
