@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unattended nightly GA4 -> Web sync (03:30). OPT-IN: nothing runs until you load it.
+
+  Enable:
+    cp deploy/com.elimotors.ga4-sync.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.elimotors.ga4-sync.plist
+  Disable:
+    launchctl unload ~/Library/LaunchAgents/com.elimotors.ga4-sync.plist
+
+  Run once now (test):  launchctl start com.elimotors.ga4-sync
+  Logs:                 ~/Library/Logs/ga4-sync/latest.log
+
+  NOTE: this applies changes (--go). To preview without writing, remove the --go
+  <string> below and it becomes a nightly DRY-RUN report instead.
+  Replace __PROJECT__ with the absolute path to mot-reminder-quick.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.elimotors.ga4-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PROJECT__/scripts/ga4-sync.sh</string>
+    <string>--go</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/ga4-sync/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/ga4-sync/launchd.err</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
