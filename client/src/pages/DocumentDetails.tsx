@@ -684,16 +684,13 @@ export default function DocumentDetails() {
             </div>
             {/* additional info */}
             <div className="xl:col-span-3 space-y-3">
-              <Panel title="Additional Info">
-                <EF label="Status" field="docStatus" w="w-20" {...{ form, set, editing }} />
-                <EF label="Order Ref" field="orderRef" w="w-20" {...{ form, set, editing }} />
-                <EF label="Department" field="department" w="w-20" {...{ form, set, editing }} />
-                <EF label="Terms" field="terms" w="w-20" {...{ form, set, editing }} />
-                {!isExcess && <EF label="Insurance Co." field="insuranceCompany" w="w-20" {...{ form, set, editing }} />}
-                <SelectField label="Sales Advisor" field="staffSalesPerson" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-                <SelectField label="Technician" field="staffTechnician" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-                <SelectField label="Road Tester" field="staffRoadTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-              </Panel>
+              {/* "Additional Info" fields (Status/Order Ref/Department/Terms/staff) hidden —
+                  not used by the workshop. Just the insurer bill-to is kept. */}
+              {!isExcess && (
+                <Panel title="Insurance">
+                  <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
+                </Panel>
+              )}
               {!isExcess && (
                 <Panel title="Extras">
                   {/* MOT: tick to include an MOT on this job (defaults the statutory fee, editable) */}
