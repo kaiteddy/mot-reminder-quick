@@ -7,19 +7,17 @@ import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
 
-const fallbackKey = "sk-" + "proj" + "-D0hxv1znK5LY35z9iIngC_DrLg" + "HXYLI5T2u8BzHPGfYd4VSvmNyTMPaYry8r" + "GkH0Zr7GTWCccYT3BlbkFJfi" + "H130_7pYUo--tdjc-RkoMzsZ" + "-xEJNbwbOi4Ns29u-Ze04XRgu2Y1ED8useJvQBdyS3Bd9NoA";
-
 // Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
 // Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
 const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-nano";
 
+// AI is usable when an OpenAI key (OPENAI_API_KEY) or the Forge fallback (BUILT_IN_FORGE_API_KEY)
+// is configured in the environment — Vercel in production, .env locally.
+const hasAIKey = () => Boolean(process.env.OPENAI_API_KEY || ENV.forgeApiKey);
+
 const getRuntimeProvider = () => {
-  let activeKey = process.env.OPENAI_API_KEY;
-  
-  if (!activeKey || activeKey.trim().endsWith("KyUA") || activeKey.trim().endsWith("NoA")) {
-    activeKey = fallbackKey;
-  }
-  
+  const activeKey = process.env.OPENAI_API_KEY;
+
   return activeKey
     ? createOpenAI({ apiKey: activeKey, headers: { Authorization: `Bearer ${activeKey}` } })
     : createOpenAI({
@@ -42,7 +40,7 @@ export const aiRouter = router({
       })),
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+      if (!hasAIKey()) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
@@ -167,7 +165,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       year: z.number().optional()
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+      if (!hasAIKey()) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
@@ -207,7 +205,7 @@ CRITICAL INSTRUCTIONS:
       year: z.number().optional(), fuelType: z.string().optional(), engineCode: z.string().optional(), engineCC: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.OPENAI_API_KEY && !ENV.forgeApiKey) {
+      if (!hasAIKey()) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
       const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
