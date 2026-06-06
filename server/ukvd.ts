@@ -61,7 +61,10 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
 
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const url = new URL(UKVD_CONFIG.baseUrl);
-    const targetPackage = isPremium ? "VDICheck" : "VehicleDetails";
+    // Use VehicleDetailsWithImage — the package this account is actually contracted for (per the
+    // UKVD usage report: 594 clean calls vs 30 BillingFailures on plain VehicleDetails) — and it
+    // also returns the vehicle image. The response parser already handles VehicleImageDetails.
+    const targetPackage = isPremium ? "VDICheck" : "VehicleDetailsWithImage";
     url.searchParams.append("ApiKey", UKVD_CONFIG.apiKey);
     url.searchParams.append("PackageName", targetPackage);
     url.searchParams.append("Vrm", cleanVRM);
