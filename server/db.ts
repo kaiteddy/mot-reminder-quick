@@ -996,6 +996,7 @@ export async function lookupVehicleForReg(registration: string) {
   if (db) {
     const v: any = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
     if (v) {
+      try { const _ctd = typeof v.comprehensiveTechnicalData === "string" ? JSON.parse(v.comprehensiveTechnicalData) : v.comprehensiveTechnicalData; v.imageUrl = _ctd?.ukvd?.imageUrl ?? null; } catch { v.imageUrl = null; }
       const cust = v.customerId ? (await db.select().from(customers).where(eq(customers.id, v.customerId)).limit(1))[0] ?? null : null;
       // A known vehicle imported from GA4 is often sparse (e.g. only the make). The SWS-derived
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
@@ -1006,6 +1007,7 @@ export async function lookupVehicleForReg(registration: string) {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
           const u = sws?.ukvd || {}; const sp = sws?.specs || {};
+          if (u.imageUrl) v.imageUrl = u.imageUrl;
           const fn = sp.fullName || "";
           // model: prefer UKVD, else parse the SWS full name (strip make + engine spec)
           const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && (v.make || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
@@ -1044,6 +1046,7 @@ export async function lookupVehicleForReg(registration: string) {
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
       v.derivative = sws?.specs?.fullName || sws?.specs?.name || null;
+      v.imageUrl = u.imageUrl ?? null;
       sources.push("sws");
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
@@ -1103,6 +1106,7 @@ export async function liveVehicleTech(registration: string) {
     out.oilCapacity = oil?.capacity ?? null;
     out.airconType = sws?.aircon?.type ?? null;
     out.airconCapacity = sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null;
+    out.imageUrl = sws?.ukvd?.imageUrl ?? null;
   } catch { /* SWS unavailable */ }
   try {
     const { getVehicleDetails } = await import("./dvlaApi");

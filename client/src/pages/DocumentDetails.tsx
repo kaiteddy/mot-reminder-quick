@@ -368,7 +368,7 @@ export default function DocumentDetails() {
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : f.dateOfRegistration,
         ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
       }));
-      setLookupTech({ ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate });
+      setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
       if (!silent) markDirty();
       const src = String(res.source || "");
       if (res.found) toast.success("Loaded from your records");
@@ -643,6 +643,13 @@ export default function DocumentDetails() {
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 p-3">
             {/* vehicle */}
             <div className="xl:col-span-5 space-y-1.5">
+              {lookupTech?.imageUrl && (
+                <div className="flex justify-center pb-1">
+                  <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
+                    onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = "none"; }}
+                    className="max-h-[110px] w-auto rounded-md border border-slate-200 shadow-sm object-contain bg-white" />
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
