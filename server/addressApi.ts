@@ -21,6 +21,16 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
 
   const key = process.env.IDEALPOSTCODES_API_KEY;
   if (key) {
+    // Addresses for a postcode are static — cache the (paid) Ideal Postcodes result and serve
+    // repeat searches for the same postcode for free, so we never pay twice for it.
+    const cacheKey = `addrcache:${pc}`;
+    try {
+      const { getAppSetting } = await import("./db");
+      const cached: any = await getAppSetting(cacheKey);
+      if (cached && Array.isArray(cached.addresses) && cached.addresses.length) {
+        return { source: "Ideal Postcodes (cached)", full: true, addresses: cached.addresses };
+      }
+    } catch { /* cache read best-effort */ }
     try {
       const res = await fetch(`https://api.ideal-postcodes.co.uk/v1/postcodes/${encodeURIComponent(pc)}?api_key=${key}`);
       if (res.ok) {
@@ -35,6 +45,9 @@ export async function lookupAddresses(postcode: string): Promise<{ source: strin
           const label = [a.line_1, a.line_2, a.line_3, town, county].filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i).join(", ");
           return { houseNo, road, locality, town, county, label };
         });
+        if (addresses.length) {
+          try { const { saveAppSetting } = await import("./db"); await saveAppSetting(cacheKey, { addresses, cachedAt: new Date().toISOString() }); } catch { /* cache write best-effort */ }
+        }
         return { source: "Ideal Postcodes", full: true, addresses, note: addresses.length ? undefined : "No addresses found for that postcode" };
       }
     } catch { /* fall through to the free lookup */ }

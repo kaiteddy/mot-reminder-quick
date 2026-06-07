@@ -1002,7 +1002,7 @@ export async function lookupVehicleForReg(registration: string) {
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
       // regs — so backfill any MISSING fields from SWS+DVLA on lookup, then cache them back.
       const empty = (s: any) => !String(s ?? "").trim();
-      if (empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) {
+      if ((empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) && !v.swsLastUpdated) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
@@ -1019,7 +1019,8 @@ export async function lookupVehicleForReg(registration: string) {
           if (empty(v.colour) && u.colour) v.colour = updates.colour = u.colour;
           if (empty(v.vin) && (u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = (u.vin || sp.vin || sws?.raw?.vinNumber);
           if (empty(v.engineCC) && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
-          if (Object.keys(updates).length) await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
+          updates.swsLastUpdated = new Date(); // mark "SWS/UKVD attempted" so we never re-pay for this vehicle
+          await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
           if (oil || sws?.aircon) {
             v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
@@ -1093,26 +1094,49 @@ export async function getAddressLookupStats() {
   return { total: Number(r?.total) || 0, thisMonth: Number(r?.thisMonth) || 0, today: Number(r?.today) || 0 };
 }
 
-/** Latest live technical data (engine oil, A/C charge, MOT, tax) for the info cards. */
+/** Technical/spec data (engine oil, A/C, vehicle image) + MOT/tax for the job-sheet info cards.
+ *  PAID data (SWS technical + UKVD spec/image) is static per vehicle, so it is fetched at most
+ *  ONCE and cached in comprehensiveTechnicalData — subsequent opens are served from cache and are
+ *  never re-billed. MOT/tax come from the FREE DVLA API, so they are always refreshed live. */
 export async function liveVehicleTech(registration: string) {
   const reg = normReg(registration);
   if (!reg) return null;
   const out: any = {};
+
+  // --- Paid technical + UKVD spec/image: serve from cache; pay only once per vehicle. ---
   try {
-    const { fetchRichVehicleData } = await import("./sws");
-    const sws: any = await fetchRichVehicleData(reg, true);
-    const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    const db = await getDb();
+    const veh: any = db ? (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0] : null;
+    let ctd: any = null;
+    if (veh?.comprehensiveTechnicalData) {
+      try { ctd = typeof veh.comprehensiveTechnicalData === "string" ? JSON.parse(veh.comprehensiveTechnicalData) : veh.comprehensiveTechnicalData; } catch { ctd = null; }
+    }
+    if (!ctd || !ctd.ukvd) {
+      // Never cached (or cached before UKVD ran) — hit the paid APIs once, then store for good.
+      console.log(`[liveVehicleTech] tech cache MISS for ${reg} — one-off paid lookup`);
+      const { fetchRichVehicleData } = await import("./sws");
+      const fresh: any = await fetchRichVehicleData(reg, true);
+      ctd = fresh || ctd || {};
+      if (!ctd.ukvd) ctd.ukvd = {}; // mark UKVD attempted so an unresolved vehicle is never re-billed
+      if (veh) { try { await saveTechnicalData(reg, ctd); } catch { /* cache write best-effort */ } }
+    } else {
+      console.log(`[liveVehicleTech] tech cache HIT for ${reg} — no paid API call`);
+    }
+    const oil = (ctd?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
     out.oilSpec = oil?.specification ?? null;
     out.oilCapacity = oil?.capacity ?? null;
-    out.airconType = sws?.aircon?.type ?? null;
-    out.airconCapacity = sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null;
-    out.imageUrl = sws?.ukvd?.imageUrl ?? null;
-  } catch { /* SWS unavailable */ }
+    out.airconType = ctd?.aircon?.type ?? null;
+    out.airconCapacity = ctd?.aircon?.quantity ?? ctd?.aircon?.capacity ?? null;
+    out.imageUrl = ctd?.ukvd?.imageUrl ?? null;
+  } catch { /* tech cache/fetch unavailable */ }
+
+  // --- MOT & tax: free (DVLA) and time-sensitive → always live. ---
   try {
     const { getVehicleDetails } = await import("./dvlaApi");
     const d: any = await getVehicleDetails(reg);
     if (d) { out.motExpiry = d.motExpiryDate ?? null; out.taxStatus = d.taxStatus ?? null; out.taxDueDate = d.taxDueDate ?? null; }
   } catch { /* DVLA unavailable */ }
+
   return out;
 }
 
