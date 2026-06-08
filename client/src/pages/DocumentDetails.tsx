@@ -1530,7 +1530,7 @@ function CustomerLog({ customerId, vehicleId, documentId }: { customerId?: numbe
 function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
-  const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: kind === "Labour" ? 1 : 1, unitPrice: 0, vatRate: 20 })]);
+  const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20 })]);
   const remove = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const inp = "w-full bg-white border border-slate-300 rounded-sm px-1.5 py-1 text-[13px] outline-none focus:border-violet-500";
   const KIND_NOUN: Record<string, string> = { Part: "parts", Labour: "labour", Sundries: "sundries", Paint: "paint & materials", Lubricant: "lubricants", Other: "advisories" };
@@ -1540,6 +1540,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
   return (
     <div>
+      {kind === "Labour" && <datalist id="labour-types"><option value="Mechanical Labour" /><option value="Diagnostic Check" /></datalist>}
       <Table>
         <TableHeader>
           <TableRow>
@@ -1559,7 +1560,12 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             return (
               <TableRow key={idx}>
                 {showPartNo && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
-                <TableCell>{editing ? <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} /> : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
+                <TableCell>{editing ? (
+                  kind === "Labour"
+                    ? <input className={inp} list="labour-types" placeholder="Mechanical Labour / Diagnostic Check…" value={it.description ?? ""}
+                        onChange={(e) => { const v = e.target.value; update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) }); }} />
+                    : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
+                ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
                 <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
