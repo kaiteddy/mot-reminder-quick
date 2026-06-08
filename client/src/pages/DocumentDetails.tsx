@@ -842,7 +842,7 @@ export default function DocumentDetails() {
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
                 <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -859,6 +859,12 @@ export default function DocumentDetails() {
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
                   <TabsContent value="mileage" className="mt-0"><MileageTab registration={form.registration} /></TabsContent>
+                  <TabsContent value="motadv" className="mt-0">
+                    <MOTAdvisoriesTab
+                      registration={form.registration}
+                      onAdd={(desc) => { setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description: desc, quantity: 1, unitPrice: 0, vatRate: 20 })]); toast.success("Added to Labour — set a price in the Labour tab"); }}
+                    />
+                  </TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
                     {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
@@ -1318,6 +1324,56 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
             </TableBody>
           </Table>
         )}
+    </div>
+  );
+}
+
+// MOT advisory / failure history from DVSA — each defect can be pulled into the job sheet as Labour
+function MOTAdvisoriesTab({ registration, onAdd }: { registration?: string; onAdd: (desc: string) => void }) {
+  const reg = (registration || "").replace(/\s/g, "");
+  const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
+  const tests = (data as any[]) || [];
+  const sevCls = (t: string) => /fail|major|dangerous/i.test(t) ? "bg-red-100 text-red-700 border-red-200"
+    : /advisory|minor/i.test(t) ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-600 border-slate-200";
+  if (!reg) return <p className="text-sm text-muted-foreground py-6 text-center">Enter a registration to see MOT advisories.</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground py-6 text-center">Loading MOT history…</p>;
+  if (!tests.length) return <p className="text-sm text-muted-foreground py-6 text-center">No MOT history on record for this vehicle.</p>;
+  return (
+    <div className="space-y-2 p-2">
+      <p className="text-[11px] text-muted-foreground">Advisories &amp; failures from every MOT test. Tap <b>+ Add</b> to drop an item into the Labour tab as work to quote.</p>
+      {tests.map((t: any, ti: number) => {
+        const defects = (t.defects || []) as any[];
+        const failed = /fail/i.test(t.testResult || "");
+        return (
+          <div key={ti} className="border rounded-md overflow-hidden">
+            <div className={`flex items-center justify-between px-3 py-1.5 text-[13px] ${failed ? "bg-red-50" : "bg-slate-50"}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">{t.completedDate ? new Date(t.completedDate).toLocaleDateString("en-GB") : "—"}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${failed ? "bg-red-600 text-white" : "bg-green-600 text-white"}`}>{t.testResult || "—"}</span>
+                {t.odometerValue && <span className="text-slate-500 text-[12px]">{Number(t.odometerValue).toLocaleString("en-GB")} mi</span>}
+              </div>
+              {defects.length > 0 && (
+                <button type="button" onClick={() => defects.forEach((d: any) => onAdd(d.text))} className="text-[12px] text-violet-700 hover:underline">+ Add all ({defects.length})</button>
+              )}
+            </div>
+            {defects.length === 0 ? (
+              <div className="px-3 py-1.5 text-[12px] text-muted-foreground">No advisories or defects recorded.</div>
+            ) : (
+              <ul className="divide-y">
+                {defects.map((d: any, di: number) => (
+                  <li key={di} className="flex items-start justify-between gap-3 px-3 py-1.5">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border ${sevCls(d.type)}`}>{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}</span>
+                      <span className="text-[12.5px] text-slate-700">{d.text}</span>
+                    </div>
+                    <button type="button" onClick={() => onAdd(d.text)} title="Add to Labour" className="shrink-0 text-[12px] text-violet-700 hover:underline">+ Add</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
