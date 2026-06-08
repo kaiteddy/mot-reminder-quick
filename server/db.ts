@@ -1755,7 +1755,10 @@ export async function getRichPDF(documentId: number) {
 
   // "Extras" categories (entered as single amounts on the job sheet)
   const sumNet = (t: string) => items.filter(i => i.itemType === t).reduce((a, i) => a + (Number(i.subNet) || 0), 0);
-  const sundries = sumNet('Sundries'), lubricants = sumNet('Lubricant'), paint = sumNet('Paint'), motNet = sumNet('MOT');
+  const sundries = sumNet('Sundries'), lubricants = sumNet('Lubricant'), paint = sumNet('Paint');
+  // MOT fee is zero-rated and must be shown as its own line. Prefer a MOT line item, else
+  // fall back to the document-level Sub MOT Net (synced invoices keep it there, not as a line).
+  const motNet = sumNet('MOT') || Number((doc as any).subMotNet) || 0;
   const isInvoice = doc.docType === 'SI' || doc.docType === 'XS';
   const excess = doc.docType === 'XS' ? 0 : (Number(doc.excessGross) || 0); // deducted from a main insurance invoice
   const receipts = Number(doc.totalReceipts) || 0;
