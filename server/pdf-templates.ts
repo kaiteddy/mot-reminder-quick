@@ -381,13 +381,11 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   y = vehicleTable(doc, data.vehicle, y);
   y += 30;
 
-  // Work description title (underlined)
+  // Work description title (no underline)
   if (data.work_title) {
     y = checkBreak(20);
     doc.font('Helvetica').fontSize(10).fillColor('black');
-    const tw = doc.widthOfString(data.work_title);
     doc.text(data.work_title, M, y);
-    doc.save().moveTo(M, y + 13).lineTo(M + tw, y + 13).lineWidth(0.5).stroke('black').restore();
     y += 18;
   }
 
@@ -400,16 +398,7 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   }
   y += 10;
 
-  // Car diagram (vehicle inspection image) — matches estimate / job sheet
-  const invDiagram = findImg('car_diagram.png');
-  if (invDiagram) {
-    const dw = CW * 0.48;
-    const dh = dw * (274 / 355);
-    y += 6;
-    y = checkBreak(dh);
-    doc.image(invDiagram, M, y, { width: dw });
-    y += dh + 10;
-  }
+  // (no vehicle inspection diagram on invoices — not needed, saves space)
 
   // MOT table (optional)
   if (data.mot && data.mot.length > 0) {
@@ -478,13 +467,11 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   y = vehicleTable(doc, data.vehicle, y);
   y += 30;
 
-  // Work description title (underlined)
+  // Work description title (no underline)
   if (data.work_title) {
     y = checkBreak(20);
     doc.font('Helvetica').fontSize(10).fillColor('black');
-    const tw = doc.widthOfString(data.work_title);
     doc.text(data.work_title, M, y);
-    doc.save().moveTo(M, y + 13).lineTo(M + tw, y + 13).lineWidth(0.5).stroke('black').restore();
     y += 18;
   }
 
