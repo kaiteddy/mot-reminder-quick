@@ -201,6 +201,25 @@ export default function MOTCheck() {
 
   const daysUntilExpiry = vehicleData?.motExpiryDate ? getDaysUntilExpiry(vehicleData.motExpiryDate) : null;
 
+  // Unified MOT status for the banner/badge: an existing MOT expiry, else the first-MOT-due
+  // date (3 years after first registration) for a vehicle with no MOT history yet.
+  const motStatus = (() => {
+    if (!vehicleData) return null;
+    const day = 86400000;
+    if (vehicleData.motExpiryDate) {
+      const date = new Date(vehicleData.motExpiryDate);
+      const days = Math.ceil((date.getTime() - Date.now()) / day);
+      return { mode: "mot" as const, date, days, bad: days < 0, soon: days >= 0 && days <= 30 };
+    }
+    const fu = vehicleData.firstUsedDate || vehicleData.registrationDate || vehicleData.monthOfFirstRegistration || (vehicleData.yearOfManufacture ? `${vehicleData.yearOfManufacture}-01-01` : null);
+    if (!fu) return { mode: "none" as const, date: null as Date | null, days: null as number | null, bad: false, soon: false };
+    const date = new Date(fu); date.setFullYear(date.getFullYear() + 3);
+    const days = Math.ceil((date.getTime() - Date.now()) / day);
+    return { mode: "first" as const, date, days, bad: days < 0, soon: days >= 0 && days <= 30 };
+  })();
+  const gbDate = (d: Date) => d.toLocaleDateString("en-GB");
+  const dayWord = (n: number) => `${Math.abs(n)} day${Math.abs(n) === 1 ? "" : "s"}`;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -305,45 +324,33 @@ export default function MOTCheck() {
                       {vehicleData.make} {vehicleData.model}
                     </CardDescription>
                   </div>
-                  {vehicleData.motExpiryDate && (() => {
-                    const motInfo = formatMOTDate(vehicleData.motExpiryDate);
-                    if (typeof motInfo === 'string') return null;
-                    const badge = getMOTStatusBadge(motInfo);
-                    return (
-                      <Badge variant={badge.variant} className={`text-sm px-3 py-1 ${badge.className || ''}`}>
-                        {badge.text}
-                      </Badge>
-                    );
+                  {motStatus && (() => {
+                    const s = motStatus;
+                    const cls = s.bad ? "bg-red-600 text-white" : s.soon ? "bg-orange-500 text-white" : s.mode === "mot" ? "bg-green-600 text-white" : s.mode === "first" ? "bg-blue-600 text-white" : "bg-slate-500 text-white";
+                    const text = s.mode === "mot" ? (s.bad ? "MOT EXPIRED" : s.soon ? `MOT due in ${dayWord(s.days!)}` : "MOT valid")
+                      : s.mode === "first" ? (s.bad ? "First MOT overdue" : "Awaiting first MOT") : "No MOT data";
+                    return <Badge className={`text-sm px-3 py-1 ${cls}`}>{text}</Badge>;
                   })()}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* MOT Expiry */}
-                {vehicleData.motExpiryDate && (() => {
-                  const motInfo = formatMOTDate(vehicleData.motExpiryDate);
-                  if (typeof motInfo === 'string') return null;
+                {/* MOT status banner — valid / expired / first-MOT-due */}
+                {motStatus && motStatus.date && (() => {
+                  const s = motStatus;
+                  const border = s.bad ? "border-red-500 bg-red-50" : s.soon ? "border-orange-500 bg-orange-50" : s.mode === "mot" ? "border-green-500 bg-green-50" : "border-blue-500 bg-blue-50";
+                  const text = s.bad ? "text-red-700" : s.soon ? "text-orange-700" : s.mode === "mot" ? "text-green-700" : "text-blue-700";
+                  const title = s.mode === "mot"
+                    ? (s.bad ? `MOT EXPIRED: ${gbDate(s.date!)}` : `MOT valid until: ${gbDate(s.date!)}`)
+                    : `No MOT history — first MOT ${s.bad ? "was due" : "due"}: ${gbDate(s.date!)}`;
+                  const sub = s.mode === "mot"
+                    ? (s.bad ? `Expired ${dayWord(s.days!)} ago` : `${dayWord(s.days!)} remaining`)
+                    : `${s.bad ? `Overdue by ${dayWord(s.days!)}` : `Due in ${dayWord(s.days!)}`} · 3 years after first registration`;
                   return (
-                    <Alert className={
-                      motInfo.isExpired
-                        ? "border-red-500 bg-red-50"
-                        : motInfo.daysUntilExpiry <= 30
-                          ? "border-orange-500 bg-orange-50"
-                          : "border-green-500 bg-green-50"
-                    }>
+                    <Alert className={border}>
                       <Calendar className="h-4 w-4" />
                       <AlertDescription>
-                        <div className="font-semibold text-lg mb-1">
-                          MOT Expires: {motInfo.date}
-                        </div>
-                        <div className={
-                          motInfo.isExpired
-                            ? "text-red-700 font-medium"
-                            : motInfo.daysUntilExpiry <= 30
-                              ? "text-orange-700 font-medium"
-                              : "text-green-700 font-medium"
-                        }>
-                          {formatDaysUntilExpiry(motInfo.daysUntilExpiry)}
-                        </div>
+                        <div className="font-semibold text-lg mb-1">{title}</div>
+                        <div className={`${text} font-medium`}>{sub}</div>
                       </AlertDescription>
                     </Alert>
                   );
@@ -679,30 +686,21 @@ export default function MOTCheck() {
               <OmnipartIntegration defaultVrm={vehicleData.registration} />
             </div>
 
-            {/* No MOT history — vehicle found at DVSA but it has no tests (e.g. a newer car whose first MOT isn't due/recorded yet) */}
-            {vehicleData.motTests && vehicleData.motTests.length === 0 && (() => {
-              const fu = vehicleData.firstUsedDate || vehicleData.registrationDate || (vehicleData.yearOfManufacture ? `${vehicleData.yearOfManufacture}-01-01` : null);
-              const due = fu ? new Date(new Date(fu).setFullYear(new Date(fu).getFullYear() + 3)) : null;
-              return (
-                <Card className="mb-6">
-                  <CardHeader>
-                    <CardTitle>MOT Test History</CardTitle>
-                    <CardDescription>No MOT tests recorded at the DVSA</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-start gap-3 text-sm">
-                      <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                      <div className="text-muted-foreground">
-                        <p>This vehicle has <b className="text-foreground">no MOT history</b> on record with the DVSA.</p>
-                        {due && (
-                          <p className="mt-1">It's a newer vehicle — its first MOT {due.getTime() < Date.now() ? "was due" : "is due"} <b className="text-foreground">{due.toLocaleDateString("en-GB")}</b> (3 years after first registration).</p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })()}
+            {/* No MOT test history (the status banner above covers the first-MOT-due date) */}
+            {vehicleData.motTests && vehicleData.motTests.length === 0 && (
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle>MOT Test History</CardTitle>
+                  <CardDescription>No MOT tests recorded at the DVSA</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                    <p>This vehicle has <b className="text-foreground">no MOT history</b> yet — see the status banner above for when its MOT is due.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
