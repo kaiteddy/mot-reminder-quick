@@ -10,10 +10,12 @@
  * Tax/Gross","Total Receipts". (Different column names from the internal-field export that
  * scripts/sync-ga4.ts reads — hence a dedicated mapper.)
  *
- * SAFE BY DESIGN: matches strictly on GA4 `_ID` (externalId). Never deletes. Never overwrites
- * web-created rows (externalId LIKE 'WEB-%'). Customers/vehicles are INSERT-ONLY (a brand-new
- * customer/vehicle on a new job sheet is created; existing ones are never modified). Documents
- * are upserted (insert new, update changed) so the list mirrors GA4's open jobs exactly.
+ * GA4 IS THE SOURCE OF TRUTH (until everything is created in the web app): documents are matched
+ * by GA4 `_ID` (externalId) and upserted (insert new, update changed) so the list mirrors GA4's
+ * open jobs exactly. Any web-created doc (externalId WEB-…) that has grabbed a real GA4 document
+ * number is REMOVED so GA4 always wins and there are no duplicate numbers. Customers/vehicles are
+ * INSERT-ONLY (a brand-new one on a job sheet is created; existing master records aren't touched).
+ * Never deletes real GA4 rows.
  */
 import "dotenv/config";
 import fs from "fs";
@@ -191,6 +193,21 @@ for (const r of rows) {
 }
 console.log(`Documents: +${toInsert.length} new, ~${toUpdate.length} changed, ${same} unchanged\n`);
 
+// ---- 3b) GA4 OVERRIDES THE WEB APP ----------------------------------------------------------
+// Until everything is created in the web app, GA4 is the source of truth: any web-created doc
+// (externalId WEB-…) that has grabbed a real GA4 document number is removed so the list mirrors
+// GA4 exactly with no duplicate numbers. (Real GA4 docs that legitimately reuse a number across
+// years/types are left alone — we only drop WEB-… rows.)
+const ga4DocNos = [...new Set(rows.map((r) => norm(r["Doc No"])).filter(Boolean))];
+const webCollisions = ga4DocNos.length
+  ? await q(`SELECT id, docNo, registration FROM serviceHistory WHERE externalId LIKE 'WEB-%' AND docNo IN (?)`, [ga4DocNos])
+  : [];
+if (webCollisions.length) {
+  console.log(`Web-created docs overridden by GA4 (same number) — removed: ${webCollisions.length}`);
+  for (const w of webCollisions as any[]) console.log(`  ${String(w.docNo).padEnd(7)} web '${w.registration || "—"}' → GA4 wins`);
+  console.log();
+}
+
 // show the NEW ones (the gap we're closing)
 if (toInsert.length) {
   console.log("New documents that will appear in the web list:");
@@ -206,6 +223,12 @@ if (GO) {
     await c.query(`INSERT INTO serviceHistory (externalId, ${DOC_COLS.join(",")}) VALUES ?`, [toInsert.slice(i, i + 500)]);
   for (const u of toUpdate)
     await c.query(`UPDATE serviceHistory SET ${DOC_COLS.map((k) => `${k}=?`).join(",")} WHERE id=?`, [...DOC_COLS.map((k) => u.vals[k] ?? null), u.id]);
+  if (webCollisions.length) {
+    const ids = (webCollisions as any[]).map((w) => w.id);
+    await q(`DELETE FROM serviceLineItems WHERE documentId IN (?)`, [ids]);
+    await q(`DELETE FROM customerLogs WHERE documentId IN (?)`, [ids]);
+    await q(`DELETE FROM serviceHistory WHERE id IN (?)`, [ids]);
+  }
   console.log("✓ Applied.");
 } else {
   console.log("Dry run complete — re-run with --go to apply.");
