@@ -140,6 +140,9 @@ export default function DocumentDetails() {
   const [dismissSig, setDismissSig] = useState("");
   const editSeq = useRef(0);
   const initRef = useRef<number | null>(null);
+  // customer details as loaded — so the "update record?" prompt only fires on a real edit,
+  // not when the doc's stored name merely differs from the (e.g. title-less) master record.
+  const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
   const markDirty = () => { editSeq.current++; setDirty(true); };
   const set = (k: string, v: any) => { setForm((f) => ({ ...f, [k]: v })); markDirty(); };
   const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
@@ -284,6 +287,13 @@ export default function DocumentDetails() {
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
+    // snapshot the loaded customer details so the update prompt only fires on a genuine edit
+    custInitRef.current = {
+      name: ([doc.custTitle || nm.title, doc.custForename || nm.forename, doc.custSurname || nm.surname].filter(Boolean).join(" ") || doc.customerName || customer?.name || "").trim(),
+      phone: (doc.custMobile || doc.custTelephone || customer?.phone || "").trim(),
+      email: (doc.custEmail || customer?.email || "").trim(),
+      postcode: (doc.custPostcode || customer?.postcode || "").trim(),
+    };
     // Labour/Parts/Advisories stay in the line-item tabs; MOT/Sundries/Lubricant/Paint
     // are surfaced as single Extras amounts (XS excess docs keep all their lines).
     const all = (data as any).lineItems as any[];
@@ -414,20 +424,21 @@ export default function DocumentDetails() {
   // Detect when the customer's name / phone / email / postcode on this doc differ from
   // their saved record, so we can offer to update the customer master (auto-save can't prompt).
   const custSync = useMemo(() => {
-    const c = (data as any)?.customer;
-    if (!form.customerId || !c) return { changes: [] as string[], sig: "" };
+    const init = custInitRef.current;
+    if (!form.customerId || !init) return { changes: [] as string[], sig: "" };
     const name = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
     const phone = (form.custMobile || form.custTelephone || "").trim();
     const email = (form.custEmail || "").trim();
     const postcode = (form.custPostcode || "").trim();
     const ne = (a: any, b: any) => (a || "").trim() !== (b || "").trim();
     const changes: string[] = [];
-    if (name && ne(name, c.name)) changes.push("name");
-    if (phone && ne(phone, c.phone)) changes.push("phone");
-    if ((email || c.email) && ne(email, c.email)) changes.push("email");
-    if ((postcode || c.postcode) && ne(postcode, c.postcode)) changes.push("postcode");
+    // fire only on a genuine edit away from the loaded values (not a stored-vs-master mismatch)
+    if (name && ne(name, init.name)) changes.push("name");
+    if (phone && ne(phone, init.phone)) changes.push("phone");
+    if (ne(email, init.email)) changes.push("email");
+    if (ne(postcode, init.postcode)) changes.push("postcode");
     return { changes, sig: `${name}|${phone}|${email}|${postcode}` };
-  }, [data, form.customerId, form.customerName, form.custTitle, form.custForename, form.custSurname, form.custMobile, form.custTelephone, form.custEmail, form.custPostcode]);
+  }, [form.customerId, form.customerName, form.custTitle, form.custForename, form.custSurname, form.custMobile, form.custTelephone, form.custEmail, form.custPostcode]);
 
   function buildPayload(): any {
     return {
@@ -514,6 +525,12 @@ export default function DocumentDetails() {
       await flushPending();
       await save.mutateAsync({ ...buildPayload(), updateCustomerRecord: true });
       await utils.documents.getById.invalidate({ id });
+      // the master now matches the form — re-baseline so the prompt clears
+      custInitRef.current = {
+        name: ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim(),
+        phone: (form.custMobile || form.custTelephone || "").trim(), email: (form.custEmail || "").trim(), postcode: (form.custPostcode || "").trim(),
+      };
+      setDismissSig(custSync.sig);
       toast.success(`Updated ${(data as any)?.customer?.name || "customer"}'s record`);
     } catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
   }
