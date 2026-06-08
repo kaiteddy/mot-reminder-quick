@@ -349,6 +349,24 @@ function tcAndTotals(
 // INVOICE
 // ═══════════════════════════════════════════════════════════════
 
+// Render a free-text work description (optional first-line title + lines) with proper width
+// wrapping, so long lines never overrun the page or overwrite the next line. Renders verbatim
+// (no bullet prefix — the text keeps whatever bullets/headings the user/AI typed). Blank lines
+// become a small paragraph gap.
+function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: string[], y: number, newPageTop: () => number): number {
+  doc.font('Helvetica').fontSize(9).fillColor('black');
+  const line = (text: string, gap: number) => {
+    if (!text || !text.trim()) { y += 5; return; }            // blank line → small paragraph gap
+    const h = doc.heightOfString(text, { width: CW });
+    if (y + h > PH - BOTTOM) { doc.addPage(); y = newPageTop(); doc.font('Helvetica').fontSize(9).fillColor('black'); }
+    doc.text(text, M, y, { width: CW });                       // width-wrapped, verbatim
+    y += h + gap;
+  };
+  if (title && title.trim()) line(title, 3);
+  for (const item of items || []) line(item, 1);
+  return y;
+}
+
 export async function generateInvoicePDF(data: any): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
   let y = M;
@@ -381,21 +399,8 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   y = vehicleTable(doc, data.vehicle, y);
   y += 14;
 
-  // Work description title (no underline)
-  if (data.work_title) {
-    y = checkBreak(20);
-    doc.font('Helvetica').fontSize(9).fillColor('black');
-    doc.text(data.work_title, M, y);
-    y += 18;
-  }
-
-  // Work items
-  doc.font('Helvetica').fontSize(9).fillColor('black');
-  for (const item of data.work_items || []) {
-    y = checkBreak(14);
-    doc.text(`- ${item}`, M, y);
-    y += 13;
-  }
+  // Work description (title + lines) — width-wrapped so long text never overwrites
+  y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
   y += 10;
 
   // (no vehicle inspection diagram on invoices — not needed, saves space)
@@ -467,21 +472,8 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   y = vehicleTable(doc, data.vehicle, y);
   y += 14;
 
-  // Work description title (no underline)
-  if (data.work_title) {
-    y = checkBreak(20);
-    doc.font('Helvetica').fontSize(9).fillColor('black');
-    doc.text(data.work_title, M, y);
-    y += 18;
-  }
-
-  // Work items (bullet points with •)
-  doc.font('Helvetica').fontSize(9).fillColor('black');
-  for (const item of data.work_items || []) {
-    y = checkBreak(14);
-    doc.text(`\u2022   ${item}`, M, y);
-    y += 13;
-  }
+  // Work description (title + lines) — width-wrapped so long text never overwrites
+  y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
   y += 10;
 
   // Car diagram (after work description)
@@ -599,13 +591,8 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   y = vehicleTable(doc, data.vehicle, y);
   y += 30;
 
-  // Work description lines
-  doc.font('Helvetica').fontSize(9).fillColor('black');
-  for (const line of data.work_description || []) {
-    y = checkBreak(14);
-    if (line) doc.text(line, M, y);
-    y += 13;
-  }
+  // Work description lines — width-wrapped so long text never overwrites
+  y = workBlock(doc, '', data.work_description, y, jsHeader);
   y -= 2;
 
   // Oil specs

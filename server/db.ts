@@ -1779,7 +1779,7 @@ export async function getRichPDF(documentId: number) {
   };
 
   // Split description into title + work items
-  const descLines = (doc.description || '').split('\n').filter((l: string) => l.trim());
+  const descLines = (doc.description || '').split('\n'); // keep blank lines for paragraph spacing
   const work_title = descLines.length > 0 ? descLines[0] : '';
   const work_items = descLines.length > 1 ? descLines.slice(1) : [];
 
