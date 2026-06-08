@@ -99,12 +99,25 @@ export function AutodataMini({ vrm, isWorkshop = false }: { vrm: string; isWorks
           </div>
         )}
 
-        {error && (
-          <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-4 rounded-lg">
-            <AlertTriangle className="h-5 w-5" />
-            <span className="text-sm font-medium">{error}</span>
-          </div>
-        )}
+        {error && (() => {
+          // the "drone" is a browser extension that fulfils Autodata jobs; if it isn't running,
+          // jobs sit pending and the poll times out (or a transient DB insert blip occurs).
+          const droneDown = /timed out|browser extension|Failed query|Drone|pending/i.test(error);
+          return droneDown ? (
+            <div className="flex items-start gap-2 bg-amber-50 text-amber-800 border border-amber-200 p-4 rounded-lg">
+              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium">Autodata isn't available right now.</p>
+                <p className="text-xs mt-0.5">The Autodata data drone (browser extension) isn't running, so live Autodata can't be fetched. The SWS technical data below is unaffected.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-4 rounded-lg">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="text-sm font-medium">{error}</span>
+            </div>
+          );
+        })()}
 
         {vehicleData && !isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -679,6 +679,31 @@ export default function MOTCheck() {
               <OmnipartIntegration defaultVrm={vehicleData.registration} />
             </div>
 
+            {/* No MOT history — vehicle found at DVSA but it has no tests (e.g. a newer car whose first MOT isn't due/recorded yet) */}
+            {vehicleData.motTests && vehicleData.motTests.length === 0 && (() => {
+              const fu = vehicleData.firstUsedDate || vehicleData.registrationDate || (vehicleData.yearOfManufacture ? `${vehicleData.yearOfManufacture}-01-01` : null);
+              const due = fu ? new Date(new Date(fu).setFullYear(new Date(fu).getFullYear() + 3)) : null;
+              return (
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>MOT Test History</CardTitle>
+                    <CardDescription>No MOT tests recorded at the DVSA</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-start gap-3 text-sm">
+                      <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="text-muted-foreground">
+                        <p>This vehicle has <b className="text-foreground">no MOT history</b> on record with the DVSA.</p>
+                        {due && (
+                          <p className="mt-1">It's a newer vehicle — its first MOT {due.getTime() < Date.now() ? "was due" : "is due"} <b className="text-foreground">{due.toLocaleDateString("en-GB")}</b> (3 years after first registration).</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {/* MOT History */}
             {vehicleData.motTests && vehicleData.motTests.length > 0 && (
               <Card>
