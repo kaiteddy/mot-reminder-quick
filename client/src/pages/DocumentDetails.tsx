@@ -852,7 +852,7 @@ export default function DocumentDetails() {
                 main={form.mileage ? Number(form.mileage).toLocaleString("en-GB") : "—"} sub={form.mileage ? "miles (last)" : undefined} />
               <InfoCard icon={<CalendarClock className="w-4 h-4" />} tone={motTone(vehInfo.motExpiry)} label="MOT Expiry"
                 main={vehInfo.motExpiry ? fmtDate(vehInfo.motExpiry) : "—"} sub={daysLabel(vehInfo.motExpiry)} />
-              <InfoCard icon={<ShieldCheck className="w-4 h-4" />} tone={vehInfo.taxStatus && /tax/i.test(vehInfo.taxStatus) && !/not/i.test(vehInfo.taxStatus) ? "green" : vehInfo.taxStatus ? "red" : "slate"} label="Tax"
+              <InfoCard icon={<ShieldCheck className="w-4 h-4" />} tone={!vehInfo.taxStatus ? "slate" : (/taxed/i.test(vehInfo.taxStatus) && !/untaxed/i.test(vehInfo.taxStatus) ? "green" : "red")} label="Tax"
                 main={vehInfo.taxStatus || "—"} sub={vehInfo.taxDueDate ? `Due ${fmtDate(vehInfo.taxDueDate)}` : undefined} />
             </div>
           )}
