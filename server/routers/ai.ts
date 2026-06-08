@@ -214,18 +214,26 @@ CRITICAL INSTRUCTIONS:
 
 "${input.job}"
 
-Write a professional job specification for the job sheet / invoice describing the work that was carried out.
-- 4 to 8 short bullet points, each starting with a past-tense action verb (e.g. Removed, Inspected, Replaced, Refitted, Torqued, Bled, Road tested).
-- Be specific to THIS vehicle where it matters (correct components, fluids/specs, torque or calibration checks, things commonly required on this model).
-- UK terminology. No prices, no part numbers, no headings or preamble — just the work performed.
-- Provide a short title line summarising the job (e.g. "Front Brake Discs & Pads Replacement").`;
+Write a CONCISE job specification for the job sheet / invoice — what was done, briefly.
+- 3 to 5 short bullets, each a brief phrase of at most ~10 words, starting with a past-tense verb (Removed, Replaced, Refitted, Torqued, Bled, Road tested).
+- One line each. No sub-clauses, no "in order to / to ensure…" explanations, no filler — just the action.
+- Specific to THIS vehicle only where it matters (correct part, fluid spec, torque/calibration). Don't pad it out.
+- UK terminology. No prices, no part numbers, no headings or preamble.
+- Title: 3–6 words naming the job (e.g. "Front Brake Discs & Pads"). Do NOT repeat the vehicle make/model.
+
+Example of the right level of brevity:
+Title: "Water Pump Replacement"
+- Drained cooling system, removed leaking water pump
+- Fitted new water pump with new gasket
+- Refilled with correct-spec coolant and bled system
+- Road tested and checked for leaks`;
       try {
         const provider = getRuntimeProvider();
         const { object } = await generateObject({
           model: provider(AI_MODEL),
-          system: "You are an expert UK master technician writing precise, concise workshop job specifications.",
+          system: "You are an expert UK master technician writing brief, concise workshop job specifications — short bullet phrases, never long descriptive sentences. Less is more.",
           prompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(3).max(10) }),
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(2).max(6) }),
         });
         return object;
       } catch (e: any) {
