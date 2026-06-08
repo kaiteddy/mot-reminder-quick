@@ -67,7 +67,21 @@ const phone = (r: Record<string, string>) => norm(r["Mobile"]).replace(/\s*[a-z]
 const custByExt = new Map<string, number>();
 for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
 const vehByExt = new Map<string, number>();
-for (const r of await q("SELECT id, externalId FROM vehicles WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) vehByExt.set(r.externalId, r.id);
+const vehByReg = new Map<string, { id: number; externalId: string | null }>(); // also match by reg, so vehicles created outside the GA4 import (e.g. via a lookup, no externalId) aren't duplicated
+for (const r of await q("SELECT id, externalId, registration FROM vehicles")) {
+  if (r.externalId && !String(r.externalId).startsWith("WEB-")) vehByExt.set(r.externalId, r.id);
+  const reg = String(r.registration ?? "").toUpperCase().replace(/\s+/g, "");
+  if (reg && !vehByReg.has(reg)) vehByReg.set(reg, { id: r.id, externalId: r.externalId });
+}
+const vehId = (ext: string, reg: string) => vehByExt.get(ext) ?? vehByReg.get(reg.toUpperCase().replace(/\s+/g, ""))?.id ?? null;
+// a doc's bill-to is a COMPANY/insurer when it has a Company Name and no personal Surname → NOT the vehicle owner
+const isCompanyBillTo = (r: Record<string, string>) => !norm(r["Surname"]) && !!norm(r["Company Name"]);
+// the real owner for a vehicle = a row where the customer is a PERSON (prefer over an insurer's invoice row)
+const ownerForVehicle = new Map<string, number>();
+for (const r of rows) {
+  const vext = norm(r["ID Vehicle"]); const cust = custByExt.get(norm(r["ID Customer"]));
+  if (vext && cust && !isCompanyBillTo(r) && !ownerForVehicle.has(vext)) ownerForVehicle.set(vext, cust);
+}
 
 // ---- 1) ensure customers (insert-only for brand-new ids) ----
 const newCustomers = new Map<string, any[]>();
@@ -84,20 +98,39 @@ if (GO && newCustomers.size) {
   for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
 }
 
-// ---- 2) ensure vehicles (insert-only) ----
-const newVehicles = new Map<string, any[]>();
+// ---- 2) ensure vehicles: link existing (by GA4 id, else by reg), create only the genuinely-new ----
+const toCreateVeh = new Map<string, any[]>();
+const toLinkVeh: { id: number; ext: string; owner: number | null }[] = [];
+const seenVeh = new Set<string>();
 for (const r of rows) {
   const ext = norm(r["ID Vehicle"]);
   const reg = norm(r["Registration"]).toUpperCase();
-  if (!ext || !reg || vehByExt.has(ext) || newVehicles.has(ext)) continue;
-  newVehicles.set(ext, [ext, cap(reg, 20), cap(norm(r["Make"]), 100) || null, cap(norm(r["Model"]), 100) || null,
-    cap(norm(r["VIN"]), 50) || null, custByExt.get(norm(r["ID Customer"])) ?? null]);
+  if (!ext || !reg || seenVeh.has(ext)) continue;
+  seenVeh.add(ext);
+  if (vehByExt.has(ext)) continue; // already linked by GA4 _ID
+  const existing = vehByReg.get(reg.replace(/\s+/g, ""));
+  if (existing) {
+    // a vehicle with this reg already exists (e.g. created by a lookup) but lacks this GA4 id —
+    // link it instead of creating a duplicate; fill the owner only if it has none
+    toLinkVeh.push({ id: existing.id, ext, owner: existing.externalId ? null : (ownerForVehicle.get(ext) ?? null) });
+  } else {
+    // brand-new vehicle: owner is the PERSON on its jobs, never the insurer/company bill-to
+    toCreateVeh.set(ext, [ext, cap(reg, 20), cap(norm(r["Make"]), 100) || null, cap(norm(r["Model"]), 100) || null,
+      cap(norm(r["VIN"]), 50) || null, ownerForVehicle.get(ext) ?? null]);
+  }
 }
-console.log(`Vehicles:  +${newVehicles.size} new (insert-only)`);
-if (GO && newVehicles.size) {
-  const vals = [...newVehicles.values()];
+console.log(`Vehicles:  +${toCreateVeh.size} new, ${toLinkVeh.length} linked to an existing record (by reg)`);
+if (GO) {
+  const vals = [...toCreateVeh.values()];
   for (let i = 0; i < vals.length; i += 500) await c.query("INSERT INTO vehicles (externalId, registration, make, model, vin, customerId) VALUES ?", [vals.slice(i, i + 500)]);
-  for (const r of await q("SELECT id, externalId FROM vehicles WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) vehByExt.set(r.externalId, r.id);
+  for (const l of toLinkVeh)
+    await c.query(l.owner != null ? "UPDATE vehicles SET externalId=?, customerId=COALESCE(customerId,?) WHERE id=?" : "UPDATE vehicles SET externalId=? WHERE id=?",
+      l.owner != null ? [l.ext, l.owner, l.id] : [l.ext, l.id]);
+  for (const r of await q("SELECT id, externalId, registration FROM vehicles")) {
+    if (r.externalId && !String(r.externalId).startsWith("WEB-")) vehByExt.set(r.externalId, r.id);
+    const k = String(r.registration ?? "").toUpperCase().replace(/\s+/g, "");
+    if (k && !vehByReg.has(k)) vehByReg.set(k, { id: r.id, externalId: r.externalId });
+  }
 }
 
 // ---- 3) documents (upsert by externalId) ----
@@ -122,7 +155,7 @@ function mapDoc(r: Record<string, string>) {
   return {
     externalId: ext,
     customerId: custByExt.get(norm(r["ID Customer"])) ?? null,
-    vehicleId: vehByExt.get(norm(r["ID Vehicle"])) ?? null,
+    vehicleId: vehId(norm(r["ID Vehicle"]), norm(r["Registration"])),
     docType: cap(docType, 20), docNo: cap(norm(r["Doc No"]), 50),
     dateCreated: dt(parseGA4Date(norm(r["Date Created"]))), dateIssued: dt(dIssued), datePaid: dt(dPaid),
     totalNet: money(r["Total Net"]), totalTax: money(r["Total Tax"]), totalGross: money(r["Total Gross"]),
