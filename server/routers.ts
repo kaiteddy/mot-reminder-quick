@@ -109,6 +109,8 @@ export const appRouter = router({
         docType: z.string().optional(),
         limit: z.number().optional(),
         offset: z.number().optional(),
+        sortKey: z.string().optional(),
+        sortDir: z.enum(["asc", "desc"]).optional(),
       }).optional())
       .query(async ({ input }) => {
         const { getDocuments } = await import("./db");

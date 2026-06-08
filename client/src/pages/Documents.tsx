@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Search, Trash2, Loader2, X } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -35,10 +35,18 @@ export default function Documents() {
   const [docType, setDocType] = useState("all");
   const [, setLocation] = useLocation();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const utils = trpc.useUtils();
 
+  // click a column header to sort; click the active one again to flip direction
+  const sortBy = (key: string) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
   const { data: stats } = trpc.documents.stats.useQuery();
-  const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200 });
+  const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200, sortKey, sortDir });
   const { data: addrStats } = trpc.documents.addressLookupStats.useQuery();
   const del = trpc.documents.delete.useMutation();
 
@@ -142,14 +150,14 @@ export default function Documents() {
                     <TableHead className="w-8">
                       <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                     </TableHead>
-                    <TableHead>Doc No</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortHead label="Doc No" col="docNo" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Type" col="type" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Date" col="date" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Customer" col="customer" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Vehicle" col="vehicle" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Total" col="total" align="right" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Balance" col="balance" align="right" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Status" col="status" {...{ sortKey, sortDir, sortBy }} />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -195,6 +203,22 @@ export default function Documents() {
         </Card>
       </div>
     </DashboardLayout>
+  );
+}
+
+function SortHead({ label, col, sortKey, sortDir, sortBy, align }: { label: string; col: string; sortKey: string; sortDir: "asc" | "desc"; sortBy: (k: string) => void; align?: "right" }) {
+  const active = sortKey === col;
+  return (
+    <TableHead className={align === "right" ? "text-right" : ""}>
+      <button
+        onClick={() => sortBy(col)}
+        className={`inline-flex items-center gap-1 cursor-pointer select-none hover:text-foreground ${align === "right" ? "flex-row-reverse" : ""} ${active ? "text-foreground font-semibold" : ""}`}
+        title={`Sort by ${label}`}
+      >
+        {label}
+        {active ? (sortDir === "asc" ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />}
+      </button>
+    </TableHead>
   );
 }
 

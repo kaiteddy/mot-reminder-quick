@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, isNotNull, like, gte } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, asc, isNotNull, like, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import os from "os";
@@ -843,7 +843,7 @@ export async function getServiceLineItemsByDocumentId(documentId: number) {
 }
 
 /** Paginated/filterable list of GA4 documents (job sheets / invoices / estimates). */
-export async function getDocuments(opts: { search?: string; docType?: string; limit?: number; offset?: number }) {
+export async function getDocuments(opts: { search?: string; docType?: string; limit?: number; offset?: number; sortKey?: string; sortDir?: "asc" | "desc" }) {
   const db = await getDb();
   if (!db) return [];
   const limit = Math.min(opts.limit ?? 100, 500);
@@ -855,6 +855,19 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     conds.push(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(customers.name, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
+  // sortable columns (numeric casts so doc numbers/money sort by value, not as text)
+  const SORT: Record<string, any> = {
+    docNo: sql`CAST(${serviceHistory.docNo} AS UNSIGNED)`,
+    type: serviceHistory.docType,
+    date: sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`,
+    customer: customers.name,
+    vehicle: serviceHistory.registration,
+    total: sql`CAST(${serviceHistory.totalGross} AS DECIMAL(12,2))`,
+    balance: sql`CAST(${serviceHistory.balance} AS DECIMAL(12,2))`,
+    status: serviceHistory.docStatus,
+  };
+  const sortCol = SORT[opts.sortKey ?? "date"] ?? SORT.date;
+  const orderBy = opts.sortDir === "asc" ? asc(sortCol) : desc(sortCol);
   return db.select({
     id: serviceHistory.id,
     docType: serviceHistory.docType,
@@ -875,7 +888,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
     .where(where as any)
-    .orderBy(desc(serviceHistory.dateCreated))
+    .orderBy(orderBy)
     .limit(limit)
     .offset(offset);
 }
