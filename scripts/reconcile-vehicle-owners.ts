@@ -46,7 +46,12 @@ const q = async (s: string, p?: any[]) => (await c.query(s, p))[0] as any[];
 const custByExt = new Map<string, number>();
 for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
 const vehByExt = new Map<string, { id: number; customerId: number | null }>();
-for (const r of await q("SELECT id, externalId, customerId FROM vehicles WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) vehByExt.set(r.externalId, { id: r.id, customerId: r.customerId });
+const vehByReg = new Map<string, { id: number; externalId: string | null }>();
+for (const r of await q("SELECT id, externalId, customerId, registration FROM vehicles")) {
+  if (r.externalId && !String(r.externalId).startsWith("WEB-")) vehByExt.set(r.externalId, { id: r.id, customerId: r.customerId });
+  const k = String(r.registration ?? "").toUpperCase().replace(/\s+/g, "");
+  if (k && !vehByReg.has(k)) vehByReg.set(k, { id: r.id, externalId: r.externalId });
+}
 
 // ---- 1) customers to create (owner present in export but not in our DB) ----
 const custName = (r: any) => [G(r, "Owner Forename"), G(r, "Owner Surname")].filter(Boolean).join(" ").trim() || G(r, "Owner Company Name") || null;
@@ -63,6 +68,32 @@ if (GO && newCust.size) {
   const vals = [...newCust.values()];
   for (let i = 0; i < vals.length; i += 500) await c.query("INSERT INTO customers (externalId, name, phone, email, postcode, address) VALUES ?", [vals.slice(i, i + 500)]);
   for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
+}
+
+// ---- 1.5) ensure every GA4 vehicle exists in our DB (full coverage) ----
+const newVeh: any[][] = [];
+const linkVeh: { id: number; ext: string }[] = [];
+const seenV = new Set<string>();
+const VCOLS = ["externalId", "registration", "make", "model", "colour", "fuelType", "vin", "engineCC", "engineNo", "engineCode", "paintCode", "keyCode", "radioCode", "customerId"];
+for (const r of rows) {
+  const vext = G(r, "ID Vehicle"); const reg = G(r, "Registration").toUpperCase();
+  if (!vext || !reg || vehByExt.has(vext) || seenV.has(vext)) continue;
+  seenV.add(vext);
+  const existing = vehByReg.get(reg.replace(/\s+/g, ""));
+  if (existing) { linkVeh.push({ id: existing.id, ext: vext }); }       // already here under no/other externalId
+  else {
+    const owner = G(r, "ID Customer") ? (custByExt.get(G(r, "ID Customer")) ?? null) : null;
+    newVeh.push([vext, cap(reg, 20), cap(G(r, "Make"), 100) || null, cap(G(r, "Model"), 100) || null, cap(G(r, "Colour"), 50) || null,
+      cap(G(r, "Fuel Type"), 50) || null, cap(G(r, "VIN"), 50) || null, G(r, "Engine CC") ? parseInt(G(r, "Engine CC")) || null : null,
+      cap(G(r, "Engine No"), 50) || null, cap(G(r, "Engine Code"), 50) || null, cap(G(r, "Paint Code"), 50) || null,
+      cap(G(r, "Key Code"), 50) || null, cap(G(r, "Radio Code"), 50) || null, owner]);
+  }
+}
+console.log(`Vehicles:  +${newVeh.length} to create, ${linkVeh.length} existing linked by reg`);
+if (GO) {
+  for (let i = 0; i < newVeh.length; i += 500) await c.query(`INSERT INTO vehicles (${VCOLS.join(",")}) VALUES ?`, [newVeh.slice(i, i + 500)]);
+  for (const l of linkVeh) await c.query("UPDATE vehicles SET externalId=? WHERE id=?", [l.ext, l.id]);
+  for (const r of await q("SELECT id, externalId, customerId FROM vehicles WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) vehByExt.set(r.externalId, { id: r.id, customerId: r.customerId });
 }
 
 // ---- 2) classify each existing vehicle's link vs GA4's current owner ----
