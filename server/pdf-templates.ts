@@ -349,21 +349,52 @@ function tcAndTotals(
 // INVOICE
 // ═══════════════════════════════════════════════════════════════
 
-// Render a free-text work description (optional first-line title + lines) with proper width
-// wrapping, so long lines never overrun the page or overwrite the next line. Renders verbatim
-// (no bullet prefix — the text keeps whatever bullets/headings the user/AI typed). Blank lines
-// become a small paragraph gap.
+// Render a free-text work description with proper width wrapping, so long lines never overrun
+// the page or overwrite the next line. Markup understood (kept in sync with the on-screen view):
+//   **Heading**  or  # Heading   → a line printed BOLD + UNDERLINED (a title)
+//   - bullet / • bullet          → hanging indent so wrapped continuation aligns under the text
+//   (blank line)                 → small paragraph gap
 function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: string[], y: number, newPageTop: () => number): number {
-  doc.font('Helvetica').fontSize(9).fillColor('black');
-  const line = (text: string, gap: number) => {
-    if (!text || !text.trim()) { y += 5; return; }            // blank line → small paragraph gap
+  const INDENT = 11;
+  const lines: string[] = [];
+  if (title) lines.push(title);
+  for (const it of items || []) lines.push(it == null ? '' : String(it));
+  const ensure = (h: number) => { if (y + h > PH - BOTTOM) { doc.addPage(); y = newPageTop(); } };
+
+  for (const raw of lines) {
+    const text = String(raw);
+    if (!text.trim()) { y += 5; continue; }                                  // blank → paragraph gap
+
+    const head = text.match(/^\s*(?:\*\*(.+?)\*\*|#{1,3}\s+(.+?))\s*$/);      // **Heading** or # Heading
+    if (head) {
+      const t = (head[1] ?? head[2] ?? '').trim();
+      doc.font('Helvetica-Bold').fontSize(9);
+      const h = doc.heightOfString(t, { width: CW });
+      ensure(h);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('black').text(t, M, y, { width: CW, underline: true });
+      y += h + 3;
+      continue;
+    }
+
+    const bul = text.match(/^\s*([-•])\s+(.*)$/);                            // bullet → hanging indent
+    if (bul) {
+      const body = bul[2];
+      doc.font('Helvetica').fontSize(9);
+      const h = doc.heightOfString(body, { width: CW - INDENT });
+      ensure(h);
+      doc.font('Helvetica').fontSize(9).fillColor('black');
+      doc.text('-', M, y);
+      doc.text(body, M + INDENT, y, { width: CW - INDENT });
+      y += h + 1;
+      continue;
+    }
+
+    doc.font('Helvetica').fontSize(9);                                       // normal paragraph line
     const h = doc.heightOfString(text, { width: CW });
-    if (y + h > PH - BOTTOM) { doc.addPage(); y = newPageTop(); doc.font('Helvetica').fontSize(9).fillColor('black'); }
-    doc.text(text, M, y, { width: CW });                       // width-wrapped, verbatim
-    y += h + gap;
-  };
-  if (title && title.trim()) line(title, 3);
-  for (const item of items || []) line(item, 1);
+    ensure(h);
+    doc.font('Helvetica').fontSize(9).fillColor('black').text(text, M, y, { width: CW });
+    y += h + 1;
+  }
   return y;
 }
 

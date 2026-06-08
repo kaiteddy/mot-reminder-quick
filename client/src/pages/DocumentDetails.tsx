@@ -140,6 +140,7 @@ export default function DocumentDetails() {
   const [dismissSig, setDismissSig] = useState("");
   const editSeq = useRef(0);
   const initRef = useRef<number | null>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
   // customer details as loaded — so the "update record?" prompt only fires on a real edit,
   // not when the doc's stored name merely differs from the (e.g. title-less) master record.
   const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
@@ -887,9 +888,14 @@ export default function DocumentDetails() {
                   <TabsContent value="description" className="mt-0">
                     {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
-                    <textarea value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} readOnly={!editing} rows={10}
-                      placeholder={editing ? "Describe the work to be carried out…" : ""}
-                      className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none read-only:border-transparent read-only:p-0 focus:border-violet-400 resize-y" />
+                    {editing ? (
+                      <>
+                        <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />
+                        <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
+                          placeholder="Describe the work to be carried out…"
+                          className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
+                      </>
+                    ) : <DescriptionView text={form.description ?? ""} />}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} /></TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
@@ -1269,6 +1275,57 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   );
 }
 
+// Lightweight description markup, kept in sync with the PDF (workBlock):
+//   **Heading** → bold + underlined title · "- " / "• " → bullet with hanging indent
+const DESC_HEAD = /^\s*(?:\*\*(.+?)\*\*|#{1,3}\s+(.+?))\s*$/;
+const DESC_BULLET = /^\s*([-•])\s+(.*)$/;
+
+// "Make title" toolbar: wraps the current line in **…** (toggles) so it prints bold + underlined.
+function DescToolbar({ textareaRef, value, onChange }: { textareaRef: { current: HTMLTextAreaElement | null }; value: string; onChange: (v: string) => void }) {
+  const toggleTitle = () => {
+    const ta = textareaRef.current;
+    const text = value;
+    const s = ta?.selectionStart ?? text.length;
+    const e = ta?.selectionEnd ?? text.length;
+    const ls = text.lastIndexOf("\n", s - 1) + 1;
+    let le = text.indexOf("\n", e);
+    if (le === -1) le = text.length;
+    const lineText = text.slice(ls, le);
+    if (!lineText.trim()) return;
+    const m = /^\s*\*\*(.+?)\*\*\s*$/.exec(lineText);
+    const newLine = m ? m[1] : `**${lineText.trim()}**`;
+    const next = text.slice(0, ls) + newLine + text.slice(le);
+    onChange(next);
+    requestAnimationFrame(() => { if (ta) { ta.focus(); ta.setSelectionRange(ls, ls + newLine.length); } });
+  };
+  return (
+    <div className="mb-2 flex items-center gap-2 flex-wrap">
+      <button type="button" onClick={toggleTitle} className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-[12px] text-slate-700 hover:bg-slate-50">
+        <span className="font-bold underline">T</span> Make title
+      </button>
+      <span className="text-[11px] text-slate-400">Titles print <b>bold</b> &amp; <u>underlined</u> — click in a line, then “Make title”.</span>
+    </div>
+  );
+}
+
+// Read-only rendered view of a description (headings bold+underlined, bullets hang-indented) —
+// so the on-screen result matches the printed PDF instead of showing raw ** markers.
+function DescriptionView({ text }: { text: string }) {
+  if (!text || !text.trim()) return <p className="text-sm text-muted-foreground py-6">No description.</p>;
+  return (
+    <div className="text-[13px] leading-relaxed text-slate-800 py-1 space-y-0.5 whitespace-pre-wrap">
+      {text.split("\n").map((raw, i) => {
+        if (!raw.trim()) return <div key={i} className="h-2" />;
+        const h = DESC_HEAD.exec(raw);
+        if (h) return <div key={i} className="font-bold underline mt-1">{(h[1] ?? h[2] ?? "").trim()}</div>;
+        const b = DESC_BULLET.exec(raw);
+        if (b) return <div key={i} style={{ paddingLeft: "1.1em", textIndent: "-1.1em" }}>– {b[2]}</div>;
+        return <div key={i}>{raw}</div>;
+      })}
+    </div>
+  );
+}
+
 function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (text: string) => void }) {
   const [job, setJob] = useState("");
   const gen = trpc.ai.generateJobSpec.useMutation();
@@ -1282,7 +1339,7 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
         engineCC: form.engineCC ? String(form.engineCC) : undefined,
         year: form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined,
       });
-      const block = [res.title, ...((res.bullets || []) as string[]).map((b) => `- ${b}`)].filter(Boolean).join("\n");
+      const block = [res.title ? `**${res.title}**` : "", ...((res.bullets || []) as string[]).map((b) => `- ${b}`)].filter(Boolean).join("\n");
       onInsert(block);
       setJob("");
       toast.success("Job spec added to the description");
