@@ -1702,7 +1702,7 @@ export async function getRichPDF(documentId: number) {
       : '',
     colour: vehicle?.colour || '',
     // boxed tech row
-    engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` (${oilCap})` : ''}` : '',
+    engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',
     air_con: airType ? `${airType}${airQty ? ` ${airQty}` : ''}` : '',
     mot_expiry: motExp,
     tax_info: vehicle?.taxStatus ? `${vehicle.taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),

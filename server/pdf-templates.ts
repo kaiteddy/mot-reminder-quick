@@ -187,52 +187,46 @@ function customerAndDoc(
 function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number): number {
   const cw = V_RATIOS.map((r) => CW * r);
 
-  const drawRow = (cells: string[], isHeader: boolean, yPos: number) => {
-    if (isHeader) {
-      filledCell(doc, M, yPos, CW, ROW_H, HEADER_BG);
-      doc.font('Helvetica').fontSize(8).fillColor('black');
-    } else {
-      strokedCell(doc, M, yPos, CW, ROW_H);
-      doc.font('Helvetica').fontSize(8).fillColor('black');
-    }
-    cellDividers(doc, M, yPos, ROW_H, cw);
+  // Draw centred text auto-shrunk so it ALWAYS stays on one line within the cell.
+  const fitCentered = (text: string, x: number, w: number, yPos: number, max = 8, min = 4.5) => {
+    const t = text || '';
+    doc.font('Helvetica').fillColor('black');
+    let size = max;
+    while (size > min && doc.fontSize(size).widthOfString(t) > w - 8) size -= 0.5;
+    doc.fontSize(size).text(t, x + 4, yPos + (ROW_H - size) / 2 - 1, { width: w - 8, align: 'center', lineBreak: false });
+  };
+
+  const drawRow = (cells: string[], widths: number[], isHeader: boolean, yPos: number) => {
+    if (isHeader) filledCell(doc, M, yPos, CW, ROW_H, HEADER_BG);
+    else strokedCell(doc, M, yPos, CW, ROW_H);
+    cellDividers(doc, M, yPos, ROW_H, widths);
     let cx = M;
     cells.forEach((cell, i) => {
-      doc.text(cell || '', cx, yPos + 6, { width: cw[i], align: 'center' });
-      cx += cw[i];
+      if (isHeader) doc.font('Helvetica').fontSize(8).fillColor('black').text(cell || '', cx, yPos + 6, { width: widths[i], align: 'center', lineBreak: false });
+      else fitCentered(cell, cx, widths[i], yPos);
+      cx += widths[i];
     });
   };
 
   const up = (s: any) => String(s ?? '').toUpperCase();
+  const mileage = Number(v.mileage) > 0 ? String(v.mileage) : ''; // blank (not 0) so staff fill it in
 
-  drawRow(['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'], true, y);
+  drawRow(['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'], cw, true, y);
   y += ROW_H;
-  drawRow([up(v.reg), up(v.make), up(v.model), up(v.chassis), String(v.mileage || '')], false, y);
+  drawRow([up(v.reg), up(v.make), up(v.model), up(v.chassis), mileage], cw, false, y);
   y += ROW_H;
-  drawRow(['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'], true, y);
+  drawRow(['Engine No', 'Engine Code', 'Engine CC', 'Date Reg', 'Colour'], cw, true, y);
   y += ROW_H;
-  drawRow([up(v.engine_no), up(v.engine_code), String(v.engine_cc || ''), v.date_reg, up(v.colour)], false, y);
+  drawRow([up(v.engine_no), up(v.engine_code), String(v.engine_cc || ''), v.date_reg, up(v.colour)], cw, false, y);
   y += ROW_H;
 
-  // Boxed tech-info row: Engine Oil / Air Con / MOT Expiry / Tax (mirrors the on-screen cards)
-  const techCells: [string, string][] = [
-    ['Engine Oil', v.engine_oil || '—'],
-    ['Air Con', v.air_con || '—'],
-    ['MOT Expiry', v.mot_expiry || '—'],
-    ['Tax', v.tax_info || '—'],
-  ];
-  const tcw = CW / techCells.length;
-  const TH = 32;
-  let tx = M;
-  for (const [label, value] of techCells) {
-    strokedCell(doc, tx, y, tcw, TH);
-    doc.font('Helvetica').fontSize(6).fillColor(MUTED);
-    doc.text(label.toUpperCase(), tx + 5, y + 4, { width: tcw - 10, lineBreak: false });
-    doc.font('Helvetica').fontSize(7).fillColor('black');
-    doc.text(value, tx + 5, y + 13, { width: tcw - 10, height: TH - 15, ellipsis: true });
-    tx += tcw;
-  }
-  y += TH;
+  // Boxed tech-info row — SAME grey-header style as the rows above. Engine Oil gets the wide
+  // column since its spec is long; every value auto-fits to one line.
+  const tcw = [0.40, 0.20, 0.20, 0.20].map((r) => CW * r);
+  drawRow(['Engine Oil', 'Air Con', 'MOT Expiry', 'Tax'], tcw, true, y);
+  y += ROW_H;
+  drawRow([up(v.engine_oil), up(v.air_con), v.mot_expiry || '', up(v.tax_info)], tcw, false, y);
+  y += ROW_H;
 
   return y;
 }
