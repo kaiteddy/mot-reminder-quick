@@ -2,42 +2,56 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
+import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-import MOTCheck from "./pages/MOTCheck";
-import Customers from "./pages/Customers";
-import CustomerDetails from "./pages/CustomerDetails";
-import Documents from "./pages/Documents";
-import DocumentDetails from "./pages/DocumentDetails";
-import EmailSettings from "./pages/EmailSettings";
-import Analytics from "./pages/Analytics";
-import Vehicles from "./pages/Vehicles";
-import VehicleDetails from "./pages/VehicleDetails";
-import Database from "./pages/Database";
-import DiagnoseMOT from "./pages/DiagnoseMOT";
-import TestWhatsApp from "./pages/TestWhatsApp";
-import LogsAndMessages from "./pages/LogsAndMessages";
-import PhoneCleanup from "./pages/PhoneCleanup";
-import ReminderArchive from "./pages/ReminderArchive";
-import FollowUpActions from "./pages/FollowUpActions";
-import Conversations from "./pages/Conversations";
-import SystemStatus from "./pages/SystemStatus";
-import GA4Scanner from "./pages/GA4Scanner";
 import Login from "./pages/Login";
-import ReminderFollowUp from "./pages/ReminderFollowUp";
-import UrgentFollowUps from "./pages/UrgentFollowUps";
-import TechnicalHub from "./pages/TechnicalHub";
-import TechnicalData from "./pages/TechnicalData";
-import MobileJobSummary from "./pages/MobileJobSummary";
-import Appointments from "./pages/Appointments";
-import PricingIntelligence from "./pages/PricingIntelligence";
-import WorkshopMOTCheck from "./pages/WorkshopMOTCheck";
-import WorkshopTechnicalData from "./pages/WorkshopTechnicalData";
-import WorkshopTechnicalHub from "./pages/WorkshopTechnicalHub";
+
+// Routes are code-split: each page ships as its own chunk loaded on demand, so the first paint
+// no longer downloads the entire app. Login/NotFound stay eager (entry + fallback).
+const Home = lazy(() => import("./pages/Home"));
+const MOTCheck = lazy(() => import("./pages/MOTCheck"));
+const Customers = lazy(() => import("./pages/Customers"));
+const CustomerDetails = lazy(() => import("./pages/CustomerDetails"));
+const Documents = lazy(() => import("./pages/Documents"));
+const DocumentDetails = lazy(() => import("./pages/DocumentDetails"));
+const EmailSettings = lazy(() => import("./pages/EmailSettings"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const Vehicles = lazy(() => import("./pages/Vehicles"));
+const VehicleDetails = lazy(() => import("./pages/VehicleDetails"));
+const Database = lazy(() => import("./pages/Database"));
+const DiagnoseMOT = lazy(() => import("./pages/DiagnoseMOT"));
+const TestWhatsApp = lazy(() => import("./pages/TestWhatsApp"));
+const LogsAndMessages = lazy(() => import("./pages/LogsAndMessages"));
+const PhoneCleanup = lazy(() => import("./pages/PhoneCleanup"));
+const ReminderArchive = lazy(() => import("./pages/ReminderArchive"));
+const FollowUpActions = lazy(() => import("./pages/FollowUpActions"));
+const Conversations = lazy(() => import("./pages/Conversations"));
+const SystemStatus = lazy(() => import("./pages/SystemStatus"));
+const GA4Scanner = lazy(() => import("./pages/GA4Scanner"));
+const ReminderFollowUp = lazy(() => import("./pages/ReminderFollowUp"));
+const UrgentFollowUps = lazy(() => import("./pages/UrgentFollowUps"));
+const TechnicalHub = lazy(() => import("./pages/TechnicalHub"));
+const TechnicalData = lazy(() => import("./pages/TechnicalData"));
+const MobileJobSummary = lazy(() => import("./pages/MobileJobSummary"));
+const Appointments = lazy(() => import("./pages/Appointments"));
+const PricingIntelligence = lazy(() => import("./pages/PricingIntelligence"));
+const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
+const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
+const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
+
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center h-screen w-full text-slate-400">
+      <Loader2 className="w-6 h-6 animate-spin" />
+    </div>
+  );
+}
 
 function Router() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Switch>
       {/* 
         CRITICAL: The most specific routes (with parameters) MUST come first.
@@ -83,6 +97,7 @@ function Router() {
       {/* 404 Fallback */}
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 

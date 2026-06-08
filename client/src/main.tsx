@@ -8,7 +8,19 @@ import App from "./App";
 import { getLoginRoute } from "./const";
 import "./index.css";
 
-const queryClient = new QueryClient();
+// Swift navigation: serve cached data instantly instead of refetching on every mount/tab-focus.
+// Mutations still call utils.*.invalidate(), so edits force a fresh fetch — this only stops the
+// redundant refetches (e.g. the whole vehicle list every time you return to a page).
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,            // treat data as fresh for 30s — no refetch on navigate-back
+      gcTime: 5 * 60_000,           // keep unused cache around for 5 min
+      refetchOnWindowFocus: false,  // don't refetch just because the tab regained focus
+      retry: 1,                     // fail fast rather than retrying 3×
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

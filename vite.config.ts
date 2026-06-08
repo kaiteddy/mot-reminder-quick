@@ -22,6 +22,22 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // Split big/shared vendor libs into their own long-cached chunks so a page change or app
+        // update doesn't force the browser to re-download everything.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("recharts") || id.includes("/d3-") || id.includes("victory")) return "charts";
+          if (id.includes("react-dom")) return "react-dom";
+          if (id.includes("@radix-ui")) return "radix";
+          if (id.includes("@tanstack") || id.includes("@trpc") || id.includes("superjson")) return "data";
+          if (id.includes("lucide-react")) return "icons";
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     host: true,
