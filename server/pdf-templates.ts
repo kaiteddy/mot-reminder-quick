@@ -14,7 +14,7 @@ const PW = 595.28;           // A4 width in points
 const PH = 841.89;           // A4 height in points
 const M = 30;                // Page margin
 const CW = PW - M * 2;      // Content width
-const ROW_H = 20;            // Default table row height
+const ROW_H = 18;            // Default table row height
 const BOTTOM = 40;           // Bottom margin for page breaks
 
 // Colours
@@ -338,7 +338,7 @@ function tcAndTotals(
 
     doc.font(bold ? 'Helvetica' : 'Helvetica').fontSize(9).fillColor('black');
     doc.text(label, totalsX + 6, ty + 4, { width: halfW - 12, align: 'left' });
-    doc.text(value, totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
+    doc.text(value ? '£' + value : '', totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
     ty += rowH;
   }
 
@@ -379,12 +379,12 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   // Vehicle table
   y = checkBreak(ROW_H * 4);
   y = vehicleTable(doc, data.vehicle, y);
-  y += 30;
+  y += 14;
 
   // Work description title (no underline)
   if (data.work_title) {
     y = checkBreak(20);
-    doc.font('Helvetica').fontSize(10).fillColor('black');
+    doc.font('Helvetica').fontSize(9).fillColor('black');
     doc.text(data.work_title, M, y);
     y += 18;
   }
@@ -410,8 +410,8 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   if (data.labour && data.labour.length > 0) {
     const rows = data.labour.map((i: any) => [
       i.description, String(i.qty ?? ''),
-      i.unit != null ? Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? Number(i.subtotal).toFixed(2) : '',
+      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
     ]);
     y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
   }
@@ -420,8 +420,8 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   if (data.parts && data.parts.length > 0) {
     const rows = data.parts.map((i: any) => [
       i.description, String(i.qty ?? ''),
-      i.unit != null ? Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? Number(i.subtotal).toFixed(2) : '',
+      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
     ]);
     y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
   }
@@ -465,12 +465,12 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   // Vehicle table
   y = checkBreak(ROW_H * 4);
   y = vehicleTable(doc, data.vehicle, y);
-  y += 30;
+  y += 14;
 
   // Work description title (no underline)
   if (data.work_title) {
     y = checkBreak(20);
-    doc.font('Helvetica').fontSize(10).fillColor('black');
+    doc.font('Helvetica').fontSize(9).fillColor('black');
     doc.text(data.work_title, M, y);
     y += 18;
   }
@@ -499,8 +499,8 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   if (data.labour && data.labour.length > 0) {
     const rows = data.labour.map((i: any) => [
       i.description, String(i.qty ?? ''),
-      i.unit != null ? Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? Number(i.subtotal).toFixed(2) : '',
+      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
     ]);
     y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
   }
@@ -509,8 +509,8 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   if (data.parts && data.parts.length > 0) {
     const rows = data.parts.map((i: any) => [
       i.description, String(i.qty ?? ''),
-      i.unit != null ? Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? Number(i.subtotal).toFixed(2) : '',
+      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
     ]);
     y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
   }
