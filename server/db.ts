@@ -1249,6 +1249,27 @@ export async function addCustomerLog(input: InsertCustomerLog) {
   return { id };
 }
 
+const DOC_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess Invoice", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase" };
+
+/** Record a document lifecycle event (created / printed / issued / emailed) in the activity log.
+ *  Best-effort: never throws, so it can't break the underlying action. */
+export async function logDocEvent(documentId: number, verb: string, by?: string | null) {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    const d = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, documentId)).limit(1))[0];
+    if (!d) return;
+    const label = DOC_TYPE_LABEL[d.docType as string] || d.docType || "Document";
+    await addCustomerLog({
+      customerId: d.customerId ?? undefined, vehicleId: d.vehicleId ?? undefined, documentId,
+      type: "system", direction: "internal",
+      subject: `${label} ${verb}`,
+      body: `${label} ${d.docNo ? `#${d.docNo}` : `#${documentId}`} ${verb}`,
+      createdBy: by ?? null,
+    } as any);
+  } catch { /* logging must never break the action */ }
+}
+
 export interface SaveDocInput {
   id?: number;
   docType?: string;
@@ -1365,6 +1386,7 @@ export async function saveDocument(input: SaveDocInput) {
     const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, balance: String(totalGross.toFixed(2)) }).$returningId();
     docId = id;
+    await logDocEvent(docId!, "created"); // audit: new document
   }
 
   // 4) replace line items
@@ -1541,6 +1563,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   }).where(eq(serviceHistory.id, main.id));
   await recomputeDocBalance(main.id);
 
+  await logDocEvent(xsId, "created"); // audit: excess invoice raised
   return { id: xsId, docNo };
 }
 
@@ -1614,7 +1637,7 @@ export async function createServiceDocument(doc: any, items: any[]) {
     }
 
     return { id: documentId };
-  });
+  }).then(async (r) => { await logDocEvent(r.id, "created"); return r; });
 }
 
 export async function updateServiceDocument(id: number, doc: any, items: any[]) {

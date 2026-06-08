@@ -1362,6 +1362,7 @@ function MileageTab({ registration }: { registration?: string }) {
 }
 
 function logIcon(type: string, direction: string) {
+  if (type === "system") return <FileText className="w-3.5 h-3.5" />;
   if (type === "email") return <Mail className="w-3.5 h-3.5" />;
   if (type === "call") return <Phone className="w-3.5 h-3.5" />;
   if (type === "note") return <StickyNote className="w-3.5 h-3.5" />;

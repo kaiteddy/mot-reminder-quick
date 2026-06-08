@@ -2714,8 +2714,9 @@ export const appRouter = router({
     getRichPDF: publicProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
-        const { getRichPDF } = await import("./db");
+        const { getRichPDF, logDocEvent } = await import("./db");
         const { content, filename } = await getRichPDF(input.documentId);
+        await logDocEvent(input.documentId, "printed"); // audit: PDF pulled for print/download
         return { content, filename };
       }),
 
