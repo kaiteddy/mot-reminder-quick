@@ -1678,6 +1678,16 @@ export async function getRichPDF(documentId: number) {
     billTo,
   };
 
+  // technical info for the boxed row (same sources as the on-screen vehicle cards)
+  const td = (vehicle?.comprehensiveTechnicalData as any) || {};
+  const oil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+  const oilSpec = oil?.specification || "";
+  const oilCap = oil?.capacity || "";
+  const airType = td.aircon?.type || "";
+  const airQty = td.aircon?.quantity ?? td.aircon?.capacity ?? "";
+  const motExp = vehicle?.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString('en-GB') : "";
+  const taxDue = vehicle?.taxDueDate ? new Date(vehicle.taxDueDate).toLocaleDateString('en-GB') : "";
+
   const vehicleData = {
     reg: vehicle?.registration || '',
     make: vehicle?.make || '',
@@ -1691,6 +1701,11 @@ export async function getRichPDF(documentId: number) {
       ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB')
       : '',
     colour: vehicle?.colour || '',
+    // boxed tech row
+    engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` (${oilCap})` : ''}` : '',
+    air_con: airType ? `${airType}${airQty ? ` ${airQty}` : ''}` : '',
+    mot_expiry: motExp,
+    tax_info: vehicle?.taxStatus ? `${vehicle.taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
   };
 
   const labour = items.filter(i => i.itemType === 'Labour').map(i => ({

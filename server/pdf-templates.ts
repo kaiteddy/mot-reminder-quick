@@ -112,7 +112,7 @@ function cellDividers(doc: InstanceType<typeof PDFDocument>, x: number, y: numbe
 /** Company header with logo. Returns new y. */
 function companyHeader(doc: InstanceType<typeof PDFDocument>, company: any, y: number): number {
   const startY = y;
-  doc.font('Helvetica-Bold').fontSize(18).fillColor('black');
+  doc.font('Helvetica').fontSize(18).fillColor('black');
   doc.text(company.name, M, y); y += 22;
   doc.font('Helvetica').fontSize(8);
   doc.text(company.address_line1, M, y); y += 11;
@@ -147,7 +147,7 @@ function customerAndDoc(
   let cy = y;
   // Insurance invoices are addressed to the insurer; show that prominently above the customer.
   if (customer.billTo) {
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+    doc.font('Helvetica').fontSize(10).fillColor('black');
     doc.text(`Invoice to: ${customer.billTo}`, M + 30, cy); cy += 14;
     doc.font('Helvetica').fontSize(9).fillColor('#444');
     doc.text(`Re. customer: ${customer.name}`, M + 30, cy); cy += 14;
@@ -167,9 +167,9 @@ function customerAndDoc(
   }
 
   // Document type + number (right column)
-  doc.font('Helvetica-Bold').fontSize(16).fillColor('black');
+  doc.font('Helvetica').fontSize(16).fillColor('black');
   doc.text(title, 340, y);
-  doc.font('Helvetica-Bold').fontSize(14);
+  doc.font('Helvetica').fontSize(14);
   doc.text(String(number), 340, y, { width: rw, align: 'right' });
 
   doc.font('Helvetica').fontSize(9);
@@ -190,7 +190,7 @@ function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number):
   const drawRow = (cells: string[], isHeader: boolean, yPos: number) => {
     if (isHeader) {
       filledCell(doc, M, yPos, CW, ROW_H, HEADER_BG);
-      doc.font('Helvetica-Bold').fontSize(8).fillColor('black');
+      doc.font('Helvetica').fontSize(8).fillColor('black');
     } else {
       strokedCell(doc, M, yPos, CW, ROW_H);
       doc.font('Helvetica').fontSize(8).fillColor('black');
@@ -214,6 +214,26 @@ function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number):
   drawRow([up(v.engine_no), up(v.engine_code), String(v.engine_cc || ''), v.date_reg, up(v.colour)], false, y);
   y += ROW_H;
 
+  // Boxed tech-info row: Engine Oil / Air Con / MOT Expiry / Tax (mirrors the on-screen cards)
+  const techCells: [string, string][] = [
+    ['Engine Oil', v.engine_oil || '—'],
+    ['Air Con', v.air_con || '—'],
+    ['MOT Expiry', v.mot_expiry || '—'],
+    ['Tax', v.tax_info || '—'],
+  ];
+  const tcw = CW / techCells.length;
+  const TH = 32;
+  let tx = M;
+  for (const [label, value] of techCells) {
+    strokedCell(doc, tx, y, tcw, TH);
+    doc.font('Helvetica').fontSize(6).fillColor(MUTED);
+    doc.text(label.toUpperCase(), tx + 5, y + 4, { width: tcw - 10, lineBreak: false });
+    doc.font('Helvetica').fontSize(7).fillColor('black');
+    doc.text(value, tx + 5, y + 13, { width: tcw - 10, height: TH - 15, ellipsis: true });
+    tx += tcw;
+  }
+  y += TH;
+
   return y;
 }
 
@@ -233,7 +253,7 @@ function dataTable(
   // Header row
   filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
   cellDividers(doc, M, y, ROW_H, cw);
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('black');
+  doc.font('Helvetica').fontSize(8.5).fillColor('black');
   let cx = M;
   headers.forEach((h, i) => {
     doc.text(h, cx + 6, y + 6, { width: cw[i] - 12, align: 'center' });
@@ -293,7 +313,7 @@ function tcAndTotals(
   // Pre-calculate TC height
   doc.font('Helvetica').fontSize(7);
   const tcTextH = doc.heightOfString(TC_TEXT, { width: tcW });
-  doc.font('Helvetica-Bold').fontSize(7);
+  doc.font('Helvetica').fontSize(7);
   const tcBoldH = doc.heightOfString(TC_BOLD, { width: tcW });
   const tcTotalH = tcTextH + tcBoldH + 22; // + signed line + gaps
 
@@ -306,7 +326,7 @@ function tcAndTotals(
   doc.font('Helvetica').fontSize(7).fillColor('black');
   doc.text(TC_TEXT, M, footerY, { width: tcW, align: 'justify' });
   const afterRegular = footerY + tcTextH + 2;
-  doc.font('Helvetica-Bold').fontSize(7);
+  doc.font('Helvetica').fontSize(7);
   doc.text(TC_BOLD, M, afterRegular, { width: tcW });
   doc.font('Helvetica').fontSize(7);
   doc.text('Signed ________________    Date ________________', M, afterRegular + tcBoldH + 8);
@@ -322,7 +342,7 @@ function tcAndTotals(
     // Divider
     doc.save().moveTo(totalsX + halfW, ty).lineTo(totalsX + halfW, ty + rowH).stroke(BORDER).restore();
 
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor('black');
+    doc.font(bold ? 'Helvetica' : 'Helvetica').fontSize(9).fillColor('black');
     doc.text(label, totalsX + 6, ty + 4, { width: halfW - 12, align: 'left' });
     doc.text(value, totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
     ty += rowH;
@@ -370,7 +390,7 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
   // Work description title (underlined)
   if (data.work_title) {
     y = checkBreak(20);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+    doc.font('Helvetica').fontSize(10).fillColor('black');
     const tw = doc.widthOfString(data.work_title);
     doc.text(data.work_title, M, y);
     doc.save().moveTo(M, y + 13).lineTo(M + tw, y + 13).lineWidth(0.5).stroke('black').restore();
@@ -467,7 +487,7 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
   // Work description title (underlined)
   if (data.work_title) {
     y = checkBreak(20);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+    doc.font('Helvetica').fontSize(10).fillColor('black');
     const tw = doc.widthOfString(data.work_title);
     doc.text(data.work_title, M, y);
     doc.save().moveTo(M, y + 13).lineTo(M + tw, y + 13).lineWidth(0.5).stroke('black').restore();
@@ -533,7 +553,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   const jsHeader = (): number => {
     y = M;
     // Centred title
-    doc.font('Helvetica-Bold').fontSize(20).fillColor('black');
+    doc.font('Helvetica').fontSize(20).fillColor('black');
     doc.text('Job Sheet', 0, y, { width: PW, align: 'center' });
     y += 30;
 
@@ -554,7 +574,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     const dx = 340;
     const rw = PW - M - dx;
     const d = data.doc;
-    doc.font('Helvetica-Bold').fontSize(12);
+    doc.font('Helvetica').fontSize(12);
     doc.text('Doc Reference', dx, y);
     doc.text(d.reference, dx, y, { width: rw, align: 'right' });
 
@@ -628,7 +648,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
 
   filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
   cellDividers(doc, M, y, ROW_H, lcw);
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('black');
+  doc.font('Helvetica').fontSize(8.5).fillColor('black');
   let cx = M;
   ['Labour', 'Tech', 'Qty', 'Done'].forEach((h, i) => {
     doc.text(h, cx + 6, y + 6, { width: lcw[i] - 12, align: 'center' });
@@ -653,7 +673,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
 
   filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
   cellDividers(doc, M, y, ROW_H, pcw);
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('black');
+  doc.font('Helvetica').fontSize(8.5).fillColor('black');
   cx = M;
   ['Parts', 'Part No.', 'Done'].forEach((h, i) => {
     doc.text(h, cx + 6, y + 6, { width: pcw[i] - 12, align: 'center' });
@@ -693,7 +713,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   ];
   doc.font('Helvetica').fontSize(7).fillColor('black');
   for (const line of tcLines) { doc.text(line, M, y); y += 9; }
-  doc.font('Helvetica-Bold').fontSize(7);
+  doc.font('Helvetica').fontSize(7);
   doc.text(TC_BOLD, M, y); y += 12;
   doc.font('Helvetica').fontSize(7.5);
   doc.text('Signed ________________          Date ________________', M, y);
@@ -819,14 +839,14 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     // I'll assume they have a dark logo, or I'll just write the text beautifully.
     
     // Left: Dealership Info
-    doc.font('Helvetica-Bold').fontSize(22).fillColor(BRAND_BLUE);
+    doc.font('Helvetica').fontSize(22).fillColor(BRAND_BLUE);
     doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PAGE_M, y);
     doc.font('Helvetica').fontSize(9).fillColor('#6b7280');
     doc.text(data.address || '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP', PAGE_M, y + 26);
     doc.text(`${data.phone || '020 8203 6449'}  |  ${data.website || 'www.elimotors.co.uk'}`, PAGE_M, y + 38);
 
     // Right: "CERTIFICATE OF MAINTENANCE"
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(BRAND_BLUE);
+    doc.font('Helvetica').fontSize(14).fillColor(BRAND_BLUE);
     doc.text('OFFICIAL MAINTENANCE RECORD', PAGE_M, y + 4, { width: CW, align: 'right' });
     doc.font('Helvetica').fontSize(8).fillColor('#9ca3af');
     const now = new Date();
@@ -847,29 +867,29 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
       const vModel = (data.vehicle_model || '').toUpperCase();
       const vReg = (data.vehicle_reg || '').toUpperCase();
 
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
       doc.text('VEHICLE IDENTITY', PAGE_M + 15, y + 15);
       
-      doc.font('Helvetica-Bold').fontSize(24).fillColor(BRAND_BLUE);
+      doc.font('Helvetica').fontSize(24).fillColor(BRAND_BLUE);
       doc.text(`${vMake} ${vModel}`, PAGE_M + 15, y + 30);
       
-      doc.font('Helvetica-Bold').fontSize(14).fillColor('#4b5563');
+      doc.font('Helvetica').fontSize(14).fillColor('#4b5563');
       doc.text(`REGISTRATION: ${vReg}`, PAGE_M + 15, y + 55);
 
       // Financial Summary in the box
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
       doc.text('TOTAL SERVICE VISITS', PAGE_M, y + 15, { width: CW - 20, align: 'right' });
-      doc.font('Helvetica-Bold').fontSize(16).fillColor(BRAND_BLUE);
+      doc.font('Helvetica').fontSize(16).fillColor(BRAND_BLUE);
       doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - 20, align: 'right' });
       
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b7280');
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
       doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - 20, align: 'right' });
-      doc.font('Helvetica-Bold').fontSize(12).fillColor(BRAND_BLUE);
+      doc.font('Helvetica').fontSize(12).fillColor(BRAND_BLUE);
       doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - 20, align: 'right' });
 
       y += 105;
       
-      doc.font('Helvetica-Bold').fontSize(14).fillColor(DARK_TEXT);
+      doc.font('Helvetica').fontSize(14).fillColor(DARK_TEXT);
       doc.text('Detailed Service History', PAGE_M, y);
       y += 20;
     }
@@ -925,7 +945,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     // Entry Header Bar (Dark Blue)
     doc.save().roundedRect(PAGE_M, y, CW, headerH, 3).fill(BRAND_BLUE).restore();
     
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff');
+    doc.font('Helvetica').fontSize(10).fillColor('#ffffff');
     doc.text(`DATE: ${entry.date}`, PAGE_M + 10, y + 7);
     
     if (entry.mileage) {
@@ -944,7 +964,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     let contentY = y + headerH + 12;
 
     if (workItems.length > 0) {
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_BLUE);
+      doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
       doc.text('SERVICES PERFORMED:', PAGE_M + 12, contentY);
       contentY += 12;
 
@@ -963,7 +983,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
         contentY += 10;
       }
 
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_BLUE);
+      doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
       doc.text('COMPONENTS INSTALLED:', PAGE_M + 12, contentY);
       contentY += 12;
 
