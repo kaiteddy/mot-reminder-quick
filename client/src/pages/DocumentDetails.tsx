@@ -489,6 +489,19 @@ export default function DocumentDetails() {
     upsertOpenDoc({ id: doc.id, docNo: doc.docNo, reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.registration]);
+
+  // If the document was deleted / doesn't exist, drop its stale tab and bounce to the next
+  // open doc (or the list) — so a stale tab can't strand the user on a dead "not found" screen.
+  useEffect(() => {
+    if (isNew || isLoading || initRef.current === id) return;
+    if (data !== undefined && !(data as any)?.doc) {
+      removeOpenDoc(id);
+      const rest = openDocs.filter((d) => d.id !== id);
+      setLocation(rest.length ? `/documents/${rest[0].id}` : "/documents");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, data, id]);
+
   async function switchTo(to: string) { await flushPending(); setLocation(to); }
   function closeTab(tabId: number) {
     removeOpenDoc(tabId);
@@ -508,7 +521,14 @@ export default function DocumentDetails() {
   // (skip the loading/not-found screens once we've already initialised this doc — e.g. right
   // after a new doc auto-saves and the URL switches to its id, the form is already populated)
   if (!isNew && isLoading && initRef.current !== id) return <DashboardLayout><div className="p-8 text-muted-foreground">Loading…</div></DashboardLayout>;
-  if (!isNew && !isLoading && !data?.doc && initRef.current !== id) return <DashboardLayout><div className="p-8">Document not found.</div></DashboardLayout>;
+  if (!isNew && !isLoading && !data?.doc && initRef.current !== id) return (
+    <DashboardLayout>
+      <div className="p-8 space-y-3">
+        <p className="text-muted-foreground">This document no longer exists — it may have been deleted. Taking you back…</p>
+        <button onClick={() => setLocation("/documents")} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
+      </div>
+    </DashboardLayout>
+  );
 
   const typeLabel = TYPE_LABEL[form.docType] || form.docType || "Job Sheet";
   const docNo = (data as any)?.doc?.docNo;
