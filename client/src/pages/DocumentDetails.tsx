@@ -903,7 +903,15 @@ export default function DocumentDetails() {
                       </>
                     ) : <DescriptionView text={form.description ?? ""} />}
                   </TabsContent>
-                  <TabsContent value="labour" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} /></TabsContent>
+                  <TabsContent value="labour" className="mt-0">
+                    {editing && (form.make || form.model) && (
+                      <button type="button" onClick={() => window.open(`/repair-pricing?make=${encodeURIComponent(form.make || "")}&model=${encodeURIComponent(form.model || "")}`, "_blank")}
+                        className="mb-2 inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
+                        <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
+                      </button>
+                    )}
+                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} />
+                  </TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>

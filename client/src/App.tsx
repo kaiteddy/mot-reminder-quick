@@ -37,6 +37,7 @@ const TechnicalData = lazy(() => import("./pages/TechnicalData"));
 const MobileJobSummary = lazy(() => import("./pages/MobileJobSummary"));
 const Appointments = lazy(() => import("./pages/Appointments"));
 const PricingIntelligence = lazy(() => import("./pages/PricingIntelligence"));
+const RepairPricing = lazy(() => import("./pages/RepairPricing"));
 const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
 const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/technical-hub" component={TechnicalHub} />
       <Route path="/technical-data" component={TechnicalData} />
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
+      <Route path="/repair-pricing" component={RepairPricing} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
       <Route path="/workshop" component={WorkshopMOTCheck} />

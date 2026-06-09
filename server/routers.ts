@@ -219,6 +219,12 @@ export const appRouter = router({
         const { getVehiclePartsHistory } = await import("./db");
         return getVehiclePartsHistory(input.vehicleId);
       }),
+    repairPricing: publicProcedure
+      .input(z.object({ query: z.string().min(2), make: z.string().optional(), model: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { getRepairPricing } = await import("./db");
+        return getRepairPricing(input);
+      }),
     customerLog: publicProcedure
       .input(z.object({ customerId: z.number().optional(), vehicleId: z.number().optional() }))
       .query(async ({ input }) => {

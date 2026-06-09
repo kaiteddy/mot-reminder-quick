@@ -976,6 +976,69 @@ export async function getDocumentDetail(id: number) {
 }
 
 /** All parts ever fitted to a vehicle (across every document), with the price charged. */
+// Repair pricing intelligence: search past Labour/Part line items for a repair (e.g. "shock
+// absorber") and return what was historically charged — parts vs labour — with same-model /
+// same-make / all-cars benchmarks. Read-only over existing data; no external API calls.
+export async function getRepairPricing(input: { query: string; make?: string; model?: string }) {
+  const db = await getDb();
+  if (!db) return { terms: [] as string[], scopes: {} as any, jobs: [] as any[] };
+  const STOP = new Set("the a an and or of to for on in at it with has have had its is was need needs needed see what we charged charge cost costs price prices similar car cars vehicle vehicles repair repairs repaired job side near nearside offside rear front left right serious leak leaking failed failure replace replaced new".split(/\s+/));
+  const makeWords = new Set(String(input.make ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const modelWords = new Set(String(input.model ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const terms = Array.from(new Set(String(input.query ?? "").toLowerCase().match(/[a-z]{3,}/g) || []))
+    .filter((t) => !STOP.has(t) && !makeWords.has(t) && !modelWords.has(t)).slice(0, 6);
+  if (!terms.length) return { terms: [], scopes: {}, jobs: [] };
+
+  const termCond = terms.length === 1 ? like(serviceLineItems.description, `%${terms[0]}%`)
+    : or(...terms.map((t) => like(serviceLineItems.description, `%${t}%`)));
+  const rows: any[] = await db
+    .select({
+      itemType: serviceLineItems.itemType, description: serviceLineItems.description,
+      qty: serviceLineItems.quantity, unit: serviceLineItems.unitPrice, subNet: serviceLineItems.subNet,
+      docId: serviceHistory.id, docNo: serviceHistory.docNo, date: serviceHistory.dateCreated,
+      make: vehicles.make, model: vehicles.model,
+    })
+    .from(serviceLineItems)
+    .innerJoin(serviceHistory, eq(serviceHistory.id, serviceLineItems.documentId))
+    .leftJoin(vehicles, eq(vehicles.id, serviceHistory.vehicleId))
+    .where(and(termCond, inArray(serviceLineItems.itemType, ["Labour", "Part"])))
+    .orderBy(desc(serviceHistory.dateCreated)).limit(1500);
+
+  const mk = String(input.make ?? "").trim().toLowerCase().split(" ")[0];
+  const md = String(input.model ?? "").trim().toLowerCase().split(" ")[0];
+  const byDoc = new Map<number, any>();
+  for (const r of rows) {
+    const unit = Number(r.unit) || 0; const net = Number(r.subNet) || unit * (Number(r.qty) || 1);
+    if (unit <= 0 && net <= 0) continue;
+    let j = byDoc.get(r.docId);
+    if (!j) {
+      const vmake = String(r.make ?? "").toLowerCase(); const vmodel = String(r.model ?? "").toLowerCase();
+      const sameMake = !!mk && vmake.includes(mk);
+      const sameModel = sameMake && !!md && vmodel.includes(md);
+      j = { docId: r.docId, docNo: r.docNo, date: r.date, make: r.make, model: r.model, sameMake, sameModel, parts: [] as any[], labour: [] as any[], partNet: 0, labourNet: 0 };
+      byDoc.set(r.docId, j);
+    }
+    const line = { description: r.description, qty: Number(r.qty) || 1, unit, net: +net.toFixed(2) };
+    if (r.itemType === "Part") { j.parts.push(line); j.partNet += net; } else { j.labour.push(line); j.labourNet += net; }
+  }
+  const jobs = Array.from(byDoc.values()).map((j) => ({ ...j, repairNet: +(j.partNet + j.labourNet).toFixed(2) }));
+
+  const agg = (a: number[]) => a.length ? { n: a.length, avg: +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2), min: +Math.min(...a).toFixed(2), max: +Math.max(...a).toFixed(2) } : { n: 0, avg: 0, min: 0, max: 0 };
+  const statOf = (set: any[]) => ({
+    jobs: set.length,
+    parts: agg(set.flatMap((j) => j.parts).map((l: any) => l.net).filter((n: number) => n > 0)),
+    labour: agg(set.flatMap((j) => j.labour).map((l: any) => l.net).filter((n: number) => n > 0)),
+    total: agg(set.map((j) => j.repairNet).filter((n: number) => n > 0)),
+  });
+  const scopes = {
+    model: md ? statOf(jobs.filter((j) => j.sameModel)) : null,
+    make: mk ? statOf(jobs.filter((j) => j.sameMake)) : null,
+    all: statOf(jobs),
+  };
+  jobs.sort((a, b) => (Number(b.sameModel) - Number(a.sameModel)) || (Number(b.sameMake) - Number(a.sameMake)) || (new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()));
+  return { terms, scopes, jobs: jobs.slice(0, 60) };
+}
+
 export async function getVehiclePartsHistory(vehicleId: number, limit = 400) {
   const db = await getDb();
   if (!db) return [];

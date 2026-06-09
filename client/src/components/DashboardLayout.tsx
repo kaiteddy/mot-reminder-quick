@@ -44,6 +44,7 @@ import {
   Calendar as CalendarIcon,
   Wrench,
   Brain,
+  PoundSterling,
   ShieldAlert
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -68,6 +69,7 @@ const menuItems = [
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: FileText, label: "Documents", path: "/documents" },
+  { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
   { icon: Mail, label: "Email Settings", path: "/email-settings" },
   { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
   { icon: Wrench, label: "Technical Data", path: "/technical-data" },
