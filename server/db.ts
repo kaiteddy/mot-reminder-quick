@@ -1069,7 +1069,7 @@ export async function lookupVehicleForReg(registration: string) {
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
           if (oil || sws?.aircon) {
-            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
+            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null };
           }
         } catch { /* SWS unavailable — keep stored record */ }
         try {
@@ -1098,7 +1098,7 @@ export async function lookupVehicleForReg(registration: string) {
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
     if (oil || sws?.aircon) {
-      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null };
+      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null };
     }
   } catch (e) { /* SWS/UKVD unavailable */ }
   try {

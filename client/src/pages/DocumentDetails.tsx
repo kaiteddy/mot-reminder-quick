@@ -4,7 +4,7 @@ import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -419,6 +419,7 @@ export default function DocumentDetails() {
       motExpiry: lookupTech?.motExpiry ?? v?.motExpiryDate,
       taxStatus: lookupTech?.taxStatus ?? v?.taxStatus,
       taxDueDate: lookupTech?.taxDueDate ?? v?.taxDueDate,
+      transmission: lookupTech?.transmission ?? td.ukvd?.transmission ?? null,
     };
   }, [data, lookupTech]);
 
@@ -860,8 +861,8 @@ export default function DocumentDetails() {
           </div>
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
-          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus) && (
-            <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
+            <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilSpec || "—"} sub={vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
@@ -872,6 +873,11 @@ export default function DocumentDetails() {
                 main={vehInfo.motExpiry ? fmtDate(vehInfo.motExpiry) : "—"} sub={daysLabel(vehInfo.motExpiry)} />
               <InfoCard icon={<ShieldCheck className="w-4 h-4" />} tone={!vehInfo.taxStatus ? "slate" : (/taxed/i.test(vehInfo.taxStatus) && !/untaxed/i.test(vehInfo.taxStatus) ? "green" : "red")} label="Tax"
                 main={vehInfo.taxStatus || "—"} sub={vehInfo.taxDueDate ? `Due ${fmtDate(vehInfo.taxDueDate)}` : undefined} />
+              {vehInfo.transmission?.type && (
+                <InfoCard icon={<Cog className="w-4 h-4" />} tone="slate" label="Transmission"
+                  main={vehInfo.transmission.type}
+                  sub={[vehInfo.transmission.gears ? `${vehInfo.transmission.gears}-speed` : null, vehInfo.transmission.driveType].filter(Boolean).join(" · ") || undefined} />
+              )}
             </div>
           )}
 
