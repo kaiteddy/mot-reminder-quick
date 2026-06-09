@@ -667,6 +667,25 @@ export async function updateVehicle(id: number, data: any) {
   await db.update(vehicles).set(data).where(eq(vehicles.id, id));
 }
 
+// Tidy a raw SWS "full name" into a concise derivative: drop the make prefix and parenthetical
+// chassis/body codes, normalise separators. e.g. "AUDI A1 (8X) 1.4 TFSI" → "A1 1.4 TFSI",
+// "MERCEDES-BENZ C (W203, S203) 180 Kompressor, -T, -Coupe, LPG" → "C 180 Kompressor T Coupe LPG".
+export function tidyDerivative(raw: any, make?: any): string | null {
+  let s = String(raw ?? "").trim();
+  if (!s) return null;
+  s = s.replace(/\s*\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();             // drop (chassis/body codes)
+  // drop a leading make token, separator-insensitive so e.g. stored make "MERCEDES" still strips
+  // the full name's "MERCEDES-BENZ" cleanly (not leaving "BENZ").
+  const norm = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const first = s.split(" ")[0];
+  const mkN = norm(String(make ?? ""));
+  if (first && mkN && (norm(first) === mkN || mkN.startsWith(norm(first)) || norm(first).startsWith(mkN))) {
+    s = s.slice(first.length).trim();
+  }
+  s = s.replace(/,\s*-?\s*/g, " ").replace(/\s+/g, " ").replace(/^[\s,;-]+|[\s,;-]+$/g, "").trim();
+  return s || null;
+}
+
 export async function saveTechnicalData(registration: string, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -682,7 +701,7 @@ export async function saveTechnicalData(registration: string, data: any) {
   const engineCode = data?.specs?.engineCode || data?.raw?.engineCode || null;
   // derivative (variant/trim) — same source the lookup uses; previously omitted here, which left
   // enriched vehicles with swsLastUpdated set but a blank derivative the lookup would never refill.
-  const derivative = data?.specs?.fullName || data?.specs?.name || null;
+  const derivative = tidyDerivative(data?.specs?.fullName || data?.specs?.name, make);
 
   if (existing.length > 0) {
     const v = existing[0];
@@ -1025,7 +1044,7 @@ export async function lookupVehicleForReg(registration: string) {
       if (empty(v.derivative)) {
         try {
           const _c = typeof v.comprehensiveTechnicalData === "string" ? JSON.parse(v.comprehensiveTechnicalData) : v.comprehensiveTechnicalData;
-          const dv = _c?.specs?.fullName || _c?.specs?.name;
+          const dv = tidyDerivative(_c?.specs?.fullName || _c?.specs?.name, v.make);
           if (dv) { v.derivative = dv; await db.update(vehicles).set({ derivative: dv }).where(eq(vehicles.id, v.id)); }
         } catch { /* no usable cached data */ }
       }
@@ -1039,7 +1058,7 @@ export async function lookupVehicleForReg(registration: string) {
           // model: prefer UKVD, else parse the SWS full name (strip make + engine spec)
           const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && (v.make || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
           const updates: any = {};
-          if (empty(v.derivative) && (fn || sp.name)) v.derivative = updates.derivative = (fn || sp.name);
+          if (empty(v.derivative) && (fn || sp.name)) v.derivative = updates.derivative = tidyDerivative(fn || sp.name, v.make);
           if (empty(v.model)) { const m = (u.model || (fn ? stripMake(fn).split("(")[0].trim() : "")) || ""; if (m) v.model = updates.model = m; }
           if (empty(v.fuelType) && (u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = (u.fuelType || sp.fuelType);
           if (empty(v.engineCode) && sp.engineCode) v.engineCode = updates.engineCode = sp.engineCode;
@@ -1073,7 +1092,7 @@ export async function lookupVehicleForReg(registration: string) {
     if (u.make || u.model || u.colour || u.fuelType || u.engineSize || u.vin) {
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
-      v.derivative = sws?.specs?.fullName || sws?.specs?.name || null;
+      v.derivative = tidyDerivative(sws?.specs?.fullName || sws?.specs?.name, v.make);
       v.imageUrl = u.imageUrl ?? null;
       sources.push("sws");
     }
