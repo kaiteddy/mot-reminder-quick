@@ -225,6 +225,12 @@ export const appRouter = router({
         const { getRepairPricing } = await import("./db");
         return getRepairPricing(input);
       }),
+    globalSearch: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { globalSearch } = await import("./db");
+        return globalSearch(input.query);
+      }),
     customerLog: publicProcedure
       .input(z.object({ customerId: z.number().optional(), vehicleId: z.number().optional() }))
       .query(async ({ input }) => {

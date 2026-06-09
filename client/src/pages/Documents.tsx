@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import UniversalSearch from "@/components/UniversalSearch";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -104,18 +105,12 @@ export default function Documents() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" /> Document List
+              <FileText className="w-5 h-5" /> Live Jobs List
             </CardTitle>
-            <CardDescription>Search by document number, registration, or customer</CardDescription>
+            <CardDescription>Search anything — customer, name, surname, address, registration, make/model or job number — then pick a result to view it</CardDescription>
             <div className="flex flex-col sm:flex-row gap-3 pt-3">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search documents…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
+                <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
               </div>
               <div className="flex gap-2 flex-wrap">
                 {FILTERS.map((f) => (

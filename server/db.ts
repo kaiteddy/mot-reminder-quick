@@ -1270,6 +1270,32 @@ export async function searchCustomers(query: string, limit = 10) {
     .limit(limit);
 }
 
+// Universal omni-search across customers, vehicles and jobs (documents). Used by the popup
+// search on the Live Jobs page — matches name/surname, phone, email, address/postcode,
+// registration, make/model, doc number and account number.
+export async function globalSearch(query: string) {
+  const db = await getDb();
+  const qq = String(query ?? "").trim();
+  if (!db || qq.length < 2) return { customers: [], vehicles: [], documents: [] };
+  const s = `%${qq}%`;
+  const sReg = `%${qq.toUpperCase().replace(/\s+/g, "")}%`;
+  const [cust, veh, docs] = await Promise.all([
+    db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
+      .from(customers)
+      .where(or(like(customers.name, s), like(customers.phone, s), like(customers.email, s), like(customers.postcode, s), like(customers.address, s)))
+      .orderBy(customers.name).limit(8),
+    db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId })
+      .from(vehicles)
+      .where(or(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${sReg}`, like(vehicles.make, s), like(vehicles.model, s)))
+      .limit(8),
+    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
+      .from(serviceHistory)
+      .where(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(serviceHistory.customerName, s), like(serviceHistory.accountNumber, s)))
+      .orderBy(desc(serviceHistory.dateCreated)).limit(8),
+  ]);
+  return { customers: cust, vehicles: veh, documents: docs };
+}
+
 /** Pre-set description snippets (GA4 parity). */
 export async function getDescriptionPresets() {
   const db = await getDb();

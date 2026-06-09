@@ -54,6 +54,7 @@ import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuItems = [
+  { icon: FileText, label: "Live Jobs", path: "/documents" },
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: BarChart, label: "Analytics", path: "/analytics" },
   { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
@@ -68,7 +69,6 @@ const menuItems = [
   { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
   { icon: Users, label: "Customers", path: "/customers" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
-  { icon: FileText, label: "Documents", path: "/documents" },
   { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
   { icon: Mail, label: "Email Settings", path: "/email-settings" },
   { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
