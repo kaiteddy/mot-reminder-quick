@@ -22,22 +22,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 900,
-    rollupOptions: {
-      output: {
-        // Split big/shared vendor libs into their own long-cached chunks so a page change or app
-        // update doesn't force the browser to re-download everything.
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-          if (id.includes("recharts") || id.includes("/d3-") || id.includes("victory")) return "charts";
-          if (id.includes("react-dom")) return "react-dom";
-          if (id.includes("@radix-ui")) return "radix";
-          if (id.includes("@tanstack") || id.includes("@trpc") || id.includes("superjson")) return "data";
-          if (id.includes("lucide-react")) return "icons";
-          return "vendor";
-        },
-      },
-    },
+    // NOTE: do NOT hand-roll manualChunks to split React-ecosystem packages (react / react-dom /
+    // @radix-ui) into separate chunks — it causes a load-order crash ("Cannot read properties of
+    // undefined (reading 'forwardRef')") because a consumer chunk can execute before React inits.
+    // Vite's default chunking handles this correctly; route-level code-splitting (lazy() in App)
+    // already keeps the initial bundle small and defers charts to the pages that use them.
   },
   server: {
     host: true,
