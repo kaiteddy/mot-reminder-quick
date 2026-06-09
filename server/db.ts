@@ -680,6 +680,9 @@ export async function saveTechnicalData(registration: string, data: any) {
   const engineCC = data?.ukvd?.engineSize || data?.specs?.engineSize || null;
   const vin = data?.ukvd?.vin || data?.specs?.vin || data?.raw?.vinNumber || null;
   const engineCode = data?.specs?.engineCode || data?.raw?.engineCode || null;
+  // derivative (variant/trim) — same source the lookup uses; previously omitted here, which left
+  // enriched vehicles with swsLastUpdated set but a blank derivative the lookup would never refill.
+  const derivative = data?.specs?.fullName || data?.specs?.name || null;
 
   if (existing.length > 0) {
     const v = existing[0];
@@ -687,6 +690,7 @@ export async function saveTechnicalData(registration: string, data: any) {
       .set({
         make: v.make && v.make !== "Unknown" ? v.make : make,
         model: v.model && v.model !== "Unknown" ? v.model : model,
+        derivative: v.derivative || derivative,
         fuelType: v.fuelType || fuelType,
         colour: v.colour || colour,
         engineCC: v.engineCC || engineCC,
@@ -701,6 +705,7 @@ export async function saveTechnicalData(registration: string, data: any) {
       registration,
       make: make,
       model: model,
+      derivative: derivative,
       fuelType: fuelType,
       colour: colour,
       engineCC: engineCC,
@@ -1015,6 +1020,15 @@ export async function lookupVehicleForReg(registration: string) {
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
       // regs — so backfill any MISSING fields from SWS+DVLA on lookup, then cache them back.
       const empty = (s: any) => !String(s ?? "").trim();
+      // Free self-heal: if the derivative is blank but the SWS data we already stored has it,
+      // fill it from cache (no API call). Covers vehicles enriched before the derivative was saved.
+      if (empty(v.derivative)) {
+        try {
+          const _c = typeof v.comprehensiveTechnicalData === "string" ? JSON.parse(v.comprehensiveTechnicalData) : v.comprehensiveTechnicalData;
+          const dv = _c?.specs?.fullName || _c?.specs?.name;
+          if (dv) { v.derivative = dv; await db.update(vehicles).set({ derivative: dv }).where(eq(vehicles.id, v.id)); }
+        } catch { /* no usable cached data */ }
+      }
       if ((empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) && !v.swsLastUpdated) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
