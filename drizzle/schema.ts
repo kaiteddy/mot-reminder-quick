@@ -37,6 +37,7 @@ export const customers = mysqlTable("customers", {
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
+  altContacts: json("altContacts"), // extra named phone numbers: [{ name, phone }] (e.g. family members)
   optedOut: int("optedOut").default(0).notNull(), // 0 = false, 1 = true
   optedOutAt: timestamp("optedOutAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

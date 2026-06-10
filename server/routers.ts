@@ -53,6 +53,19 @@ export const appRouter = router({
         return searchCustomers(input.query);
       }),
 
+    contacts: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getCustomerContacts } = await import("./db");
+        return getCustomerContacts(input.customerId);
+      }),
+    saveContacts: publicProcedure
+      .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional() })) }))
+      .mutation(async ({ input }) => {
+        const { saveCustomerContacts } = await import("./db");
+        return saveCustomerContacts(input.customerId, input.contacts);
+      }),
+
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {

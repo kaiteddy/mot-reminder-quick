@@ -1349,6 +1349,25 @@ export async function refreshSalesStockMotTax() {
   return { updated };
 }
 
+export async function getCustomerContacts(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const r = (await db.select({ altContacts: customers.altContacts }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  return Array.isArray(r?.altContacts) ? r!.altContacts : [];
+}
+
+// Save a customer's extra named phone numbers (family members etc.) as [{ name, phone }].
+export async function saveCustomerContacts(customerId: number, contacts: { name?: string; phone?: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const clean = (contacts || [])
+    .map((c) => ({ name: String(c.name ?? "").trim(), phone: String(c.phone ?? "").trim() }))
+    .filter((c) => c.name || c.phone)
+    .slice(0, 20);
+  await db.update(customers).set({ altContacts: clean }).where(eq(customers.id, customerId));
+  return { saved: clean.length };
+}
+
 /** Pre-set description snippets (GA4 parity). */
 export async function getDescriptionPresets() {
   const db = await getDb();

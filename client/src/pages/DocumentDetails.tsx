@@ -794,6 +794,7 @@ export default function DocumentDetails() {
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" {...{ form, set, editing }} />
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
+              <OtherNumbers customerId={form.customerId} editing={editing} />
               {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
                 <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
                   <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
@@ -1238,6 +1239,51 @@ function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
       </div>
       <button onClick={apply} disabled={upd.isPending} className="w-full mt-1 bg-fuchsia-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 inline-flex items-center justify-center gap-1.5">{upd.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Apply</button>
     </Panel>
+  );
+}
+
+// Extra named phone numbers for a customer (e.g. family members), saved on the customer record.
+function OtherNumbers({ customerId, editing }: { customerId?: number; editing: boolean }) {
+  const utils = trpc.useUtils();
+  const { data: serverContacts } = trpc.customers.contacts.useQuery({ customerId: customerId! }, { enabled: !!customerId, staleTime: 30_000 });
+  const [rows, setRows] = useState<{ name: string; phone: string }[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const loadedFor = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (customerId && serverContacts !== undefined && loadedFor.current !== customerId) {
+      setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "" })) : []);
+      setDirty(false); loadedFor.current = customerId;
+    }
+  }, [serverContacts, customerId]);
+  const save = trpc.customers.saveContacts.useMutation({
+    onSuccess: () => { toast.success("Numbers saved to customer"); setDirty(false); utils.customers.contacts.invalidate(); },
+    onError: (e: any) => toast.error(e.message || "Save failed"),
+  });
+  const upd = (i: number, k: "name" | "phone", v: string) => { setRows((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r))); setDirty(true); };
+  const inp = "bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[28px] outline-none focus:border-violet-500 read-only:bg-transparent read-only:border-transparent read-only:px-0";
+  if (!editing && rows.length === 0) return null;
+  return (
+    <div className="pt-1.5 border-t border-slate-100 mt-1">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[12px] text-slate-600 font-medium">Other numbers</span>
+        {editing && customerId && (dirty || save.isPending) && (
+          <button type="button" onClick={() => save.mutate({ customerId, contacts: rows })} disabled={save.isPending}
+            className="text-[11px] text-violet-700 hover:underline disabled:opacity-50">{save.isPending ? "Saving…" : "Save"}</button>
+        )}
+      </div>
+      <div className="space-y-1">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input value={r.name} onChange={(e) => upd(i, "name", e.target.value)} readOnly={!editing} placeholder="Name" className={`w-24 shrink-0 ${inp}`} />
+            <input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} readOnly={!editing} placeholder="Number" className={`flex-1 ${inp}`} />
+            {editing && <button type="button" onClick={() => { setRows((p) => p.filter((_, j) => j !== i)); setDirty(true); }} className="text-red-500 hover:text-red-700 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>}
+          </div>
+        ))}
+      </div>
+      {editing && (customerId
+        ? <button type="button" onClick={() => { setRows((p) => [...p, { name: "", phone: "" }]); setDirty(true); }} className="mt-1 inline-flex items-center gap-1 text-[11px] text-violet-700 hover:underline"><Plus className="w-3 h-3" /> Add number</button>
+        : <p className="text-[11px] text-slate-400">Link a customer first to save extra numbers.</p>)}
+    </div>
   );
 }
 
