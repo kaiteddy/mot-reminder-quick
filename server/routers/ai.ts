@@ -242,6 +242,35 @@ Title: "Water Pump Replacement"
       }
     }),
 
+  // From MOT defects/advisories, work out the parts/consumables a garage would replace to fix
+  // them — used by the MOT Advisories tab to build a job (defects → description + these parts).
+  partsForDefects: publicProcedure
+    .input(z.object({
+      defects: z.array(z.string().min(2)).min(1).max(15),
+      make: z.string().optional(), model: z.string().optional(), year: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (!hasAIKey()) throw new Error("AI API key is not configured. Set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in .env");
+      const veh = [input.year, input.make, input.model].filter(Boolean).join(" ") || "the vehicle";
+      const prompt = `A UK MOT test recorded these defects/advisories on ${veh}:
+${input.defects.map((d, i) => `${i + 1}. ${d}`).join("\n")}
+
+List the parts or consumables a garage would replace to put these right (e.g. bulbs, wiper blades, brake pads/discs, tyres, bushes). UK terms, short part names — include the common spec/type in brackets where obvious (e.g. "Stop lamp bulb (P21W)"). One entry per distinct part. SKIP any defect that needs only adjustment, cleaning, lubrication or a top-up with no part to buy. If none of the defects need a part, return an empty list.`;
+      try {
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider(AI_MODEL),
+          system: "You are a UK MOT tester and parts advisor. Be concise and practical — only real parts, no labour, no prices.",
+          prompt,
+          schema: z.object({ parts: z.array(z.object({ description: z.string() })).max(15) }),
+        });
+        return object;
+      } catch (e: any) {
+        console.error("AI partsForDefects error:", e);
+        throw new Error("Failed to work out parts: " + e.message);
+      }
+    }),
+
   getPricingKnowledge: publicProcedure
     .query(async () => {
       const db = await getDb();

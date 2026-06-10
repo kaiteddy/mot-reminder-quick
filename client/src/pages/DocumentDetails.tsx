@@ -207,6 +207,7 @@ export default function DocumentDetails() {
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
+  const partsForDefects = trpc.ai.partsForDefects.useMutation();
   const [issueOpen, setIssueOpen] = useState(false);
   const [excessOpen, setExcessOpen] = useState(false);
   async function doDelete() {
@@ -919,7 +920,19 @@ export default function DocumentDetails() {
                   <TabsContent value="motadv" className="mt-0">
                     <MOTAdvisoriesTab
                       registration={form.registration}
-                      onAdd={(desc) => { setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description: desc, quantity: 1, unitPrice: 0, vatRate: 20 })]); toast.success("Added to Labour — set a price in the Labour tab"); }}
+                      busy={partsForDefects.isPending}
+                      onUse={async (texts) => {
+                        if (!texts.length) return;
+                        // 1) put the MOT defect wording into the job Description
+                        set("description", (form.description ? form.description.trimEnd() + "\n" : "") + texts.map((t) => `- ${t}`).join("\n"));
+                        // 2) work out the parts needed (AI) and add them as Part lines to price
+                        try {
+                          const year = form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined;
+                          const res: any = await partsForDefects.mutateAsync({ defects: texts, make: form.make || undefined, model: form.model || undefined, year });
+                          if (res.parts?.length) setItemsDirty((p) => [...p, ...res.parts.map((pt: any) => recalc({ itemType: "Part", description: pt.description, quantity: 1, unitPrice: 0, vatRate: 20 }))]);
+                          toast.success(`Added to description${res.parts?.length ? ` + ${res.parts.length} part${res.parts.length === 1 ? "" : "s"} — set prices in the Parts tab` : ""}`);
+                        } catch (e: any) { toast.error(e.message || "Couldn't work out the parts"); }
+                      }}
                     />
                   </TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
@@ -1437,7 +1450,7 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
 }
 
 // MOT advisory / failure history from DVSA — each defect can be pulled into the job sheet as Labour
-function MOTAdvisoriesTab({ registration, onAdd }: { registration?: string; onAdd: (desc: string) => void }) {
+function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean }) {
   const reg = (registration || "").replace(/\s/g, "");
   const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
   const tests = (data as any[]) || [];
@@ -1448,7 +1461,7 @@ function MOTAdvisoriesTab({ registration, onAdd }: { registration?: string; onAd
   if (!tests.length) return <p className="text-sm text-muted-foreground py-6 text-center">No MOT history on record for this vehicle.</p>;
   return (
     <div className="space-y-2 p-2">
-      <p className="text-[11px] text-muted-foreground">Advisories &amp; failures from every MOT test. Tap <b>+ Add</b> to drop an item into the Labour tab as work to quote.</p>
+      <p className="text-[11px] text-muted-foreground">Advisories &amp; failures from every MOT test. Tap <b>+ Add</b> to put a defect into the job <b>Description</b> and auto-add the <b>parts</b> needed (price them in the Parts tab). {busy && <span className="text-violet-600 font-medium">Working out parts…</span>}</p>
       {tests.map((t: any, ti: number) => {
         const defects = (t.defects || []) as any[];
         const failed = /fail/i.test(t.testResult || "");
@@ -1461,7 +1474,7 @@ function MOTAdvisoriesTab({ registration, onAdd }: { registration?: string; onAd
                 {t.odometerValue && <span className="text-slate-500 text-[12px]">{Number(t.odometerValue).toLocaleString("en-GB")} mi</span>}
               </div>
               {defects.length > 0 && (
-                <button type="button" onClick={() => defects.forEach((d: any) => onAdd(d.text))} className="text-[12px] text-violet-700 hover:underline">+ Add all ({defects.length})</button>
+                <button type="button" disabled={busy} onClick={() => onUse(defects.map((d: any) => d.text))} className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add all ({defects.length})</button>
               )}
             </div>
             {defects.length === 0 ? (
@@ -1474,7 +1487,7 @@ function MOTAdvisoriesTab({ registration, onAdd }: { registration?: string; onAd
                       <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border ${sevCls(d.type)}`}>{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}</span>
                       <span className="text-[12.5px] text-slate-700">{d.text}</span>
                     </div>
-                    <button type="button" onClick={() => onAdd(d.text)} title="Add to Labour" className="shrink-0 text-[12px] text-violet-700 hover:underline">+ Add</button>
+                    <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="shrink-0 text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
                   </li>
                 ))}
               </ul>
