@@ -210,30 +210,38 @@ CRITICAL INSTRUCTIONS:
       }
       const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
       const detail = [input.engineCode && `engine ${input.engineCode}`, input.engineCC && `${input.engineCC}cc`, input.fuelType].filter(Boolean).join(", ");
-      const prompt = `A UK garage technician carried out this job on ${veh}${detail ? ` (${detail})` : ""}:
+      const prompt = `A UK garage technician is carrying out this job on ${veh}${detail ? ` (${detail})` : ""}:
 
 "${input.job}"
 
-Write a CONCISE job specification for the job sheet / invoice — what was done, briefly.
-- 3 to 5 short bullets, each a brief phrase of at most ~10 words, starting with a past-tense verb (Removed, Replaced, Refitted, Torqued, Bled, Road tested).
-- One line each. No sub-clauses, no "in order to / to ensure…" explanations, no filler — just the action.
-- Specific to THIS vehicle only where it matters (correct part, fluid spec, torque/calibration). Don't pad it out.
-- UK terminology. No prices, no part numbers, no headings or preamble.
-- Title: 3–6 words naming the job (e.g. "Front Brake Discs & Pads"). Do NOT repeat the vehicle make/model.
+Write a job specification for the job sheet / invoice listing, as bullet points, the WORK
+REQUIRED to complete the job — each task the technician carries out, start to finish.
+- 5 to 9 bullets covering the full scope: gaining access (panels, wheels, covers), the
+  replacement/repair itself, fluids/bleeding, adjustments, torque/calibration, and a final
+  check / road test where relevant.
+- ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps
+  into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
+- Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
+- UK terminology. No prices, no part numbers, no preamble.
+- Title: 3–6 words naming the job (e.g. "Front Brake Hose Replacement"). Do NOT repeat the make/model.
 
-Example of the right level of brevity:
-Title: "Water Pump Replacement"
-- Drained cooling system, removed leaking water pump
-- Fitted new water pump with new gasket
-- Refilled with correct-spec coolant and bled system
-- Road tested and checked for leaks`;
+Example — note each bullet is ONE short step (Front Brake Discs & Pads):
+Title: "Front Brake Discs & Pads"
+- Raise vehicle and remove front road wheels
+- Remove calipers and old pads
+- Remove old discs and clean hub faces
+- Fit new discs and pads
+- Refit calipers and lubricate slider pins
+- Check fluid, bleed brakes if required
+- Refit wheels and torque to spec
+- Road test and check braking`;
       try {
         const provider = getRuntimeProvider();
         const { object } = await generateObject({
           model: provider(AI_MODEL),
-          system: "You are an expert UK master technician writing brief, concise workshop job specifications — short bullet phrases, never long descriptive sentences. Less is more.",
+          system: "You are an expert UK master technician writing job specifications as a list of clear, short workshop steps — ONE action per bullet, covering the full scope of the job. Never cram multiple steps into one bullet; no filler or padding.",
           prompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(2).max(6) }),
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(10) }),
         });
         return object;
       } catch (e: any) {
