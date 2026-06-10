@@ -27,6 +27,19 @@ const TONE: Record<string, string> = {
   sky: "border-sky-200 bg-sky-50 text-sky-700",
 };
 
+function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "px-2" }: { label: string; k: string; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void; align?: "left" | "right" | "center"; pad?: string }) {
+  const active = sortKey === k;
+  const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+  return (
+    <th className={`font-semibold py-2 ${pad} text-${align}`}>
+      <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 ${justify} hover:text-slate-700 ${active ? "text-violet-700" : ""}`}>
+        {label}
+        {active ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+      </button>
+    </th>
+  );
+}
+
 export default function SalesStock() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState("");
@@ -212,19 +225,6 @@ export default function SalesStock() {
           )}
       </div>
     </DashboardLayout>
-  );
-}
-
-function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "px-2" }: { label: string; k: string; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void; align?: "left" | "right" | "center"; pad?: string }) {
-  const active = sortKey === k;
-  const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
-  return (
-    <th className={`font-semibold py-2 ${pad} text-${align}`}>
-      <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 ${justify} hover:text-slate-700 ${active ? "text-violet-700" : ""}`}>
-        {label}
-        {active ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
-      </button>
-    </th>
   );
 }
 
