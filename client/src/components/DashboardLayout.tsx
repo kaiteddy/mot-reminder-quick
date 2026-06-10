@@ -45,6 +45,7 @@ import {
   Wrench,
   Brain,
   PoundSterling,
+  Tag,
   ShieldAlert
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -55,6 +56,7 @@ import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuItems = [
   { icon: FileText, label: "Live Jobs", path: "/documents" },
+  { icon: Tag, label: "Sales Stock", path: "/sales-stock" },
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: BarChart, label: "Analytics", path: "/analytics" },
   { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },

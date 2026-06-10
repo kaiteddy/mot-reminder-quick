@@ -408,3 +408,44 @@ export const addressLookups = mysqlTable("addressLookups", {
 }));
 
 export type AddressLookup = typeof addressLookups.$inferSelect;
+
+/**
+ * Sales Cars Stock — the dealership's forecourt stock (imported from the website stocklist),
+ * with DVLA-derived MOT expiry and tax status so we can see what we have and its compliance.
+ */
+export const salesStock = mysqlTable("salesStock", {
+  id: int("id").autoincrement().primaryKey(),
+  externalId: varchar("externalId", { length: 64 }).unique(), // CSV VehicleID
+  registration: varchar("registration", { length: 20 }),
+  vin: varchar("vin", { length: 50 }),
+  title: text("title"),
+  make: varchar("make", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  variant: text("variant"),
+  vehicleType: varchar("vehicleType", { length: 50 }),
+  category: varchar("category", { length: 50 }),
+  year: int("year"),
+  fuelType: varchar("fuelType", { length: 50 }),
+  colour: varchar("colour", { length: 50 }),
+  mileage: int("mileage"),
+  transmission: varchar("transmission", { length: 50 }),
+  owners: int("owners"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  vatStatus: varchar("vatStatus", { length: 50 }),
+  status: varchar("status", { length: 50 }),
+  daysInStock: int("daysInStock"),
+  stockNumber: varchar("stockNumber", { length: 50 }),
+  registrationDate: timestamp("registrationDate"),
+  imageUrl: text("imageUrl"),
+  websiteUrl: text("websiteUrl"),
+  motExpiryDate: timestamp("motExpiryDate"),
+  taxStatus: varchar("taxStatus", { length: 20 }),
+  taxDueDate: timestamp("taxDueDate"),
+  motTaxChecked: timestamp("motTaxChecked"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  regIdx: index("sales_stock_reg_idx").on(table.registration),
+}));
+
+export type SalesStock = typeof salesStock.$inferSelect;

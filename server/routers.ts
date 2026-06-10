@@ -29,6 +29,17 @@ export const appRouter = router({
     }),
   }),
 
+  salesStock: router({
+    list: publicProcedure.query(async () => {
+      const { getSalesStock } = await import("./db");
+      return getSalesStock();
+    }),
+    refresh: publicProcedure.mutation(async () => {
+      const { refreshSalesStockMotTax } = await import("./db");
+      return refreshSalesStockMotTax();
+    }),
+  }),
+
   customers: router({
     list: publicProcedure.query(async () => {
       const { getAllCustomers } = await import("./db");

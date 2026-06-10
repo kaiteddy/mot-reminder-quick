@@ -7,7 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs, payments, addressLookups,
+  descriptionPresets, customerLogs, payments, addressLookups, salesStock,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -1307,6 +1307,34 @@ export async function globalSearch(query: string) {
       .orderBy(desc(serviceHistory.dateCreated)).limit(8),
   ]);
   return { customers: cust, vehicles: veh, documents: docs };
+}
+
+// Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.
+export async function getSalesStock() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(salesStock).orderBy(desc(salesStock.price));
+}
+
+// Re-fetch DVLA MOT expiry + tax status for every stock car (free). Used by the "Refresh" button.
+export async function refreshSalesStockMotTax() {
+  const db = await getDb();
+  if (!db) return { updated: 0 };
+  const cars = await db.select({ id: salesStock.id, registration: salesStock.registration }).from(salesStock);
+  const { getVehicleDetails } = await import("./dvlaApi");
+  const toDate = (x: any) => { if (!x) return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d.getTime()) ? null : d; };
+  let updated = 0;
+  for (const car of cars) {
+    if (!car.registration) continue;
+    try {
+      const d: any = await getVehicleDetails(String(car.registration).toUpperCase().replace(/\s+/g, ""));
+      if (d) {
+        await db.update(salesStock).set({ motExpiryDate: toDate(d.motExpiryDate), taxStatus: d.taxStatus || null, taxDueDate: toDate(d.taxDueDate), motTaxChecked: new Date() }).where(eq(salesStock.id, car.id));
+        updated++;
+      }
+    } catch { /* skip this reg */ }
+  }
+  return { updated };
 }
 
 /** Pre-set description snippets (GA4 parity). */
