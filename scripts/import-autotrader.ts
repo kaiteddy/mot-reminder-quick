@@ -11,6 +11,7 @@ import fs from "fs";
 import mysql from "mysql2/promise";
 import { parse } from "csv-parse/sync";
 import { getVehicleDetails } from "../server/dvlaApi";
+import { getCurrentMotExpiry } from "../server/motApi";
 
 const FILE = process.argv[2] || "/Users/service/Downloads/Exported Forecourt-5.csv";
 const c = await mysql.createConnection({ uri: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true } });
@@ -58,8 +59,8 @@ for (const r of rows) {
     updated++;
   } else {
     const w = String(r.Description || "").split(/\s+/);
-    let motExpiryDate = null, taxStatus = null, taxDueDate = null, motTaxChecked = null;
-    try { const d: any = await getVehicleDetails(reg); if (d) { motExpiryDate = toDate(d.motExpiryDate); taxStatus = d.taxStatus || null; taxDueDate = toDate(d.taxDueDate); motTaxChecked = new Date(); } } catch { /* no DVLA */ }
+    let motExpiryDate: Date | null = null, taxStatus = null, taxDueDate = null, motTaxChecked: Date | null = null;
+    try { const [d, motExp]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg)]); motExpiryDate = motExp; taxStatus = d?.taxStatus || null; taxDueDate = toDate(d?.taxDueDate); motTaxChecked = new Date(); } catch { /* no DVLA */ }
     await q("INSERT INTO salesStock SET ?", [{
       externalId: "AT-" + reg, registration: r.VRM, title: r.Description || null, make: w[0] || null, model: w[1] || null,
       vin: r.Vin || null, status: "ON FORECOURT", vehicleType: "CAR", mileage: num(r.Mileage),

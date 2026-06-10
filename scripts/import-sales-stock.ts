@@ -12,6 +12,7 @@ import fs from "fs";
 import mysql from "mysql2/promise";
 import { parse } from "csv-parse/sync";
 import { getVehicleDetails } from "../server/dvlaApi";
+import { getCurrentMotExpiry } from "../server/motApi";
 
 const FILE = process.argv[2] || "/Users/service/Downloads/elimotors.co.uk_stocklist.csv";
 const c = await mysql.createConnection({ uri: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true } });
@@ -43,11 +44,13 @@ const updates = COLS.filter((k) => k !== "externalId").map((k) => `${k}=VALUES($
 let imported = 0, gotMot = 0;
 for (const r of rows) {
   const reg = String(r.Registration || "").toUpperCase().replace(/\s+/g, "");
-  let motExpiry = null, taxStatus = null, taxDue = null, checked: Date | null = null;
+  let motExpiry: Date | null = null, taxStatus = null, taxDue = null, checked: Date | null = null;
   try {
-    const d: any = await getVehicleDetails(reg);
-    if (d) { motExpiry = toDate(d.motExpiryDate); taxStatus = d.taxStatus || null; taxDue = toDate(d.taxDueDate); checked = new Date(); if (motExpiry || taxStatus) gotMot++; }
-  } catch { /* DVLA unavailable for this reg */ }
+    // MOT expiry from DVSA MOT History (authoritative); tax from DVLA VES
+    const [d, motExp]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg)]);
+    motExpiry = motExp; taxStatus = d?.taxStatus || null; taxDue = toDate(d?.taxDueDate); checked = new Date();
+    if (motExpiry || taxStatus) gotMot++;
+  } catch { /* DVLA/DVSA unavailable for this reg */ }
   const vals = [
     String(r.VehicleID), r.Registration || null, r.VinNo || null, r.Title || null, r.Make || null, r.Model || null,
     r.Variant || null, r.VehicleType || null, r.Category || null, num(r.Year), r.FuelType || null, r.Colour || null,

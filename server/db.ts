@@ -1142,17 +1142,19 @@ export async function lookupVehicleForReg(registration: string) {
       if (empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour)) {
         try {
           const { getVehicleDetails } = await import("./dvlaApi");
-          const d: any = await getVehicleDetails(reg);
+          const { getCurrentMotExpiry } = await import("./motApi");
+          // MOT expiry from DVSA MOT History (authoritative); tax + colour from DVLA VES
+          const [d, motExp] = await Promise.all([getVehicleDetails(reg).catch(() => null) as any, getCurrentMotExpiry(reg)]);
+          const du: any = {};
+          const toDate = (x: any) => { if (!x) return null; const dt = x instanceof Date ? x : new Date(x); return isNaN(dt.getTime()) ? null : dt; };
+          if (motExp) { v.motExpiryDate = motExp; du.motExpiryDate = motExp; }
           if (d) {
-            const du: any = {};
-            const toDate = (x: any) => { if (!x) return null; const dt = x instanceof Date ? x : new Date(x); return isNaN(dt.getTime()) ? null : dt; };
-            const me = toDate(d.motExpiryDate); if (me) { v.motExpiryDate = me; du.motExpiryDate = me; }
             if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
             const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
             if (empty(v.colour) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
-            if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
           }
-        } catch { /* DVLA unavailable */ }
+          if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
+        } catch { /* DVLA/DVSA unavailable */ }
       }
       return { found: true, source: "database", vehicle: v, customer: cust, warning: await ukvdWarning() };
     }
@@ -1322,16 +1324,19 @@ export async function refreshSalesStockMotTax() {
   if (!db) return { updated: 0 };
   const cars = await db.select({ id: salesStock.id, registration: salesStock.registration }).from(salesStock);
   const { getVehicleDetails } = await import("./dvlaApi");
+  const { getCurrentMotExpiry } = await import("./motApi");
   const toDate = (x: any) => { if (!x) return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d.getTime()) ? null : d; };
   let updated = 0;
   for (const car of cars) {
     if (!car.registration) continue;
+    const reg = String(car.registration).toUpperCase().replace(/\s+/g, "");
     try {
-      const d: any = await getVehicleDetails(String(car.registration).toUpperCase().replace(/\s+/g, ""));
-      if (d) {
-        await db.update(salesStock).set({ motExpiryDate: toDate(d.motExpiryDate), taxStatus: d.taxStatus || null, taxDueDate: toDate(d.taxDueDate), motTaxChecked: new Date() }).where(eq(salesStock.id, car.id));
-        updated++;
-      }
+      // MOT expiry from DVSA MOT History (authoritative); tax from DVLA VES
+      const [d, motExp]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg)]);
+      const set: any = { taxStatus: d?.taxStatus || null, taxDueDate: toDate(d?.taxDueDate), motTaxChecked: new Date() };
+      if (motExp) set.motExpiryDate = motExp;
+      await db.update(salesStock).set(set).where(eq(salesStock.id, car.id));
+      updated++;
     } catch { /* skip this reg */ }
   }
   return { updated };

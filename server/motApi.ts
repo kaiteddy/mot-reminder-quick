@@ -198,3 +198,14 @@ export function getLatestMOTExpiry(motHistory: MOTHistory): Date | null {
 
   return null;
 }
+
+// Authoritative current MOT expiry, sourced from the DVSA MOT History API (same data as the
+// gov.uk MOT check) — NOT the DVLA VES "tax" API, whose motExpiryDate is unreliable/stale.
+export async function getCurrentMotExpiry(registration: string): Promise<Date | null> {
+  try {
+    const history = await getMOTHistory(registration);
+    if (!history) return null;
+    const d = getLatestMOTExpiry(history);
+    return d && !isNaN(d.getTime()) ? d : null;
+  } catch { return null; }
+}
