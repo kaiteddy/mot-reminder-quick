@@ -38,6 +38,7 @@ export const customers = mysqlTable("customers", {
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
   altContacts: json("altContacts"), // extra named phone numbers: [{ name, phone }] (e.g. family members)
+  mergedExternalIds: json("mergedExternalIds"), // GA4 ids of duplicate records merged into this one (scripts/merge-customers.ts)
   optedOut: int("optedOut").default(0).notNull(), // 0 = false, 1 = true
   optedOutAt: timestamp("optedOutAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

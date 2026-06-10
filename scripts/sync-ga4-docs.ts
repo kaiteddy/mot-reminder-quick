@@ -68,6 +68,11 @@ const phone = (r: Record<string, string>) => norm(r["Mobile"]).replace(/\s*[a-z]
 // ---- existing id → row maps (skip web-created) ----
 const custByExt = new Map<string, number>();
 for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
+// merged duplicates: map each dead GA4 id → the surviving primary, so a doc referencing a
+// merged-away customer links to the survivor instead of re-creating the duplicate.
+for (const r of await q("SELECT id, mergedExternalIds FROM customers WHERE mergedExternalIds IS NOT NULL")) {
+  try { for (const a of (typeof r.mergedExternalIds === "string" ? JSON.parse(r.mergedExternalIds) : r.mergedExternalIds) || []) custByExt.set(a, r.id); } catch { /* bad json */ }
+}
 const vehByExt = new Map<string, number>();
 const vehByReg = new Map<string, { id: number; externalId: string | null }>(); // also match by reg, so vehicles created outside the GA4 import (e.g. via a lookup, no externalId) aren't duplicated
 for (const r of await q("SELECT id, externalId, registration FROM vehicles")) {

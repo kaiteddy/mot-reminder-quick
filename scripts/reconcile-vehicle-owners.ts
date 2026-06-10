@@ -45,6 +45,10 @@ const q = async (s: string, p?: any[]) => (await c.query(s, p))[0] as any[];
 
 const custByExt = new Map<string, number>();
 for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'")) custByExt.set(r.externalId, r.id);
+// merged duplicates: dead GA4 id → surviving primary, so a merge isn't re-split by the owners import
+for (const r of await q("SELECT id, mergedExternalIds FROM customers WHERE mergedExternalIds IS NOT NULL")) {
+  try { for (const a of (typeof r.mergedExternalIds === "string" ? JSON.parse(r.mergedExternalIds) : r.mergedExternalIds) || []) custByExt.set(a, r.id); } catch { /* bad json */ }
+}
 const vehByExt = new Map<string, { id: number; customerId: number | null }>();
 const vehByReg = new Map<string, { id: number; externalId: string | null }>();
 for (const r of await q("SELECT id, externalId, customerId, registration FROM vehicles")) {
