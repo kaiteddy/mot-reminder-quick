@@ -15,7 +15,7 @@ function motStatus(motExpiryDate: any) {
   if (days <= 30) return { label: `Due ${fmtDate(motExpiryDate)} · ${days}d`, tone: "amber" as const, bad: true };
   return { label: `${fmtDate(motExpiryDate)} · ${days}d`, tone: "green" as const, bad: false };
 }
-const taxTone = (t: any) => !t ? "slate" : /^taxed$/i.test(t) ? "green" : "amber";
+const taxTone = (t: any) => !t ? "slate" : /^taxed$/i.test(t) ? "green" : "red"; // Untaxed / SORN → red
 // AutoTrader price indicator vs market: High = above guide (slow to sell) → flag amber.
 const priceTone = (p: any) => { const s = String(p || "").toLowerCase(); if (s === "good") return "green"; if (s === "high") return "amber"; if (s === "low") return "sky"; return "slate"; };
 
@@ -77,7 +77,7 @@ export default function SalesStock() {
           <Stat label="Check alerts" value={String(stats.alerts)} tone={stats.alerts ? "red" : "green"} />
           <Stat label="MOT expired" value={String(stats.motExpired)} tone={stats.motExpired ? "red" : "green"} />
           <Stat label="MOT due ≤30d" value={String(stats.motSoon)} tone={stats.motSoon ? "amber" : "green"} />
-          <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "amber" : "green"} />
+          <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "red" : "green"} />
         </div>
 
         <div className="relative max-w-sm">
