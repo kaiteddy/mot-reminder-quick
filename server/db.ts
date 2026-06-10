@@ -1080,7 +1080,8 @@ const normReg = (r?: string) => {
 };
 
 /** Reg lookup for the job sheet form: DB first, then DVLA (like GA4's VRM lookup). */
-export async function lookupVehicleForReg(registration: string) {
+export async function lookupVehicleForReg(registration: string, opts?: { force?: boolean }) {
+  const force = !!opts?.force;
   const db = await getDb();
   const reg = normReg(registration);
   if (!reg) return { found: false, source: "none", vehicle: null, customer: null };
@@ -1111,23 +1112,29 @@ export async function lookupVehicleForReg(registration: string) {
           if (dv) { v.derivative = dv; await db.update(vehicles).set({ derivative: dv }).where(eq(vehicles.id, v.id)); }
         } catch { /* no usable cached data */ }
       }
-      if ((empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) && !v.swsLastUpdated) {
+      if (force || ((empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) && !v.swsLastUpdated)) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
           const u = sws?.ukvd || {}; const sp = sws?.specs || {};
           if (u.imageUrl) v.imageUrl = u.imageUrl;
           const fn = sp.fullName || "";
-          // model: prefer UKVD, else parse the SWS full name (strip make + engine spec)
-          const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && (v.make || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
           const updates: any = {};
-          if (empty(v.derivative) && (fn || sp.name)) v.derivative = updates.derivative = tidyDerivative(fn || sp.name, v.make);
-          if (empty(v.model)) { const m = (u.model || (fn ? stripMake(fn).split("(")[0].trim() : "")) || ""; if (m) v.model = updates.model = m; }
-          if (empty(v.fuelType) && (u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = (u.fuelType || sp.fuelType);
-          if (empty(v.engineCode) && sp.engineCode) v.engineCode = updates.engineCode = sp.engineCode;
-          if (empty(v.colour) && u.colour) v.colour = updates.colour = u.colour;
-          if (empty(v.vin) && (u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = (u.vin || sp.vin || sws?.raw?.vinNumber);
-          if (empty(v.engineCC) && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
+          // force = an explicit lookup after the reg was changed → OVERWRITE the identity fields
+          // with the fresh data (clears stale data from a previous, wrong reg). Otherwise fill blanks.
+          const want = (field: string) => force || empty(v[field]);
+          const swsMake = u.make || (fn ? fn.trim().split(/\s+/)[0] : "");
+          if (want("make") && swsMake) v.make = updates.make = String(swsMake).toUpperCase();
+          const newMake = updates.make ?? v.make;
+          const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && String(newMake || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
+          if (want("model")) { const m = (u.model || (fn ? stripMake(fn).split("(")[0].trim() : "")) || ""; if (m) v.model = updates.model = m; }
+          if (want("derivative") && (fn || sp.name)) v.derivative = updates.derivative = tidyDerivative(fn || sp.name, newMake);
+          if (want("fuelType") && (u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = (u.fuelType || sp.fuelType);
+          if (want("engineCode") && sp.engineCode) v.engineCode = updates.engineCode = sp.engineCode;
+          if (want("colour") && u.colour) v.colour = updates.colour = u.colour;
+          if (want("vin") && (u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = (u.vin || sp.vin || sws?.raw?.vinNumber);
+          if (want("engineCC") && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
+          if (force) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
           updates.swsLastUpdated = new Date(); // mark "SWS/UKVD attempted" so we never re-pay for this vehicle
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
@@ -1139,7 +1146,7 @@ export async function lookupVehicleForReg(registration: string) {
       // DVLA (free, government) — fetch MOT expiry / tax status / colour and PERSIST them to the
       // record, so the saved vehicle AND the printed job sheet (which reads the record) have them.
       // NOT gated by the paid-SWS flag: these change over time and DVLA costs nothing.
-      if (empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour)) {
+      if (force || empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour)) {
         try {
           const { getVehicleDetails } = await import("./dvlaApi");
           const { getCurrentMotExpiry } = await import("./motApi");
@@ -1151,7 +1158,7 @@ export async function lookupVehicleForReg(registration: string) {
           if (d) {
             if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
             const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
-            if (empty(v.colour) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
+            if ((force || empty(v.colour)) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
           }
           if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
         } catch { /* DVLA/DVSA unavailable */ }

@@ -141,6 +141,7 @@ export default function DocumentDetails() {
   const editSeq = useRef(0);
   const initRef = useRef<number | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  const regOnLoadRef = useRef<string>(""); // the reg when the doc loaded — used to force a full refresh if it's changed
   // customer details as loaded — so the "update record?" prompt only fires on a real edit,
   // not when the doc's stored name merely differs from the (e.g. title-less) master record.
   const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
@@ -289,6 +290,7 @@ export default function DocumentDetails() {
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
+    regOnLoadRef.current = (vehicle?.registration || doc.registration || "").toUpperCase().replace(/\s/g, "");
     // snapshot the loaded customer details so the update prompt only fires on a genuine edit
     custInitRef.current = {
       name: ([doc.custTitle || nm.title, doc.custForename || nm.forename, doc.custSurname || nm.surname].filter(Boolean).join(" ") || doc.customerName || customer?.name || "").trim(),
@@ -366,20 +368,27 @@ export default function DocumentDetails() {
   async function lookup(regOverride?: string, silent?: boolean) {
     const reg = (regOverride || form.registration || "").trim();
     if (!reg) return;
+    // If the registration was CHANGED since the doc loaded, force a fresh fetch and OVERWRITE all
+    // vehicle fields — so a corrected reg fully replaces the old vehicle's details (not a merge).
+    const force = reg.toUpperCase().replace(/\s/g, "") !== regOnLoadRef.current;
     setLooking(true);
     try {
-      const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg });
+      const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg, force });
       const v = res?.vehicle, c = res?.customer;
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
       const sn = c ? splitName(c.name) : null;
+      // on a forced (reg-changed) lookup, take the looked-up value outright (clearing stale fields);
+      // otherwise fall back to the existing form value when the lookup has no data for a field.
+      const pick = (val: any, cur: any) => (force ? (val ?? "") : (val ?? cur));
       setForm((f) => ({
         ...f, registration: v.registration || reg,
-        make: v.make ?? f.make, model: v.model ?? f.model, derivative: v.derivative ?? f.derivative, colour: v.colour ?? f.colour, fuelType: v.fuelType ?? f.fuelType,
-        engineCC: v.engineCC ?? f.engineCC, engineNo: v.engineNo ?? f.engineNo, engineCode: v.engineCode ?? f.engineCode,
-        vin: v.vin ?? f.vin, paintCode: v.paintCode ?? f.paintCode, keyCode: v.keyCode ?? f.keyCode, radioCode: v.radioCode ?? f.radioCode,
-        dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : f.dateOfRegistration,
+        make: pick(v.make, f.make), model: pick(v.model, f.model), derivative: pick(v.derivative, f.derivative), colour: pick(v.colour, f.colour), fuelType: pick(v.fuelType, f.fuelType),
+        engineCC: pick(v.engineCC, f.engineCC), engineNo: pick(v.engineNo, f.engineNo), engineCode: pick(v.engineCode, f.engineCode),
+        vin: pick(v.vin, f.vin), paintCode: pick(v.paintCode, f.paintCode), keyCode: pick(v.keyCode, f.keyCode), radioCode: pick(v.radioCode, f.radioCode),
+        dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : (force ? "" : f.dateOfRegistration),
         ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
       }));
+      regOnLoadRef.current = reg.toUpperCase().replace(/\s/g, ""); // this reg is now loaded — don't force again unless it changes
       setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
       if (!silent) markDirty();
       const src = String(res.source || "");
