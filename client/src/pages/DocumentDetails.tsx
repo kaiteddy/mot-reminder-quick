@@ -1256,9 +1256,17 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
     }
   }, [serverContacts, customerId]);
   const save = trpc.customers.saveContacts.useMutation({
-    onSuccess: () => { toast.success("Numbers saved to customer"); setDirty(false); utils.customers.contacts.invalidate(); },
-    onError: (e: any) => toast.error(e.message || "Save failed"),
+    onSuccess: () => { setDirty(false); utils.customers.contacts.invalidate(); },
+    onError: (e: any) => toast.error(e.message || "Couldn't save numbers"),
   });
+  // Auto-save (debounced) whenever the list changes — no manual Save click, so an added number
+  // can't be lost by navigating away. Matches the auto-save behaviour of the rest of the form.
+  useEffect(() => {
+    if (!dirty || !customerId) return;
+    const t = setTimeout(() => save.mutate({ customerId, contacts: rows }), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, dirty, customerId]);
   const upd = (i: number, k: "name" | "phone", v: string) => { setRows((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r))); setDirty(true); };
   const inp = "bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[13px] h-[28px] outline-none focus:border-violet-500 read-only:bg-transparent read-only:border-transparent read-only:px-0";
   if (!editing && rows.length === 0) return null;
@@ -1266,10 +1274,9 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
     <div className="pt-1.5 border-t border-slate-100 mt-1">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[12px] text-slate-600 font-medium">Other numbers</span>
-        {editing && customerId && (dirty || save.isPending) && (
-          <button type="button" onClick={() => save.mutate({ customerId, contacts: rows })} disabled={save.isPending}
-            className="text-[11px] text-violet-700 hover:underline disabled:opacity-50">{save.isPending ? "Saving…" : "Save"}</button>
-        )}
+        {editing && customerId && ((dirty || save.isPending)
+          ? <span className="text-[11px] text-violet-500">Saving…</span>
+          : save.isSuccess ? <span className="text-[11px] text-green-600">Saved ✓</span> : null)}
       </div>
       <div className="space-y-1">
         {rows.map((r, i) => (
