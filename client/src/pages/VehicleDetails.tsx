@@ -43,6 +43,91 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Smartphone, QrCode } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Tabbed workshop history for a vehicle: full service timeline, every part fitted, and the
+// MOT test history with advisories — mirrors how a job sheet is laid out.
+function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; registration: string }) {
+    const parts = trpc.documents.partsHistory.useQuery({ vehicleId }, { staleTime: 60_000 });
+    const mot = trpc.documents.motTests.useQuery({ registration }, { enabled: !!registration, staleTime: 5 * 60_000 });
+    const fmt = (d: any) => { if (!d) return "-"; const s = String(d).replace(/\./g, "-").replace(" ", "T"); const dt = new Date(s); return isNaN(dt.getTime()) ? String(d).slice(0, 10) : dt.toLocaleDateString("en-GB"); };
+    const partsN = parts.data?.length ?? 0, motN = mot.data?.length ?? 0;
+    return (
+        <Tabs defaultValue="history">
+            <TabsList>
+                <TabsTrigger value="history">Service History</TabsTrigger>
+                <TabsTrigger value="parts">Parts{partsN ? ` (${partsN})` : ""}</TabsTrigger>
+                <TabsTrigger value="mot">MOT History{motN ? ` (${motN})` : ""}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="history" className="mt-4">
+                <ServiceHistory vehicleId={vehicleId} />
+            </TabsContent>
+
+            <TabsContent value="parts" className="mt-4">
+                {parts.isLoading ? (
+                    <p className="text-center py-8 text-muted-foreground text-sm">Loading parts…</p>
+                ) : partsN === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground"><Wrench className="w-10 h-10 mx-auto mb-3 opacity-50" /><p>No parts recorded for this vehicle</p></div>
+                ) : (
+                    <Table>
+                        <TableHeader><TableRow>
+                            <TableHead>Date</TableHead><TableHead>Part</TableHead><TableHead>Part No.</TableHead>
+                            <TableHead>Doc</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Price</TableHead>
+                        </TableRow></TableHeader>
+                        <TableBody>
+                            {parts.data!.map((p: any) => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateIssued || p.dateCreated)}</TableCell>
+                                    <TableCell className="text-sm">{p.description}</TableCell>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">{p.partNumber || "-"}</TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">{p.docNo}</TableCell>
+                                    <TableCell className="text-right text-sm">{Number(p.quantity || 0)}</TableCell>
+                                    <TableCell className="text-right text-sm">£{Number(p.unitPrice || 0).toFixed(2)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </TabsContent>
+
+            <TabsContent value="mot" className="mt-4">
+                {mot.isLoading ? (
+                    <p className="text-center py-8 text-muted-foreground text-sm">Loading MOT history…</p>
+                ) : motN === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground"><ShieldCheck className="w-10 h-10 mx-auto mb-3 opacity-50" /><p>No MOT history found</p></div>
+                ) : (
+                    <div className="space-y-3">
+                        {mot.data!.map((t: any, i: number) => (
+                            <div key={i} className="border border-border rounded-lg p-3">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant={t.testResult === "PASSED" ? "default" : "destructive"} className={t.testResult === "PASSED" ? "bg-green-100 text-green-800" : ""}>{t.testResult}</Badge>
+                                        <span className="text-sm font-medium">{fmt(t.completedDate)}</span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {t.odometerValue ? `${Number(t.odometerValue).toLocaleString("en-GB")} ${t.odometerUnit === "KM" ? "km" : "mi"}` : ""}
+                                        {t.expiryDate ? `  ·  expires ${fmt(t.expiryDate)}` : ""}
+                                    </div>
+                                </div>
+                                {t.defects?.length > 0 && (
+                                    <ul className="mt-2 space-y-1 border-t border-border pt-2">
+                                        {t.defects.map((d: any, j: number) => (
+                                            <li key={j} className={`text-xs flex gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
+                                                <span className="font-semibold uppercase shrink-0 w-16">{d.dangerous ? "Dangerous" : d.type}</span>
+                                                <span>{d.text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </TabsContent>
+        </Tabs>
+    );
+}
 
 export default function VehicleDetails() {
     // We try to get the registration from the URL parameter "registration"
@@ -128,6 +213,12 @@ export default function VehicleDetails() {
     return (
         <DashboardLayout>
             <div className="space-y-6">
+                <button
+                    onClick={() => { if (window.history.length > 1) window.history.back(); else setLocation("/sales-stock"); }}
+                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                </button>
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
@@ -252,6 +343,17 @@ export default function VehicleDetails() {
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Engine CC</p>
                                     <p className="text-sm font-bold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase">MOT Expiry</p>
+                                    {typeof motInfo === "string" ? (
+                                        <p className="text-sm font-bold text-muted-foreground">{motInfo}</p>
+                                    ) : (
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="text-sm font-bold">{motInfo.date}</p>
+                                            <Badge variant={motBadge.variant} className={`text-[10px] px-2 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Tax Status</p>
@@ -567,10 +669,10 @@ export default function VehicleDetails() {
                                 <History className="w-5 h-5" />
                                 Workshop Service History
                             </CardTitle>
-                            <CardDescription>Full timeline of garage invoices and estimates</CardDescription>
+                            <CardDescription>Service timeline, every part fitted &amp; full MOT history</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ServiceHistory vehicleId={vehicle.id} />
+                            <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} />
                         </CardContent>
                     </Card>
 
