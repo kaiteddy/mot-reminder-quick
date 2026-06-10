@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -30,6 +30,8 @@ const TONE: Record<string, string> = {
 export default function SalesStock() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState("");
+  const [view, setView] = useState<"grid" | "list">(() => (localStorage.getItem("salesStockView") as "grid" | "list") || "grid");
+  const setViewPersist = (v: "grid" | "list") => { setView(v); localStorage.setItem("salesStockView", v); };
   const utils = trpc.useUtils();
   // compliance data — always fetch fresh on open so MOT/tax can never show a stale value
   const { data, isLoading } = trpc.salesStock.list.useQuery(undefined, { staleTime: 0, refetchOnMount: "always" });
@@ -65,10 +67,16 @@ export default function SalesStock() {
             <h1 className="text-xl font-semibold flex items-center gap-2"><Car className="w-5 h-5 text-violet-600" /> Sales Cars Stock</h1>
             <p className="text-sm text-slate-500">Forecourt stock with live DVLA MOT &amp; tax status.</p>
           </div>
-          <button onClick={() => refresh.mutate()} disabled={refresh.isPending}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
-            {refresh.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh MOT/Tax
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+              <button onClick={() => setViewPersist("grid")} title="Grid view" className={`px-2.5 py-2 ${view === "grid" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><LayoutGrid className="w-4 h-4" /></button>
+              <button onClick={() => setViewPersist("list")} title="List view" className={`px-2.5 py-2 border-l border-slate-300 ${view === "list" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><List className="w-4 h-4" /></button>
+            </div>
+            <button onClick={() => refresh.mutate()} disabled={refresh.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
+              {refresh.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh MOT/Tax
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -88,7 +96,52 @@ export default function SalesStock() {
 
         {isLoading ? <div className="text-center text-slate-400 py-12"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
           : cars.length === 0 ? <div className="text-center text-slate-500 py-12">No stock cars yet. Import the stocklist with <code>scripts/import-sales-stock.ts</code>.</div>
-          : (
+          : view === "list" ? (
+            <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
+              <table className="w-full text-[13px] min-w-[760px]">
+                <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
+                  <tr>
+                    <th className="text-left font-semibold px-3 py-2">Vehicle</th>
+                    <th className="text-left font-semibold px-2 py-2">Reg</th>
+                    <th className="text-right font-semibold px-2 py-2">Price</th>
+                    <th className="text-right font-semibold px-2 py-2">Mileage</th>
+                    <th className="text-center font-semibold px-2 py-2">Days</th>
+                    <th className="text-left font-semibold px-2 py-2">MOT</th>
+                    <th className="text-left font-semibold px-2 py-2">Tax</th>
+                    <th className="text-left font-semibold px-2 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {shown.map((c) => {
+                    const mot = motStatus(c.motExpiryDate);
+                    return (
+                      <tr key={c.id} onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)}
+                        className={`cursor-pointer hover:bg-slate-50 ${c.checkIssues ? "bg-red-50/50" : ""}`}>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2.5">
+                            {c.imageUrl
+                              ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
+                              : <div className="w-12 h-9 bg-slate-100 rounded flex items-center justify-center shrink-0"><Car className="w-4 h-4 text-slate-300" /></div>}
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{c.make} {c.model}</div>
+                              <div className="text-[11px] text-slate-500 truncate">{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2"><span className="font-mono font-semibold text-[12px] bg-slate-100 rounded px-1.5 py-0.5 whitespace-nowrap">{c.registration}</span></td>
+                        <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">£{money(c.price)}</td>
+                        <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{money(c.mileage)}</td>
+                        <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
+                        <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
+                        <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
+                        <td className="px-2 py-2">{c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span> : <span className="text-slate-300">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {shown.map((c) => {
                 const mot = motStatus(c.motExpiryDate);
