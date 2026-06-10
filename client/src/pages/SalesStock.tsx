@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -40,12 +40,35 @@ export default function SalesStock() {
     onError: (e) => toast.error(e.message || "Refresh failed"),
   });
 
+  const [sortKey, setSortKey] = useState("price");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const sortBy = (k: string) => {
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir(k === "vehicle" || k === "reg" ? "asc" : "desc"); }
+  };
+
   const cars = (data as any[]) || [];
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
     if (!f) return cars;
     return cars.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
   }, [cars, filter]);
+
+  const sorted = useMemo(() => {
+    const VAL: Record<string, (c: any) => any> = {
+      vehicle: (c) => `${c.make || ""} ${c.model || ""}`.toLowerCase(),
+      reg: (c) => String(c.registration || ""),
+      price: (c) => Number(c.price) || 0,
+      mileage: (c) => Number(c.mileage) || 0,
+      days: (c) => Number(c.daysInStock) || 0,
+      mot: (c) => (c.motExpiryDate ? new Date(c.motExpiryDate).getTime() : 0),
+      tax: (c) => (/^taxed$/i.test(c.taxStatus || "") ? 1 : 0), // untaxed/SORN sort first when asc
+    };
+    const get = VAL[sortKey] || VAL.price;
+    const arr = [...shown];
+    arr.sort((a, b) => { const x = get(a), y = get(b); const cmp = x < y ? -1 : x > y ? 1 : 0; return sortDir === "asc" ? cmp : -cmp; });
+    return arr;
+  }, [shown, sortKey, sortDir]);
 
   const stats = useMemo(() => {
     let value = 0, motExpired = 0, motSoon = 0, untaxed = 0, alerts = 0;
@@ -101,18 +124,18 @@ export default function SalesStock() {
               <table className="w-full text-[13px] min-w-[760px]">
                 <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
                   <tr>
-                    <th className="text-left font-semibold px-3 py-2">Vehicle</th>
-                    <th className="text-left font-semibold px-2 py-2">Reg</th>
-                    <th className="text-right font-semibold px-2 py-2">Price</th>
-                    <th className="text-right font-semibold px-2 py-2">Mileage</th>
-                    <th className="text-center font-semibold px-2 py-2">Days</th>
-                    <th className="text-left font-semibold px-2 py-2">MOT</th>
-                    <th className="text-left font-semibold px-2 py-2">Tax</th>
+                    <SortHead label="Vehicle" k="vehicle" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} pad="px-3" />
+                    <SortHead label="Reg" k="reg" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    <SortHead label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
+                    <SortHead label="Mileage" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
+                    <SortHead label="Days" k="days" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="center" />
+                    <SortHead label="MOT" k="mot" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    <SortHead label="Tax" k="tax" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <th className="text-left font-semibold px-2 py-2">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {shown.map((c) => {
+                  {sorted.map((c) => {
                     const mot = motStatus(c.motExpiryDate);
                     return (
                       <tr key={c.id} onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)}
@@ -143,7 +166,7 @@ export default function SalesStock() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {shown.map((c) => {
+              {sorted.map((c) => {
                 const mot = motStatus(c.motExpiryDate);
                 return (
                   <div key={c.id} className={`rounded-xl border bg-white overflow-hidden flex flex-col ${c.checkIssues ? "border-red-400 ring-1 ring-red-300" : "border-slate-200"}`}>
@@ -189,6 +212,19 @@ export default function SalesStock() {
           )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "px-2" }: { label: string; k: string; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void; align?: "left" | "right" | "center"; pad?: string }) {
+  const active = sortKey === k;
+  const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+  return (
+    <th className={`font-semibold py-2 ${pad} text-${align}`}>
+      <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 ${justify} hover:text-slate-700 ${active ? "text-violet-700" : ""}`}>
+        {label}
+        {active ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+      </button>
+    </th>
   );
 }
 
