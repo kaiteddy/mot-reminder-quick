@@ -14,7 +14,7 @@ const PW = 595.28;           // A4 width in points
 const PH = 841.89;           // A4 height in points
 const M = 30;                // Page margin
 const CW = PW - M * 2;      // Content width
-const ROW_H = 18;            // Default table row height
+const ROW_H = 16;            // Default table row height (compact, to keep docs on one page)
 const BOTTOM = 40;           // Bottom margin for page breaks
 
 // Colours
@@ -559,7 +559,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     // Centred title
     doc.font('Helvetica').fontSize(20).fillColor('black');
     doc.text('Job Sheet', 0, y, { width: PW, align: 'center' });
-    y += 30;
+    y += 22;
 
     // Customer (left)
     doc.font('Helvetica').fontSize(10);
@@ -620,7 +620,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   // Vehicle table
   y = checkBreak(ROW_H * 4);
   y = vehicleTable(doc, data.vehicle, y);
-  y += 30;
+  y += 12;
 
   // Work description lines — width-wrapped so long text never overwrites
   y = workBlock(doc, '', data.work_description, y, jsHeader);
@@ -641,7 +641,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
 
   // ── Blank Labour table ──
   const numLabour = data.labour_rows || 5;
-  const blankRowH = 18;
+  const blankRowH = 16;
   y = checkBreak(ROW_H + numLabour * blankRowH);
   const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
 
@@ -663,7 +663,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     }
     y += blankRowH;
   }
-  y += 8;
+  y += 5;
 
   // ── Blank Parts table ──
   const numParts = data.parts_rows || 5;
@@ -688,16 +688,16 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     }
     y += blankRowH;
   }
-  y += 6;
+  y += 4;
 
   // Car diagram
   const diagram = findImg('car_diagram.png');
   if (diagram) {
-    const dw = CW * 0.28;
+    const dw = CW * 0.22;
     const dh = dw * (274 / 355);
-    y = checkBreak(dh + 80);
+    y = checkBreak(dh + 70);
     doc.image(diagram, M, y, { width: dw });
-    y += dh + 6;
+    y += dh + 4;
   }
 
   // T&C
@@ -711,9 +711,9 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     'I have read and accept your terms and conditions.',
   ];
   doc.font('Helvetica').fontSize(7).fillColor('black');
-  for (const line of tcLines) { doc.text(line, M, y); y += 9; }
+  for (const line of tcLines) { doc.text(line, M, y); y += 8.2; }
   doc.font('Helvetica').fontSize(7);
-  doc.text(TC_BOLD, M, y); y += 12;
+  doc.text(TC_BOLD, M, y); y += 11;
   doc.font('Helvetica').fontSize(7.5);
   doc.text('Signed ________________          Date ________________', M, y);
 
