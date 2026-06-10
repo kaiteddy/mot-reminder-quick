@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -16,12 +16,15 @@ function motStatus(motExpiryDate: any) {
   return { label: `${fmtDate(motExpiryDate)} · ${days}d`, tone: "green" as const, bad: false };
 }
 const taxTone = (t: any) => !t ? "slate" : /^taxed$/i.test(t) ? "green" : "amber";
+// AutoTrader price indicator vs market: High = above guide (slow to sell) → flag amber.
+const priceTone = (p: any) => { const s = String(p || "").toLowerCase(); if (s === "good") return "green"; if (s === "high") return "amber"; if (s === "low") return "sky"; return "slate"; };
 
 const TONE: Record<string, string> = {
   green: "border-green-200 bg-green-50 text-green-700",
   amber: "border-amber-200 bg-amber-50 text-amber-700",
   red: "border-red-200 bg-red-50 text-red-700",
   slate: "border-slate-200 bg-slate-50 text-slate-500",
+  sky: "border-sky-200 bg-sky-50 text-sky-700",
 };
 
 export default function SalesStock() {
@@ -42,14 +45,15 @@ export default function SalesStock() {
   }, [cars, filter]);
 
   const stats = useMemo(() => {
-    let value = 0, motExpired = 0, motSoon = 0, untaxed = 0;
+    let value = 0, motExpired = 0, motSoon = 0, untaxed = 0, alerts = 0;
     for (const c of cars) {
       value += Number(c.price) || 0;
       const m = motStatus(c.motExpiryDate);
       if (m.tone === "red") motExpired++; else if (m.tone === "amber") motSoon++;
       if (c.taxStatus && !/^taxed$/i.test(c.taxStatus)) untaxed++;
+      if (c.checkIssues) alerts++;
     }
-    return { count: cars.length, value, motExpired, motSoon, untaxed };
+    return { count: cars.length, value, motExpired, motSoon, untaxed, alerts };
   }, [cars]);
 
   return (
@@ -66,9 +70,10 @@ export default function SalesStock() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Stat label="Cars in stock" value={String(stats.count)} />
           <Stat label="Total value" value={`£${money(stats.value)}`} />
+          <Stat label="Check alerts" value={String(stats.alerts)} tone={stats.alerts ? "red" : "green"} />
           <Stat label="MOT expired" value={String(stats.motExpired)} tone={stats.motExpired ? "red" : "green"} />
           <Stat label="MOT due ≤30d" value={String(stats.motSoon)} tone={stats.motSoon ? "amber" : "green"} />
           <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "amber" : "green"} />
@@ -87,7 +92,8 @@ export default function SalesStock() {
               {shown.map((c) => {
                 const mot = motStatus(c.motExpiryDate);
                 return (
-                  <div key={c.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col">
+                  <div key={c.id} className={`rounded-xl border bg-white overflow-hidden flex flex-col ${c.checkIssues ? "border-red-400 ring-1 ring-red-300" : "border-slate-200"}`}>
+                    {c.checkIssues && <div className="bg-red-600 text-white text-[11px] font-bold uppercase tracking-wide px-2 py-1 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {c.checkIssues}</div>}
                     <div className="aspect-[16/10] bg-slate-100 relative">
                       {c.imageUrl
                         ? <img src={c.imageUrl} alt={`${c.make} ${c.model}`} loading="lazy" className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
@@ -100,11 +106,18 @@ export default function SalesStock() {
                         <div className="font-semibold text-[14px] leading-tight">{c.make} {c.model}</div>
                         <div className="text-[12px] text-slate-500 truncate" title={c.variant || ""}>{c.year} · {c.colour} · {c.fuelType}</div>
                       </div>
+                      {c.priceIndicator && c.priceIndicator !== "No analysis" && (
+                        <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                          <span className={`rounded px-1.5 py-0.5 font-semibold border ${TONE[priceTone(c.priceIndicator)]}`}>{c.priceIndicator} price{c.pricePosition ? ` · ${c.pricePosition}` : ""}</span>
+                          {c.retailValuation ? <span className="text-slate-400">guide £{money(c.retailValuation)}</span> : null}
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-slate-500">
                         <span className="inline-flex items-center gap-1"><Gauge className="w-3 h-3" />{money(c.mileage)} mi</span>
                         <span>{c.transmission}</span>
                         {c.owners != null && <span>{c.owners} owner{c.owners === 1 ? "" : "s"}</span>}
                         {c.daysInStock != null && <span>{c.daysInStock}d in stock</span>}
+                        {c.views7d != null && <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{c.views7d}/wk</span>}
                       </div>
                       <div className="flex flex-col gap-1.5 mt-auto pt-1">
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />

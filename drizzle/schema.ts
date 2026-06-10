@@ -442,6 +442,19 @@ export const salesStock = mysqlTable("salesStock", {
   taxStatus: varchar("taxStatus", { length: 20 }),
   taxDueDate: timestamp("taxDueDate"),
   motTaxChecked: timestamp("motTaxChecked"),
+  // AutoTrader insight (forecourt export)
+  priceIndicator: varchar("priceIndicator", { length: 30 }),   // Good / Fair / High / Low / No analysis
+  pricePosition: varchar("pricePosition", { length: 20 }),     // % of market (e.g. 99.72%)
+  retailValuation: decimal("retailValuation", { precision: 10, scale: 2 }),
+  adminFee: decimal("adminFee", { precision: 10, scale: 2 }),
+  performanceRating: varchar("performanceRating", { length: 30 }),
+  views7d: int("views7d"),
+  searches7d: int("searches7d"),
+  checkStatus: varchar("checkStatus", { length: 30 }),         // PASS / ERROR / ISSUE / NO_CHECK / REJECTED
+  checkIssues: varchar("checkIssues", { length: 255 }),        // e.g. Stolen, Mileage discrepancy
+  atAdvertStatus: varchar("atAdvertStatus", { length: 30 }),   // Auto Trader advert status
+  bodyType: varchar("bodyType", { length: 50 }),
+  doors: int("doors"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
