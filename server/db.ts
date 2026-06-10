@@ -898,12 +898,14 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     docNo: serviceHistory.docNo,
     dateIssued: serviceHistory.dateIssued,
     dateCreated: serviceHistory.dateCreated,
+    createdAt: serviceHistory.createdAt, // DB row timestamp — fallback when dateCreated is unset
     registration: serviceHistory.registration,
     totalGross: serviceHistory.totalGross,
     balance: serviceHistory.balance,
     docStatus: serviceHistory.docStatus,
     customerId: serviceHistory.customerId,
     customerName: customers.name,
+    phone: sql<string>`COALESCE(NULLIF(${serviceHistory.custMobile},''), NULLIF(${serviceHistory.custTelephone},''), ${customers.phone})`,
     vehicleId: serviceHistory.vehicleId,
     make: vehicles.make,
     model: vehicles.model,
@@ -1578,7 +1580,8 @@ export async function saveDocument(input: SaveDocInput) {
   } else {
     const docNo = await getNextDocNo(docType);
     const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-    const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, balance: String(totalGross.toFixed(2)) }).$returningId();
+    // new docs always get a creation date (so the list never shows a blank date)
+    const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, dateCreated: docFields.dateCreated ?? new Date(), balance: String(totalGross.toFixed(2)) }).$returningId();
     docId = id;
     await logDocEvent(docId!, "created"); // audit: new document
   }

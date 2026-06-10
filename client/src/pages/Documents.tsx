@@ -173,8 +173,11 @@ export default function Documents() {
                           {TYPE_LABEL[d.docType] || d.docType || "?"}
                         </Badge>
                       </TableCell>
-                      <TableCell>{fmtDate(d.dateIssued || d.dateCreated)}</TableCell>
-                      <TableCell className="max-w-[180px] truncate">{d.customerName || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <div className="truncate">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
+                        {d.phone && <div className="text-[11px] text-muted-foreground truncate">{d.phone}</div>}
+                      </TableCell>
                       <TableCell>
                         <span className="font-mono">{d.registration || "—"}</span>
                         {d.make && <span className="text-muted-foreground text-xs ml-1">{d.make} {d.model}</span>}
