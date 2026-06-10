@@ -1135,10 +1135,23 @@ export async function lookupVehicleForReg(registration: string) {
             v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null };
           }
         } catch { /* SWS unavailable — keep stored record */ }
+      }
+      // DVLA (free, government) — fetch MOT expiry / tax status / colour and PERSIST them to the
+      // record, so the saved vehicle AND the printed job sheet (which reads the record) have them.
+      // NOT gated by the paid-SWS flag: these change over time and DVLA costs nothing.
+      if (empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour)) {
         try {
           const { getVehicleDetails } = await import("./dvlaApi");
           const d: any = await getVehicleDetails(reg);
-          if (d) { v.motExpiryDate = v.motExpiryDate ?? d.motExpiryDate ?? null; v.taxStatus = d.taxStatus ?? null; v.taxDueDate = d.taxDueDate ?? null; }
+          if (d) {
+            const du: any = {};
+            const toDate = (x: any) => { if (!x) return null; const dt = x instanceof Date ? x : new Date(x); return isNaN(dt.getTime()) ? null : dt; };
+            const me = toDate(d.motExpiryDate); if (me) { v.motExpiryDate = me; du.motExpiryDate = me; }
+            if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
+            const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
+            if (empty(v.colour) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
+            if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
+          }
         } catch { /* DVLA unavailable */ }
       }
       return { found: true, source: "database", vehicle: v, customer: cust, warning: await ukvdWarning() };
