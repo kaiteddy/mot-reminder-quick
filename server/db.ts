@@ -883,7 +883,8 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   const SORT: Record<string, any> = {
     docNo: sql`CAST(${serviceHistory.docNo} AS UNSIGNED)`,
     type: serviceHistory.docType,
-    date: sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`,
+    date: sql`listDate`, // indexed generated col = COALESCE(dateIssued, dateCreated); avoids a 34k-row filesort
+
     customer: customers.name,
     vehicle: serviceHistory.registration,
     total: sql`CAST(${serviceHistory.totalGross} AS DECIMAL(12,2))`,
