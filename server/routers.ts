@@ -66,6 +66,23 @@ export const appRouter = router({
         return saveCustomerContacts(input.customerId, input.contacts);
       }),
 
+    duplicates: publicProcedure.query(async () => {
+      const { getDuplicateGroups } = await import("./db");
+      return getDuplicateGroups();
+    }),
+    merge: publicProcedure
+      .input(z.object({ primaryId: z.number(), secondaryIds: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { mergeCustomerRecords } = await import("./db");
+        return mergeCustomerRecords(input.primaryId, input.secondaryIds);
+      }),
+    dismissDuplicate: publicProcedure
+      .input(z.object({ phone: z.string() }))
+      .mutation(async ({ input }) => {
+        const { dismissDuplicateGroup } = await import("./db");
+        return dismissDuplicateGroup(input.phone);
+      }),
+
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {

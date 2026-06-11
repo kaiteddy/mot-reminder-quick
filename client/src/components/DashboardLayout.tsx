@@ -46,6 +46,7 @@ import {
   Brain,
   PoundSterling,
   Tag,
+  GitMerge,
   ShieldAlert
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -70,6 +71,7 @@ const menuItems = [
   { icon: FileText, label: "Logs & Messages", path: "/logs" },
   { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
   { icon: Users, label: "Customers", path: "/customers" },
+  { icon: GitMerge, label: "Duplicates", path: "/duplicates" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
   { icon: Mail, label: "Email Settings", path: "/email-settings" },

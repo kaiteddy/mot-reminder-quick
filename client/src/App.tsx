@@ -20,6 +20,7 @@ const EmailSettings = lazy(() => import("./pages/EmailSettings"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Vehicles = lazy(() => import("./pages/Vehicles"));
 const VehicleDetails = lazy(() => import("./pages/VehicleDetails"));
+const Duplicates = lazy(() => import("./pages/Duplicates"));
 const Database = lazy(() => import("./pages/Database"));
 const DiagnoseMOT = lazy(() => import("./pages/DiagnoseMOT"));
 const TestWhatsApp = lazy(() => import("./pages/TestWhatsApp"));
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/repair-pricing" component={RepairPricing} />
       <Route path="/sales-stock" component={SalesStock} />
+      <Route path="/duplicates" component={Duplicates} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
       <Route path="/workshop" component={WorkshopMOTCheck} />

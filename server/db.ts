@@ -1371,6 +1371,85 @@ export async function saveCustomerContacts(customerId: number, contacts: { name?
   return { saved: clean.length };
 }
 
+// ─── Duplicate customer review ───────────────────────────────────────────────
+function normPhoneKey(raw: any): string | null {
+  if (!raw) return null;
+  const s = String(raw).replace(/\s+/g, "");
+  const m = s.match(/(?:\+?44|0)\d{9,10}/) || s.match(/\d{10,11}/);
+  if (!m) return null;
+  let d = m[0].replace(/\D/g, "");
+  if (d.startsWith("44")) d = "0" + d.slice(2);
+  if (d.length === 10 && d.startsWith("7")) d = "0" + d;
+  return (d.length === 11 && d[0] === "0") ? d : null;
+}
+const _DUP_TITLES = /^(mr|mrs|ms|miss|dr|prof)\.?$/i;
+const _DUP_COMPANY = /\b(ltd|limited|plc|llp|centre|center|trade|parts|services|company|consultants|garage|motors|cars|valeting|bodywork|deli|conditioning|prestige)\b/i;
+const _DUP_CATCHALL = /\b(cash|account|sundry|misc|unknown|test|sale|estimate)\b/i;
+const _surnameKey = (name: string) => { const w = String(name || "").trim().split(/\s+/).filter((x) => !_DUP_TITLES.test(x)); return (w[w.length - 1] || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 5); };
+
+/** Customer records that share a phone number — grouped for manual review/merge. */
+export async function getDuplicateGroups() {
+  const db = await getDb();
+  if (!db) return [];
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS duplicateDismissals (phone VARCHAR(20) PRIMARY KEY, dismissedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+  const custs = await db.select({ id: customers.id, name: customers.name, phone: customers.phone }).from(customers);
+  const byPhone = new Map<string, any[]>();
+  for (const cu of custs) { const p = normPhoneKey(cu.phone); if (!p) continue; if (!byPhone.has(p)) byPhone.set(p, []); byPhone.get(p)!.push(cu); }
+  const groups = Array.from(byPhone.entries()).filter(([, g]: [string, any[]]) => g.length >= 2);
+  const dismissed = new Set<string>(((await db.execute(sql`SELECT phone FROM duplicateDismissals`)) as any)[0].map((r: any) => r.phone));
+  const ids = groups.flatMap(([, g]: [string, any[]]) => g.map((x: any) => x.id));
+  const docCnt = new Map<number, number>(), vehCnt = new Map<number, number>();
+  if (ids.length) {
+    for (const r of await db.select({ id: serviceHistory.customerId, n: sql<number>`COUNT(*)` }).from(serviceHistory).where(inArray(serviceHistory.customerId, ids)).groupBy(serviceHistory.customerId)) docCnt.set(r.id as number, Number(r.n));
+    for (const r of await db.select({ id: vehicles.customerId, n: sql<number>`COUNT(*)` }).from(vehicles).where(inArray(vehicles.customerId, ids)).groupBy(vehicles.customerId)) vehCnt.set(r.id as number, Number(r.n));
+  }
+  const out = groups.filter(([p]: [string, any[]]) => !dismissed.has(p)).map(([phone, g]: [string, any[]]) => {
+    const members = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
+      .sort((a: any, b: any) => b.docs - a.docs || a.id - b.id);
+    const hasBiz = g.some((x: any) => _DUP_COMPANY.test(x.name || "") || _DUP_CATCHALL.test(x.name || ""));
+    const keys = Array.from(new Set(g.map((x: any) => _surnameKey(x.name)).filter(Boolean)));
+    const category = hasBiz ? "business" : (keys.length === 1 && keys[0]) ? "same-name" : "mixed";
+    return { phone, category, members, activity: members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) };
+  }).sort((a: any, b: any) => b.activity - a.activity);
+  return out;
+}
+
+/** Merge secondary customer records into a primary (re-points all refs, unions contacts, records aliases). */
+export async function mergeCustomerRecords(primaryId: number, secondaryIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  secondaryIds = secondaryIds.filter((id) => id && id !== primaryId);
+  if (!secondaryIds.length) return { moved: 0 };
+  const FK = [serviceHistory, vehicles, reminders, reminderLogs, payments, customerLogs, customerMessages, appointments];
+  const recs = await db.select().from(customers).where(inArray(customers.id, [primaryId, ...secondaryIds]));
+  const primary: any = recs.find((r) => r.id === primaryId);
+  const secs = secondaryIds.map((id) => recs.find((r) => r.id === id)).filter(Boolean) as any[];
+  if (!primary || !secs.length) throw new Error("customer(s) not found");
+  let moved = 0;
+  for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }
+  const parse = (x: any) => { try { return typeof x === "string" ? JSON.parse(x) : (x || []); } catch { return []; } };
+  const all = [primary, ...secs];
+  const hasTitle = (n: string) => _DUP_TITLES.test(String(n || "").trim().split(/\s+/)[0] || "");
+  const name = all.map((r) => r.name).filter(Boolean).sort((a, b) => ((hasTitle(b) ? 1e3 : 0) + b.length) - ((hasTitle(a) ? 1e3 : 0) + a.length))[0] || primary.name;
+  const pick = (f: string) => primary[f] || secs.map((s) => s[f]).find(Boolean) || null;
+  const seen = new Set<string>(), alt: any[] = [];
+  for (const r of all) for (const ct of parse(r.altContacts)) { const k = String(ct.phone || ct.name || "").replace(/\s+/g, "").toLowerCase(); if (k && !seen.has(k)) { seen.add(k); alt.push({ name: ct.name || "", phone: ct.phone || "" }); } }
+  const aliases = new Set<string>(parse(primary.mergedExternalIds));
+  for (const s of secs) { for (const a of parse(s.mergedExternalIds)) aliases.add(a); if (s.externalId && !String(s.externalId).startsWith("WEB-")) aliases.add(s.externalId); }
+  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null }).where(eq(customers.id, primaryId));
+  await db.delete(customers).where(inArray(customers.id, secondaryIds));
+  return { moved, primaryId, merged: secondaryIds.length, name };
+}
+
+/** Mark a shared-phone group as "not duplicates" so it stops appearing in the review list. */
+export async function dismissDuplicateGroup(phone: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS duplicateDismissals (phone VARCHAR(20) PRIMARY KEY, dismissedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+  await db.execute(sql`INSERT IGNORE INTO duplicateDismissals (phone) VALUES (${phone})`);
+  return { dismissed: phone };
+}
+
 /** Pre-set description snippets (GA4 parity). */
 export async function getDescriptionPresets() {
   const db = await getDb();
