@@ -55,30 +55,43 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
-const menuItems = [
-  { icon: FileText, label: "Live Jobs", path: "/documents" },
-  { icon: Tag, label: "Sales Stock", path: "/sales-stock" },
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: BarChart, label: "Analytics", path: "/analytics" },
-  { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
-  { icon: ShieldCheck, label: "System Status", path: "/system-status" },
-  { icon: Search, label: "MOT Check", path: "/mot-check" },
-  { icon: Brain, label: "Pricing AI", path: "/pricing-intelligence" },
-  { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
-  { icon: MessageSquare, label: "Conversations", path: "/conversations" },
-  { icon: ShieldAlert, label: "Urgent Follow Ups", path: "/urgent-follow-ups" },
-  { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
-  { icon: FileText, label: "Logs & Messages", path: "/logs" },
-  { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
-  { icon: Users, label: "Customers", path: "/customers" },
-  { icon: GitMerge, label: "Duplicates", path: "/duplicates" },
-  { icon: Car, label: "Vehicles", path: "/vehicles" },
-  { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
-  { icon: Mail, label: "Email Settings", path: "/email-settings" },
-  { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
-  { icon: Wrench, label: "Technical Data", path: "/technical-data" },
-  { icon: DatabaseIcon, label: "Database", path: "/database" },
+const menuGroups = [
+  { section: "Workshop", items: [
+    { icon: FileText, label: "Live Jobs", path: "/documents" },
+    { icon: Search, label: "MOT Check", path: "/mot-check" },
+    { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
+    { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
+    { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
+    { icon: Wrench, label: "Technical Data", path: "/technical-data" },
+  ] },
+  { section: "Reminders & Messaging", items: [
+    { icon: MessageSquare, label: "Conversations", path: "/conversations" },
+    { icon: ShieldAlert, label: "Urgent Follow Ups", path: "/urgent-follow-ups" },
+    { icon: History, label: "Sent Reminders", path: "/reminders-sent" },
+    { icon: FileText, label: "Logs & Messages", path: "/logs" },
+    { icon: Smartphone, label: "Test WhatsApp", path: "/test-whatsapp" },
+  ] },
+  { section: "Customers & Vehicles", items: [
+    { icon: Users, label: "Customers", path: "/customers" },
+    { icon: Car, label: "Vehicles", path: "/vehicles" },
+    { icon: GitMerge, label: "Duplicates", path: "/duplicates" },
+  ] },
+  { section: "Sales", items: [
+    { icon: Tag, label: "Sales Stock", path: "/sales-stock" },
+    { icon: Brain, label: "Pricing AI", path: "/pricing-intelligence" },
+  ] },
+  { section: "Insights", items: [
+    { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+    { icon: BarChart, label: "Analytics", path: "/analytics" },
+  ] },
+  { section: "System", items: [
+    { icon: ShieldCheck, label: "System Status", path: "/system-status" },
+    { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
+    { icon: DatabaseIcon, label: "Database", path: "/database" },
+    { icon: Mail, label: "Email Settings", path: "/email-settings" },
+  ] },
 ];
+const menuItems = menuGroups.flatMap((g) => g.items); // flat list for active-item / page-title lookup
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 280;
@@ -191,37 +204,46 @@ function DashboardLayoutContent({
         </SidebarHeader>
 
         <SidebarContent className="px-2">
-          <SidebarMenu>
-            {menuItems.map((item: any) => {
-              const isActive = location === item.path;
-              return (
-                <SidebarMenuItem key={item.path} className="mb-1">
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    tooltip={item.label}
-                    className={`
-                      transition-all hover:scale-[1.02] active:scale-95
-                      ${isActive ? 'bg-primary/10 text-primary font-semibold shadow-sm' : 'hover:bg-accent/50'}
-                    `}
-                  >
-                    <a
-                      href={item.path}
-                      className="flex items-center gap-3 px-3 py-2 w-full"
-                    >
-                      <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <span className={`${isCollapsed ? 'hidden' : 'block'} transition-opacity`}>{item.label}</span>
-                      {item.path === "/conversations" && !isCollapsed && (
-                        <div className="ml-auto">
-                          <UnreadMessageBadge />
-                        </div>
-                      )}
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
+          {menuGroups.map((group) => (
+            <div key={group.section} className="mb-1">
+              {!isCollapsed && (
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  {group.section}
+                </div>
+              )}
+              <SidebarMenu>
+                {group.items.map((item: any) => {
+                  const isActive = location === item.path;
+                  return (
+                    <SidebarMenuItem key={item.path} className="mb-0.5">
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={item.label}
+                        className={`
+                          transition-all hover:scale-[1.02] active:scale-95
+                          ${isActive ? 'bg-primary/10 text-primary font-semibold shadow-sm' : 'hover:bg-accent/50'}
+                        `}
+                      >
+                        <a
+                          href={item.path}
+                          className="flex items-center gap-3 px-3 py-2 w-full"
+                        >
+                          <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <span className={`${isCollapsed ? 'hidden' : 'block'} transition-opacity`}>{item.label}</span>
+                          {item.path === "/conversations" && !isCollapsed && (
+                            <div className="ml-auto">
+                              <UnreadMessageBadge />
+                            </div>
+                          )}
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </div>
+          ))}
         </SidebarContent>
 
         <SidebarFooter className="p-4 border-t border-border/40 bg-accent/5 mt-auto">
