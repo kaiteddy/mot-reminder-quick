@@ -1,49 +1,54 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, GitMerge, Loader2, Phone } from "lucide-react";
+import { Users, GitMerge, Loader2, Phone, CheckCircle2, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 
-type Member = { id: number; name: string; docs: number; vehicles: number };
-type Group = { phone: string; category: "mixed" | "business" | "same-name"; members: Member[]; activity: number };
+type Member = { id: number; name: string; docs: number; vehicles: number; cluster: number };
+type Group = { phone: string; members: Member[]; suggestedIds: number[]; activity: number };
 
-const CAT: Record<string, { label: string; cls: string }> = {
-  mixed: { label: "Different surnames", cls: "bg-amber-100 text-amber-800" },
-  business: { label: "Business / catch-all", cls: "bg-blue-100 text-blue-800" },
-  "same-name": { label: "Same surname", cls: "bg-green-100 text-green-800" },
-};
-
-// One shared-phone group: pick which record to keep, then merge the rest in or mark not-duplicates.
-function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: (p: number, s: number[]) => void; onDismiss: (phone: string) => void; busy: boolean }) {
-  const [primaryId, setPrimaryId] = useState(group.members[0].id);
-  const keep = group.members.find((m) => m.id === primaryId)!;
-  const secondaries = group.members.filter((m) => m.id !== primaryId).map((m) => m.id);
-  const cat = CAT[group.category] || CAT.mixed;
+// One shared-phone group. Tick the records that are the SAME person (likely matches pre-ticked),
+// then merge them — the one with the most history is kept. Untick anyone who's actually different.
+function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: (keep: number, others: number[]) => void; onDismiss: (phone: string) => void; busy: boolean }) {
+  const [checked, setChecked] = useState<Set<number>>(() => new Set(group.suggestedIds));
+  const toggle = (id: number) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const checkedMembers = group.members.filter((m) => checked.has(m.id)); // server-sorted by history desc
+  const keep = checkedMembers[0];
+  const canMerge = checked.size >= 2 && !!keep;
+  const hasSug = group.suggestedIds.length >= 2;
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="inline-flex items-center gap-1.5 font-mono text-sm text-slate-700"><Phone className="w-3.5 h-3.5 text-slate-400" />{group.phone}</span>
-          <Badge variant="secondary" className={`text-[10px] ${cat.cls}`}>{cat.label}</Badge>
+          {hasSug
+            ? <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-800 gap-1"><CheckCircle2 className="w-3 h-3" />Likely the same person</Badge>
+            : <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-800 gap-1"><HelpCircle className="w-3 h-3" />Possibly different people</Badge>}
         </div>
         <div className="space-y-0.5">
-          {group.members.map((m) => (
-            <label key={m.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${primaryId === m.id ? "bg-green-50" : "hover:bg-slate-50"}`}>
-              <input type="radio" name={`keep-${group.phone}`} checked={primaryId === m.id} onChange={() => setPrimaryId(m.id)} className="accent-green-600" />
-              <span className="font-medium text-sm">{m.name}</span>
-              <span className="text-[11px] text-muted-foreground">#{m.id} · {m.docs} doc{m.docs === 1 ? "" : "s"} · {m.vehicles} vehicle{m.vehicles === 1 ? "" : "s"}</span>
-              {primaryId === m.id && <Badge variant="secondary" className="ml-auto text-[10px] bg-green-100 text-green-800">keep</Badge>}
-            </label>
-          ))}
+          {group.members.map((m) => {
+            const on = checked.has(m.id);
+            const isKeep = on && keep?.id === m.id;
+            return (
+              <label key={m.id} className={`flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer border ${on ? "bg-green-50 border-green-200" : "border-transparent hover:bg-slate-50"}`}>
+                <input type="checkbox" checked={on} onChange={() => toggle(m.id)} className="accent-green-600 w-4 h-4 shrink-0" />
+                <span className="font-medium text-sm truncate">{m.name}</span>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">#{m.id} · {m.docs} job{m.docs === 1 ? "" : "s"} · {m.vehicles} vehicle{m.vehicles === 1 ? "" : "s"}</span>
+                {isKeep && <Badge variant="secondary" className="ml-auto text-[10px] bg-green-600 text-white shrink-0">★ keep this one</Badge>}
+              </label>
+            );
+          })}
         </div>
-        <div className="flex gap-2 mt-3">
-          <Button size="sm" disabled={busy} onClick={() => { if (window.confirm(`Merge ${secondaries.length} record${secondaries.length === 1 ? "" : "s"} into "${keep.name}"? All their jobs, vehicles and history move across.`)) onMerge(primaryId, secondaries); }}>
-            <GitMerge className="w-3.5 h-3.5 mr-1" /> Merge into {keep.name}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <Button size="sm" disabled={!canMerge || busy}
+            onClick={() => { if (window.confirm(`Merge ${checked.size} records into "${keep!.name}"? All their jobs, vehicles and history move across; the others are removed.`)) onMerge(keep!.id, checkedMembers.slice(1).map((m) => m.id)); }}>
+            <GitMerge className="w-3.5 h-3.5 mr-1" /> Merge {checked.size} selected
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onDismiss(group.phone)}>Not duplicates</Button>
+          {canMerge && <span className="text-[11px] text-muted-foreground">keeps <b className="text-slate-700">{keep!.name}</b></span>}
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDismiss(group.phone)} className="ml-auto text-muted-foreground">Not duplicates — hide</Button>
         </div>
       </CardContent>
     </Card>
@@ -53,37 +58,38 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
 export default function Duplicates() {
   const utils = trpc.useUtils();
   const { data: groups, isLoading } = trpc.customers.duplicates.useQuery(undefined, { staleTime: 30_000, refetchOnMount: "always" });
-  const [filter, setFilter] = useState<"all" | "mixed" | "business">("all");
+  const [filter, setFilter] = useState<"likely" | "review" | "all">("likely");
   const refetch = () => utils.customers.duplicates.invalidate();
   const merge = trpc.customers.merge.useMutation({ onSuccess: (r: any) => { toast.success(`Merged into "${r.name}"`); refetch(); }, onError: (e: any) => toast.error(e.message || "Merge failed") });
-  const dismiss = trpc.customers.dismissDuplicate.useMutation({ onSuccess: () => { toast.success("Marked as not duplicates"); refetch(); }, onError: (e: any) => toast.error(e.message || "Failed") });
+  const dismiss = trpc.customers.dismissDuplicate.useMutation({ onSuccess: () => { toast.success("Hidden — marked as separate people"); refetch(); }, onError: (e: any) => toast.error(e.message || "Failed") });
   const busy = merge.isPending || dismiss.isPending;
 
   const all: Group[] = (groups as any) || [];
-  const counts = { all: all.length, mixed: all.filter((g) => g.category !== "business").length, business: all.filter((g) => g.category === "business").length };
-  const shown = all.filter((g) => filter === "all" || (filter === "business" ? g.category === "business" : g.category !== "business"));
+  const likely = all.filter((g) => g.suggestedIds.length >= 2);
+  const review = all.filter((g) => g.suggestedIds.length < 2);
+  const shown = filter === "all" ? all : filter === "likely" ? likely : review;
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
           <h1 className="text-4xl font-bold tracking-tight flex items-center gap-2"><Users className="w-8 h-8" /> Duplicate Customers</h1>
-          <p className="text-muted-foreground mt-2">Customer records that share a phone number. Pick the record to <b>keep</b>, then merge the rest in — or mark them as separate people. The obvious same-surname duplicates were already merged automatically.</p>
+          <p className="text-muted-foreground mt-2 max-w-3xl">These customers share a phone number. Some are the <b>same person</b> entered twice (often a misspelled name); others are <b>different people</b> on one line — a family or a business. <span className="text-green-700 font-medium">We've pre-ticked the records that look like a match.</span> Check the ticks are right, then <b>Merge</b> — or hit <b>Not duplicates</b> to hide a group.</p>
         </div>
 
-        <div className="flex gap-2">
-          {([["all", "All"], ["mixed", "Needs review"], ["business", "Business / catch-all"]] as const).map(([k, label]) => (
-            <Button key={k} size="sm" variant={filter === k ? "default" : "outline"} onClick={() => setFilter(k)}>{label} ({counts[k]})</Button>
+        <div className="flex gap-2 flex-wrap">
+          {([["likely", "✓ Likely matches", likely.length], ["review", "Needs a look", review.length], ["all", "All", all.length]] as const).map(([k, label, n]) => (
+            <Button key={k} size="sm" variant={filter === k ? "default" : "outline"} onClick={() => setFilter(k as any)}>{label} ({n})</Button>
           ))}
         </div>
 
         {isLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground py-12 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Scanning…</div>
+          <div className="flex items-center gap-2 text-muted-foreground py-16 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Scanning customers…</div>
         ) : shown.length === 0 ? (
-          <Card><CardContent className="py-16 text-center text-muted-foreground"><Users className="w-12 h-12 mx-auto mb-3 opacity-40" /><p className="font-medium">No duplicates to review 🎉</p><p className="text-sm">Everything in this view is resolved.</p></CardContent></Card>
+          <Card><CardContent className="py-16 text-center text-muted-foreground"><CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-500/60" /><p className="font-medium">Nothing here to review 🎉</p><p className="text-sm">{filter === "likely" ? "No likely duplicates left — nice work." : "All clear in this view."}</p></CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {shown.map((g) => <DupGroup key={g.phone} group={g} busy={busy} onMerge={(p, s) => merge.mutate({ primaryId: p, secondaryIds: s })} onDismiss={(phone) => dismiss.mutate({ phone })} />)}
+            {shown.map((g) => <DupGroup key={g.phone} group={g} busy={busy} onMerge={(keep, others) => merge.mutate({ primaryId: keep, secondaryIds: others })} onDismiss={(phone) => dismiss.mutate({ phone })} />)}
           </div>
         )}
       </div>

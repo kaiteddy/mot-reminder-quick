@@ -1386,6 +1386,22 @@ const _DUP_TITLES = /^(mr|mrs|ms|miss|dr|prof)\.?$/i;
 const _DUP_COMPANY = /\b(ltd|limited|plc|llp|centre|center|trade|parts|services|company|consultants|garage|motors|cars|valeting|bodywork|deli|conditioning|prestige)\b/i;
 const _DUP_CATCHALL = /\b(cash|account|sundry|misc|unknown|test|sale|estimate)\b/i;
 const _surnameKey = (name: string) => { const w = String(name || "").trim().split(/\s+/).filter((x) => !_DUP_TITLES.test(x)); return (w[w.length - 1] || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 5); };
+const _surnameFull = (name: string) => { const w = String(name || "").trim().split(/\s+/).filter((x) => !_DUP_TITLES.test(x)); return (w[w.length - 1] || "").toLowerCase().replace(/[^a-z]/g, ""); };
+function _lev(a: string, b: string): number {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[n];
+}
+// Two names are likely the SAME person if their surnames match closely (exact, prefix, or a tiny edit distance — covers "Hakkimian"/"Hakimian").
+function _likelySamePerson(a: string, b: string): boolean {
+  const sa = _surnameFull(a), sb = _surnameFull(b);
+  if (!sa || !sb) return false;
+  if (sa === sb) return true;
+  if (sa.length >= 4 && sb.length >= 4 && (sa.startsWith(sb) || sb.startsWith(sa))) return true;
+  const maxLen = Math.max(sa.length, sb.length);
+  return maxLen >= 4 && _lev(sa, sb) <= (maxLen >= 7 ? 2 : 1);
+}
 
 /** Customer records that share a phone number — grouped for manual review/merge. */
 export async function getDuplicateGroups() {
@@ -1404,13 +1420,17 @@ export async function getDuplicateGroups() {
     for (const r of await db.select({ id: vehicles.customerId, n: sql<number>`COUNT(*)` }).from(vehicles).where(inArray(vehicles.customerId, ids)).groupBy(vehicles.customerId)) vehCnt.set(r.id as number, Number(r.n));
   }
   const out = groups.filter(([p]: [string, any[]]) => !dismissed.has(p)).map(([phone, g]: [string, any[]]) => {
-    const members = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
+    const members: any[] = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
       .sort((a: any, b: any) => b.docs - a.docs || a.id - b.id);
-    const hasBiz = g.some((x: any) => _DUP_COMPANY.test(x.name || "") || _DUP_CATCHALL.test(x.name || ""));
-    const keys = Array.from(new Set(g.map((x: any) => _surnameKey(x.name)).filter(Boolean)));
-    const category = hasBiz ? "business" : (keys.length === 1 && keys[0]) ? "same-name" : "mixed";
-    return { phone, category, members, activity: members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) };
-  }).sort((a: any, b: any) => b.activity - a.activity);
+    // cluster records that look like the same person (fuzzy surname) so we can pre-tick the likely match
+    const clusters: any[] = [];
+    for (const m of members) { const cl = clusters.find((c: any) => _likelySamePerson(c.name, m.name)); if (cl) cl.members.push(m); else clusters.push({ name: m.name, members: [m] }); }
+    clusters.forEach((c: any, i: number) => c.members.forEach((m: any) => (m.cluster = i)));
+    const multi = clusters.filter((c: any) => c.members.length >= 2)
+      .sort((a: any, b: any) => b.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) - a.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0));
+    const suggestedIds: number[] = multi[0] ? multi[0].members.map((m: any) => m.id) : [];
+    return { phone, members, suggestedIds, activity: members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) };
+  }).sort((a: any, b: any) => (b.suggestedIds.length ? 1 : 0) - (a.suggestedIds.length ? 1 : 0) || b.activity - a.activity);
   return out;
 }
 
