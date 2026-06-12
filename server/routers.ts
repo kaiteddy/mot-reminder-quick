@@ -52,6 +52,12 @@ export const appRouter = router({
         const { searchCustomers } = await import("./db");
         return searchCustomers(input.query);
       }),
+    byPhone: publicProcedure
+      .input(z.object({ phone: z.string() }))
+      .query(async ({ input }) => {
+        const { findCustomersByPhone } = await import("./db");
+        return findCustomersByPhone(input.phone);
+      }),
 
     contacts: publicProcedure
       .input(z.object({ customerId: z.number() }))

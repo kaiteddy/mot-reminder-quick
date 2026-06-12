@@ -800,6 +800,8 @@ export default function DocumentDetails() {
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" {...{ form, set, editing }} />
+              {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
+                onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
               <OtherNumbers customerId={form.customerId} editing={editing} />
               {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
@@ -1339,6 +1341,23 @@ function TRow({ label, value, bold }: { label: string; value: any; bold?: boolea
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
       <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white ${bold ? "font-semibold" : ""}`}>£{money(value)}</div>
+    </div>
+  );
+}
+
+// When a phone number is typed and it's already on file, prompt to link that customer (instead of
+// silently creating a duplicate). Only shows when no customer is linked yet.
+function PhoneMatchHint({ phone, currentCustomerId, onLink }: { phone: string; currentCustomerId?: number; onLink: (c: any) => void }) {
+  const digits = (phone || "").replace(/\D/g, "");
+  const enabled = digits.length >= 10 && !currentCustomerId;
+  const { data: matches } = trpc.customers.byPhone.useQuery({ phone: phone || "" }, { enabled, staleTime: 10_000 });
+  const match = (matches as any[] | undefined)?.find((m) => m.id !== currentCustomerId);
+  if (!enabled || !match) return null;
+  return (
+    <div className="ml-[104px] flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[12px]">
+      <Phone className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+      <span className="flex-1 truncate">On file for <b className="text-slate-800">{match.name}</b>{match.postcode ? <span className="text-muted-foreground"> · {match.postcode}</span> : null}</span>
+      <button type="button" onClick={() => onLink(match)} className="shrink-0 rounded bg-violet-700 text-white px-2 py-0.5 text-[11px] hover:bg-violet-800">Use this customer</button>
     </div>
   );
 }

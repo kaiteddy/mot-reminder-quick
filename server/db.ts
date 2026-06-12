@@ -1191,11 +1191,11 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       // DVLA (free, government) — fetch MOT expiry / tax status / colour and PERSIST them to the
       // record, so the saved vehicle AND the printed job sheet (which reads the record) have them.
       // NOT gated by the paid-SWS flag: these change over time and DVLA costs nothing.
-      if (force || empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour)) {
+      if (force || empty(v.motExpiryDate) || empty(v.taxStatus) || empty(v.colour) || empty(v.dateOfRegistration)) {
         try {
           const { getVehicleDetails } = await import("./dvlaApi");
           const { getCurrentMotExpiry } = await import("./motApi");
-          // MOT expiry from DVSA MOT History (authoritative); tax + colour from DVLA VES
+          // MOT expiry from DVSA MOT History (authoritative); tax + colour + first-reg date from DVLA VES
           const [d, motExp] = await Promise.all([getVehicleDetails(reg).catch(() => null) as any, getCurrentMotExpiry(reg)]);
           const du: any = {};
           const toDate = (x: any) => { if (!x) return null; const dt = x instanceof Date ? x : new Date(x); return isNaN(dt.getTime()) ? null : dt; };
@@ -1204,6 +1204,11 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
             if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
             const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
             if ((force || empty(v.colour)) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
+            // date of first registration — prefer DVLA's month, else the year of manufacture
+            if ((force || empty(v.dateOfRegistration)) && (d.monthOfFirstRegistration || d.yearOfManufacture)) {
+              const dor = d.monthOfFirstRegistration ? new Date(d.monthOfFirstRegistration + "-01") : new Date(d.yearOfManufacture, 0, 1);
+              if (!isNaN(dor.getTime())) { v.dateOfRegistration = dor; du.dateOfRegistration = dor; }
+            }
           }
           if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
         } catch { /* DVLA/DVSA unavailable */ }
@@ -1326,6 +1331,21 @@ export async function getNextDocNo(docType: string) {
 }
 
 /** Search customers by name / phone / email / postcode (for the job-sheet picker). */
+// Find customers whose phone matches the given number — normalised for +44/0 prefix and spaces, so
+// "07719763259" matches a stored "+44 7719 763259". Used by the "already on file" hint on the job
+// sheet to avoid creating duplicate customers.
+export async function findCustomersByPhone(phone: string, limit = 5) {
+  const db = await getDb();
+  if (!db) return [];
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length < 10) return [];
+  const core = digits.slice(-10); // the last 10 digits identify the number regardless of +44/0 prefix
+  return db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address, email: customers.email })
+    .from(customers)
+    .where(like(sql`REPLACE(${customers.phone}, ' ', '')`, `%${core}%`))
+    .limit(limit);
+}
+
 export async function searchCustomers(query: string, limit = 10) {
   const db = await getDb();
   if (!db || !query || query.trim().length < 2) return [];
