@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,8 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
   const keep = checkedMembers[0];
   const canMerge = checked.size >= 2 && !!keep;
   const hasSug = group.suggestedIds.length >= 2;
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => { if (!confirming) return; const t = setTimeout(() => setConfirming(false), 6000); return () => clearTimeout(t); }, [confirming]);
   return (
     <Card>
       <CardContent className="p-4">
@@ -43,12 +45,22 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
           })}
         </div>
         <div className="flex items-center gap-2 mt-3 flex-wrap">
-          <Button size="sm" disabled={!canMerge || busy}
-            onClick={() => { if (window.confirm(`Merge ${checked.size} records into "${keep!.name}"? All their jobs, vehicles and history move across; the others are removed.`)) onMerge(keep!.id, checkedMembers.slice(1).map((m) => m.id)); }}>
-            <GitMerge className="w-3.5 h-3.5 mr-1" /> Merge {checked.size} selected
-          </Button>
-          {canMerge && <span className="text-[11px] text-muted-foreground">keeps <b className="text-slate-700">{keep!.name}</b></span>}
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDismiss(group.phone)} className="ml-auto text-muted-foreground">Not duplicates — hide</Button>
+          {!confirming ? (
+            <Button size="sm" disabled={!canMerge || busy} onClick={() => setConfirming(true)}>
+              <GitMerge className="w-3.5 h-3.5 mr-1" /> Merge {checked.size} selected
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" disabled={busy} className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => { setConfirming(false); onMerge(keep!.id, checkedMembers.slice(1).map((m) => m.id)); }}>
+                {busy ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <GitMerge className="w-3.5 h-3.5 mr-1" />}
+                Confirm — merge into {keep!.name}
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>
+            </>
+          )}
+          {!confirming && canMerge && <span className="text-[11px] text-muted-foreground">keeps <b className="text-slate-700">{keep!.name}</b> · others moved across</span>}
+          {!confirming && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDismiss(group.phone)} className="ml-auto text-muted-foreground">Not duplicates — hide</Button>}
         </div>
       </CardContent>
     </Card>
