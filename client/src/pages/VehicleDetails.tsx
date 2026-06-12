@@ -238,9 +238,15 @@ export default function VehicleDetails() {
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <Button
+                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
+                        >
+                            <FileText className="w-4 h-4 mr-2" />
+                            New Job Sheet
+                        </Button>
+                        <Button
                             variant="outline"
                             className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
-                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}`)}
+                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=SI`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             Create Estimate/Invoice
