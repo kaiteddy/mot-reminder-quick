@@ -699,6 +699,13 @@ export default function DocumentDetails() {
                     className="max-h-[110px] w-auto rounded-md border border-slate-200 shadow-sm object-contain bg-white" />
                 </div>
               )}
+              {editing && (
+                <VehicleSearch onSelect={(v) => {
+                  set("registration", v.registration);
+                  regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, ""); // known car → use its cached data, no SWS re-pay
+                  lookup(v.registration);
+                }} />
+              )}
               <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
@@ -1332,6 +1339,37 @@ function TRow({ label, value, bold }: { label: string; value: any; bold?: boolea
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
       <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] bg-white ${bold ? "font-semibold" : ""}`}>£{money(value)}</div>
+    </div>
+  );
+}
+
+// Find an existing vehicle (by reg / make / model / owner) and drop its reg onto the job sheet —
+// for when you don't have the exact registration to hand.
+function VehicleSearch({ onSelect }: { onSelect: (v: any) => void }) {
+  const [q, setQ] = useState("");
+  const { data: results } = trpc.vehicles.searchForJob.useQuery({ query: q }, { enabled: q.trim().length >= 2, staleTime: 30_000 });
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2">
+        <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Find vehicle</span>
+        <div className="relative flex-1">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search reg, make/model or owner…"
+            className="w-full bg-white border border-violet-300 rounded-sm pl-7 pr-2 py-[3px] text-[13px] h-[26px] outline-none focus:border-violet-500" />
+        </div>
+      </div>
+      {q.trim().length >= 2 && results && results.length > 0 && (
+        <div className="absolute z-30 left-[104px] right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg max-h-60 overflow-auto">
+          {results.map((v: any) => (
+            <button key={v.id} type="button" onClick={() => { onSelect(v); setQ(""); }}
+              className="flex w-full items-center gap-2 text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 border-b last:border-0">
+              <span className="font-mono font-semibold rounded bg-yellow-300 px-1.5 py-0.5 text-[12px] text-black ring-1 ring-yellow-500/60 shrink-0">{v.registration}</span>
+              <span className="truncate">{[v.make, v.model].filter(Boolean).join(" ")}</span>
+              {v.ownerName && <span className="text-muted-foreground ml-auto truncate max-w-[40%]">{v.ownerName}</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

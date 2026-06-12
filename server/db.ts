@@ -348,6 +348,35 @@ export async function searchVehiclesByRegistration(query: string, limit = 10) {
     .limit(limit);
 }
 
+// Vehicle picker for the job sheet: match by reg (partial), make, model or owner name, and return
+// the owner so the user can pick the right car. Reg matches are ranked first.
+export async function searchVehiclesForJob(query: string, limit = 12) {
+  const db = await getDb();
+  if (!db) return [];
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const regNorm = q.replace(/\s/g, "").toUpperCase();
+  const term = `%${q}%`;
+  return db.select({
+    id: vehicles.id,
+    registration: vehicles.registration,
+    make: vehicles.make,
+    model: vehicles.model,
+    customerId: vehicles.customerId,
+    ownerName: customers.name,
+  })
+    .from(vehicles)
+    .leftJoin(customers, eq(vehicles.customerId, customers.id))
+    .where(or(
+      like(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
+      like(vehicles.make, term),
+      like(vehicles.model, term),
+      like(customers.name, term),
+    ))
+    .orderBy(asc(sql`CASE WHEN REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${regNorm + "%"} THEN 0 ELSE 1 END`), vehicles.registration)
+    .limit(limit);
+}
+
 export async function findCustomerBySmartMatch(phone: string | null, email: string | null, name: string | null) {
   const db = await getDb();
   if (!db) return undefined;
@@ -1615,7 +1644,10 @@ export async function saveDocument(input: SaveDocInput) {
     });
     if (existing) {
       vehicleId = existing.id; customerId = existing.customerId ?? null;
-      if (Object.keys(vf).length) await db.update(vehicles).set(vf).where(eq(vehicles.id, existing.id));
+      // Only overwrite fields with a real value — never blank out an existing vehicle's details
+      // (e.g. an auto-save firing in the gap between setting the reg and the lookup filling make/model).
+      const vfUpd = Object.fromEntries(Object.entries(vf).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+      if (Object.keys(vfUpd).length) await db.update(vehicles).set(vfUpd).where(eq(vehicles.id, existing.id));
     } else {
       const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).$returningId();
       vehicleId = id;

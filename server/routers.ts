@@ -454,6 +454,12 @@ export const appRouter = router({
         const { searchVehiclesByRegistration } = await import("./db");
         return searchVehiclesByRegistration(input.query);
       }),
+    searchForJob: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchVehiclesForJob } = await import("./db");
+        return searchVehiclesForJob(input.query);
+      }),
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
