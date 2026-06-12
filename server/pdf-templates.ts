@@ -401,10 +401,12 @@ function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: 
 export async function generateInvoicePDF(data: any): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
   let y = M;
+  let copyLabel = '';
 
   // Full header (redrawn on every page)
   const fullHeader = (): number => {
     y = M;
+    if (copyLabel) doc.font('Helvetica').fontSize(7).fillColor('#999999').text(copyLabel.toUpperCase(), M, 16, { width: PW - 2 * M, align: 'right' });
     y = companyHeader(doc, data.company, y);
     const inv = data.invoice;
     y = customerAndDoc(doc, data.customer, 'Invoice', inv.number, [
@@ -423,48 +425,54 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
     return y;
   };
 
-  y = fullHeader();
+  // Renders one full invoice; called twice (customer + office copy).
+  const renderCopy = () => {
+    y = fullHeader();
 
-  // Vehicle table
-  y = checkBreak(ROW_H * 4);
-  y = vehicleTable(doc, data.vehicle, y);
-  y += 14;
+    // Vehicle table
+    y = checkBreak(ROW_H * 4);
+    y = vehicleTable(doc, data.vehicle, y);
+    y += 14;
 
-  // Work description (title + lines) — width-wrapped so long text never overwrites
-  y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
-  y += 10;
+    // Work description (title + lines) — width-wrapped so long text never overwrites
+    y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
+    y += 10;
 
-  // (no vehicle inspection diagram on invoices — not needed, saves space)
+    // MOT table (optional)
+    if (data.mot && data.mot.length > 0) {
+      const motRows = data.mot.map((m: any) => [m.description, String(m.qty ?? ''), String(m.status ?? '')]);
+      y = dataTable(doc, ['MOT', 'Qty', 'Status'], motRows, [0.72, 0.14, 0.14], y, checkBreak);
+    }
 
-  // MOT table (optional)
-  if (data.mot && data.mot.length > 0) {
-    const motRows = data.mot.map((m: any) => [m.description, String(m.qty ?? ''), String(m.status ?? '')]);
-    y = dataTable(doc, ['MOT', 'Qty', 'Status'], motRows, [0.72, 0.14, 0.14], y, checkBreak);
-  }
+    // Labour table
+    if (data.labour && data.labour.length > 0) {
+      const rows = data.labour.map((i: any) => [
+        i.description, String(i.qty ?? ''),
+        i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+        i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
+      ]);
+      y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
+    }
 
-  // Labour table
-  if (data.labour && data.labour.length > 0) {
-    const rows = data.labour.map((i: any) => [
-      i.description, String(i.qty ?? ''),
-      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
-    ]);
-    y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
-  }
+    // Parts table
+    if (data.parts && data.parts.length > 0) {
+      const rows = data.parts.map((i: any) => [
+        i.description, String(i.qty ?? ''),
+        i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+        i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
+      ]);
+      y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
+    }
+    y += 7;
 
-  // Parts table
-  if (data.parts && data.parts.length > 0) {
-    const rows = data.parts.map((i: any) => [
-      i.description, String(i.qty ?? ''),
-      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
-    ]);
-    y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
-  }
-  y += 7;
+    // T&C + Totals footer
+    tcAndTotals(doc, data.totals, y, 'Total', 0.50, checkBreak);
+  };
 
-  // T&C + Totals footer
-  tcAndTotals(doc, data.totals, y, 'Total', 0.50, checkBreak);
+  // Always print two copies — one for the customer, one for the office.
+  copyLabel = 'Customer Copy'; renderCopy();
+  doc.addPage();
+  copyLabel = 'Office Copy'; renderCopy();
 
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `${data.invoice?.number || 'Invoice'}.pdf` };
@@ -477,9 +485,11 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
 export async function generateEstimatePDF(data: any): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
   let y = M;
+  let copyLabel = '';
 
   const fullHeader = (): number => {
     y = M;
+    if (copyLabel) doc.font('Helvetica').fontSize(7).fillColor('#999999').text(copyLabel.toUpperCase(), M, 16, { width: PW - 2 * M, align: 'right' });
     y = companyHeader(doc, data.company, y);
     const est = data.estimate;
     y = customerAndDoc(doc, data.customer, 'Estimate', String(est.number), [
@@ -496,51 +506,59 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
     return y;
   };
 
-  y = fullHeader();
+  // Renders one full estimate; called twice (customer + office copy).
+  const renderCopy = () => {
+    y = fullHeader();
 
-  // Vehicle table
-  y = checkBreak(ROW_H * 4);
-  y = vehicleTable(doc, data.vehicle, y);
-  y += 14;
+    // Vehicle table
+    y = checkBreak(ROW_H * 4);
+    y = vehicleTable(doc, data.vehicle, y);
+    y += 14;
 
-  // Work description (title + lines) — width-wrapped so long text never overwrites
-  y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
-  y += 10;
+    // Work description (title + lines) — width-wrapped so long text never overwrites
+    y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
+    y += 10;
 
-  // Car diagram (after work description)
-  const diagram = findImg('car_diagram.png');
-  if (diagram) {
-    const dw = CW * 0.48;
-    const dh = dw * (274 / 355);
-    y += 6;
-    y = checkBreak(dh);
-    doc.image(diagram, M, y, { width: dw });
-    y += dh + 10;
-  }
+    // Car diagram (after work description)
+    const diagram = findImg('car_diagram.png');
+    if (diagram) {
+      const dw = CW * 0.48;
+      const dh = dw * (274 / 355);
+      y += 6;
+      y = checkBreak(dh);
+      doc.image(diagram, M, y, { width: dw });
+      y += dh + 10;
+    }
 
-  // Labour table
-  if (data.labour && data.labour.length > 0) {
-    const rows = data.labour.map((i: any) => [
-      i.description, String(i.qty ?? ''),
-      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
-    ]);
-    y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
-  }
+    // Labour table
+    if (data.labour && data.labour.length > 0) {
+      const rows = data.labour.map((i: any) => [
+        i.description, String(i.qty ?? ''),
+        i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+        i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
+      ]);
+      y = dataTable(doc, ['Labour', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
+    }
 
-  // Parts table
-  if (data.parts && data.parts.length > 0) {
-    const rows = data.parts.map((i: any) => [
-      i.description, String(i.qty ?? ''),
-      i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
-      i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
-    ]);
-    y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
-  }
-  y += 7;
+    // Parts table
+    if (data.parts && data.parts.length > 0) {
+      const rows = data.parts.map((i: any) => [
+        i.description, String(i.qty ?? ''),
+        i.unit != null ? '£' + Number(i.unit).toFixed(2) : '', i.d || '',
+        i.subtotal != null ? '£' + Number(i.subtotal).toFixed(2) : '',
+      ]);
+      y = dataTable(doc, ['Parts', 'Qty', 'Unit', 'D', 'Sub Total'], rows, LP_RATIOS, y, checkBreak);
+    }
+    y += 7;
 
-  // T&C + Totals
-  tcAndTotals(doc, data.totals, y, 'Estimate Total', 0.55, checkBreak);
+    // T&C + Totals
+    tcAndTotals(doc, data.totals, y, 'Estimate Total', 0.55, checkBreak);
+  };
+
+  // Always print two copies — one for the customer, one for the office.
+  copyLabel = 'Customer Copy'; renderCopy();
+  doc.addPage();
+  copyLabel = 'Office Copy'; renderCopy();
 
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `Estimate_${data.estimate?.number || ''}.pdf` };
