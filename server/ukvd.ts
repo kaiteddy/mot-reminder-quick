@@ -51,6 +51,16 @@ export interface UKVDResponse {
 let _lastUkvdStatus: string | null = null;
 export const getLastUkvdStatus = () => _lastUkvdStatus;
 
+// Whether a UKVD response carries usable data. StatusCode 0 is a clean success; a non-zero code
+// whose message still says "Success…" (e.g. 1 = "SuccessWithResultsBlockWarnings") DOES carry a
+// Results block — image, DVLA tech, populated model fields. Only a status WITHOUT "Success"
+// (BillingFailure, KeyInvalid, VehicleNotFound, …) means there is nothing to use.
+// Regression-tested in server/ukvd.status.test.ts — do not narrow this back to `code === 0`.
+export function isUsableUkvdStatus(code: number | undefined, message: string | undefined): boolean {
+    if ((code ?? 0) === 0) return true;
+    return /success/i.test(String(message || ""));
+}
+
 export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Promise<UKVDResponse | null> {
     _lastUkvdStatus = null;
     if (!UKVD_CONFIG.apiKey) {
@@ -80,10 +90,7 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
 
         const _status = data.ResponseInformation?.StatusMessage || "";
         const _code = data.ResponseInformation?.StatusCode ?? 0;
-        // StatusCode 0 = clean. A "Success…WithWarnings" code still carries a usable Results block
-        // (vehicle image, DVLA tech, any populated model fields) — only bail on a genuine failure or
-        // billing error, otherwise we needlessly throw away real data for older/partial-coverage cars.
-        if (_code !== 0 && !/success/i.test(_status)) {
+        if (!isUsableUkvdStatus(_code, _status)) {
             _lastUkvdStatus = _status || "UKVD lookup failed";
             console.warn(`[UKVD] Lookup failed: ${_lastUkvdStatus}`);
             return null;

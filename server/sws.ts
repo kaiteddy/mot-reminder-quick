@@ -5,6 +5,13 @@ const SWS_CONFIG = {
     lookupUrl: 'https://www.sws-solutions.co.uk/API-V4/TechnicalData_Query.php'
 };
 
+// SWS sometimes returns a non-JSON body (error page, rate-limit, empty) — parse defensively so a bad
+// response is a clean one-line warning + skip, not a thrown stack trace that buries the rest of a lookup.
+function _swsParse(text: string, ctx: string): any {
+    try { return JSON.parse(text); }
+    catch { console.warn(`[SWS] ${ctx}: non-JSON response, skipped (${String(text).slice(0, 50).replace(/\s+/g, " ")})`); return null; }
+}
+
 export interface SWSTechnicalData {
     vrm: string;
     specs?: any;
@@ -112,7 +119,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
 
         const responseText = await response.text();
         if (response.ok && responseText.trim()) {
-            const data = JSON.parse(responseText);
+            const data = _swsParse(responseText, "specs");
             // SWS returns data wrapped in a "0" key often
             const techData = data?.["0"]?.["TechnicalData"] || data?.TechnicalData || data;
             if (techData && techData.fullName) {
@@ -147,7 +154,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         const adjText = await adjRes.text();
 
         if (adjRes.ok && adjText.trim() && adjText !== "[]") {
-            const adjData = JSON.parse(adjText);
+            const adjData = _swsParse(adjText, "adjustments");
             const adjustments = adjData?.[0]?.TechnicalData?.ExtAdjustment || adjData?.["0"]?.TechnicalData?.ExtAdjustment || [];
 
             adjustments.forEach((group: any) => {
@@ -165,7 +172,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         }
 
         if (lubesRes.ok && lubesText.trim() && lubesText !== "[]") {
-            const data = JSON.parse(lubesText);
+            const data = _swsParse(lubesText, "lubricants");
             const groups = data?.["0"]?.["TechnicalData"]?.["ExtLubricantGroup"] ||
                 data?.[0]?.["TechnicalData"]?.["ExtLubricantGroup"];
 
@@ -245,7 +252,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
 
         const repairIdsText = await repairIdsRes.text();
         if (repairIdsRes.ok && repairIdsText.trim() !== "" && repairIdsText.includes('repairtimeTypeId')) {
-            const repairData = JSON.parse(repairIdsText);
+            const repairData = _swsParse(repairIdsText, "repair-ids");
             const dataObj = repairData?.[0] || repairData?.["0"] || repairData;
             const repid = dataObj?.TechnicalData?.ExtRepairtimeType?.repairtimeTypeId;
 
@@ -269,7 +276,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
                 const categoriesText = await categoriesRes.text();
                 if (categoriesRes.ok && categoriesText.trim() !== "" && categoriesText.trim() !== "[]") {
                     try {
-                        const categoryData = JSON.parse(categoriesText);
+                        const categoryData = _swsParse(categoriesText, "repair-categories");
                         const catDataObj = Array.isArray(categoryData) ? (categoryData[0] || {}) : categoryData;
                         const techData = catDataObj?.TechnicalData;
                         const extNode = techData?.ExtRepairtimeNode;
@@ -378,7 +385,7 @@ export async function fetchRepairNodes(vrm: string, repid: string, nodeId: strin
         const text = await res.text();
         if (!res.ok || text.trim() === "" || text === "[]") return { tree: [], details: [] };
 
-        const data = JSON.parse(text);
+        const data = _swsParse(text, "repair-nodes");
         const dataObj = Array.isArray(data) ? (data[0] || {}) : data;
         const extNode = dataObj?.TechnicalData?.ExtRepairtimeNode;
 
