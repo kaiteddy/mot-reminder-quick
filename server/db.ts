@@ -879,13 +879,17 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     conds.push(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(customers.name, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
+  // Best available customer name: the linked customer record, else the name stored ON the doc
+  // (typed walk-ins have no customerId link but do have a denormalised name) — so the list never
+  // shows "—" for a job that clearly has a customer.
+  const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
   // sortable columns (numeric casts so doc numbers/money sort by value, not as text)
   const SORT: Record<string, any> = {
     docNo: sql`CAST(${serviceHistory.docNo} AS UNSIGNED)`,
     type: serviceHistory.docType,
     date: sql`listDate`, // indexed generated col = COALESCE(dateIssued, dateCreated); avoids a 34k-row filesort
 
-    customer: customers.name,
+    customer: custNameExpr,
     vehicle: serviceHistory.registration,
     total: sql`CAST(${serviceHistory.totalGross} AS DECIMAL(12,2))`,
     balance: sql`CAST(${serviceHistory.balance} AS DECIMAL(12,2))`,
@@ -905,7 +909,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     balance: serviceHistory.balance,
     docStatus: serviceHistory.docStatus,
     customerId: serviceHistory.customerId,
-    customerName: customers.name,
+    customerName: custNameExpr,
     phone: sql<string>`COALESCE(NULLIF(${serviceHistory.custMobile},''), NULLIF(${serviceHistory.custTelephone},''), ${customers.phone})`,
     vehicleId: serviceHistory.vehicleId,
     make: vehicles.make,
