@@ -2056,10 +2056,16 @@ export async function getRichPDF(documentId: number) {
 
   // who the invoice is addressed to: the insurer on a main insurance invoice, else the customer
   const billTo = (doc.docType !== 'XS' && (doc as any).insuranceCompany) ? String((doc as any).insuranceCompany) : null;
+  // Use the details stored ON the document (what the form shows) first — a walk-in typed straight
+  // onto a job sheet has no linked customer record but still has a name/address/phone — then fall
+  // back to the linked customer. Prevents "Unknown Client" on a sheet that clearly has a customer.
+  const d2: any = doc;
+  const docName = [d2.custTitle, d2.custForename, d2.custSurname].filter(Boolean).join(" ").trim();
+  const docAddress = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty, d2.custPostcode].filter(Boolean).join(", ");
   const customerData = {
-    name: customer?.name || 'Unknown Client',
-    address_lines: (customer?.address || '').split(',').map((s: string) => s.trim()),
-    mobile: customer?.phone || '',
+    name: docName || d2.customerName || customer?.name || 'Unknown Client',
+    address_lines: (docAddress || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+    mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     billTo,
   };
 
