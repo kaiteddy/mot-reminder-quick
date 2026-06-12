@@ -1,20 +1,53 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import React, { useMemo, useState } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
-import { Badge } from "@/components/ui/badge";
-import { AlertCircle, CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock, ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { MOTRefreshButton } from "@/components/MOTRefreshButton";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
+import {
+    CheckCircle, Search, XCircle, Loader2, Send, CalendarCheck, CheckCircle2, Eye, Clock,
+    ArrowDown, ArrowUp, Trash2, UploadCloud, ScanLine, ImageIcon, X, AlertTriangle, CalendarClock, ShieldCheck,
+} from "lucide-react";
 
+// Soft status pill with a coloured dot — quieter than solid badges, easier to scan in a long list.
+function Pill({ tone, children }: { tone: "red" | "amber" | "green" | "slate" | "blue"; children: React.ReactNode }) {
+    const tones: Record<string, { bg: string; dot: string }> = {
+        red: { bg: "bg-red-50 text-red-700 ring-red-200", dot: "bg-red-500" },
+        amber: { bg: "bg-amber-50 text-amber-700 ring-amber-200", dot: "bg-amber-500" },
+        green: { bg: "bg-emerald-50 text-emerald-700 ring-emerald-200", dot: "bg-emerald-500" },
+        slate: { bg: "bg-slate-50 text-slate-600 ring-slate-200", dot: "bg-slate-400" },
+        blue: { bg: "bg-blue-50 text-blue-700 ring-blue-200", dot: "bg-blue-500" },
+    };
+    const t = tones[tone];
+    return (
+        <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${t.bg}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
+            {children}
+        </span>
+    );
+}
+
+function StatChip({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number; tone: string }) {
+    return (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+                <Icon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+                <div className="text-xl font-bold leading-tight">{value}</div>
+                <div className="text-[11px] text-muted-foreground whitespace-nowrap">{label}</div>
+            </div>
+        </div>
+    );
+}
 
 function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () => void }) {
     const createMutation = trpc.reminders.createManualReminder.useMutation();
@@ -23,10 +56,8 @@ function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () =>
 
     const handleCreateAndSend = async () => {
         if (!confirm(`Create and Send MOT reminder for ${item.registration}?`)) return;
-
         try {
             setStatus("creating");
-            // 1. Create
             const result = await createMutation.mutateAsync({
                 registration: item.registration,
                 dueDate: item.liveMotExpiryDate || item.dueDate,
@@ -34,15 +65,12 @@ function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () =>
                 customerName: item.customerName,
                 customerPhone: item.customerPhone
             });
-
             if (!result.customerPhone) {
                 alert("Reminder created, but no phone number found to send message.");
                 setStatus("done");
                 onSuccess();
                 return;
             }
-
-            // 2. Send
             setStatus("sending");
             await sendMutation.mutateAsync({
                 id: Number(result.reminderId),
@@ -51,40 +79,35 @@ function CreateReminderButton({ item, onSuccess }: { item: any, onSuccess: () =>
                 registration: item.registration,
                 messageType: "MOT"
             });
-
             setStatus("done");
-            alert(`Success! Reminder created and sent to ${result.customerPhone}`);
+            toast.success(`Reminder sent to ${result.customerPhone}`);
             onSuccess();
-
         } catch (e: any) {
             console.error(e);
             setStatus("idle");
-            alert("Error: " + e.message);
+            toast.error("Error: " + e.message);
         }
     };
 
     return (
         <Button
             size="sm"
-            variant="default"
             disabled={status !== "idle"}
             onClick={handleCreateAndSend}
-            className={status === "done" ? "bg-green-600 hover:bg-green-700" : ""}
+            className={`h-7 px-2.5 text-xs ${status === "done" ? "bg-emerald-600 hover:bg-emerald-700" : ""}`}
+            title="Create & send a WhatsApp MOT reminder"
         >
-            {status === "creating" && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
-            {status === "sending" && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
-            {status === "idle" && "Create & Send"}
-            {status === "creating" && "Creating..."}
-            {status === "sending" && "Sending..."}
-            {status === "done" && "Sent!"}
+            {(status === "creating" || status === "sending") && <Loader2 className="w-3 h-3 animate-spin mr-1.5" />}
+            {status === "idle" && <Send className="w-3 h-3 mr-1.5" />}
+            {status === "idle" ? "Send" : status === "creating" ? "Creating…" : status === "sending" ? "Sending…" : "Sent ✓"}
         </Button>
     )
 }
 
 export default function GA4Scanner() {
     const [file, setFile] = useState<File | null>(null);
+    const [dragOver, setDragOver] = useState(false);
     const [results, setResults] = useState<any[]>(() => {
-        // Load from local storage on mount
         const saved = localStorage.getItem("ga4_scan_results");
         return saved ? JSON.parse(saved) : [];
     });
@@ -102,14 +125,6 @@ export default function GA4Scanner() {
     const sendMutation = trpc.reminders.sendWhatsApp.useMutation();
     const markBookedMutation = trpc.database.markMOTBooked.useMutation();
 
-    const toggleSelectAll = () => {
-        if (selectedRegs.size === results.length) {
-            setSelectedRegs(new Set());
-        } else {
-            setSelectedRegs(new Set(results.map(r => r.registration)));
-        }
-    };
-
     const handleDeleteRow = (reg: string) => {
         const nextResults = results.filter(r => r.registration !== reg);
         setResults(nextResults);
@@ -118,11 +133,7 @@ export default function GA4Scanner() {
 
     const toggleSelectRow = (reg: string) => {
         const next = new Set(selectedRegs);
-        if (next.has(reg)) {
-            next.delete(reg);
-        } else {
-            next.add(reg);
-        }
+        if (next.has(reg)) next.delete(reg); else next.add(reg);
         setSelectedRegs(next);
     };
 
@@ -135,31 +146,27 @@ export default function GA4Scanner() {
         onError: (err) => {
             setIsScanning(false);
             console.error(err);
-            alert("Failed to scan: " + err.message);
+            toast.error("Failed to scan: " + err.message);
         }
     });
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
-        }
+    const acceptFile = (f: File | undefined | null) => {
+        if (f && f.type.startsWith("image/")) setFile(f);
+        else if (f) toast.error("Please choose an image file (a screenshot)");
     };
 
     const handleScan = async () => {
         if (!file) return;
         setIsScanning(true);
-        // Don't clear immediately to allow retry if failed, but maybe good UX to clear
-        // setResults([]); 
         try {
             const base64 = await fileToBase64(file);
             scanMutation.mutate({ imageData: base64 });
         } catch (e) {
             setIsScanning(false);
-            alert("Error processing file");
+            toast.error("Error processing file");
         }
     };
 
-    // Add clear results button/functionality if needed
     const clearResults = () => {
         setResults([]);
         setSelectedRegs(new Set());
@@ -167,38 +174,22 @@ export default function GA4Scanner() {
     };
 
     const handleMarkBooked = async () => {
-        if (!bookedDate) {
-            toast.error("Please select a date");
-            return;
-        }
-
+        if (!bookedDate) { toast.error("Please select a date"); return; }
         const targetRegs = bookingTargetRegs || selectedRegs;
         const vehicleIds = Array.from(targetRegs)
             .map(reg => results.find(r => r.registration === reg)?.vehicleId)
             .filter((id): id is number => id !== null && id !== undefined);
-
         if (vehicleIds.length === 0) {
             toast.error("No valid databased vehicles selected. Only vehicles in the database can be marked as booked.");
             return;
         }
-
         try {
-            await markBookedMutation.mutateAsync({
-                vehicleIds,
-                date: bookedDate
-            });
-
-            // Update local state temporarily
+            await markBookedMutation.mutateAsync({ vehicleIds, date: bookedDate });
             const targetSet = bookingTargetRegs || selectedRegs;
-            const newResults = results.map(r => {
-                if (targetSet.has(r.registration) && r.vehicleId) {
-                    return { ...r, liveMotBookedDate: bookedDate };
-                }
-                return r;
-            });
+            const newResults = results.map(r => (targetSet.has(r.registration) && r.vehicleId) ? { ...r, liveMotBookedDate: bookedDate } : r);
             setResults(newResults);
             localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
-            if (!bookingTargetRegs) setSelectedRegs(new Set()); // Only clear bulk selection if it was a bulk action
+            if (!bookingTargetRegs) setSelectedRegs(new Set());
             setBookingTargetRegs(null);
             setShowBookedDialog(false);
             setBookedDate("");
@@ -210,35 +201,27 @@ export default function GA4Scanner() {
 
     const handleBulkSend = async () => {
         if (selectedRegs.size === 0) return;
-
-        // Filter out items that have already been sent or are invalid
         const itemsToSend = results.filter(r => {
             const isSelected = selectedRegs.has(r.registration);
             const isSent = !!r.lastSent;
             const isBooked = !!r.liveMotBookedDate;
-
-            // Check MOT calculation
             const motExpiry = r.liveMotExpiryDate ? new Date(r.liveMotExpiryDate) : null;
             const today = new Date();
             const diffTime = motExpiry ? motExpiry.getTime() - today.getTime() : 0;
             const daysLeft = motExpiry ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : null;
             const isValidToSend = motExpiry && (daysLeft! > -300);
-
             return isSelected && !isSent && !isBooked && isValidToSend;
         });
-
         if (itemsToSend.length === 0) {
             toast.error("No valid unbooked/unsent MOTs selected to send.");
             return;
         }
-
         if (!confirm(`Create and send reminders for ${itemsToSend.length} selected vehicles?`)) return;
 
         setIsSendingBatch(true);
         let successCount = 0;
         let failedCount = 0;
         const newResults = [...results];
-
         for (const item of itemsToSend) {
             try {
                 const result = await createMutation.mutateAsync({
@@ -248,7 +231,6 @@ export default function GA4Scanner() {
                     customerName: item.customerName,
                     customerPhone: item.customerPhone
                 });
-
                 if (result.customerPhone) {
                     await sendMutation.mutateAsync({
                         id: Number(result.reminderId),
@@ -257,14 +239,9 @@ export default function GA4Scanner() {
                         registration: item.registration,
                         messageType: "MOT"
                     });
-
                     successCount++;
-
-                    // Update local state temporarily
                     const index = newResults.findIndex(r => r.registration === item.registration);
-                    if (index !== -1) {
-                        newResults[index] = { ...item, lastSent: new Date().toISOString() };
-                    }
+                    if (index !== -1) newResults[index] = { ...item, lastSent: new Date().toISOString() };
                 } else {
                     failedCount++;
                 }
@@ -273,21 +250,14 @@ export default function GA4Scanner() {
                 failedCount++;
             }
         }
-
         setResults(newResults);
         localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
         setSelectedRegs(new Set());
         setIsSendingBatch(false);
-
-        if (successCount > 0) {
-            toast.success(`Bulk Send Complete: ${successCount} sent.`);
-        }
-        if (failedCount > 0) {
-            toast.error(`Verification Failed for ${failedCount} items.`);
-        }
+        if (successCount > 0) toast.success(`Bulk send complete: ${successCount} sent.`);
+        if (failedCount > 0) toast.error(`Failed for ${failedCount} item(s).`);
     };
 
-    // Extract valid vehicle IDs for the bulk refresh action
     const selectedVehicleIds = Array.from(selectedRegs)
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
         .filter((id): id is number => id !== null && id !== undefined);
@@ -295,15 +265,8 @@ export default function GA4Scanner() {
     const sortedFilteredResults = [...results].filter(item => {
         const matchesSearch = item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase());
-            
         if (!matchesSearch) return false;
-
-        if (hideSuccessful) {
-            // Hide if it was successfully sent, delivered or read
-            if (item.lastStatus === "read" || item.lastStatus === "delivered" || item.lastStatus === "sent") {
-                return false;
-            }
-        }
+        if (hideSuccessful && (item.lastStatus === "read" || item.lastStatus === "delivered" || item.lastStatus === "sent")) return false;
         return true;
     }).sort((a, b) => {
         const timeA = a.lastSent ? new Date(a.lastSent).getTime() : 0;
@@ -311,365 +274,359 @@ export default function GA4Scanner() {
         return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
     });
 
+    // select-all works on the rows currently shown (after search/filter)
+    const visibleRegs = sortedFilteredResults.map(r => r.registration);
+    const allVisibleSelected = visibleRegs.length > 0 && visibleRegs.every(r => selectedRegs.has(r));
+    const toggleSelectAll = () => setSelectedRegs(allVisibleSelected ? new Set() : new Set(visibleRegs));
+
+    // headline numbers for the scan
+    const stats = useMemo(() => {
+        const today = new Date();
+        let expired = 0, due = 0, sent = 0, booked = 0;
+        for (const r of results) {
+            const exp = r.liveMotExpiryDate ? new Date(r.liveMotExpiryDate) : null;
+            const days = exp ? Math.ceil((exp.getTime() - today.getTime()) / 86400000) : null;
+            if (days !== null && days < 0) expired++;
+            else if (days !== null && days <= 30) due++;
+            if (r.lastSent) sent++;
+            if (r.liveMotBookedDate) booked++;
+        }
+        return { expired, due, sent, booked };
+    }, [results]);
+
+    const hasResults = results.length > 0;
+
     return (
         <DashboardLayout>
-            <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                    <h1 className="text-3xl font-bold tracking-tight">GA4 Cross-Check Scanner</h1>
+            <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2.5">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><ScanLine className="h-5 w-5" /></span>
+                            GA4 Scanner
+                        </h1>
+                        <p className="text-muted-foreground mt-1.5 text-sm max-w-2xl">
+                            Upload a screenshot of your GA4 reminder list — we'll read the registrations, pull each car's live MOT &amp; tax, and show what's already been sent from here.
+                        </p>
+                    </div>
+                    {hasResults && (
+                        <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
+                            <X className="w-4 h-4 mr-1" /> Clear results
+                        </Button>
+                    )}
                 </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Scan GA4 Screenshot</CardTitle>
-                        <CardDescription>Upload a screenshot of your GA4 reminder list. We will scan the registrations and check if we have already sent a reminder for them in this system.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex items-center gap-4 max-w-md">
-                            <Input type="file" accept="image/*" onChange={handleFileChange} disabled={isScanning} />
-                            <Button onClick={handleScan} disabled={!file || isScanning}>
-                                {isScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-                                Scan & Check
-                            </Button>
+                {/* Upload dropzone — full-size when empty, slim once there are results */}
+                <label
+                    htmlFor="ga4-shot"
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptFile(e.dataTransfer.files?.[0]); }}
+                    className={`block cursor-pointer rounded-xl border-2 border-dashed transition-colors
+                        ${dragOver ? "border-violet-400 bg-violet-50" : "border-border bg-card hover:border-violet-300 hover:bg-violet-50/40"}
+                        ${hasResults ? "p-3" : "p-10"}`}
+                >
+                    <input id="ga4-shot" type="file" accept="image/*" className="hidden" disabled={isScanning}
+                        onChange={(e) => acceptFile(e.target.files?.[0])} />
+                    <div className={`flex items-center gap-4 ${hasResults ? "" : "flex-col text-center"}`}>
+                        <div className={`flex items-center justify-center rounded-full bg-violet-100 text-violet-600 ${hasResults ? "h-10 w-10" : "h-14 w-14"}`}>
+                            {file ? <ImageIcon className={hasResults ? "h-5 w-5" : "h-6 w-6"} /> : <UploadCloud className={hasResults ? "h-5 w-5" : "h-6 w-6"} />}
                         </div>
-                    </CardContent>
-                </Card>
+                        <div className={hasResults ? "min-w-0 flex-1" : ""}>
+                            {file ? (
+                                <p className="text-sm font-medium truncate">{file.name} <span className="text-muted-foreground font-normal">· {(file.size / 1024 / 1024).toFixed(1)} MB</span></p>
+                            ) : (
+                                <p className="text-sm font-medium">Drop a GA4 screenshot here, or <span className="text-violet-600 underline underline-offset-2">browse</span></p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-0.5">PNG or JPG of the reminders list</p>
+                        </div>
+                        <Button
+                            onClick={(e) => { e.preventDefault(); handleScan(); }}
+                            disabled={!file || isScanning}
+                            className={hasResults ? "" : "mt-1"}
+                        >
+                            {isScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanLine className="mr-2 h-4 w-4" />}
+                            {isScanning ? "Scanning…" : "Scan & check"}
+                        </Button>
+                    </div>
+                </label>
 
-                {results.length > 0 && (
-                    <Card>
-                        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                            <CardTitle>Scan Results ({sortedFilteredResults.length} of {results.length} found)</CardTitle>
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
-                                <div className="relative w-full sm:w-64 max-w-sm">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Search reg or name"
-                                        className="pl-8"
-                                        value={searchTerm}
-                                        onChange={e => setSearchTerm(e.target.value)}
-                                    />
+                {hasResults && (
+                    <>
+                        {/* Headline stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                            <StatChip icon={ScanLine} label="Vehicles scanned" value={results.length} tone="bg-violet-100 text-violet-700" />
+                            <StatChip icon={AlertTriangle} label="MOT expired" value={stats.expired} tone="bg-red-100 text-red-600" />
+                            <StatChip icon={CalendarClock} label="Due within 30 days" value={stats.due} tone="bg-amber-100 text-amber-600" />
+                            <StatChip icon={Send} label="Reminders sent" value={stats.sent} tone="bg-blue-100 text-blue-600" />
+                            <StatChip icon={ShieldCheck} label="Booked in" value={stats.booked} tone="bg-emerald-100 text-emerald-600" />
+                        </div>
+
+                        <Card className="overflow-hidden py-0 gap-0">
+                            {/* Toolbar */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b bg-slate-50/60">
+                                <div className="font-semibold text-sm">
+                                    Scan results
+                                    <span className="ml-2 rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                        {sortedFilteredResults.length} of {results.length}
+                                    </span>
                                 </div>
-                                <div className="flex items-center space-x-2 mt-2 sm:mt-0 px-2">
-                                    <Checkbox
-                                        id="hide-successful"
-                                        checked={hideSuccessful}
-                                        onCheckedChange={(checked) => setHideSuccessful(checked as boolean)}
-                                    />
-                                    <label
-                                        htmlFor="hide-successful"
-                                        className="text-sm font-medium leading-none whitespace-nowrap peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                    >
-                                        Hide Sent/Delivered
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="relative w-full sm:w-60">
+                                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input placeholder="Search reg or name…" className="pl-8 h-9 bg-white" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                    </div>
+                                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+                                        <Checkbox checked={hideSuccessful} onCheckedChange={(c) => setHideSuccessful(c as boolean)} />
+                                        Hide sent
                                     </label>
                                 </div>
-                                <div className="flex items-center gap-2 mt-2 sm:mt-0">
-                                    <Button
-                                        onClick={handleBulkSend}
-                                        disabled={selectedRegs.size === 0 || isSendingBatch}
-                                        variant="default"
-                                        size="sm"
-                                        className="bg-blue-600 hover:bg-blue-700"
-                                    >
-                                        {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                                        Send Selected ({selectedRegs.size})
-                                    </Button>
-                                    <Dialog open={showBookedDialog} onOpenChange={(open) => {
-                                        setShowBookedDialog(open);
-                                        if (!open) setBookingTargetRegs(null);
-                                    }}>
-                                        <DialogTrigger asChild>
-                                            <Button
-                                                disabled={selectedRegs.size === 0}
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => setBookingTargetRegs(null)}
-                                            >
-                                                Mark Booked ({selectedRegs.size})
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Mark MOT Booked</DialogTitle>
-                                                <DialogDescription>
-                                                    Select the date the MOT is booked for. We won't send MOT reminders for these vehicles for this cycle.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <div className="space-y-4 py-4">
-                                                <div className="space-y-2">
-                                                    <label className="text-sm font-medium">Booked Date</label>
-                                                    <Input
-                                                        type="date"
-                                                        value={bookedDate}
-                                                        onChange={(e) => setBookedDate(e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <DialogFooter>
-                                                <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
-                                                <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
-                                                    {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                                    Save Booking
-                                                </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
-                                    <MOTRefreshButton
-                                        vehicleIds={selectedVehicleIds}
-                                        disabled={selectedVehicleIds.length === 0}
-                                        variant="outline"
-                                        size="sm"
-                                        label="Refresh MOT"
-                                        onComplete={() => {
-                                            if (file) {
-                                                handleScan();
-                                                setSelectedRegs(new Set());
-                                            } else {
-                                                alert("Please upload the file and scan again to see the updated results");
-                                            }
-                                        }}
-                                    />
-                                    <Button variant="ghost" size="sm" onClick={clearResults} className="text-muted-foreground hover:text-destructive">
-                                        Clear Results
-                                    </Button>
-                                </div>
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[40px]">
-                                            <Checkbox
-                                                checked={results.length > 0 && selectedRegs.size === results.length}
-                                                onCheckedChange={toggleSelectAll}
-                                            />
-                                        </TableHead>
-                                        <TableHead className="w-[120px]">Reg</TableHead>
-                                        <TableHead className="w-[150px]">Customer</TableHead>
-                                        <TableHead className="w-[140px]">Contact</TableHead>
-                                        <TableHead className="w-[180px]">Vehicle</TableHead>
-                                        <TableHead className="w-[100px]">MOT</TableHead>
-                                        <TableHead className="w-[120px]">Status</TableHead>
-                                        <TableHead className="w-[100px]">Tax</TableHead>
-                                        <TableHead 
-                                            className="w-[140px] cursor-pointer hover:bg-slate-50 transition-colors select-none"
-                                            onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Last Sent
-                                                {sortOrder === "desc" ? <ArrowDown className="w-3 h-3 text-slate-400" /> : <ArrowUp className="w-3 h-3 text-slate-400" />}
-                                            </div>
-                                        </TableHead>
-                                        <TableHead className="w-[90px]">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {sortedFilteredResults.map((item, i) => {
-                                        const isSent = !!item.lastSent;
-                                        // Handle date parsing safely - lastSent comes as string from JSON
-                                        const sentDateObj = item.lastSent ? new Date(item.lastSent) : null;
-                                        let sentDate = 'Never';
-                                        let sentRelative = '';
-                                        if (sentDateObj) {
-                                            sentDate = sentDateObj.toLocaleDateString() + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                            try {
-                                                sentRelative = formatDistanceToNow(sentDateObj, { addSuffix: true });
-                                            } catch(e) {
-                                                // Ignore
-                                            }
-                                        }
 
-                                        // Live MOT/Tax Logic
-                                        const motExpiry = item.liveMotExpiryDate ? new Date(item.liveMotExpiryDate) : null;
+                            {/* Selection action bar */}
+                            {selectedRegs.size > 0 && (
+                                <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 border-b bg-violet-50">
+                                    <span className="text-sm font-medium text-violet-900">{selectedRegs.size} selected</span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <Button size="sm" onClick={handleBulkSend} disabled={isSendingBatch}>
+                                            {isSendingBatch ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
+                                            Send reminders
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="bg-white" onClick={() => { setBookingTargetRegs(null); setShowBookedDialog(true); }}>
+                                            <CalendarCheck className="w-4 h-4 mr-1.5" /> Mark booked
+                                        </Button>
+                                        <MOTRefreshButton
+                                            vehicleIds={selectedVehicleIds}
+                                            disabled={selectedVehicleIds.length === 0}
+                                            variant="outline"
+                                            size="sm"
+                                            label="Refresh MOT"
+                                            onComplete={() => {
+                                                if (file) { handleScan(); setSelectedRegs(new Set()); }
+                                                else toast.message("Upload the screenshot and scan again to see the updated results");
+                                            }}
+                                        />
+                                        <Button size="sm" variant="ghost" onClick={() => setSelectedRegs(new Set())} className="text-muted-foreground">Clear</Button>
+                                    </div>
+                                </div>
+                            )}
 
-                                        // Calculate days left relative to today
-                                        const today = new Date();
-                                        const diffTime = motExpiry ? motExpiry.getTime() - today.getTime() : 0;
-                                        const daysLeft = motExpiry ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : null;
-
-                                        // Determine status for badge
-                                        let status: 'expired' | 'due' | 'valid' | 'unknown' = 'unknown';
-                                        if (motExpiry) {
-                                            if (daysLeft! < 0) status = 'expired';
-                                            else if (daysLeft! <= 30) status = 'due';
-                                            else status = 'valid';
-                                        }
-
-                                        const motString = motExpiry ? motExpiry.toLocaleDateString("en-GB") : 'No data';
-                                        const isMotValid = status === 'valid' || status === 'due'; // Valid enough to create a reminder for (even if due soon)
-
-                                        const isBooked = !!item.liveMotBookedDate;
-                                        const taxStatus = item.liveTaxStatus || 'Unknown';
-                                        const isTaxed = taxStatus.toLowerCase() === 'taxed';
-                                        const canCreate = !isSent && !isBooked && motExpiry && (daysLeft! > -300); // Allow creating if expired reasonably recently or valid
-
-                                        return (
-                                            <TableRow key={i} className={
-                                                status === "expired" ? "bg-red-50" :
-                                                    status === "due" ? "bg-orange-50" :
-                                                        ""
-                                            }>
-                                                <TableCell>
-                                                    <Checkbox
-                                                        checked={selectedRegs.has(item.registration)}
-                                                        onCheckedChange={() => toggleSelectRow(item.registration)}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="font-mono font-semibold text-xs text-blue-600 hover:underline">
-                                                    {item.vehicleId ? (
-                                                        <Link href={`/view-vehicle/${encodeURIComponent(item.registration)}`}>
-                                                            {item.registration}
-                                                        </Link>
-                                                    ) : (
-                                                        item.registration
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="text-xs">
-                                                        {item.customerId ? (
-                                                            <Link href={`/customers/${item.customerId}`}>
-                                                                <span className="font-medium text-blue-600 hover:underline truncate max-w-[140px]" title={item.customerName || ""}>
-                                                                    {item.customerName || "Unknown"}
-                                                                </span>
-                                                            </Link>
-                                                        ) : (
-                                                            <span className="font-medium text-blue-600 truncate max-w-[140px]" title={item.customerName || ""}>
-                                                                {item.customerName || "Unknown"}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="text-xs text-slate-500 font-mono">{item.customerPhone || "-"}</div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {item.vehicleMake || item.vehicleModel ? (
-                                                        <div className="text-xs">
-                                                            <div className="font-medium truncate">{item.vehicleMake || "Unknown"}</div>
-                                                            <div className="text-slate-500 truncate">{item.vehicleModel || ""}</div>
-                                                        </div>
-                                                    ) : "-"}
-                                                </TableCell>
-                                                <TableCell className="text-xs whitespace-nowrap">
-                                                    <div className="flex flex-col">
-                                                        {motExpiry ? (
-                                                            <span className="font-medium">{motString}</span>
-                                                        ) : (
-                                                            <span className="text-slate-400 italic">No data</span>
-                                                        )}
-                                                        {item.lastChecked && (
-                                                            <span className="text-[10px] text-muted-foreground mt-0.5">
-                                                                Updated: {new Date(item.lastChecked).toLocaleDateString("en-GB")}
-                                                            </span>
-                                                        )}
-                                                        {item.liveMotBookedDate && (
-                                                            <span className="text-[10px] text-green-600 font-semibold mt-0.5">
-                                                                Booked: {new Date(item.liveMotBookedDate).toLocaleDateString("en-GB")}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {status === 'expired' && <Badge variant="destructive" className="bg-red-500">Expired {Math.abs(daysLeft!)}d ago</Badge>}
-                                                    {status === 'due' && <Badge variant="default" className="bg-orange-500">Due in {daysLeft}d</Badge>}
-                                                    {status === 'valid' && <Badge variant="default" className="bg-green-500">{daysLeft}d left</Badge>}
-                                                    {status === 'unknown' && <Badge variant="secondary">No MOT Data</Badge>}
-                                                </TableCell>
-                                                <TableCell className="text-xs">
-                                                    {item.liveTaxStatus ? (
-                                                        <Badge
-                                                            variant={
-                                                                item.liveTaxStatus === 'Taxed' ? 'outline' :
-                                                                    item.liveTaxStatus === 'SORN' ? 'secondary' :
-                                                                        'destructive'
-                                                            }
-                                                            className={
-                                                                item.liveTaxStatus === 'Taxed' ? "text-green-600 border-green-200 bg-green-50" : ""
-                                                            }
-                                                        >
-                                                            {item.liveTaxStatus}
-                                                        </Badge>
-                                                    ) : '-'}
-                                                </TableCell>
-                                                <TableCell className="align-middle text-muted-foreground text-xs">
-                                                    <div className="flex flex-col gap-1 items-start">
-                                                        <span>{sentDate}</span>
-                                                        {sentRelative && (
-                                                            <div className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md text-[10px] tracking-wide inline-flex">
-                                                                {sentRelative}
-                                                            </div>
-                                                        )}
-                                                        {item.lastSent && (
-                                                            <div className="flex items-center gap-1.5">
-                                                                {item.lastStatus === "read" ? <Eye className="w-3.5 h-3.5 text-blue-600" /> :
-                                                                 item.lastStatus === "delivered" ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> :
-                                                                 item.lastStatus === "sent" ? <Clock className="w-3.5 h-3.5 text-yellow-600" /> :
-                                                                 item.lastStatus === "failed" ? <XCircle className="w-3.5 h-3.5 text-red-600" /> :
-                                                                 <Clock className="w-3.5 h-3.5 text-gray-400" />}
-                                                                <span className="capitalize">{item.lastStatus || 'queued'}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="align-middle">
-                                                    <div className="flex items-center gap-1">
-                                                        {isSent ? (
-                                                            <Button size="icon" variant="ghost" disabled title="Already Sent">
-                                                                <CheckCircle className="w-4 h-4 text-green-600" />
-                                                            </Button>
-                                                        ) : (
-                                                            canCreate ? (
-                                                                <>
-                                                                    <CreateReminderButton
-                                                                        item={item}
-                                                                        onSuccess={() => {
-                                                                            // Update local state to show 'sent' for this item temporarily
-                                                                            const newResults = [...results];
-                                                                            const index = newResults.findIndex(r => r.registration === item.registration);
-                                                                            if (index !== -1) {
-                                                                                newResults[index] = { ...item, lastSent: new Date().toISOString() };
-                                                                                setResults(newResults);
-                                                                                localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                    <Button
-                                                                        size="icon"
-                                                                        variant="outline"
-                                                                        title="Mark as Booked"
-                                                                        disabled={!item.vehicleId}
-                                                                        onClick={() => {
-                                                                            setBookingTargetRegs(new Set([item.registration]));
-                                                                            setShowBookedDialog(true);
-                                                                        }}
-                                                                    >
-                                                                        <CalendarCheck className="w-4 h-4 text-green-600" />
-                                                                    </Button>
-                                                                </>
-                                                            ) : (
-                                                                <Button size="icon" variant="ghost" disabled title={isBooked ? "MOT already booked" : "Cannot create reminder (No MOT data or too old)"}>
-                                                                    {isBooked ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-slate-300" />}
-                                                                </Button>
-                                                            )
-                                                        )}
-                                                        <Button 
-                                                            size="icon" 
-                                                            variant="ghost" 
-                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            title="Delete this row"
-                                                            onClick={() => handleDeleteRow(item.registration)}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
+                            <CardContent className="p-0">
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="hover:bg-transparent">
+                                                <TableHead className="w-[40px] pl-4">
+                                                    <Checkbox checked={allVisibleSelected} onCheckedChange={toggleSelectAll} />
+                                                </TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground">Vehicle</TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground">Customer</TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground">MOT expiry</TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground">Status</TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground">Tax</TableHead>
+                                                <TableHead
+                                                    className="text-[11px] uppercase tracking-wider text-muted-foreground cursor-pointer select-none"
+                                                    onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
+                                                >
+                                                    <span className="inline-flex items-center gap-1">
+                                                        Last sent {sortOrder === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
+                                                    </span>
+                                                </TableHead>
+                                                <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground text-right pr-4">Actions</TableHead>
                                             </TableRow>
-                                        )
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {sortedFilteredResults.map((item, i) => {
+                                                const isSent = !!item.lastSent;
+                                                const sentDateObj = item.lastSent ? new Date(item.lastSent) : null;
+                                                let sentFull = '';
+                                                let sentRelative = '';
+                                                if (sentDateObj) {
+                                                    sentFull = sentDateObj.toLocaleDateString("en-GB") + ' ' + sentDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                    try { sentRelative = formatDistanceToNow(sentDateObj, { addSuffix: true }); } catch (e) { /* ignore */ }
+                                                }
+
+                                                const motExpiry = item.liveMotExpiryDate ? new Date(item.liveMotExpiryDate) : null;
+                                                const today = new Date();
+                                                const diffTime = motExpiry ? motExpiry.getTime() - today.getTime() : 0;
+                                                const daysLeft = motExpiry ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : null;
+                                                let status: 'expired' | 'due' | 'valid' | 'unknown' = 'unknown';
+                                                if (motExpiry) {
+                                                    if (daysLeft! < 0) status = 'expired';
+                                                    else if (daysLeft! <= 30) status = 'due';
+                                                    else status = 'valid';
+                                                }
+                                                const isBooked = !!item.liveMotBookedDate;
+                                                const canCreate = !isSent && !isBooked && motExpiry && (daysLeft! > -300);
+                                                const taxStatus = item.liveTaxStatus || null;
+
+                                                return (
+                                                    <TableRow key={i} className={`group ${status === "expired" ? "bg-red-50/50 hover:bg-red-50" : status === "due" ? "bg-amber-50/40 hover:bg-amber-50" : "hover:bg-slate-50"}`}>
+                                                        <TableCell className="pl-4">
+                                                            <Checkbox checked={selectedRegs.has(item.registration)} onCheckedChange={() => toggleSelectRow(item.registration)} />
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-col gap-1">
+                                                                {item.vehicleId ? (
+                                                                    <Link href={`/view-vehicle/${encodeURIComponent(item.registration)}`}>
+                                                                        <span className="inline-block w-fit rounded bg-yellow-300 px-1.5 py-0.5 font-mono text-xs font-bold text-black ring-1 ring-yellow-500/60 hover:ring-yellow-600 cursor-pointer">
+                                                                            {item.registration}
+                                                                        </span>
+                                                                    </Link>
+                                                                ) : (
+                                                                    <span className="inline-block w-fit rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-bold text-slate-700 ring-1 ring-slate-300">
+                                                                        {item.registration}
+                                                                    </span>
+                                                                )}
+                                                                {(item.vehicleMake || item.vehicleModel) && (
+                                                                    <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                                                                        {[item.vehicleMake, item.vehicleModel].filter(Boolean).join(" ")}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <div className="flex flex-col">
+                                                                {item.customerId ? (
+                                                                    <Link href={`/customers/${item.customerId}`}>
+                                                                        <span className="text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline truncate max-w-[160px] cursor-pointer" title={item.customerName || ""}>
+                                                                            {item.customerName || "Unknown"}
+                                                                        </span>
+                                                                    </Link>
+                                                                ) : (
+                                                                    <span className="text-sm font-medium text-slate-800 truncate max-w-[160px]" title={item.customerName || ""}>
+                                                                        {item.customerName || <span className="text-muted-foreground font-normal">Unknown</span>}
+                                                                    </span>
+                                                                )}
+                                                                <span className="text-xs text-muted-foreground font-mono">{item.customerPhone || "—"}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            <div className="flex flex-col">
+                                                                <span className={`text-sm ${status === "expired" ? "font-semibold text-red-700" : "font-medium"}`}>
+                                                                    {motExpiry ? motExpiry.toLocaleDateString("en-GB") : <span className="text-muted-foreground italic font-normal">No data</span>}
+                                                                </span>
+                                                                {item.liveMotBookedDate ? (
+                                                                    <span className="text-[11px] text-emerald-600 font-medium">Booked {new Date(item.liveMotBookedDate).toLocaleDateString("en-GB")}</span>
+                                                                ) : item.lastChecked ? (
+                                                                    <span className="text-[10px] text-muted-foreground">checked {new Date(item.lastChecked).toLocaleDateString("en-GB")}</span>
+                                                                ) : null}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {status === 'expired' && <Pill tone="red">Expired {Math.abs(daysLeft!)}d ago</Pill>}
+                                                            {status === 'due' && <Pill tone="amber">Due in {daysLeft}d</Pill>}
+                                                            {status === 'valid' && <Pill tone="green">{daysLeft}d left</Pill>}
+                                                            {status === 'unknown' && <Pill tone="slate">No MOT data</Pill>}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {taxStatus ? (
+                                                                taxStatus.toLowerCase() === 'taxed'
+                                                                    ? <Pill tone="green">Taxed</Pill>
+                                                                    : taxStatus.toLowerCase() === 'sorn'
+                                                                        ? <Pill tone="slate">SORN</Pill>
+                                                                        : <Pill tone="red">{taxStatus}</Pill>
+                                                            ) : <span className="text-muted-foreground text-xs">—</span>}
+                                                        </TableCell>
+                                                        <TableCell className="whitespace-nowrap">
+                                                            {isSent ? (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <span className="text-xs font-medium" title={sentFull}>{sentRelative || sentFull}</span>
+                                                                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground capitalize">
+                                                                        {item.lastStatus === "read" ? <Eye className="w-3 h-3 text-blue-600" /> :
+                                                                            item.lastStatus === "delivered" ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> :
+                                                                                item.lastStatus === "sent" ? <Clock className="w-3 h-3 text-amber-500" /> :
+                                                                                    item.lastStatus === "failed" ? <XCircle className="w-3 h-3 text-red-500" /> :
+                                                                                        <Clock className="w-3 h-3 text-slate-400" />}
+                                                                        {item.lastStatus || 'queued'}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground">Never</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right pr-4">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {isSent ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium pr-1"><CheckCircle className="w-3.5 h-3.5" /> Sent</span>
+                                                                ) : canCreate ? (
+                                                                    <>
+                                                                        <CreateReminderButton
+                                                                            item={item}
+                                                                            onSuccess={() => {
+                                                                                const newResults = [...results];
+                                                                                const index = newResults.findIndex(r => r.registration === item.registration);
+                                                                                if (index !== -1) {
+                                                                                    newResults[index] = { ...item, lastSent: new Date().toISOString() };
+                                                                                    setResults(newResults);
+                                                                                    localStorage.setItem("ga4_scan_results", JSON.stringify(newResults));
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        <Button
+                                                                            size="icon" variant="ghost" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                                                            title="Mark as booked" disabled={!item.vehicleId}
+                                                                            onClick={() => { setBookingTargetRegs(new Set([item.registration])); setShowBookedDialog(true); }}
+                                                                        >
+                                                                            <CalendarCheck className="w-4 h-4" />
+                                                                        </Button>
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-[11px] text-muted-foreground pr-1" title={isBooked ? "MOT already booked" : "No MOT data or too old"}>
+                                                                        {isBooked ? "Booked ✓" : "—"}
+                                                                    </span>
+                                                                )}
+                                                                <Button
+                                                                    size="icon" variant="ghost"
+                                                                    className="h-7 w-7 text-slate-300 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    title="Remove this row"
+                                                                    onClick={() => handleDeleteRow(item.registration)}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
+                                            {sortedFilteredResults.length === 0 && (
+                                                <TableRow>
+                                                    <TableCell colSpan={8} className="text-center py-10 text-muted-foreground text-sm">
+                                                        Nothing matches — try clearing the search or "Hide sent".
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </>
                 )}
+
+                {/* Booked dialog (shared by bulk + per-row) */}
+                <Dialog open={showBookedDialog} onOpenChange={(open) => { setShowBookedDialog(open); if (!open) setBookingTargetRegs(null); }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Mark MOT booked</DialogTitle>
+                            <DialogDescription>
+                                Pick the date the MOT is booked for — we won't send reminders for these vehicles this cycle.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-2">
+                            <label className="text-sm font-medium block mb-2">Booked date</label>
+                            <Input type="date" value={bookedDate} onChange={(e) => setBookedDate(e.target.value)} />
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowBookedDialog(false)}>Cancel</Button>
+                            <Button onClick={handleMarkBooked} disabled={!bookedDate || markBookedMutation.isPending}>
+                                {markBookedMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Save booking
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
         </DashboardLayout>
     );
