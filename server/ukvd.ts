@@ -78,11 +78,17 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
 
         const data = await response.json();
 
-        if (data.ResponseInformation?.StatusCode !== 0) {
-            _lastUkvdStatus = data.ResponseInformation?.StatusMessage || "UKVD lookup failed";
+        const _status = data.ResponseInformation?.StatusMessage || "";
+        const _code = data.ResponseInformation?.StatusCode ?? 0;
+        // StatusCode 0 = clean. A "Success…WithWarnings" code still carries a usable Results block
+        // (vehicle image, DVLA tech, any populated model fields) — only bail on a genuine failure or
+        // billing error, otherwise we needlessly throw away real data for older/partial-coverage cars.
+        if (_code !== 0 && !/success/i.test(_status)) {
+            _lastUkvdStatus = _status || "UKVD lookup failed";
             console.warn(`[UKVD] Lookup failed: ${_lastUkvdStatus}`);
             return null;
         }
+        if (_code !== 0) console.warn(`[UKVD] ${_status} — using results with warnings`);
 
         const results = data.Results;
         const vehicleDetails = results?.VehicleDetails;
