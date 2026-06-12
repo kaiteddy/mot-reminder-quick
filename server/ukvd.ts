@@ -103,7 +103,11 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
         const imageDetails = results?.VehicleImageDetails;
 
         const imageList = imageDetails?.VehicleImageList || imageDetails?.VehicleImageDetails?.VehicleImageList;
-        const foundImageUrl = imageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl;
+        let foundImageUrl = imageList?.[0]?.ImageUrl || imageDetails?.ImageFull?.ImageUrl || imageDetails?.ImageExternal?.ImageUrl;
+        // When UKVD has no photo it returns a ".../missing" placeholder (and the image block's own
+        // StatusCode is non-zero, e.g. 2 = NoResultsFound). Treat that as no image, not a real one.
+        if (foundImageUrl && /\/missing(?:[?#]|$)/i.test(String(foundImageUrl))) foundImageUrl = null;
+        if (foundImageUrl && (imageDetails?.StatusCode ?? 0) !== 0) foundImageUrl = null;
 
         console.log(`[UKVD DEBUG] Found Image URL: ${foundImageUrl ? "YES" : "NO"}`);
 

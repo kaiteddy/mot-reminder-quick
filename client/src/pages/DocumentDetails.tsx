@@ -692,7 +692,7 @@ export default function DocumentDetails() {
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 p-3">
             {/* vehicle */}
             <div className="xl:col-span-5 space-y-1.5">
-              {lookupTech?.imageUrl && (
+              {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
                     onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = "none"; }}

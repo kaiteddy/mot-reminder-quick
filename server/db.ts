@@ -1083,6 +1083,9 @@ const normReg = (r?: string) => {
 };
 
 /** Reg lookup for the job sheet form: DB first, then DVLA (like GA4's VRM lookup). */
+// UKVD returns a ".../missing" placeholder URL when it has no photo — never treat it as a real image.
+const cleanImg = (u: any): string | null => (u && !/\/missing(?:[?#]|$)/i.test(String(u))) ? u : null;
+
 export async function lookupVehicleForReg(registration: string, opts?: { force?: boolean }) {
   const force = !!opts?.force;
   const db = await getDb();
@@ -1100,7 +1103,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
   if (db) {
     const v: any = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
     if (v) {
-      try { const _ctd = typeof v.comprehensiveTechnicalData === "string" ? JSON.parse(v.comprehensiveTechnicalData) : v.comprehensiveTechnicalData; v.imageUrl = _ctd?.ukvd?.imageUrl ?? null; } catch { v.imageUrl = null; }
+      try { const _ctd = typeof v.comprehensiveTechnicalData === "string" ? JSON.parse(v.comprehensiveTechnicalData) : v.comprehensiveTechnicalData; v.imageUrl = cleanImg(_ctd?.ukvd?.imageUrl); } catch { v.imageUrl = null; }
       const cust = v.customerId ? (await db.select().from(customers).where(eq(customers.id, v.customerId)).limit(1))[0] ?? null : null;
       // A known vehicle imported from GA4 is often sparse (e.g. only the make). The SWS-derived
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
@@ -1120,7 +1123,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           const { fetchRichVehicleData } = await import("./sws");
           const sws: any = await fetchRichVehicleData(reg, true);
           const u = sws?.ukvd || {}; const sp = sws?.specs || {};
-          if (u.imageUrl) v.imageUrl = u.imageUrl;
+          const _img = cleanImg(u.imageUrl); if (_img) v.imageUrl = _img;
           const fn = sp.fullName || "";
           const updates: any = {};
           // force = an explicit lookup after the reg was changed → OVERWRITE the identity fields
@@ -1181,7 +1184,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
       v.derivative = tidyDerivative(sws?.specs?.fullName || sws?.specs?.name, v.make);
-      v.imageUrl = u.imageUrl ?? null;
+      v.imageUrl = cleanImg(u.imageUrl);
       sources.push("sws");
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
@@ -1261,7 +1264,7 @@ export async function liveVehicleTech(registration: string) {
     out.oilCapacity = oil?.capacity ?? null;
     out.airconType = ctd?.aircon?.type ?? null;
     out.airconCapacity = ctd?.aircon?.quantity ?? ctd?.aircon?.capacity ?? null;
-    out.imageUrl = ctd?.ukvd?.imageUrl ?? null;
+    out.imageUrl = cleanImg(ctd?.ukvd?.imageUrl);
   } catch { /* tech cache/fetch unavailable */ }
 
   // --- MOT & tax: free (DVLA) and time-sensitive → always live. ---
