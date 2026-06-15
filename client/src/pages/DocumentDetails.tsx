@@ -312,7 +312,14 @@ export default function DocumentDetails() {
     const reg = q.get("reg");
     const customerId = q.get("customerId");
     const docType = q.get("docType");
-    if (docType) setForm((f) => ({ ...f, docType }));
+    // Brand-new sheet: wipe anything carried over from the doc we were just viewing.
+    // (wouter reuses this component on a route-param change, so state would otherwise linger.)
+    setForm({ docType: docType || "JS" });
+    setItems([]);
+    setLookupTech(null);
+    setNewCust(false);
+    initRef.current = null;     // so clicking back to a previous tab re-loads that doc
+    regOnLoadRef.current = "";
     if (reg) {
       setForm((f) => ({ ...f, registration: reg.toUpperCase() }));
       lookup(reg, true); // fills the vehicle and its linked customer (silent — no auto-create yet)
