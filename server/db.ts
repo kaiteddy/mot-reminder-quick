@@ -21,6 +21,11 @@ export async function getDb() {
         const pool = mysql.createPool({
           uri: ENV.databaseUrl,
           ssl: { rejectUnauthorized: true },
+          // Reuse warm connections across requests so each page load doesn't pay the ~1.7s TiDB
+          // TLS handshake. TCP keep-alive stops idle connections being dropped between refreshes.
+          connectionLimit: 5,
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 10000,
         });
         // @ts-ignore
         _db = drizzle(pool);
