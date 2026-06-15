@@ -455,6 +455,12 @@ export default function DocumentDetails() {
       else if (src.includes("dvla")) toast.success("Loaded from DVLA");
       else toast.message("No external data found — registration set");
       if (res.warning) toast.warning(res.warning, { duration: 8000 });
+      // Changing the reg to a car with no owner on file leaves the previously-linked customer
+      // attached. Warn so an unrelated customer isn't silently carried onto a different vehicle.
+      if (force && !c && form.customerId) {
+        const who = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "the linked customer").trim();
+        toast.warning(`${v.registration || reg} isn't on file for ${who} — check the customer is correct.`, { duration: 9000 });
+      }
     } catch { toast.error("Lookup failed"); }
     finally { setLooking(false); }
   }
