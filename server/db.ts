@@ -2069,15 +2069,22 @@ export async function getRichPDF(documentId: number) {
     billTo,
   };
 
-  // technical info for the boxed row (same sources as the on-screen vehicle cards)
+  // Technical info for the boxed row. Use the SAME live source as the on-screen cards
+  // (oil/aircon from the tech cache, MOT/tax live from DVLA) so the printed row matches what's
+  // shown — the raw vehicle record often has no cached oil/aircon, which left the row blank.
+  let lt: any = null;
+  try { lt = vehicle?.registration ? await liveVehicleTech(vehicle.registration) : null; } catch { /* fall back to the record */ }
   const td = (vehicle?.comprehensiveTechnicalData as any) || {};
-  const oil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
-  const oilSpec = oil?.specification || "";
-  const oilCap = oil?.capacity || "";
-  const airType = td.aircon?.type || "";
-  const airQty = td.aircon?.quantity ?? td.aircon?.capacity ?? "";
-  const motExp = vehicle?.motExpiryDate ? new Date(vehicle.motExpiryDate).toLocaleDateString('en-GB') : "";
-  const taxDue = vehicle?.taxDueDate ? new Date(vehicle.taxDueDate).toLocaleDateString('en-GB') : "";
+  const recOil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+  const oilSpec = lt?.oilSpec || recOil?.specification || "";
+  const oilCap = lt?.oilCapacity || recOil?.capacity || "";
+  const airType = lt?.airconType || td.aircon?.type || "";
+  const airQty = lt?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity ?? "";
+  const motRaw = lt?.motExpiry || vehicle?.motExpiryDate;
+  const motExp = motRaw ? new Date(motRaw).toLocaleDateString('en-GB') : "";
+  const taxStatus = lt?.taxStatus || vehicle?.taxStatus || "";
+  const taxDueRaw = lt?.taxDueDate || vehicle?.taxDueDate;
+  const taxDue = taxDueRaw ? new Date(taxDueRaw).toLocaleDateString('en-GB') : "";
 
   const vehicleData = {
     reg: vehicle?.registration || '',
@@ -2096,7 +2103,7 @@ export async function getRichPDF(documentId: number) {
     engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',
     air_con: airType ? `${airType}${airQty ? ` ${airQty}` : ''}` : '',
     mot_expiry: motExp,
-    tax_info: vehicle?.taxStatus ? `${vehicle.taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
+    tax_info: taxStatus ? `${taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
   };
 
   const labour = items.filter(i => i.itemType === 'Labour').map(i => ({
