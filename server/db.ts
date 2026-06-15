@@ -352,7 +352,8 @@ export async function getVehicleByRegistration(registration: string) {
   const db = await getDb();
   if (!db) return undefined;
   const cleanReg = registration.toUpperCase().replace(/\s/g, "");
-  const result = await db.select().from(vehicles).where(eq(vehicles.registration, cleanReg)).limit(1);
+  // space-insensitive: GA4 regs are stored with a space, so compare both normalised
+  const result = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${cleanReg}`).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -773,7 +774,10 @@ export async function saveTechnicalData(registration: string, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const existing = await db.select().from(vehicles).where(eq(vehicles.registration, registration)).limit(1);
+  // Match space-insensitively: GA4 stores regs WITH a space ("EX64 ARZ") but lookups often pass
+  // none ("EX64ARZ"); an exact match here created duplicate vehicles. Update the matched row by id.
+  const regNorm = registration.toUpperCase().replace(/\s/g, "");
+  const existing = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${regNorm}`).limit(1);
 
   const make = data?.ukvd?.make || data?.specs?.make || (data?.specs?.fullName ? data?.specs?.fullName.split(' ')[0] : null) || "Unknown";
   const model = data?.ukvd?.model || data?.specs?.model || (data?.specs?.fullName ? data?.specs?.fullName.split(' ').slice(1).join(' ') : null) || "Unknown";
@@ -801,7 +805,7 @@ export async function saveTechnicalData(registration: string, data: any) {
         comprehensiveTechnicalData: data,
         swsLastUpdated: new Date()
       })
-      .where(eq(vehicles.registration, registration));
+      .where(eq(vehicles.id, v.id));
   } else {
     await db.insert(vehicles).values({
       registration,
