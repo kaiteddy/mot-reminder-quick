@@ -94,7 +94,7 @@ function recalc(i: Item): Item {
   const q = num(i.quantity) ?? 0, u = num(i.unitPrice) ?? 0, r = num(i.vatRate) ?? 0;
   const base = +(q * u).toFixed(2);
   const dv = num(i.discount) ?? 0;
-  const disc = dv > 0 ? (i.discountType === "pct" ? +(base * dv / 100).toFixed(2) : Math.min(dv, base)) : 0;
+  const disc = dv > 0 ? (i.discountType === "amt" ? Math.min(dv, base) : +(base * dv / 100).toFixed(2)) : 0; // default %; only explicit 'amt' is £
   const net = +Math.max(0, base - disc).toFixed(2);
   return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
 }

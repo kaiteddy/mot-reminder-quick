@@ -1791,6 +1791,7 @@ export async function convertDocument(id: number, toType: string) {
     lineItems: (lineItems || []).map((li: any) => ({
       itemType: li.itemType, description: li.description, partNumber: li.partNumber, nominalCode: li.nominalCode,
       quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
+      discount: li.discount, discountType: li.discountType, // carry the per-line discount across convert/copy
     })),
   });
 }
@@ -2111,8 +2112,8 @@ export async function getRichPDF(documentId: number) {
   const discCell = (i: any) => {
     const dv = Number(i.discount) || 0;
     if (dv <= 0) return '';
-    if (i.discountType === 'pct') return `${dv}%`;
-    return '-£' + dv.toFixed(2);
+    if (i.discountType === 'amt') return '-£' + dv.toFixed(2); // legacy/GA4 + new % both render as a percentage
+    return `${dv}%`;
   };
   const labour = items.filter(i => i.itemType === 'Labour').map(i => ({
     description: i.description,
