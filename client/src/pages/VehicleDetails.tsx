@@ -45,6 +45,45 @@ import {
 import { Smartphone, QrCode } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// SWS returns engine oil as one row per ACEA/API/ILSAC standard (8+ rows that differ only by
+// grade). Condense to the distinct SAE grades (preferred first) + capacity; dedupe other fluids.
+function LubricantsSummary({ lubricants }: { lubricants: any[] }) {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const fmtCap = (cap: any) => { const v = String(cap ?? "").replace(/\s*\(l\)\s*/i, "").trim(); return v ? `${v} L` : ""; };
+    const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
+    const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || String(s || "").trim();
+    const oils = lubes.filter(isOil);
+    const prefG = Array.from(new Set(oils.filter((o) => /PREFERRED/i.test(o?.description || "")).map((o) => gradeOf(o.specification)).filter(Boolean)));
+    const allG = Array.from(new Set(oils.map((o) => gradeOf(o.specification)).filter(Boolean)));
+    const oilGrades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    const oilCap = oils.find((o) => o?.capacity)?.capacity;
+    const seen = new Set<string>();
+    const others = lubes.filter((l) => !isOil(l)).filter((l) => { const k = `${l?.description}|${l?.specification}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!lubes.length) return <p className="text-sm text-muted-foreground italic">Specifications available in technical documents</p>;
+    return (
+        <div className="space-y-3">
+            {oils.length > 0 && (
+                <div className="text-sm">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">Engine Oil</p>
+                    <p className="font-bold">
+                        {oilGrades.length ? oilGrades.map((g, i) => (
+                            <span key={i}>{i > 0 && <span className="text-muted-foreground font-normal"> · </span>}{g}{prefG.includes(g) && oilGrades.length > 1 && <span className="text-[10px] text-blue-600 font-medium"> (preferred)</span>}</span>
+                        )) : (oils[0]?.specification || "N/A")}
+                    </p>
+                    {oilCap && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(oilCap)}</p>}
+                </div>
+            )}
+            {others.map((l: any, i: number) => (
+                <div key={i} className="text-sm">
+                    <p className="text-xs font-medium text-muted-foreground uppercase">{String(l?.description || "Fluid").replace(/\s*\(LUBRICANT SPECIFICATION\)/i, "").trim()}</p>
+                    <p className="font-bold">{l?.specification || "N/A"}</p>
+                    {l?.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(l.capacity)}</p>}
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // Tabbed workshop history for a vehicle: full service timeline, every part fitted, and the
 // MOT test history with advisories — mirrors how a job sheet is laid out.
 function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; registration: string }) {
@@ -610,19 +649,7 @@ export default function VehicleDetails() {
                                                 <Droplet className="w-4 h-4 text-blue-500" />
                                                 Lubricants & Fluids
                                             </h3>
-                                            <div className="space-y-3">
-                                                {/* This is a simplification, SWS LUF is complex. 
-                                                    In v0dashboard-2 they have a better renderer, but let's show key info. */}
-                                                {(vehicle.comprehensiveTechnicalData as any).lubricants.map?.((l: any, i: number) => (
-                                                    <div key={i} className="text-sm">
-                                                        <p className="text-xs font-medium text-muted-foreground uppercase">{(l.description as string) || 'Fluid'}</p>
-                                                        <p className="font-bold">{(l.specification as string) || 'N/A'}</p>
-                                                        {l.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {l.capacity}L</p>}
-                                                    </div>
-                                                )) || (
-                                                        <p className="text-sm text-muted-foreground italic">Specifications available in technical documents</p>
-                                                    )}
-                                            </div>
+                                            <LubricantsSummary lubricants={(vehicle.comprehensiveTechnicalData as any).lubricants} />
                                         </div>
                                     )}
 
