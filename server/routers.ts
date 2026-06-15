@@ -272,6 +272,12 @@ export const appRouter = router({
         const { getVehiclePartsHistory } = await import("./db");
         return getVehiclePartsHistory(input.vehicleId);
       }),
+    partSuggest: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { suggestParts } = await import("./db");
+        return suggestParts(input.query);
+      }),
     repairPricing: publicProcedure
       .input(z.object({ query: z.string().min(2), make: z.string().optional(), model: z.string().optional() }))
       .query(async ({ input }) => {

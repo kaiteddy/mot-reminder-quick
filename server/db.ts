@@ -390,6 +390,42 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
     .limit(limit);
 }
 
+// Shorthand the workshop types → fuller search terms, so e.g. "OF1" finds oil filters and "5/30"
+// finds 5W-30 oil even when the historical description is spelled differently. Extend freely.
+const PART_ALIASES: Record<string, string[]> = {
+  of: ["oil filter"], of1: ["oil filter"], oilf: ["oil filter"],
+  af: ["air filter"], airf: ["air filter"],
+  cab: ["cabin filter", "pollen filter"], caf: ["cabin filter"], pollen: ["pollen filter", "cabin filter"],
+  ff: ["fuel filter"], fuelf: ["fuel filter"],
+  pads: ["brake pads"], fp: ["front pads", "front brake pads"], rp: ["rear pads", "rear brake pads"],
+  discs: ["brake discs"], fd: ["front discs", "front brake discs"], rd: ["rear discs", "rear brake discs"],
+  plug: ["spark plug"], plugs: ["spark plugs"], wiper: ["wiper blade"], wipers: ["wiper blades"],
+  bulb: ["bulb"], bat: ["battery"], batt: ["battery"],
+};
+
+/** Suggest parts the workshop has used before (part number + description), matching the typed text
+ *  or a known shorthand. Powers the parts autocomplete so typing fills both fields quickly. */
+export async function suggestParts(query: string, limit = 8) {
+  const db = await getDb();
+  if (!db) return [];
+  const qn = (query || "").toLowerCase().trim();
+  if (qn.length < 2) return [];
+  const terms = new Set<string>([qn]);
+  for (const [k, vals] of Object.entries(PART_ALIASES)) if (qn === k || qn.startsWith(k) || k.startsWith(qn)) vals.forEach((v) => terms.add(v));
+  const oil = qn.match(/^(\d{1,2})\s*[\/w-]+\s*(\d{2})$/); // "5/30", "5w30", "5-30" → 5W-30 oil
+  if (oil) { terms.add(`${oil[1]}w-${oil[2]}`); terms.add(`${oil[1]}w${oil[2]}`); }
+  const conds = Array.from(terms).flatMap((t) => [like(serviceLineItems.description, `%${t}%`), like(serviceLineItems.partNumber, `%${t}%`)]);
+  const rows = await db.select({
+    partNumber: serviceLineItems.partNumber, description: serviceLineItems.description, n: sql<number>`COUNT(*)`,
+  })
+    .from(serviceLineItems)
+    .where(and(inArray(serviceLineItems.itemType, ["Part", "Lubricant"]), isNotNull(serviceLineItems.description), ne(serviceLineItems.description, ""), or(...conds)))
+    .groupBy(serviceLineItems.partNumber, serviceLineItems.description)
+    .orderBy(desc(sql<number>`COUNT(*)`))
+    .limit(limit);
+  return rows.map((r) => ({ partNumber: r.partNumber, description: r.description, count: Number(r.n) }));
+}
+
 export async function findCustomerBySmartMatch(phone: string | null, email: string | null, name: string | null) {
   const db = await getDb();
   if (!db) return undefined;

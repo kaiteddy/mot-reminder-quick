@@ -1866,6 +1866,45 @@ function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v
   );
 }
 
+// Parts autocomplete: as you type a part number or description, suggest parts the workshop has used
+// before (and known shorthands like 5/30 → oil, OF1 → oil filter). Picking one fills BOTH fields.
+function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
+  value: string; onType: (v: string) => void; onPick: (p: { partNumber?: string | null; description?: string | null }) => void; inp: string; placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [debounced, setDebounced] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { const t = setTimeout(() => setDebounced(value), 220); return () => clearTimeout(t); }, [value]);
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => { if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); };
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => { window.removeEventListener("scroll", measure, true); window.removeEventListener("resize", measure); };
+  }, [open]);
+  const { data } = trpc.documents.partSuggest.useQuery({ query: debounced || "" }, { enabled: open && (debounced || "").trim().length >= 2, staleTime: 30_000 });
+  const opts = ((data as any[]) || []).slice(0, 8);
+  return (
+    <>
+      <input ref={inputRef} className={inp} placeholder={placeholder} value={value ?? ""}
+        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 130)} />
+      {open && rect && opts.length > 0 && createPortal(
+        <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 300), zIndex: 60 }}
+          className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px] max-h-64 overflow-auto">
+          {opts.map((o, i) => (
+            <button key={i} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onPick(o); setOpen(false); }}
+              className="flex w-full items-baseline gap-2 text-left px-2.5 py-1.5 hover:bg-violet-50">
+              {o.partNumber ? <span className="font-mono text-[11px] text-violet-700 shrink-0">{o.partNumber}</span> : null}
+              <span className="truncate">{o.description}</span>
+            </button>
+          ))}
+        </div>, document.body)}
+    </>
+  );
+}
+
 function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
@@ -1898,12 +1937,20 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
             return (
               <TableRow key={idx}>
-                {showPartNo && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
+                {showPartNo && <TableCell>{editing
+                  ? <PartAutocomplete inp={inp} placeholder="Part No" value={it.partNumber ?? ""}
+                      onType={(v) => update(idx, { partNumber: v })}
+                      onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+                  : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
                 <TableCell>{editing ? (
                   kind === "Labour"
                     ? <LabourDescInput inp={inp} value={it.description ?? ""}
                         onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
-                    : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
+                    : showPartNo
+                      ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
+                          onType={(v) => update(idx, { description: v })}
+                          onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+                      : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
                 ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
                 <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
