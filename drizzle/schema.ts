@@ -269,7 +269,8 @@ export const serviceLineItems = mysqlTable("serviceLineItems", {
   subNet: decimal("subNet", { precision: 10, scale: 2 }),
   taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }),
   vatRate: decimal("vatRate", { precision: 5, scale: 2 }),
-  discount: decimal("discount", { precision: 10, scale: 2 }),
+  discount: decimal("discount", { precision: 10, scale: 2 }), // value: a % when discountType='pct', else £ off the line
+  discountType: varchar("discountType", { length: 10 }), // 'pct' | 'amt' (null on legacy/GA4 rows = £ amount)
   partNumber: varchar("partNumber", { length: 100 }), // GA4 part number for stock-linked parts
   nominalCode: varchar("nominalCode", { length: 50 }), // accounting nominal code
   itemType: varchar("itemType", { length: 50 }), // Labour, Part, MOT, Fixed, etc.

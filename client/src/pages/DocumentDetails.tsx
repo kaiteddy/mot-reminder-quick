@@ -88,13 +88,29 @@ function applyTemplate(t: { subject: string; body: string }, ctx: any) {
   return { subject: sub(t.subject), message: sub(t.body) };
 }
 
-type Item = { id?: number; itemType: string; description?: string; partNumber?: string; nominalCode?: string; quantity?: any; unitPrice?: any; vatRate?: any; subNet?: any; taxAmount?: any };
+type Item = { id?: number; itemType: string; description?: string; partNumber?: string; nominalCode?: string; quantity?: any; unitPrice?: any; vatRate?: any; subNet?: any; taxAmount?: any; discount?: any; discountType?: "pct" | "amt" | string };
 
 function recalc(i: Item): Item {
   const q = num(i.quantity) ?? 0, u = num(i.unitPrice) ?? 0, r = num(i.vatRate) ?? 0;
-  const net = +(q * u).toFixed(2);
+  const base = +(q * u).toFixed(2);
+  const dv = num(i.discount) ?? 0;
+  const disc = dv > 0 ? (i.discountType === "pct" ? +(base * dv / 100).toFixed(2) : Math.min(dv, base)) : 0;
+  const net = +Math.max(0, base - disc).toFixed(2);
   return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
 }
+
+// A per-line discount typed as "10%" (percentage) or "15" / "£15" (fixed £ off the line).
+function parseDiscInput(raw: string): Partial<Item> {
+  const s = String(raw ?? "").trim();
+  if (!s) return { discount: undefined, discountType: undefined };
+  const isPct = /%/.test(s);
+  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  if (!isFinite(n) || n <= 0) return { discount: undefined, discountType: undefined };
+  return { discount: n, discountType: isPct ? "pct" : "amt" };
+}
+const fmtDiscEdit = (i: Item) => { const v = num(i.discount); return !v ? "" : i.discountType === "pct" ? `${v}%` : `${v}`; };
+const fmtDiscView = (i: Item) => { const v = num(i.discount); return !v ? "—" : i.discountType === "pct" ? `${v}%` : `£${money(v)}`; };
+const lineDiscountAmt = (i: Item) => { const base = (num(i.quantity) ?? 0) * (num(i.unitPrice) ?? 0); return Math.max(0, +(base - (num(i.subNet) ?? 0)).toFixed(2)); };
 
 // Workshop staff (GA4 "Employee" list) — used for the Sales Advisor / Technician /
 // Road Tester / MOT Tester dropdowns. (Could later be moved to editable app settings.)
@@ -429,8 +445,9 @@ export default function DocumentDetails() {
     const vat = +(itemTax("Labour") + itemTax("Part") + itemTax("Other") + itemTax("Excess") + (sundries + lubricants + paint) * 0.2).toFixed(2);
     const motGross = +mot.toFixed(2); // MOT fee is outside the scope of VAT
     const gross = +(subTotal + vat + motGross).toFixed(2);
+    const discountTotal = +items.reduce((a, i) => a + lineDiscountAmt(i), 0).toFixed(2); // already netted off subTotal — informational
     return {
-      subTotal, vat, motGross, gross, net: subTotal, tax: vat,
+      subTotal, vat, motGross, gross, net: subTotal, tax: vat, discountTotal,
       labourNet, partsNet, sundriesNet: sundries, paintNet: paint, lubricantNet: lubricants,
     };
   }, [items, form.motAmount, form.sundriesAmount, form.lubricantsAmount, form.paintAmount]);
@@ -486,7 +503,7 @@ export default function DocumentDetails() {
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
       staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany,
-      lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount) })),
+      lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount), discount: num(i.discount) ?? null, discountType: i.discountType ?? null })),
     };
   }
 
@@ -996,6 +1013,12 @@ export default function DocumentDetails() {
             <div className="xl:col-span-3 space-y-3">
               <Panel title="Totals">
                 <TRow label="SubTotal" value={liveTotals.subTotal} />
+                {liveTotals.discountTotal > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+                    <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+                  </div>
+                )}
                 <TRow label="VAT" value={liveTotals.vat} />
                 <TRow label="MOT" value={liveTotals.motGross} />
                 <TRow label="Total" value={liveTotals.gross} bold />
@@ -1769,6 +1792,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             <TableHead className="h-8">Description</TableHead>
             <TableHead className="h-8 text-right w-16">{kind === "Labour" ? "Hrs" : "Qty"}</TableHead>
             <TableHead className="h-8 text-right w-20">{kind === "Labour" ? "Rate" : "Unit"}</TableHead>
+            <TableHead className="h-8 text-right w-16">Disc</TableHead>
             <TableHead className="h-8 text-right w-14">VAT%</TableHead>
             <TableHead className="h-8 text-right w-20">Net</TableHead>
             <TableHead className="h-8 text-right w-20">Gross</TableHead>
@@ -1789,6 +1813,9 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
                 ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
                 <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
+                <TableCell className="text-right">{editing
+                  ? <input className={inp + " text-right"} placeholder="–" title="Discount — e.g. 10% or 15 (£ off this line)" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
+                  : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
                 <TableCell className="text-right">£{money(it.subNet)}</TableCell>
                 <TableCell className="text-right">£{money(gross)}</TableCell>
@@ -1796,7 +1823,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
               </TableRow>
             );
           })}
-          {rows.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-4">None yet</TableCell></TableRow>}
+          {rows.length === 0 && <TableRow><TableCell colSpan={(showPartNo ? 1 : 0) + (editing ? 1 : 0) + 7} className="text-center text-muted-foreground py-4">None yet</TableCell></TableRow>}
         </TableBody>
       </Table>
       {editing && <button onClick={add} className="mt-2 inline-flex items-center gap-1.5 text-sm text-violet-700 hover:underline"><Plus className="w-4 h-4" /> Add {kind === "Labour" ? "labour" : kind === "Part" ? "part" : "line"}</button>}

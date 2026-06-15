@@ -1761,6 +1761,7 @@ export async function saveDocument(input: SaveDocInput) {
       quantity: i.quantity != null ? String(i.quantity) : null, unitPrice: i.unitPrice != null ? String(i.unitPrice) : null,
       subNet: i.subNet != null ? String(i.subNet) : null, taxAmount: i.taxAmount != null ? String(i.taxAmount) : null,
       vatRate: i.vatRate != null ? String(i.vatRate) : null,
+      discount: i.discount != null ? String(i.discount) : null, discountType: i.discountType ?? null,
     })) as any);
   }
   return { id: docId };
@@ -2106,11 +2107,18 @@ export async function getRichPDF(documentId: number) {
     tax_info: taxStatus ? `${taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
   };
 
+  // Discount shown in the "D" column: "10%" for a percentage, else the £ knocked off the line.
+  const discCell = (i: any) => {
+    const dv = Number(i.discount) || 0;
+    if (dv <= 0) return '';
+    if (i.discountType === 'pct') return `${dv}%`;
+    return '-£' + dv.toFixed(2);
+  };
   const labour = items.filter(i => i.itemType === 'Labour').map(i => ({
     description: i.description,
     qty: Number(i.quantity),
     unit: Number(i.unitPrice),
-    d: '',
+    d: discCell(i),
     subtotal: Number(i.subNet),
   }));
 
@@ -2118,7 +2126,7 @@ export async function getRichPDF(documentId: number) {
     description: i.description,
     qty: Number(i.quantity),
     unit: Number(i.unitPrice),
-    d: '',
+    d: discCell(i),
     subtotal: Number(i.subNet),
   }));
 
