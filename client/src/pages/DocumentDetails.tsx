@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -1831,6 +1832,40 @@ function CustomerLog({ customerId, vehicleId, documentId }: { customerId?: numbe
   );
 }
 
+// Labour description with a custom suggestions dropdown. Replaces the native <datalist>, whose
+// menu the browser positions itself (and which the table's overflow can clip) — this one always
+// drops straight below the input via a body portal anchored to the input's position.
+const LABOUR_TYPES = ["Mechanical Labour", "Diagnostic Check"];
+function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v: string) => void; inp: string }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => { if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); };
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => { window.removeEventListener("scroll", measure, true); window.removeEventListener("resize", measure); };
+  }, [open]);
+  const q = (value || "").toLowerCase().trim();
+  const opts = LABOUR_TYPES.filter((t) => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+  return (
+    <>
+      <input ref={inputRef} className={inp} placeholder="Mechanical Labour / Diagnostic Check…" value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} />
+      {open && rect && opts.length > 0 && createPortal(
+        <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 190), zIndex: 60 }}
+          className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px]">
+          {opts.map((t) => (
+            <button key={t} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(t); setOpen(false); }}
+              className="block w-full text-left px-2.5 py-1.5 hover:bg-violet-50">{t}</button>
+          ))}
+        </div>, document.body)}
+    </>
+  );
+}
+
 function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
@@ -1844,7 +1879,6 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
   return (
     <div>
-      {kind === "Labour" && <datalist id="labour-types"><option value="Mechanical Labour" /><option value="Diagnostic Check" /></datalist>}
       <Table>
         <TableHeader>
           <TableRow>
@@ -1867,8 +1901,8 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
                 {showPartNo && <TableCell>{editing ? <input className={inp} value={it.partNumber ?? ""} onChange={(e) => update(idx, { partNumber: e.target.value })} /> : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
                 <TableCell>{editing ? (
                   kind === "Labour"
-                    ? <input className={inp} list="labour-types" placeholder="Mechanical Labour / Diagnostic Check…" value={it.description ?? ""}
-                        onChange={(e) => { const v = e.target.value; update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) }); }} />
+                    ? <LabourDescInput inp={inp} value={it.description ?? ""}
+                        onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
                     : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
                 ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
