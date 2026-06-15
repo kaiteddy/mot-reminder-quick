@@ -166,6 +166,11 @@ for (const r of await q("SELECT id, externalId FROM serviceHistory WHERE externa
 // ---- 4) Line items ----
 const lineItems = load("LineItems.csv");
 const { mapGA4LineItem } = await import("../server/services/csv-import");
+// Docs the user has edited in the web replaced their GA4 line items with WEB-LI rows. Don't sync
+// GA4 line items back into those — the web is authoritative there, and re-inserting would duplicate.
+const webEditedDocs = new Set<number>();
+for (const r of await q("SELECT DISTINCT documentId FROM serviceLineItems WHERE externalId LIKE 'WEB-%' AND documentId IS NOT NULL")) webEditedDocs.add(r.documentId);
+if (webEditedDocs.size) console.log(`(skipping GA4 line items for ${webEditedDocs.size} web-edited docs)`);
 const LI_COLS = ["documentId", "documentExternalId", "description", "quantity", "unitPrice", "subNet", "taxAmount", "vatRate", "partNumber", "nominalCode", "itemType"];
 await syncTable({
   name: "Line items", table: "serviceLineItems", rows: lineItems, cols: LI_COLS,
@@ -174,6 +179,7 @@ await syncTable({
     if (!li.externalId) return null;
     const documentId = docMap.get(norm(li.documentExternalId));
     if (!documentId) return null; // orphan line item (parent doc not synced) — skip
+    if (webEditedDocs.has(documentId)) return null; // web owns this doc's line items — don't duplicate
     return {
       externalId: li.externalId, documentId, documentExternalId: cap(li.documentExternalId, 255),
       description: li.description ? clean(li.description)!.slice(0, 65000) : null,
