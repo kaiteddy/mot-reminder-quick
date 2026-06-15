@@ -2146,11 +2146,17 @@ export async function getRichPDF(documentId: number) {
   const excess = doc.docType === 'XS' ? 0 : (Number(doc.excessGross) || 0); // deducted from a main insurance invoice
   const receipts = Number(doc.totalReceipts) || 0;
   const totalGross = Number(doc.totalGross) || 0;
+  // Total £ knocked off across all discounted lines (subNet is already net of the line discount).
+  const discountTotal = +items.reduce((a, i) => {
+    const base = (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0);
+    return a + Math.max(0, base - (Number(i.subNet) || 0));
+  }, 0).toFixed(2);
 
   const totals = {
     labour: labour.reduce((acc, i) => acc + i.subtotal, 0),
     parts: parts.reduce((acc, i) => acc + i.subtotal, 0),
     sundries, lubricants, paint,
+    discount: discountTotal > 0 ? discountTotal : null,
     subtotal: +((Number(doc.totalNet) || 0) - motNet).toFixed(2), // SubTotal excludes the MOT fee (shown separately, 0% VAT)
     vat_rate: 20,
     vat: Number(doc.totalTax) || 0,

@@ -290,6 +290,7 @@ function tcAndTotals(
   if (Number(totals.lubricants) > 0) tRows.push(['Lubricants', Number(totals.lubricants).toFixed(2), false, false]);
   if (Number(totals.paint) > 0) tRows.push(['Paint & Mat.', Number(totals.paint).toFixed(2), false, false]);
   tRows.push(['SubTotal', Number(totals.subtotal).toFixed(2), true, false]);
+  if (totals.discount != null && Number(totals.discount) > 0) tRows.push(['Discount', '-' + Number(totals.discount).toFixed(2), false, false]);
   tRows.push([`VAT (${totals.vat_rate}%)`, Number(totals.vat).toFixed(2), false, false]);
   if (totals.mot != null) tRows.push(['MOT', Number(totals.mot).toFixed(2), false, false]);
   tRows.push([totalLabel, Number(totals.total).toFixed(2), true, true]);
@@ -338,7 +339,8 @@ function tcAndTotals(
 
     doc.font(bold ? 'Helvetica' : 'Helvetica').fontSize(9).fillColor('black');
     doc.text(label, totalsX + 6, ty + 4, { width: halfW - 12, align: 'left' });
-    doc.text(value ? '£' + value : '', totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
+    const display = value ? (value.startsWith('-') ? '-£' + value.slice(1) : '£' + value) : '';
+    doc.text(display, totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
     ty += rowH;
   }
 
