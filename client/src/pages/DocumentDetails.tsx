@@ -363,6 +363,32 @@ export default function DocumentDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew]);
 
+  // When a customer is linked but the account number is still blank, pull it from their
+  // history — account numbers live on documents, not the customer record.
+  useEffect(() => {
+    const cid = form.customerId;
+    if (!cid || form.accountNumber) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const acc = await utils.customers.accountNumber.fetch({ customerId: Number(cid) });
+        if (cancelled || !acc) return;
+        let filled = false;
+        setForm((f) => {
+          if (f.customerId !== cid || f.accountNumber) return f; // changed/filled meanwhile
+          filled = true;
+          return { ...f, accountNumber: acc };
+        });
+        // Persist only if the user is actively editing (e.g. just linked a customer). On a
+        // passive prefill/load we fill the display but don't force a save — matching how the
+        // ?reg= prefill stays silent and never auto-creates an empty draft.
+        if (filled && dirty) markDirty();
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.customerId]);
+
   // On opening an EXISTING job sheet, refresh the live engine-oil / A/C / MOT / tax
   // for the info cards (new sheets get this from the Lookup automatically).
   useEffect(() => {

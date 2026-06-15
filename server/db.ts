@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, asc, isNotNull, like, gte } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, asc, isNotNull, like, gte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import os from "os";
@@ -284,6 +284,19 @@ export async function getCustomerById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+/** The customer's account number (e.g. "TOD001"). It's stored on documents, not the customer
+ *  record, so we read it from their most-recent document that has one. */
+export async function getCustomerAccountNumber(customerId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const r = await db.select({ acc: serviceHistory.accountNumber })
+    .from(serviceHistory)
+    .where(and(eq(serviceHistory.customerId, customerId), isNotNull(serviceHistory.accountNumber), ne(serviceHistory.accountNumber, "")))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(1);
+  return r[0]?.acc ?? null;
 }
 
 export async function createVehicle(data: any) {
