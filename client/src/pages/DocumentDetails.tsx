@@ -181,12 +181,23 @@ export default function DocumentDetails() {
       const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
       const iframe = document.createElement("iframe");
       iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      iframe.src = url;
-      iframe.onload = () => {
-        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
-        catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
-      };
-      document.body.appendChild(iframe);
+      // Chrome paints the embedded PDF asynchronously AFTER the iframe's load event fires.
+      // Calling print() the instant onload runs prints blank pages on a cold render (the
+      // "blank first time, works on the second click" bug), so wait for the viewer to paint.
+      // We keep the spinner up until print actually fires (await below) to block double-clicks.
+      await new Promise<void>((resolve) => {
+        let fired = false;
+        const fire = () => {
+          if (fired) return; fired = true;
+          try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
+          catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
+          resolve();
+        };
+        iframe.onload = () => setTimeout(fire, 800);
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        setTimeout(fire, 5000); // safety: never hang if onload never arrives
+      });
       setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
     } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
     finally { setPrinting(false); }
