@@ -99,17 +99,15 @@ function recalc(i: Item): Item {
   return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
 }
 
-// A per-line discount typed as "10%" (percentage) or "15" / "£15" (fixed £ off the line).
+// A per-line discount is always a percentage (e.g. "10" or "10%" → 10% off the line).
 function parseDiscInput(raw: string): Partial<Item> {
-  const s = String(raw ?? "").trim();
-  if (!s) return { discount: undefined, discountType: undefined };
-  const isPct = /%/.test(s);
-  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  const n = parseFloat(String(raw ?? "").replace(/[^0-9.]/g, ""));
   if (!isFinite(n) || n <= 0) return { discount: undefined, discountType: undefined };
-  return { discount: n, discountType: isPct ? "pct" : "amt" };
+  return { discount: Math.min(n, 100), discountType: "pct" };
 }
-const fmtDiscEdit = (i: Item) => { const v = num(i.discount); return !v ? "" : i.discountType === "pct" ? `${v}%` : `${v}`; };
-const fmtDiscView = (i: Item) => { const v = num(i.discount); return !v ? "—" : i.discountType === "pct" ? `${v}%` : `£${money(v)}`; };
+const fmtDiscEdit = (i: Item) => { const v = num(i.discount); return !v ? "" : `${v}`; };
+// New discounts are %; only legacy/GA4 rows tagged 'amt' still display as a £ figure.
+const fmtDiscView = (i: Item) => { const v = num(i.discount); if (!v) return "—"; return i.discountType === "amt" ? `£${money(v)}` : `${v}%`; };
 const lineDiscountAmt = (i: Item) => { const base = (num(i.quantity) ?? 0) * (num(i.unitPrice) ?? 0); return Math.max(0, +(base - (num(i.subNet) ?? 0)).toFixed(2)); };
 
 // Workshop staff (GA4 "Employee" list) — used for the Sales Advisor / Technician /
@@ -1792,7 +1790,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             <TableHead className="h-8">Description</TableHead>
             <TableHead className="h-8 text-right w-16">{kind === "Labour" ? "Hrs" : "Qty"}</TableHead>
             <TableHead className="h-8 text-right w-20">{kind === "Labour" ? "Rate" : "Unit"}</TableHead>
-            <TableHead className="h-8 text-right w-16">Disc</TableHead>
+            <TableHead className="h-8 text-right w-16">Disc %</TableHead>
             <TableHead className="h-8 text-right w-14">VAT%</TableHead>
             <TableHead className="h-8 text-right w-20">Net</TableHead>
             <TableHead className="h-8 text-right w-20">Gross</TableHead>
@@ -1814,7 +1812,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
                 <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
                 <TableCell className="text-right">{editing
-                  ? <input className={inp + " text-right"} placeholder="–" title="Discount — e.g. 10% or 15 (£ off this line)" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
+                  ? <input className={inp + " text-right"} placeholder="0" title="Discount % off this line — e.g. 10 for 10% off" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
                   : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>
                 <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
                 <TableCell className="text-right">£{money(it.subNet)}</TableCell>
