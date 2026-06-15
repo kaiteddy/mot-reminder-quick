@@ -80,24 +80,40 @@ async function syncTable(opts: {
   return { inserted: toInsert.length, updated: toUpdate.length };
 }
 
+// Intentional merges (Duplicates tab) record the absorbed GA4 _IDs in mergedExternalIds.
+// Those customers were deliberately removed, so we must NOT recreate them — and any doc/vehicle
+// that still references a merged-away GA4 _ID must resolve to the surviving primary customer.
+const mergedToPrimary = new Map<string, number>();
+for (const r of await q("SELECT id, mergedExternalIds FROM customers WHERE mergedExternalIds IS NOT NULL")) {
+  let arr: any[] = [];
+  try { arr = typeof r.mergedExternalIds === "string" ? JSON.parse(r.mergedExternalIds) : r.mergedExternalIds; } catch { arr = []; }
+  for (const ext of arr || []) if (norm(ext)) mergedToPrimary.set(norm(ext), r.id);
+}
+if (mergedToPrimary.size) console.log(`(respecting ${mergedToPrimary.size} intentionally-merged GA4 ids)`);
+
 // ---- 1) Customers ----
 const customers = load("Customers.csv");
 await syncTable({
   name: "Customers", table: "customers", rows: customers,
   cols: ["name", "phone", "email", "postcode", "address"],
-  map: (r) => ({
-    externalId: norm(r._ID), name: cap(buildCustomerName(r as any), 255) || "Unknown",
-    phone: cap(getPhoneNumber(r as any), 50), email: cap(getCustomerEmail(r as any), 320),
-    postcode: cap(norm(r.addressPostCode), 20) || null, address: cap(buildAddress(r as any), 500) || null,
-  }),
+  map: (r) => {
+    const ext = norm(r._ID);
+    if (mergedToPrimary.has(ext)) return null; // deliberately merged away — don't recreate it
+    return {
+      externalId: ext, name: cap(buildCustomerName(r as any), 255) || "Unknown",
+      phone: cap(getPhoneNumber(r as any), 50), email: cap(getCustomerEmail(r as any), 320),
+      postcode: cap(norm(r.addressPostCode), 20) || null, address: cap(buildAddress(r as any), 500) || null,
+    };
+  },
   // Existing customer records came from a different source and disagree with today's export
   // (names/addresses), so never overwrite them — only add genuinely-new GA4 customers.
   insertOnly: true,
 });
 
-// rebuild externalId -> id for linking
+// rebuild externalId -> id for linking; merged-away ids resolve to their surviving primary
 const custMap = new Map<string, number>();
 for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL")) custMap.set(r.externalId, r.id);
+for (const [ext, id] of mergedToPrimary) if (!custMap.has(ext)) custMap.set(ext, id);
 
 // ---- 2) Vehicles ----
 const vehicles = load("Vehicles.csv");
