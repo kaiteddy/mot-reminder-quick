@@ -795,6 +795,7 @@ export default function DocumentDetails() {
               <div className="flex gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Mileage" field="mileage" required={isInvoice} {...{ form, set, editing }} /><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /></div>
+              {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
             </div>
             {/* customer */}
             <div className="xl:col-span-4 space-y-1.5">
@@ -1423,6 +1424,31 @@ function PhoneMatchHint({ phone, currentCustomerId, onLink }: { phone: string; c
       <Phone className="w-3.5 h-3.5 text-violet-600 shrink-0" />
       <span className="flex-1 truncate">On file for <b className="text-slate-800">{match.name}</b>{match.postcode ? <span className="text-muted-foreground"> · {match.postcode}</span> : null}</span>
       <button type="button" onClick={() => onLink(match)} className="shrink-0 rounded bg-violet-700 text-white px-2 py-0.5 text-[11px] hover:bg-violet-800">Use this customer</button>
+    </div>
+  );
+}
+
+// Pull the odometer reading from the vehicle's most recent MOT (DVSA) and offer to drop it
+// into the Mileage field — the reading on the day of the last test is a good current default.
+function MotMileageHint({ registration, current, onUse }: { registration: string; current: any; onUse: (v: string) => void }) {
+  const reg = (registration || "").replace(/\s+/g, "").toUpperCase();
+  const { data } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: reg.length >= 4, staleTime: 60_000 });
+  const latest = useMemo(() => {
+    const tests = ((data as any[]) || []).filter((t) => num(t.odometerValue) != null);
+    if (!tests.length) return null;
+    tests.sort((a, b) => String(b.completedDate || "").localeCompare(String(a.completedDate || "")));
+    const t = tests[0];
+    let miles = num(t.odometerValue)!;
+    if (String(t.odometerUnit || "").toLowerCase().startsWith("k")) miles = Math.round(miles * 0.621371); // km → mi
+    return { miles, date: t.completedDate };
+  }, [data]);
+  if (!latest) return null;
+  const already = num(current) === latest.miles;
+  return (
+    <div className="ml-[104px] flex items-center gap-1.5 text-[11px] text-slate-500">
+      <Gauge className="w-3 h-3 text-slate-400 shrink-0" />
+      <span>Last MOT: <b className="text-slate-700">{latest.miles.toLocaleString()}</b> mi{latest.date ? ` · ${fmtDate(latest.date)}` : ""}</span>
+      {!already && <button type="button" onClick={() => onUse(String(latest.miles))} className="text-violet-700 hover:underline font-medium">use</button>}
     </div>
   );
 }
