@@ -1785,7 +1785,7 @@ export async function convertDocument(id: number, toType: string) {
   const detail = await getDocumentDetail(id);
   if (!detail?.doc) throw new Error("Document not found");
   const { doc, vehicle, lineItems } = detail as any;
-  return saveDocument({
+  const created = await saveDocument({
     docType: toType,
     registration: vehicle?.registration || doc.registration,
     customerId: doc.customerId ?? undefined,
@@ -1807,6 +1807,21 @@ export async function convertDocument(id: number, toType: string) {
       discount: li.discount, discountType: li.discountType, // carry the per-line discount across convert/copy
     })),
   });
+
+  // "Convert to Invoice/Job Sheet" supersedes the original; "Copy to Estimate/Credit Note" keeps it.
+  // On a convert, remove the source so it isn't left behind as a duplicate — but only a web-created
+  // working doc (job sheet / estimate). Never auto-delete invoices/credit notes, and never a
+  // GA4-mirrored doc (the sync owns those and would just recreate it).
+  const isConvert = toType === "SI" || toType === "JS";
+  const sourceIsWorkingDoc = doc.docType === "JS" || doc.docType === "ES";
+  const sourceIsWeb = !doc.externalId || String(doc.externalId).startsWith("WEB-");
+  const replacedSource = isConvert && sourceIsWorkingDoc && sourceIsWeb && !!created?.id && created.id !== id;
+  if (replacedSource) {
+    const db = await getDb();
+    if (db) await db.update(payments).set({ documentId: created.id! }).where(eq(payments.documentId, id)); // keep any receipts
+    await deleteServiceDocument(id);
+  }
+  return { ...created, replacedSource };
 }
 
 // ---------------------------------------------------------------------------

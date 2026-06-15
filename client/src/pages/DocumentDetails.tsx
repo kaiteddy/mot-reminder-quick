@@ -223,6 +223,10 @@ export default function DocumentDetails() {
     try {
       await flushPending();
       const res: any = await convert.mutateAsync({ id, toType });
+      // A "Convert" supersedes the original (server deletes it) — drop its now-dead tab.
+      if (res.replacedSource) removeOpenDoc(id);
+      utils.documents.list.invalidate();
+      utils.documents.stats.invalidate();
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
       setLocation(`/documents/${res.id}`);
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
