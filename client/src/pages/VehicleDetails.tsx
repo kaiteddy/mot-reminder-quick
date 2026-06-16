@@ -209,6 +209,18 @@ export default function VehicleDetails() {
         }
     });
 
+    // Detach the current owner from this vehicle (e.g. they've sold it). The vehicle
+    // and its history stay on the system; it just becomes ownerless until reassigned.
+    const unlinkOwner = trpc.reminders.unlinkVehicle.useMutation({
+        onSuccess: () => {
+            toast.success("Owner removed from this vehicle.");
+            utils.vehicles.getByRegistration.invalidate();
+        },
+        onError: (err) => {
+            toast.error("Failed to remove owner: " + err.message);
+        }
+    });
+
     const formatDate = (date: Date | string | null) => {
         if (!date) return "-";
         return new Date(date).toLocaleDateString("en-GB");
@@ -514,6 +526,22 @@ export default function VehicleDetails() {
                                             Opted Out
                                         </Badge>
                                     )}
+                                    <div className="pt-2 border-t">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                            disabled={unlinkOwner.isPending}
+                                            onClick={() => {
+                                                if (window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned. MOT reminders will stop going to this customer for this vehicle. You can reassign an owner later.`)) {
+                                                    unlinkOwner.mutate({ vehicleId: vehicle.id as number });
+                                                }
+                                            }}
+                                        >
+                                            {unlinkOwner.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <User className="w-3.5 h-3.5 mr-1.5" />}
+                                            {unlinkOwner.isPending ? "Removing…" : "Remove Owner"}
+                                        </Button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="text-center py-6 text-muted-foreground italic text-sm">
