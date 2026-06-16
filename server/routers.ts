@@ -430,6 +430,20 @@ export const appRouter = router({
       return getAllVehicles();
     }),
 
+    // Cache the Autodata vehicle id (e.g. "MER44336") once resolved, so the
+    // "Autodata QR" deep-link is instant on subsequent opens and stays stable.
+    setAutodataMid: publicProcedure
+      .input(z.object({ vehicleId: z.number(), mid: z.string().min(1).max(64) }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.update(vehicles).set({ autodataMid: input.mid }).where(eq(vehicles.id, input.vehicleId));
+        return { ok: true };
+      }),
+
     getByRegistration: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {

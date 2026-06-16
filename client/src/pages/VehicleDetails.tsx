@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import { AutodataQRDialog } from "@/components/AutodataQRDialog";
 import {
     Dialog,
     DialogContent,
@@ -350,6 +351,11 @@ export default function VehicleDetails() {
                                 </div>
                             </DialogContent>
                         </Dialog>
+                        <AutodataQRDialog
+                            vehicleId={vehicle.id as number}
+                            registration={vehicle.registration as string}
+                            cachedMid={(vehicle as any).autodataMid}
+                        />
                         <Link href={`/mot-check?reg=${vehicle.registration}`}>
                             <Button variant="outline" className="w-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
                                 <ShieldCheck className="w-4 h-4 mr-2" />

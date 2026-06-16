@@ -81,6 +81,7 @@ export const vehicles = mysqlTable("vehicles", {
   notes: text("notes"),
   comprehensiveTechnicalData: json("comprehensiveTechnicalData"),
   swsLastUpdated: timestamp("swsLastUpdated"),
+  autodataMid: varchar("autodataMid", { length: 64 }), // Autodata vehicle/model id (e.g. "MER44336") for deep-linking workshop.autodata-group.com/w1/vehicles/{mid}
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
