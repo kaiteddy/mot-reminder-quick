@@ -2891,8 +2891,8 @@ export const appRouter = router({
 
         // Auto-create customer if missing but data provided
         if (!autogenCustomerId && input.customerName) {
-          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone });
-          autogenCustomerId = custRes[0].insertId;
+          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone }).returning({ id: customers.id });
+          autogenCustomerId = custRes[0].id;
         }
 
         // Auto-create vehicle if missing but data provided
@@ -2909,8 +2909,8 @@ export const appRouter = router({
               make: input.vehicleMake,
               model: input.vehicleModel,
               customerId: autogenCustomerId
-            });
-            autogenVehicleId = vehRes[0].insertId;
+            }).returning({ id: vehicles.id });
+            autogenVehicleId = vehRes[0].id;
           }
         }
 
@@ -2924,9 +2924,9 @@ export const appRouter = router({
           endTime: input.endTime,
           notes: input.notes,
           orderIndex: input.orderIndex,
-        });
+        }).returning({ id: appointments.id });
 
-        return { success: true, id: result[0].insertId };
+        return { success: true, id: result[0].id };
       }),
 
     updatePosition: publicProcedure
@@ -2987,8 +2987,8 @@ export const appRouter = router({
         let autogenVehicleId = input.vehicleId;
 
         if (!autogenCustomerId && input.customerName) {
-          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone });
-          autogenCustomerId = custRes[0].insertId;
+          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone }).returning({ id: customers.id });
+          autogenCustomerId = custRes[0].id;
         }
 
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
@@ -3004,8 +3004,8 @@ export const appRouter = router({
               make: input.vehicleMake,
               model: input.vehicleModel,
               customerId: autogenCustomerId
-            });
-            autogenVehicleId = vehRes[0].insertId;
+            }).returning({ id: vehicles.id });
+            autogenVehicleId = vehRes[0].id;
           }
         }
 

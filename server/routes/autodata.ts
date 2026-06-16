@@ -20,9 +20,9 @@ autodataRouter.post("/scrape", async (req, res) => {
     const [insertRes] = await db.insert(autodataRequests).values({
       endpoint,
       status: "pending"
-    });
+    }).returning({ id: autodataRequests.id });
 
-    return res.json({ success: true, jobId: insertRes.insertId });
+    return res.json({ success: true, jobId: insertRes.id });
   } catch (err: any) {
     console.error("Autodata drone scrape request failed:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -43,9 +43,9 @@ autodataRouter.get("/engine-oils", async (req, res) => {
     const [insertRes] = await db.insert(autodataRequests).values({
       endpoint: `/w2/api/engine-oil/${mid}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
       status: "pending"
-    });
+    }).returning({ id: autodataRequests.id });
 
-    const jobId = insertRes.insertId;
+    const jobId = insertRes.id;
 
     // Immediately return the job ID so the frontend can poll without hitting Vercel's 10s Serverless timeout
     return res.json({ success: true, jobId });
@@ -74,9 +74,9 @@ autodataRouter.get("/resolve-vrm", async (req, res) => {
     const [insertRes] = await db.insert(autodataRequests).values({
       endpoint: `/w2/api/vehicles/search/gb/${encodeURIComponent(cleanVrm)}?v=5c1542c252dd2c6f7e257b2dd19f2c09390a570f&language=en-gb`,
       status: "pending"
-    });
+    }).returning({ id: autodataRequests.id });
 
-    const jobId = insertRes.insertId;
+    const jobId = insertRes.id;
 
     // Immediately return the job ID so the frontend can poll without hitting Vercel's 10s Serverless timeout
     return res.json({ success: true, jobId });

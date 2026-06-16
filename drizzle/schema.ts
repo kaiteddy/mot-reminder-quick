@@ -1,25 +1,29 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, index, decimal, datetime, json } from "drizzle-orm/mysql-core";
+import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index } from "drizzle-orm/pg-core";
+
+/**
+ * Postgres schema (Neon). Ported from the original MySQL/TiDB schema:
+ *  - int().autoincrement() -> serial(); int() -> integer()
+ *  - mysqlEnum(...)        -> text().$type<union>()  (keeps TS types, no PG enum type needed)
+ *  - decimal(...)          -> numeric(...)
+ *  - datetime(...)         -> timestamp({ mode: 'date' })
+ *  - json(...)             -> jsonb(...)
+ *  - .onUpdateNow()        -> .$onUpdate(() => new Date())
+ * Column names stay camelCase (Drizzle quotes identifiers) so app code is unchanged.
+ */
 
 /**
  * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
  */
-export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  role: text("role").$type<"user" | "admin">().default("user").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+  lastSignedIn: timestamp("lastSignedIn", { mode: "date" }).defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -28,8 +32,8 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * Customers table - stores customer contact information
  */
-export const customers = mysqlTable("customers", {
-  id: int("id").autoincrement().primaryKey(),
+export const customers = pgTable("customers", {
+  id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 100 }),
@@ -37,12 +41,12 @@ export const customers = mysqlTable("customers", {
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
-  altContacts: json("altContacts"), // extra named phone numbers: [{ name, phone }] (e.g. family members)
-  mergedExternalIds: json("mergedExternalIds"), // GA4 ids of duplicate records merged into this one (scripts/merge-customers.ts)
-  optedOut: int("optedOut").default(0).notNull(), // 0 = false, 1 = true
-  optedOutAt: timestamp("optedOutAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  altContacts: jsonb("altContacts"), // extra named phone numbers: [{ name, phone }]
+  mergedExternalIds: jsonb("mergedExternalIds"), // GA4 ids of duplicate records merged into this one
+  optedOut: integer("optedOut").default(0).notNull(), // 0 = false, 1 = true
+  optedOutAt: timestamp("optedOutAt", { mode: "date" }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   phoneIdx: index("customers_phone_idx").on(table.phone),
   emailIdx: index("customers_email_idx").on(table.email),
@@ -54,24 +58,24 @@ export type InsertCustomer = typeof customers.$inferInsert;
 /**
  * Vehicles table - stores vehicle registration and MOT information
  */
-export const vehicles = mysqlTable("vehicles", {
-  id: int("id").autoincrement().primaryKey(),
+export const vehicles = pgTable("vehicles", {
+  id: serial("id").primaryKey(),
   registration: varchar("registration", { length: 20 }).notNull().unique(),
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
-  motExpiryDate: timestamp("motExpiryDate"),
+  motExpiryDate: timestamp("motExpiryDate", { mode: "date" }),
   taxStatus: varchar("taxStatus", { length: 20 }), // Taxed, Untaxed, SORN
-  taxDueDate: timestamp("taxDueDate"),
-  lastChecked: timestamp("lastChecked"),
-  motBookedDate: timestamp("motBookedDate"),
-  bookingRequested: int("bookingRequested").default(0),
-  customerId: int("customerId"),
+  taxDueDate: timestamp("taxDueDate", { mode: "date" }),
+  lastChecked: timestamp("lastChecked", { mode: "date" }),
+  motBookedDate: timestamp("motBookedDate", { mode: "date" }),
+  bookingRequested: integer("bookingRequested").default(0),
+  customerId: integer("customerId"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
   fuelType: varchar("fuelType", { length: 50 }),
-  dateOfRegistration: datetime("dateOfRegistration"),
+  dateOfRegistration: timestamp("dateOfRegistration", { mode: "date" }),
   vin: varchar("vin", { length: 50 }),
-  engineCC: int("engineCC"),
+  engineCC: integer("engineCC"),
   engineNo: varchar("engineNo", { length: 50 }),
   engineCode: varchar("engineCode", { length: 50 }),
   derivative: varchar("derivative", { length: 255 }),
@@ -79,11 +83,11 @@ export const vehicles = mysqlTable("vehicles", {
   keyCode: varchar("keyCode", { length: 50 }),
   radioCode: varchar("radioCode", { length: 50 }),
   notes: text("notes"),
-  comprehensiveTechnicalData: json("comprehensiveTechnicalData"),
-  swsLastUpdated: timestamp("swsLastUpdated"),
-  autodataMid: varchar("autodataMid", { length: 64 }), // Autodata vehicle/model id (e.g. "MER44336") for deep-linking workshop.autodata-group.com/w1/vehicles/{mid}
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  comprehensiveTechnicalData: jsonb("comprehensiveTechnicalData"),
+  swsLastUpdated: timestamp("swsLastUpdated", { mode: "date" }),
+  autodataMid: varchar("autodataMid", { length: 64 }), // Autodata vehicle/model id for /w1/vehicles/{mid}
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   customerIdIdx: index("vehicles_customer_id_idx").on(table.customerId),
   motExpiryDateIdx: index("vehicles_mot_expiry_date_idx").on(table.motExpiryDate),
@@ -95,29 +99,29 @@ export type InsertVehicle = typeof vehicles.$inferInsert;
 /**
  * Reminders table - stores MOT and service reminders
  */
-export const reminders = mysqlTable("reminders", {
-  id: int("id").autoincrement().primaryKey(),
-  type: mysqlEnum("type", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
-  dueDate: timestamp("dueDate").notNull(),
+export const reminders = pgTable("reminders", {
+  id: serial("id").primaryKey(),
+  type: text("type").$type<"MOT" | "Service" | "Cambelt" | "Other">().notNull(),
+  dueDate: timestamp("dueDate", { mode: "date" }).notNull(),
   registration: varchar("registration", { length: 20 }).notNull(),
   customerName: text("customerName"),
   customerEmail: varchar("customerEmail", { length: 320 }),
   customerPhone: varchar("customerPhone", { length: 20 }),
   vehicleMake: varchar("vehicleMake", { length: 100 }),
   vehicleModel: varchar("vehicleModel", { length: 100 }),
-  motExpiryDate: timestamp("motExpiryDate"),
-  status: mysqlEnum("status", ["pending", "sent", "archived"]).default("pending").notNull(),
-  sentAt: timestamp("sentAt"),
+  motExpiryDate: timestamp("motExpiryDate", { mode: "date" }),
+  status: text("status").$type<"pending" | "sent" | "archived">().default("pending").notNull(),
+  sentAt: timestamp("sentAt", { mode: "date" }),
   sentMethod: varchar("sentMethod", { length: 20 }), // email, print, sms, whatsapp
-  customerResponded: int("customerResponded").default(0).notNull(), // 0 = no response, 1 = responded
-  respondedAt: timestamp("respondedAt"),
-  needsFollowUp: int("needsFollowUp").default(0).notNull(), // 0 = no, 1 = yes (auto-set after 7 days no response)
+  customerResponded: integer("customerResponded").default(0).notNull(),
+  respondedAt: timestamp("respondedAt", { mode: "date" }),
+  needsFollowUp: integer("needsFollowUp").default(0).notNull(),
   notes: text("notes"),
-  vehicleId: int("vehicleId"),
-  customerId: int("customerId"),
+  vehicleId: integer("vehicleId"),
+  customerId: integer("customerId"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   dueDateIdx: index("reminders_due_date_idx").on(table.dueDate),
   statusIdx: index("reminders_status_idx").on(table.status),
@@ -125,27 +129,28 @@ export const reminders = mysqlTable("reminders", {
 
 export type Reminder = typeof reminders.$inferSelect;
 export type InsertReminder = typeof reminders.$inferInsert;
+
 /**
  * Reminder Logs table - tracks all sent reminders
  */
-export const reminderLogs = mysqlTable("reminderLogs", {
-  id: int("id").autoincrement().primaryKey(),
-  reminderId: int("reminderId"),
-  customerId: int("customerId"),
-  vehicleId: int("vehicleId"),
-  messageType: mysqlEnum("messageType", ["MOT", "Service", "Cambelt", "Other"]).notNull(),
+export const reminderLogs = pgTable("reminderLogs", {
+  id: serial("id").primaryKey(),
+  reminderId: integer("reminderId"),
+  customerId: integer("customerId"),
+  vehicleId: integer("vehicleId"),
+  messageType: text("messageType").$type<"MOT" | "Service" | "Cambelt" | "Other">().notNull(),
   recipient: varchar("recipient", { length: 20 }).notNull(), // phone number
   messageSid: varchar("messageSid", { length: 100 }), // Twilio message ID
-  status: mysqlEnum("status", ["queued", "sent", "delivered", "read", "failed", "undelivered"]).default("queued").notNull(),
-  templateUsed: varchar("templateUsed", { length: 255 }), // template SID or name
+  status: text("status").$type<"queued" | "sent" | "delivered" | "read" | "failed" | "undelivered">().default("queued").notNull(),
+  templateUsed: varchar("templateUsed", { length: 255 }),
   customerName: text("customerName"),
   registration: varchar("registration", { length: 20 }),
-  dueDate: timestamp("dueDate"),
-  messageContent: text("messageContent"), // Actual message text sent
-  sentAt: timestamp("sentAt").defaultNow().notNull(),
-  deliveredAt: timestamp("deliveredAt"),
-  readAt: timestamp("readAt"),
-  failedAt: timestamp("failedAt"),
+  dueDate: timestamp("dueDate", { mode: "date" }),
+  messageContent: text("messageContent"),
+  sentAt: timestamp("sentAt", { mode: "date" }).defaultNow().notNull(),
+  deliveredAt: timestamp("deliveredAt", { mode: "date" }),
+  readAt: timestamp("readAt", { mode: "date" }),
+  failedAt: timestamp("failedAt", { mode: "date" }),
   errorMessage: text("errorMessage"),
 }, (table) => ({
   vehicleIdIdx: index("reminder_logs_vehicle_id_idx").on(table.vehicleId),
@@ -158,17 +163,17 @@ export type InsertReminderLog = typeof reminderLogs.$inferInsert;
 /**
  * Customer Messages table - stores incoming WhatsApp messages from customers
  */
-export const customerMessages = mysqlTable("customerMessages", {
-  id: int("id").autoincrement().primaryKey(),
+export const customerMessages = pgTable("customerMessages", {
+  id: serial("id").primaryKey(),
   messageSid: varchar("messageSid", { length: 100 }).notNull().unique(), // Twilio message ID
   fromNumber: varchar("fromNumber", { length: 20 }).notNull(),
   toNumber: varchar("toNumber", { length: 20 }).notNull(),
   messageBody: text("messageBody"),
-  customerId: int("customerId"), // linked customer if found
-  relatedLogId: int("relatedLogId"), // linked to reminder log if applicable
-  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
-  read: int("read").default(0).notNull(), // 0 = unread, 1 = read
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  customerId: integer("customerId"),
+  relatedLogId: integer("relatedLogId"),
+  receivedAt: timestamp("receivedAt", { mode: "date" }).defaultNow().notNull(),
+  read: integer("read").default(0).notNull(), // 0 = unread, 1 = read
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   customerIdIdx: index("customer_messages_customer_id_idx").on(table.customerId),
   receivedAtIdx: index("customer_messages_received_at_idx").on(table.receivedAt),
@@ -177,43 +182,40 @@ export const customerMessages = mysqlTable("customerMessages", {
 export type CustomerMessage = typeof customerMessages.$inferSelect;
 export type InsertCustomerMessage = typeof customerMessages.$inferInsert;
 
-
 /**
  * Service History table - stores document headers (invoices/estimates)
  */
-export const serviceHistory = mysqlTable("serviceHistory", {
-  id: int("id").autoincrement().primaryKey(),
+export const serviceHistory = pgTable("serviceHistory", {
+  id: serial("id").primaryKey(),
   externalId: varchar("externalId", { length: 255 }).notNull().unique(), // GA4 Document _ID
-  customerId: int("customerId"),
-  vehicleId: int("vehicleId"),
+  customerId: integer("customerId"),
+  vehicleId: integer("vehicleId"),
   docType: varchar("docType", { length: 20 }), // SI, ES, etc.
   docNo: varchar("docNo", { length: 50 }),
-  dateCreated: datetime("dateCreated"),
-  dateIssued: datetime("dateIssued"),
-  datePaid: datetime("datePaid"),
-  totalNet: decimal("totalNet", { precision: 10, scale: 2 }),
-  totalTax: decimal("totalTax", { precision: 10, scale: 2 }),
-  totalGross: decimal("totalGross", { precision: 10, scale: 2 }),
-  mileage: int("mileage"),
+  dateCreated: timestamp("dateCreated", { mode: "date" }),
+  dateIssued: timestamp("dateIssued", { mode: "date" }),
+  datePaid: timestamp("datePaid", { mode: "date" }),
+  totalNet: numeric("totalNet", { precision: 10, scale: 2 }),
+  totalTax: numeric("totalTax", { precision: 10, scale: 2 }),
+  totalGross: numeric("totalGross", { precision: 10, scale: 2 }),
+  mileage: integer("mileage"),
   description: text("description"),
-  // --- GA4 Documents import (added for full job-sheet/invoice/estimate parity) ---
-  docStatus: varchar("docStatus", { length: 50 }), // GA4 docUserStatus (Issued, Paid, etc.)
-  department: varchar("department", { length: 100 }), // GA4 docDepartment
-  orderRef: varchar("orderRef", { length: 100 }), // GA4 docOrderRef
-  balance: decimal("balance", { precision: 10, scale: 2 }), // GA4 us_Balance (outstanding)
-  totalReceipts: decimal("totalReceipts", { precision: 10, scale: 2 }), // payments received
-  subPartsNet: decimal("subPartsNet", { precision: 10, scale: 2 }),
-  subPartsTax: decimal("subPartsTax", { precision: 10, scale: 2 }),
-  subPartsGross: decimal("subPartsGross", { precision: 10, scale: 2 }),
-  subLabourNet: decimal("subLabourNet", { precision: 10, scale: 2 }),
-  subLabourTax: decimal("subLabourTax", { precision: 10, scale: 2 }),
-  subLabourGross: decimal("subLabourGross", { precision: 10, scale: 2 }),
-  subMotNet: decimal("subMotNet", { precision: 10, scale: 2 }),
-  subMotTax: decimal("subMotTax", { precision: 10, scale: 2 }),
-  subMotGross: decimal("subMotGross", { precision: 10, scale: 2 }),
-  paymentMethods: varchar("paymentMethods", { length: 255 }), // GA4 ui_display_paymentMethods
-  registration: varchar("registration", { length: 20 }), // denormalized for quick lookup/link
-  // --- GA4 parity: document-snapshot customer/staff/mot fields ---
+  docStatus: varchar("docStatus", { length: 50 }),
+  department: varchar("department", { length: 100 }),
+  orderRef: varchar("orderRef", { length: 100 }),
+  balance: numeric("balance", { precision: 10, scale: 2 }),
+  totalReceipts: numeric("totalReceipts", { precision: 10, scale: 2 }),
+  subPartsNet: numeric("subPartsNet", { precision: 10, scale: 2 }),
+  subPartsTax: numeric("subPartsTax", { precision: 10, scale: 2 }),
+  subPartsGross: numeric("subPartsGross", { precision: 10, scale: 2 }),
+  subLabourNet: numeric("subLabourNet", { precision: 10, scale: 2 }),
+  subLabourTax: numeric("subLabourTax", { precision: 10, scale: 2 }),
+  subLabourGross: numeric("subLabourGross", { precision: 10, scale: 2 }),
+  subMotNet: numeric("subMotNet", { precision: 10, scale: 2 }),
+  subMotTax: numeric("subMotTax", { precision: 10, scale: 2 }),
+  subMotGross: numeric("subMotGross", { precision: 10, scale: 2 }),
+  paymentMethods: varchar("paymentMethods", { length: 255 }),
+  registration: varchar("registration", { length: 20 }),
   customerName: varchar("customerName", { length: 255 }),
   custTitle: varchar("custTitle", { length: 20 }),
   custForename: varchar("custForename", { length: 100 }),
@@ -236,17 +238,16 @@ export const serviceHistory = mysqlTable("serviceHistory", {
   staffMotTester: varchar("staffMotTester", { length: 100 }),
   motClass: varchar("motClass", { length: 50 }),
   motStatus: varchar("motStatus", { length: 50 }),
-  excessNet: decimal("excessNet", { precision: 10, scale: 2 }),
-  excessTax: decimal("excessTax", { precision: 10, scale: 2 }),
-  excessGross: decimal("excessGross", { precision: 10, scale: 2 }),
-  // --- Policy-excess insurance split (XS doc links back to its main insurance invoice) ---
-  relatedDocId: int("relatedDocId"), // for an XS excess invoice: the main insurance invoice id (and vice-versa)
+  excessNet: numeric("excessNet", { precision: 10, scale: 2 }),
+  excessTax: numeric("excessTax", { precision: 10, scale: 2 }),
+  excessGross: numeric("excessGross", { precision: 10, scale: 2 }),
+  relatedDocId: integer("relatedDocId"),
   relatedDocNo: varchar("relatedDocNo", { length: 50 }),
-  insuranceCompany: varchar("insuranceCompany", { length: 255 }), // bill-to for an insurance (main) invoice
-  excessDiscount: decimal("excessDiscount", { precision: 10, scale: 2 }), // discount applied to the excess NET only
-  custVatRegistered: int("custVatRegistered"), // 1 = customer is VAT registered (affects excess VAT)
+  insuranceCompany: varchar("insuranceCompany", { length: 255 }),
+  excessDiscount: numeric("excessDiscount", { precision: 10, scale: 2 }),
+  custVatRegistered: integer("custVatRegistered"),
   terms: varchar("terms", { length: 255 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
   customerIdIdx: index("service_history_customer_id_idx").on(table.customerId),
@@ -259,23 +260,23 @@ export type InsertServiceHistory = typeof serviceHistory.$inferInsert;
 /**
  * Service Line Items table - stores detail lines for documents
  */
-export const serviceLineItems = mysqlTable("serviceLineItems", {
-  id: int("id").autoincrement().primaryKey(),
+export const serviceLineItems = pgTable("serviceLineItems", {
+  id: serial("id").primaryKey(),
   externalId: varchar("externalId", { length: 255 }).notNull().unique(), // GA4 LineItem _ID
-  documentId: int("documentId").notNull(),
-  documentExternalId: varchar("documentExternalId", { length: 255 }), // GA4 parent doc _ID (for import linking)
+  documentId: integer("documentId").notNull(),
+  documentExternalId: varchar("documentExternalId", { length: 255 }),
   description: text("description"),
-  quantity: decimal("quantity", { precision: 10, scale: 2 }),
-  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }),
-  subNet: decimal("subNet", { precision: 10, scale: 2 }),
-  taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }),
-  vatRate: decimal("vatRate", { precision: 5, scale: 2 }),
-  discount: decimal("discount", { precision: 10, scale: 2 }), // value: a % when discountType='pct', else £ off the line
-  discountType: varchar("discountType", { length: 10 }), // 'pct' | 'amt' (null on legacy/GA4 rows = £ amount)
-  partNumber: varchar("partNumber", { length: 100 }), // GA4 part number for stock-linked parts
-  nominalCode: varchar("nominalCode", { length: 50 }), // accounting nominal code
+  quantity: numeric("quantity", { precision: 10, scale: 2 }),
+  unitPrice: numeric("unitPrice", { precision: 10, scale: 2 }),
+  subNet: numeric("subNet", { precision: 10, scale: 2 }),
+  taxAmount: numeric("taxAmount", { precision: 10, scale: 2 }),
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }),
+  discount: numeric("discount", { precision: 10, scale: 2 }),
+  discountType: varchar("discountType", { length: 10 }), // 'pct' | 'amt'
+  partNumber: varchar("partNumber", { length: 100 }),
+  nominalCode: varchar("nominalCode", { length: 50 }),
   itemType: varchar("itemType", { length: 50 }), // Labour, Part, MOT, Fixed, etc.
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   documentIdIdx: index("service_line_items_document_id_idx").on(table.documentId),
   documentExternalIdIdx: index("service_line_items_document_external_id_idx").on(table.documentExternalId),
@@ -287,20 +288,20 @@ export type InsertServiceLineItem = typeof serviceLineItems.$inferInsert;
 /**
  * Appointments table - stores Kanban calendar appointments
  */
-export const appointments = mysqlTable("appointments", {
-  id: int("id").autoincrement().primaryKey(),
-  vehicleId: int("vehicleId"),
-  customerId: int("customerId"),
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  vehicleId: integer("vehicleId"),
+  customerId: integer("customerId"),
   registration: varchar("registration", { length: 20 }),
-  bayId: varchar("bayId", { length: 50 }).notNull(), // e.g., 'mot-bay', 'ramp-1'
-  appointmentDate: datetime("appointmentDate").notNull(), // The day of the appointment
-  startTime: varchar("startTime", { length: 10 }), // e.g., "09:00"
+  bayId: varchar("bayId", { length: 50 }).notNull(),
+  appointmentDate: timestamp("appointmentDate", { mode: "date" }).notNull(),
+  startTime: varchar("startTime", { length: 10 }),
   endTime: varchar("endTime", { length: 10 }),
-  status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
+  status: text("status").$type<"scheduled" | "in_progress" | "completed" | "cancelled">().default("scheduled").notNull(),
   notes: text("notes"),
-  orderIndex: int("orderIndex").default(0).notNull(), // For dragging and dropping order
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+  orderIndex: integer("orderIndex").default(0).notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   dateIdx: index("appointments_date_idx").on(table.appointmentDate),
   bayIdx: index("appointments_bay_idx").on(table.bayId),
@@ -312,11 +313,11 @@ export type InsertAppointment = typeof appointments.$inferInsert;
 /**
  * App Settings table - stores single-row global settings (like Autodata tokens)
  */
-export const appSettings = mysqlTable("appSettings", {
-  id: int("id").autoincrement().primaryKey(),
-  keyName: varchar("keyName", { length: 100 }).notNull().unique(), // e.g., 'autodata_tokens'
-  value: json("value"),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+export const appSettings = pgTable("appSettings", {
+  id: serial("id").primaryKey(),
+  keyName: varchar("keyName", { length: 100 }).notNull().unique(),
+  value: jsonb("value"),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
 export type AppSetting = typeof appSettings.$inferSelect;
@@ -325,14 +326,14 @@ export type InsertAppSetting = typeof appSettings.$inferInsert;
 /**
  * Autodata Requests table - Queue for Browser Drone Proxy
  */
-export const autodataRequests = mysqlTable("autodataRequests", {
-  id: int("id").autoincrement().primaryKey(),
-  endpoint: varchar("endpoint", { length: 255 }).notNull(), // e.g. /w2/api/vehicles/TOY43021
-  status: mysqlEnum("status", ["pending", "processing", "completed", "failed"]).default("pending").notNull(),
-  resultData: json("resultData"),
+export const autodataRequests = pgTable("autodataRequests", {
+  id: serial("id").primaryKey(),
+  endpoint: varchar("endpoint", { length: 255 }).notNull(),
+  status: text("status").$type<"pending" | "processing" | "completed" | "failed">().default("pending").notNull(),
+  resultData: jsonb("resultData"),
   errorMessage: text("errorMessage"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  completedAt: timestamp("completedAt")
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  completedAt: timestamp("completedAt", { mode: "date" }),
 });
 
 export type AutodataRequest = typeof autodataRequests.$inferSelect;
@@ -341,12 +342,12 @@ export type InsertAutodataRequest = typeof autodataRequests.$inferInsert;
 /**
  * Pre-set descriptions - reusable job-sheet description snippets (GA4 parity)
  */
-export const descriptionPresets = mysqlTable("descriptionPresets", {
-  id: int("id").autoincrement().primaryKey(),
+export const descriptionPresets = pgTable("descriptionPresets", {
+  id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   body: text("body").notNull(),
   category: varchar("category", { length: 100 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   titleIdx: index("description_presets_title_idx").on(table.title),
 }));
@@ -355,21 +356,19 @@ export type DescriptionPreset = typeof descriptionPresets.$inferSelect;
 export type InsertDescriptionPreset = typeof descriptionPresets.$inferInsert;
 
 /**
- * Customer communication / activity log — notes, emails, calls logged against a
- * customer (and optionally a vehicle / document). Merged with reminderLogs and
- * customerMessages to form a full timeline in the document view.
+ * Customer communication / activity log.
  */
-export const customerLogs = mysqlTable("customerLogs", {
-  id: int("id").autoincrement().primaryKey(),
-  customerId: int("customerId"),
-  vehicleId: int("vehicleId"),
-  documentId: int("documentId"),
-  type: mysqlEnum("type", ["note", "email", "sms", "call", "letter", "system"]).default("note").notNull(),
-  direction: mysqlEnum("direction", ["in", "out", "internal"]).default("out").notNull(),
+export const customerLogs = pgTable("customerLogs", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customerId"),
+  vehicleId: integer("vehicleId"),
+  documentId: integer("documentId"),
+  type: text("type").$type<"note" | "email" | "sms" | "call" | "letter" | "system">().default("note").notNull(),
+  direction: text("direction").$type<"in" | "out" | "internal">().default("out").notNull(),
   subject: varchar("subject", { length: 255 }),
   body: text("body"),
   createdBy: varchar("createdBy", { length: 100 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   customerIdIdx: index("customer_logs_customer_id_idx").on(table.customerId),
   vehicleIdIdx: index("customer_logs_vehicle_id_idx").on(table.vehicleId),
@@ -381,17 +380,16 @@ export type InsertCustomerLog = typeof customerLogs.$inferInsert;
 
 /**
  * Payments / receipts recorded against a document when it is issued.
- * Sum of a document's payments = its totalReceipts; total - receipts = balance.
  */
-export const payments = mysqlTable("payments", {
-  id: int("id").autoincrement().primaryKey(),
-  documentId: int("documentId").notNull(),
-  customerId: int("customerId"),
-  method: varchar("method", { length: 50 }).notNull(), // Cash, Card, Bank Transfer, Cheque, Account
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentDate: datetime("paymentDate"),
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  documentId: integer("documentId").notNull(),
+  customerId: integer("customerId"),
+  method: varchar("method", { length: 50 }).notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: timestamp("paymentDate", { mode: "date" }),
   note: varchar("note", { length: 255 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   documentIdIdx: index("payments_document_id_idx").on(table.documentId),
   customerIdIdx: index("payments_customer_id_idx").on(table.customerId),
@@ -401,12 +399,12 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = typeof payments.$inferInsert;
 
 /** One row per billable address lookup (Ideal Postcodes), so credit usage can be tracked. */
-export const addressLookups = mysqlTable("addressLookups", {
-  id: int("id").autoincrement().primaryKey(),
+export const addressLookups = pgTable("addressLookups", {
+  id: serial("id").primaryKey(),
   postcode: varchar("postcode", { length: 12 }),
-  results: int("results"),
+  results: integer("results"),
   source: varchar("source", { length: 40 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   createdAtIdx: index("address_lookups_created_at_idx").on(table.createdAt),
 }));
@@ -414,11 +412,10 @@ export const addressLookups = mysqlTable("addressLookups", {
 export type AddressLookup = typeof addressLookups.$inferSelect;
 
 /**
- * Sales Cars Stock — the dealership's forecourt stock (imported from the website stocklist),
- * with DVLA-derived MOT expiry and tax status so we can see what we have and its compliance.
+ * Sales Cars Stock — the dealership's forecourt stock.
  */
-export const salesStock = mysqlTable("salesStock", {
-  id: int("id").autoincrement().primaryKey(),
+export const salesStock = pgTable("salesStock", {
+  id: serial("id").primaryKey(),
   externalId: varchar("externalId", { length: 64 }).unique(), // CSV VehicleID
   registration: varchar("registration", { length: 20 }),
   vin: varchar("vin", { length: 50 }),
@@ -428,39 +425,38 @@ export const salesStock = mysqlTable("salesStock", {
   variant: text("variant"),
   vehicleType: varchar("vehicleType", { length: 50 }),
   category: varchar("category", { length: 50 }),
-  year: int("year"),
+  year: integer("year"),
   fuelType: varchar("fuelType", { length: 50 }),
   colour: varchar("colour", { length: 50 }),
-  mileage: int("mileage"),
+  mileage: integer("mileage"),
   transmission: varchar("transmission", { length: 50 }),
-  owners: int("owners"),
-  price: decimal("price", { precision: 10, scale: 2 }),
+  owners: integer("owners"),
+  price: numeric("price", { precision: 10, scale: 2 }),
   vatStatus: varchar("vatStatus", { length: 50 }),
   status: varchar("status", { length: 50 }),
-  daysInStock: int("daysInStock"),
+  daysInStock: integer("daysInStock"),
   stockNumber: varchar("stockNumber", { length: 50 }),
-  registrationDate: timestamp("registrationDate"),
+  registrationDate: timestamp("registrationDate", { mode: "date" }),
   imageUrl: text("imageUrl"),
   websiteUrl: text("websiteUrl"),
-  motExpiryDate: timestamp("motExpiryDate"),
+  motExpiryDate: timestamp("motExpiryDate", { mode: "date" }),
   taxStatus: varchar("taxStatus", { length: 20 }),
-  taxDueDate: timestamp("taxDueDate"),
-  motTaxChecked: timestamp("motTaxChecked"),
-  // AutoTrader insight (forecourt export)
-  priceIndicator: varchar("priceIndicator", { length: 30 }),   // Good / Fair / High / Low / No analysis
-  pricePosition: varchar("pricePosition", { length: 20 }),     // % of market (e.g. 99.72%)
-  retailValuation: decimal("retailValuation", { precision: 10, scale: 2 }),
-  adminFee: decimal("adminFee", { precision: 10, scale: 2 }),
+  taxDueDate: timestamp("taxDueDate", { mode: "date" }),
+  motTaxChecked: timestamp("motTaxChecked", { mode: "date" }),
+  priceIndicator: varchar("priceIndicator", { length: 30 }),
+  pricePosition: varchar("pricePosition", { length: 20 }),
+  retailValuation: numeric("retailValuation", { precision: 10, scale: 2 }),
+  adminFee: numeric("adminFee", { precision: 10, scale: 2 }),
   performanceRating: varchar("performanceRating", { length: 30 }),
-  views7d: int("views7d"),
-  searches7d: int("searches7d"),
-  checkStatus: varchar("checkStatus", { length: 30 }),         // PASS / ERROR / ISSUE / NO_CHECK / REJECTED
-  checkIssues: varchar("checkIssues", { length: 255 }),        // e.g. Stolen, Mileage discrepancy
-  atAdvertStatus: varchar("atAdvertStatus", { length: 30 }),   // Auto Trader advert status
+  views7d: integer("views7d"),
+  searches7d: integer("searches7d"),
+  checkStatus: varchar("checkStatus", { length: 30 }),
+  checkIssues: varchar("checkIssues", { length: 255 }),
+  atAdvertStatus: varchar("atAdvertStatus", { length: 30 }),
   bodyType: varchar("bodyType", { length: 50 }),
-  doors: int("doors"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  doors: integer("doors"),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   regIdx: index("sales_stock_reg_idx").on(table.registration),
 }));

@@ -1,6 +1,6 @@
-import { eq, or, inArray, and, sql, desc, asc, isNotNull, like, gte, ne } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import { eq, or, inArray, and, sql, desc, asc, isNotNull, ilike, gte, ne } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import os from "os";
 import fs from "fs";
 import path from "path";
@@ -13,33 +13,26 @@ import {
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: Pool | null = null;
 
 export async function getDb() {
-  if (!_db && ENV.databaseUrl) {
+  // Prefer the Neon (London) URL when present; falls back to DATABASE_URL post-cutover.
+  const url = ENV.databaseUrlNeon || ENV.databaseUrl;
+  if (!_db && url) {
     try {
-      if (ENV.databaseUrl.includes('tidbcloud.com')) {
-        const pool = mysql.createPool({
-          uri: ENV.databaseUrl,
-          ssl: { rejectUnauthorized: true },
-          // Reuse warm connections across requests so each page load doesn't pay the ~1.7s TiDB
-          // TLS handshake. TCP keep-alive stops idle connections being dropped between refreshes.
-          connectionLimit: 5,
-          enableKeepAlive: true,
-          keepAliveInitialDelay: 10000,
-        });
-        // @ts-ignore
-        _db = drizzle(pool);
-      } else {
-        _db = drizzle(ENV.databaseUrl);
-      }
+      _pool = new Pool({
+        connectionString: url,
+        // Neon's pooler endpoint handles connection multiplexing; keep a small per-instance pool.
+        max: 5,
+        ssl: { rejectUnauthorized: true },
+      });
+      _db = drizzle(_pool);
     } catch (error: any) {
-      const maskedUrl = ENV.databaseUrl ?
-        ENV.databaseUrl.substring(0, 15) + "..." + ENV.databaseUrl.substring(ENV.databaseUrl.length - 10) :
-        "NOT SET";
+      const maskedUrl = url ? url.substring(0, 18) + "..." + url.substring(url.length - 10) : "NOT SET";
       console.error(`[Database] Failed to connect to ${maskedUrl}:`, error.message);
       _db = null;
     }
-  } else if (!_db && !ENV.databaseUrl) {
+  } else if (!_db && !url) {
     console.warn("[Database] DATABASE_URL is not set in environment variables");
   }
   return _db;
@@ -95,7 +88,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -125,8 +119,8 @@ export async function getAllReminders() {
 export async function createReminder(data: InsertReminder) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(reminders).values(data);
-  return result;
+  const [row] = await db.insert(reminders).values(data).returning({ id: reminders.id });
+  return { insertId: row.id };
 }
 
 export async function updateReminder(id: number, data: Partial<InsertReminder>) {
@@ -151,8 +145,8 @@ export async function createReminderLog(data: InsertReminderLog) {
   if (sanitizedData.reminderId === undefined) sanitizedData.reminderId = null;
   if (sanitizedData.messageSid === undefined) sanitizedData.messageSid = null;
 
-  const result = await db.insert(reminderLogs).values(sanitizedData);
-  return result;
+  const [row] = await db.insert(reminderLogs).values(sanitizedData).returning({ id: reminderLogs.id });
+  return { insertId: row.id };
 }
 
 export async function getAllReminderLogs() {
@@ -267,8 +261,8 @@ export async function markAllMessagesAsRead() {
 export async function createCustomer(data: InsertCustomer) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(customers).values(data);
-  return result.insertId;
+  const [result] = await db.insert(customers).values(data).returning({ id: customers.id });
+  return result.id;
 }
 
 export async function updateCustomer(id: number, data: Partial<InsertCustomer>) {
@@ -307,8 +301,8 @@ export async function getCustomerAccountNumber(customerId: number): Promise<stri
 export async function createVehicle(data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(vehicles).values(data);
-  return result;
+  const [row] = await db.insert(vehicles).values(data).returning({ id: vehicles.id });
+  return { insertId: row.id };
 }
 
 export async function getVehicleByExternalId(externalId: string) {
@@ -363,7 +357,7 @@ export async function searchVehiclesByRegistration(query: string, limit = 10) {
   const normalized = query.replace(/\s/g, "").toUpperCase();
   return db.select()
     .from(vehicles)
-    .where(like(vehicles.registration, `${normalized}%`))
+    .where(ilike(vehicles.registration, `${normalized}%`))
     .limit(limit);
 }
 
@@ -387,10 +381,10 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
     .from(vehicles)
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
     .where(or(
-      like(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
-      like(vehicles.make, term),
-      like(vehicles.model, term),
-      like(customers.name, term),
+      ilike(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
+      ilike(vehicles.make, term),
+      ilike(vehicles.model, term),
+      ilike(customers.name, term),
     ))
     .orderBy(asc(sql`CASE WHEN REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${regNorm + "%"} THEN 0 ELSE 1 END`), vehicles.registration)
     .limit(limit);
@@ -420,7 +414,7 @@ export async function suggestParts(query: string, limit = 8) {
   for (const [k, vals] of Object.entries(PART_ALIASES)) if (qn === k || qn.startsWith(k) || k.startsWith(qn)) vals.forEach((v) => terms.add(v));
   const oil = qn.match(/^(\d{1,2})\s*[\/w-]+\s*(\d{2})$/); // "5/30", "5w30", "5-30" → 5W-30 oil
   if (oil) { terms.add(`${oil[1]}w-${oil[2]}`); terms.add(`${oil[1]}w${oil[2]}`); }
-  const conds = Array.from(terms).flatMap((t) => [like(serviceLineItems.description, `%${t}%`), like(serviceLineItems.partNumber, `%${t}%`)]);
+  const conds = Array.from(terms).flatMap((t) => [ilike(serviceLineItems.description, `%${t}%`), ilike(serviceLineItems.partNumber, `%${t}%`)]);
   const rows = await db.select({
     partNumber: serviceLineItems.partNumber, description: serviceLineItems.description, n: sql<number>`COUNT(*)`,
   })
@@ -963,7 +957,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   if (opts.docType && opts.docType !== "all") conds.push(eq(serviceHistory.docType, opts.docType));
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
-    conds.push(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(customers.name, s)));
+    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc
@@ -972,9 +966,9 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
   // sortable columns (numeric casts so doc numbers/money sort by value, not as text)
   const SORT: Record<string, any> = {
-    docNo: sql`CAST(${serviceHistory.docNo} AS UNSIGNED)`,
+    docNo: sql`(NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::bigint`,
     type: serviceHistory.docType,
-    date: sql`listDate`, // indexed generated col = COALESCE(dateIssued, dateCreated); avoids a 34k-row filesort
+    date: sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`, // expression-indexed below
 
     customer: custNameExpr,
     vehicle: serviceHistory.registration,
@@ -1083,8 +1077,8 @@ export async function getRepairPricing(input: { query: string; make?: string; mo
     .filter((t) => !STOP.has(t) && !makeWords.has(t) && !modelWords.has(t)).slice(0, 6);
   if (!terms.length) return { terms: [], scopes: {}, jobs: [] };
 
-  const termCond = terms.length === 1 ? like(serviceLineItems.description, `%${terms[0]}%`)
-    : or(...terms.map((t) => like(serviceLineItems.description, `%${t}%`)));
+  const termCond = terms.length === 1 ? ilike(serviceLineItems.description, `%${terms[0]}%`)
+    : or(...terms.map((t) => ilike(serviceLineItems.description, `%${t}%`)));
   const rows: any[] = await db
     .select({
       itemType: serviceLineItems.itemType, description: serviceLineItems.description,
@@ -1326,8 +1320,8 @@ export async function getAddressLookupStats() {
   if (!db) return { total: 0, thisMonth: 0, today: 0 };
   const rows = await db.select({
     total: sql<number>`COUNT(*)`,
-    thisMonth: sql<number>`COALESCE(SUM(${addressLookups.createdAt} >= DATE_FORMAT(NOW(), '%Y-%m-01')), 0)`,
-    today: sql<number>`COALESCE(SUM(${addressLookups.createdAt} >= CURDATE()), 0)`,
+    thisMonth: sql<number>`COUNT(*) FILTER (WHERE ${addressLookups.createdAt} >= date_trunc('month', now()))`,
+    today: sql<number>`COUNT(*) FILTER (WHERE ${addressLookups.createdAt} >= CURRENT_DATE)`,
   }).from(addressLookups).where(sql`${addressLookups.source} = 'Ideal Postcodes' AND ${addressLookups.results} > 0`);
   const r = rows[0];
   return { total: Number(r?.total) || 0, thisMonth: Number(r?.thisMonth) || 0, today: Number(r?.today) || 0 };
@@ -1383,7 +1377,7 @@ export async function liveVehicleTech(registration: string) {
 export async function getNextDocNo(docType: string) {
   const db = await getDb();
   if (!db) return "1";
-  const r = await db.select({ m: sql<number>`MAX(CAST(${serviceHistory.docNo} AS UNSIGNED))` })
+  const r = await db.select({ m: sql<number>`MAX((NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::bigint)` })
     .from(serviceHistory).where(eq(serviceHistory.docType, docType));
   return String((Number(r[0]?.m) || 0) + 1);
 }
@@ -1400,7 +1394,7 @@ export async function findCustomersByPhone(phone: string, limit = 5) {
   const core = digits.slice(-10); // the last 10 digits identify the number regardless of +44/0 prefix
   return db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address, email: customers.email })
     .from(customers)
-    .where(like(sql`REPLACE(${customers.phone}, ' ', '')`, `%${core}%`))
+    .where(ilike(sql`REPLACE(${customers.phone}, ' ', '')`, `%${core}%`))
     .limit(limit);
 }
 
@@ -1410,7 +1404,7 @@ export async function searchCustomers(query: string, limit = 10) {
   const s = `%${query.trim()}%`;
   return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address })
     .from(customers)
-    .where(or(like(customers.name, s), like(customers.phone, s), like(customers.email, s), like(customers.postcode, s)))
+    .where(or(ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s)))
     .orderBy(customers.name)
     .limit(limit);
 }
@@ -1427,15 +1421,15 @@ export async function globalSearch(query: string) {
   const [cust, veh, docs] = await Promise.all([
     db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
       .from(customers)
-      .where(or(like(customers.name, s), like(customers.phone, s), like(customers.email, s), like(customers.postcode, s), like(customers.address, s)))
+      .where(or(ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s), ilike(customers.address, s)))
       .orderBy(customers.name).limit(8),
     db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId })
       .from(vehicles)
-      .where(or(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${sReg}`, like(vehicles.make, s), like(vehicles.model, s)))
+      .where(or(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${sReg}`, ilike(vehicles.make, s), ilike(vehicles.model, s)))
       .limit(8),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
-      .where(or(like(serviceHistory.docNo, s), like(serviceHistory.registration, s), like(serviceHistory.customerName, s), like(serviceHistory.accountNumber, s)))
+      .where(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(serviceHistory.customerName, s), ilike(serviceHistory.accountNumber, s)))
       .orderBy(desc(serviceHistory.dateCreated)).limit(8),
   ]);
   return { customers: cust, vehicles: veh, documents: docs };
@@ -1599,7 +1593,7 @@ export async function getDescriptionPresets() {
 export async function createDescriptionPreset(input: { title: string; body: string; category?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const [{ id }] = await db.insert(descriptionPresets).values({ title: input.title, body: input.body, category: input.category ?? null }).$returningId();
+  const [{ id }] = await db.insert(descriptionPresets).values({ title: input.title, body: input.body, category: input.category ?? null }).returning({ id: descriptionPresets.id });
   return { id };
 }
 export async function deleteDescriptionPreset(id: number) {
@@ -1661,7 +1655,7 @@ export async function addCustomerLog(input: InsertCustomerLog) {
     subject: input.subject ?? null,
     body: input.body ?? null,
     createdBy: input.createdBy ?? null,
-  }).$returningId();
+  }).returning({ id: customerLogs.id });
   return { id };
 }
 
@@ -1733,7 +1727,7 @@ export async function saveDocument(input: SaveDocInput) {
       const vfUpd = Object.fromEntries(Object.entries(vf).filter(([, v]) => v !== undefined && v !== null && v !== ""));
       if (Object.keys(vfUpd).length) await db.update(vehicles).set(vfUpd).where(eq(vehicles.id, existing.id));
     } else {
-      const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).$returningId();
+      const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).returning({ id: vehicles.id });
       vehicleId = id;
     }
   }
@@ -1749,7 +1743,7 @@ export async function saveDocument(input: SaveDocInput) {
       postcode: input.custPostcode || null,
       address: address || null,
       externalId: `WEB-CUST-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
-    } as any).$returningId();
+    } as any).returning({ id: customers.id });
     customerId = id;
     if (vehicleId && !hadOwner) await db.update(vehicles).set({ customerId: id }).where(eq(vehicles.id, vehicleId)); // only adopt ownerless vehicles
   }
@@ -1804,7 +1798,7 @@ export async function saveDocument(input: SaveDocInput) {
     const docNo = await getNextDocNo(docType);
     const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     // new docs always get a creation date (so the list never shows a blank date)
-    const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, dateCreated: docFields.dateCreated ?? new Date(), balance: String(totalGross.toFixed(2)) }).$returningId();
+    const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, dateCreated: docFields.dateCreated ?? new Date(), balance: String(totalGross.toFixed(2)) }).returning({ id: serviceHistory.id });
     docId = id;
     await logDocEvent(docId!, "created"); // audit: new document
   }
@@ -1984,7 +1978,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
     balance: String(gross.toFixed(2)), description: `Policy excess re. Invoice ${main.docNo}`,
   });
-  const [{ id: xsId }] = await db.insert(serviceHistory).values(xsFields).$returningId();
+  const [{ id: xsId }] = await db.insert(serviceHistory).values(xsFields).returning({ id: serviceHistory.id });
   await db.insert(serviceLineItems).values({
     documentId: xsId, externalId: `WEB-LI-XS-${xsId}-${Date.now()}`,
     itemType: "Excess", description: `Insurance policy excess (re. Invoice ${main.docNo})`,
@@ -2061,8 +2055,8 @@ export async function createServiceDocument(doc: any, items: any[]) {
       externalId: doc.externalId || `NEW-${nanoid()}`,
     };
 
-    const [result] = await tx.insert(serviceHistory).values(docToInsert);
-    const documentId = result.insertId;
+    const [result] = await tx.insert(serviceHistory).values(docToInsert).returning({ id: serviceHistory.id });
+    const documentId = result.id;
 
     if (items.length > 0) {
       const itemsToInsert = items.map(item => ({
