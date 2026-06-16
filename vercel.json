@@ -1,6 +1,9 @@
 {
     "version": 2,
     "regions": ["lhr1"],
+    "crons": [
+        { "path": "/api/cron/mot-day-reminders", "schedule": "0 7 * * *" }
+    ],
     "outputDirectory": "dist/public",
     "rewrites": [
         {

@@ -14,6 +14,7 @@ import path from 'path';
 import { ENV } from "./env";
 import { autodataRouter } from "../routes/autodata";
 import { customerLookupRouter } from "../routes/customerLookup";
+import { cronRouter } from "../routes/cron";
 
 export const app = express();
 export const server = createServer(app);
@@ -243,6 +244,9 @@ function setupApp(app: Express) {
 
   // Custom Customer Lookup API
   app.use("/api/customer-lookup", customerLookupRouter);
+
+  // Scheduled jobs (Vercel Cron) — e.g. day-of MOT reminders
+  app.use("/api/cron", cronRouter);
 }
 
 // Initial setup

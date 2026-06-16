@@ -300,6 +300,7 @@ export const appointments = pgTable("appointments", {
   status: text("status").$type<"scheduled" | "in_progress" | "completed" | "cancelled">().default("scheduled").notNull(),
   notes: text("notes"),
   orderIndex: integer("orderIndex").default(0).notNull(),
+  reminderSentAt: timestamp("reminderSentAt", { mode: "date" }), // day-of MOT reminder sent (dedup)
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({

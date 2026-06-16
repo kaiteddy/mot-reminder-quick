@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, asc, isNotNull, ilike, gte, ne } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, asc, isNotNull, isNull, ilike, gte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import os from "os";
@@ -232,6 +232,39 @@ export async function getCustomerMessagesByCustomerId(customerId: number) {
     .from(customerMessages)
     .where(eq(customerMessages.customerId, customerId))
     .orderBy(desc(customerMessages.receivedAt));
+}
+
+/** Today's MOT-bay appointments still needing a day-of reminder — contactable, opted-in customer,
+ *  not already reminded. `dateStr` = 'YYYY-MM-DD' for the workshop's local day. */
+export async function getMotAppointmentsForReminder(dateStr: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: appointments.id,
+    registration: appointments.registration,
+    startTime: appointments.startTime,
+    customerId: appointments.customerId,
+    customerName: sql<string>`COALESCE(NULLIF(${customers.name}, ''), ${appointments.registration})`,
+    phone: customers.phone,
+    optedOut: customers.optedOut,
+    make: vehicles.make,
+    model: vehicles.model,
+  })
+    .from(appointments)
+    .leftJoin(customers, eq(appointments.customerId, customers.id))
+    .leftJoin(vehicles, eq(appointments.vehicleId, vehicles.id))
+    .where(and(
+      eq(appointments.bayId, "mot-bay"),
+      isNull(appointments.reminderSentAt),
+      inArray(appointments.status, ["scheduled", "in_progress"]),
+      sql`${appointments.appointmentDate}::date = ${dateStr}::date`,
+    ));
+}
+
+export async function markAppointmentReminded(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(appointments).set({ reminderSentAt: new Date() }).where(eq(appointments.id, id));
 }
 
 export async function markMessageAsRead(id: number) {
