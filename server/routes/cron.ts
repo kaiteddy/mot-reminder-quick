@@ -27,21 +27,35 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
     const appts = await getMotAppointmentsForReminder(today);
 
-    const result = { ok: true, live, date: today, found: appts.length, sent: 0, skipped: [] as any[], wouldSend: [] as any[] };
+    // Approved WhatsApp template "notifications_appointment_reminder_template" (vars: date, time).
+    // Body: "Your appointment is coming up on {{date}} at {{time}}..." with Confirm/Cancel buttons.
+    const TEMPLATE_SID = "HXfe7e2ae7e9b9d581d6862406b4fbeb23";
+    const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
+    });
+    const fmtTime = (t?: string | null) => {
+      const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return t || "";
+      let h = Number(m[1]); const min = m[2]; const ap = h < 12 ? "am" : "pm";
+      h = h % 12 || 12;
+      return `${h}:${min}${ap}`;
+    };
+
+    const result = { ok: true, live, channel: "whatsapp", template: TEMPLATE_SID, date: today, found: appts.length, sent: 0, skipped: [] as any[], wouldSend: [] as any[] };
 
     for (const a of appts) {
       const phone = (a.phone || "").trim();
       if (!phone) { result.skipped.push({ id: a.id, reg: a.registration, why: "no phone" }); continue; }
       if (a.optedOut) { result.skipped.push({ id: a.id, reg: a.registration, why: "opted out" }); continue; }
 
+      const timeLabel = fmtTime(a.startTime) || "your booked time";
+      const vars = { date: dateLabel, time: timeLabel };
       const car = [a.make, a.model].filter(Boolean).join(" ") || "your vehicle";
-      const at = a.startTime ? ` at ${a.startTime}` : "";
-      const firstName = String(a.customerName || "").replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, "").split(" ")[0] || "there";
-      const message = `Hi ${firstName}, a reminder that your ${car} (${a.registration}) is booked in for its MOT at ELI Motors today${at}. If you need to rearrange just reply. Thanks, ELI Motors.`;
+      const fallback = `Hi, a reminder that your ${car} (${a.registration}) is booked in for its MOT at ELI Motors on ${dateLabel} at ${timeLabel}. If you need to rearrange just reply. Thanks, ELI Motors.`;
 
-      if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, message }); continue; }
+      if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, vars, preview: fallback }); continue; }
 
-      const r = await sendSMS({ to: phone, message });
+      const r = await sendSMS({ to: phone, useTemplate: true, templateSid: TEMPLATE_SID, templateVariables: vars, fallbackMessage: fallback });
       if (r.success) { await markAppointmentReminded(a.id); result.sent++; }
       else { result.skipped.push({ id: a.id, reg: a.registration, why: r.error || "send failed" }); }
     }
