@@ -369,7 +369,21 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
   const q = query.trim();
   if (q.length < 2) return [];
   const regNorm = q.replace(/\s/g, "").toUpperCase();
+  const digits = q.replace(/\D/g, ""); // for phone matching
   const term = `%${q}%`;
+  // match the typed text against any vehicle OR owner data point
+  const conds = [
+    ilike(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
+    ilike(vehicles.make, term),
+    ilike(vehicles.model, term),
+    ilike(sql`COALESCE(${vehicles.make}, '') || ' ' || COALESCE(${vehicles.model}, '')`, term), // "nissan juke"
+    ilike(customers.name, term),
+    ilike(customers.email, term),
+    ilike(customers.postcode, term),
+    ilike(customers.address, term),
+  ];
+  // phone: strip formatting both sides so "07712 345678" matches "07712345678"
+  if (digits.length >= 4) conds.push(ilike(sql`REPLACE(REPLACE(${customers.phone}, ' ', ''), '+', '')`, `%${digits}%`));
   return db.select({
     id: vehicles.id,
     registration: vehicles.registration,
@@ -377,15 +391,13 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
     model: vehicles.model,
     customerId: vehicles.customerId,
     ownerName: customers.name,
+    ownerPhone: customers.phone,
+    ownerEmail: customers.email,
+    ownerPostcode: customers.postcode,
   })
     .from(vehicles)
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
-    .where(or(
-      ilike(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
-      ilike(vehicles.make, term),
-      ilike(vehicles.model, term),
-      ilike(customers.name, term),
-    ))
+    .where(or(...conds))
     .orderBy(asc(sql`CASE WHEN REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${regNorm + "%"} THEN 0 ELSE 1 END`), vehicles.registration)
     .limit(limit);
 }

@@ -69,6 +69,12 @@ export default function Appointments() {
         vehicleModel: ""
     });
 
+    // Quick-Booking universal search: find an existing car by ANY data point (reg, name,
+    // phone, email, postcode, make/model). Picking a result associates that exact car+owner.
+    const [bookingSearch, setBookingSearch] = useState("");
+    const [showSearch, setShowSearch] = useState(false);
+    const [pickedIds, setPickedIds] = useState<{ vehicleId?: number; customerId?: number } | null>(null);
+
     // State to hold optimistic drag-and-drop list state
     const [localAppointments, setLocalAppointments] = useState<any[]>([]);
 
@@ -113,6 +119,27 @@ export default function Appointments() {
         }
     });
 
+    // Universal search across vehicles + owners (reg/make/model/name/phone/email/postcode/address)
+    const bookingResults = trpc.vehicles.searchForJob.useQuery(
+        { query: bookingSearch.trim() },
+        { enabled: bookingSearch.trim().length >= 2, staleTime: 30_000 }
+    );
+
+    // Pick a search result -> fill the form with that exact car + owner and remember their ids
+    const pickResult = (r: any) => {
+        setFormData((f) => ({
+            ...f,
+            registration: String(r.registration || "").toUpperCase(),
+            vehicleMake: r.make || "",
+            vehicleModel: r.model || "",
+            customerName: r.ownerName || "",
+            customerPhone: r.ownerPhone || "",
+        }));
+        setPickedIds({ vehicleId: r.id, customerId: r.customerId ?? undefined });
+        setBookingSearch("");
+        setShowSearch(false);
+    };
+
     // Vehicle Lookup for quick populate
     const { data: vehicleLookup, isFetched: isLocalFetched } = trpc.vehicles.getByRegistration.useQuery(
         { registration: formData.registration.replace(/\s+/g, "") },
@@ -141,6 +168,9 @@ export default function Appointments() {
     }, [externalLookup, vehicleLookup]);
 
     const resetForm = () => {
+        setBookingSearch("");
+        setShowSearch(false);
+        setPickedIds(null);
         setFormData({
             registration: "",
             bayId: "mot-bay",
@@ -341,8 +371,8 @@ export default function Appointments() {
         createMutation.mutate({
             ...formData,
             appointmentDate: formData.appointmentDate ? new Date(formData.appointmentDate).toISOString() : new Date().toISOString(),
-            vehicleId: vehicleLookup?.vehicle?.id || undefined,
-            customerId: vehicleLookup?.customer?.id || undefined,
+            vehicleId: pickedIds?.vehicleId ?? vehicleLookup?.vehicle?.id ?? undefined,
+            customerId: pickedIds?.customerId ?? vehicleLookup?.customer?.id ?? undefined,
             customerName: formData.customerName,
             customerPhone: formData.customerPhone,
             vehicleMake: formData.vehicleMake,
@@ -655,6 +685,48 @@ export default function Appointments() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-5 py-4">
+                        {/* Universal search: find an existing car by reg, name, phone, email, postcode, make/model */}
+                        <div className="space-y-2 relative">
+                            <Label className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Find Customer or Vehicle</Label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                    className="h-11 pl-9"
+                                    placeholder="Search reg, name, phone, email, postcode, make/model…"
+                                    value={bookingSearch}
+                                    onChange={(e) => { setBookingSearch(e.target.value); setShowSearch(true); }}
+                                    onFocus={() => setShowSearch(true)}
+                                    onBlur={() => setTimeout(() => setShowSearch(false), 150)}
+                                />
+                            </div>
+                            {showSearch && bookingSearch.trim().length >= 2 && (
+                                <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-64 overflow-auto">
+                                    {bookingResults.isFetching && (
+                                        <div className="px-3 py-2 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" />Searching…</div>
+                                    )}
+                                    {!bookingResults.isFetching && (bookingResults.data?.length ?? 0) === 0 && (
+                                        <div className="px-3 py-2 text-sm text-muted-foreground">No matches — type a registration below to add a new vehicle.</div>
+                                    )}
+                                    {bookingResults.data?.map((r: any) => (
+                                        <button
+                                            key={r.id}
+                                            type="button"
+                                            onMouseDown={(e) => { e.preventDefault(); pickResult(r); }}
+                                            className="w-full text-left px-3 py-2 hover:bg-accent flex items-center justify-between gap-2 border-b last:border-0"
+                                        >
+                                            <span className="flex flex-col min-w-0">
+                                                <span className="font-mono font-semibold text-sm">{r.registration}</span>
+                                                <span className="text-xs text-muted-foreground truncate">
+                                                    {[r.make, r.model].filter(Boolean).join(" ")}{r.ownerName ? ` · ${r.ownerName}` : ""}
+                                                </span>
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground text-right shrink-0 font-mono">{r.ownerPhone || r.ownerPostcode || ""}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="space-y-2">
                             <Label htmlFor="reg" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Registration Number</Label>
                             <Input
@@ -662,7 +734,7 @@ export default function Appointments() {
                                 className="font-mono uppercase transition-colors h-11 text-lg"
                                 placeholder="e.g. XX12 XXX"
                                 value={formData.registration}
-                                onChange={(e) => setFormData({ ...formData, registration: e.target.value.toUpperCase() })}
+                                onChange={(e) => { setFormData({ ...formData, registration: e.target.value.toUpperCase() }); setPickedIds(null); }}
                             />
                         </div>
 
