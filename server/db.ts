@@ -2259,8 +2259,8 @@ export async function getRichPDF(documentId: number) {
       estimate: {
         number: doc.docNo,
         date: dateStr,
-        account_no: '',
-        order_ref: '',
+        account_no: (doc as any).accountNumber || '',
+        order_ref: (doc as any).orderRef || '',
         valid_to: '',
       },
       work_title, work_items,
@@ -2285,8 +2285,8 @@ export async function getRichPDF(documentId: number) {
       customer: customerData, vehicle: vehicleData,
       doc: {
         reference: doc.docNo,
-        account_no: '',
-        order_ref: '',
+        account_no: (doc as any).accountNumber || '',
+        order_ref: (doc as any).orderRef || '',
         receive_date: dateStr,
         due_date: dateStr,
         status: '~',
