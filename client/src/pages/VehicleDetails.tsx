@@ -487,6 +487,21 @@ export default function VehicleDetails() {
                                             <p className="text-sm font-bold truncate">{customer.email as string}</p>
                                         </div>
                                     )}
+                                    {(!!customer.address || !!customer.postcode) && (() => {
+                                        const addr = String(customer.address || "").trim().replace(/,\s*$/, "");
+                                        const pc = String(customer.postcode || "").trim();
+                                        const hasPc = pc && addr.replace(/\s+/g, "").toUpperCase().endsWith(pc.replace(/\s+/g, "").toUpperCase());
+                                        const full = [addr, hasPc ? "" : pc].filter(Boolean).join(", ");
+                                        return (
+                                            <div>
+                                                <p className="text-xs font-medium text-muted-foreground uppercase">Address</p>
+                                                <p className="text-sm font-medium">{full}</p>
+                                            </div>
+                                        );
+                                    })()}
+                                    <Link href={`/customers/${customer.id}`}>
+                                        <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
+                                    </Link>
                                     {!!customer.optedOut && (
                                         <Badge variant="destructive" className="w-full justify-center">
                                             <AlertCircle className="w-3 h-3 mr-2" />

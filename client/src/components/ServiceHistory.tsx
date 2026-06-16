@@ -23,6 +23,17 @@ import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
+// Document type → friendly label + badge colour (was previously only "Invoice"/"Estimate",
+// which mislabelled job sheets and credit notes).
+const DOC_META: Record<string, { label: string; cls: string }> = {
+    SI: { label: "Invoice", cls: "bg-blue-100 text-blue-700" },
+    XS: { label: "Excess Inv.", cls: "bg-sky-100 text-sky-700" },
+    ES: { label: "Estimate", cls: "bg-amber-100 text-amber-700" },
+    JS: { label: "Job Sheet", cls: "bg-violet-100 text-violet-700" },
+    CR: { label: "Credit Note", cls: "bg-rose-100 text-rose-700" },
+};
+const docMeta = (t: string) => DOC_META[t] || { label: t || "Doc", cls: "bg-gray-100 text-gray-700" };
+
 const cleanText = (text: string | null) => {
     if (!text) return "";
     // Remove non-printable characters and normalize line breaks
@@ -66,6 +77,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [, setLocation] = useLocation();
     const { data: history, isLoading } = trpc.serviceHistory.getDetailedByVehicleId.useQuery({ vehicleId });
     const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
+    const [filter, setFilter] = useState<string>("all");
     const printRef = useRef<HTMLDivElement>(null);
     const utils = trpc.useContext();
     const deleteMutation = trpc.serviceHistory.delete.useMutation({
@@ -107,9 +119,24 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
         );
     }
 
+    const counts: Record<string, number> = {};
+    for (const d of history) { const t = String(d.docType || "?"); counts[t] = (counts[t] || 0) + 1; }
+    const shown = filter === "all" ? history : history.filter((d: any) => String(d.docType || "?") === filter);
+    const invoiceSpend = history
+        .filter((d: any) => d.docType === "SI" || d.docType === "XS")
+        .reduce((s: number, d: any) => s + Number(d.totalGross || 0), 0);
+    const chips: [string, string, number][] = [
+        ["all", "All", history.length],
+        ...Object.keys(DOC_META).filter((t) => counts[t]).map((t) => [t, DOC_META[t].label, counts[t]] as [string, string, number]),
+    ];
+
     return (
-        <div className="space-y-4 pt-2">
-            <div className="flex justify-end mb-2">
+        <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{history.length}</span> document{history.length === 1 ? "" : "s"}
+                    {invoiceSpend > 0 && <> · <span className="font-semibold text-foreground">£{invoiceSpend.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> invoiced</>}
+                </p>
                 <Button
                     variant="outline"
                     size="sm"
@@ -119,6 +146,17 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     <Download className="w-4 h-4 mr-2" />
                     Export Full History (PDF)
                 </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {chips.map(([key, label, n]) => (
+                    <button
+                        key={key}
+                        onClick={() => setFilter(key)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${filter === key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border text-muted-foreground"}`}
+                    >
+                        {label} <span className="opacity-70">({n})</span>
+                    </button>
+                ))}
             </div>
             <Table className="w-full">
                 <TableHeader>
@@ -133,19 +171,18 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {history.map((doc: any) => (
+                    {shown.map((doc: any) => (
                         <TableRow
                             key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
                             onClick={() => setSelectedDoc(doc.id)}
                         >
                             <TableCell>
-                                {doc.dateCreated ? format(new Date(doc.dateCreated), "dd/MM/yyyy") : "-"}
+                                {(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}
                             </TableCell>
                             <TableCell>
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${doc.docType === 'SI' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                                    }`}>
-                                    {doc.docType === 'SI' ? 'Invoice' : 'Estimate'}
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>
+                                    {docMeta(doc.docType).label}
                                 </span>
                             </TableCell>
                             <TableCell className="min-w-[200px] max-w-[500px] whitespace-normal">
@@ -266,9 +303,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                             <span className="text-sm font-black text-slate-900">
                                                 {doc.dateCreated ? format(new Date(doc.dateCreated), "dd MMMM yyyy") : "-"}
                                             </span>
-                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${doc.docType === 'SI' ? 'bg-blue-600 text-white' : 'bg-slate-500 text-white'
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${(doc.docType === 'SI' || doc.docType === 'XS') ? 'bg-blue-600 text-white' : 'bg-slate-500 text-white'
                                                 }`}>
-                                                {doc.docType === 'SI' ? 'Invoice' : 'Estimate'}
+                                                {docMeta(doc.docType).label}
                                             </span>
                                             <span className="text-[11px] font-mono text-slate-400">#{doc.docNo || doc.externalId.substring(0, 8)}</span>
                                         </div>
