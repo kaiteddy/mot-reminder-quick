@@ -11,7 +11,7 @@
  */
 import "dotenv/config";
 import fs from "fs";
-import mysql from "mysql2/promise";
+import pg from "pg";
 import { parse } from "csv-parse/sync";
 
 const GO = process.argv.includes("--go");
@@ -27,8 +27,9 @@ const cap = (s: any, n: number) => { const v = norm(s); return v ? v.slice(0, n)
 const rows: any[] = parse(fs.readFileSync(FILE), { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true });
 console.log(`\nImport recent GA4 docs ${GO ? "(APPLYING)" : "(DRY RUN — no writes)"}\nfile: ${FILE}\ndocs in file: ${rows.length}\n`);
 
-const c = await mysql.createConnection({ uri: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true } });
-const q = async (sql: string, p?: any[]) => (await c.query(sql, p))[0] as any[];
+const c = new pg.Client({ connectionString: process.env.DATABASE_URL_NEON || process.env.DATABASE_URL });
+await c.connect();
+const q = async (sql: string, p?: any[]) => (await c.query(sql, p)).rows as any[];
 
 let newCust = 0, newVeh = 0, adoptedVeh = 0, newDoc = 0, updDoc = 0;
 const log: string[] = [];
@@ -45,28 +46,28 @@ for (const r of rows) {
   // 1) customer (insert-only by externalId)
   let customerId: number | null = null;
   if (custExt) {
-    const ex = await q("SELECT id FROM customers WHERE externalId=? LIMIT 1", [custExt]);
+    const ex = await q(`SELECT id FROM customers WHERE "externalId"=$1 LIMIT 1`, [custExt]);
     if (ex[0]) customerId = ex[0].id;
     else {
       newCust++; log.push(`+cust ${name || custExt}`);
-      if (GO) { const [res]: any = await c.query("INSERT INTO customers (externalId, name, phone, postcode, address) VALUES (?,?,?,?,?)", [custExt, cap(name, 255) || "Unknown", cap(phone, 50), cap(norm(r["Postcode"]), 20), cap(addr, 500)]); customerId = res.insertId; }
+      if (GO) { const res = (await c.query(`INSERT INTO customers ("externalId", name, phone, postcode, address) VALUES ($1,$2,$3,$4,$5) RETURNING id`, [custExt, cap(name, 255) || "Unknown", cap(phone, 50), cap(norm(r["Postcode"]), 20), cap(addr, 500)])).rows[0]; customerId = res.id; }
     }
   }
 
   // 2) vehicle: by externalId, then by reg (adopt), else create
   let vehicleId: number | null = null;
-  if (vehExt) { const ex = await q("SELECT id FROM vehicles WHERE externalId=? LIMIT 1", [vehExt]); if (ex[0]) vehicleId = ex[0].id; }
+  if (vehExt) { const ex = await q(`SELECT id FROM vehicles WHERE "externalId"=$1 LIMIT 1`, [vehExt]); if (ex[0]) vehicleId = ex[0].id; }
   if (!vehicleId && reg) {
-    const byReg = await q("SELECT id, externalId, customerId FROM vehicles WHERE REPLACE(UPPER(registration),' ','')=? LIMIT 1", [reg.replace(/\s/g, "")]);
+    const byReg = await q(`SELECT id, "externalId", "customerId" FROM vehicles WHERE REPLACE(UPPER(registration),' ','')=$1 LIMIT 1`, [reg.replace(/\s/g, "")]);
     if (byReg[0]) {
       vehicleId = byReg[0].id; adoptedVeh++; log.push(`~veh ${reg} (adopt #${vehicleId})`);
-      if (GO) await c.query("UPDATE vehicles SET externalId=COALESCE(externalId,?), customerId=COALESCE(customerId,?), make=COALESCE(NULLIF(make,''),?), model=COALESCE(NULLIF(model,''),?), vin=COALESCE(NULLIF(vin,''),?) WHERE id=?",
+      if (GO) await c.query(`UPDATE vehicles SET "externalId"=COALESCE("externalId",$1), "customerId"=COALESCE("customerId",$2), make=COALESCE(NULLIF(make,''),$3), model=COALESCE(NULLIF(model,''),$4), vin=COALESCE(NULLIF(vin,''),$5) WHERE id=$6`,
         [vehExt || null, customerId, cap(norm(r["Make"]), 100), cap(norm(r["Model"]), 100), cap(norm(r["VIN"]), 50), vehicleId]);
     }
   }
   if (!vehicleId && reg) {
     newVeh++; log.push(`+veh ${reg}`);
-    if (GO) { const [res]: any = await c.query("INSERT INTO vehicles (externalId, registration, make, model, vin, customerId) VALUES (?,?,?,?,?,?)", [vehExt || null, cap(reg, 20), cap(norm(r["Make"]), 100), cap(norm(r["Model"]), 100), cap(norm(r["VIN"]), 50), customerId]); vehicleId = res.insertId; }
+    if (GO) { const res = (await c.query(`INSERT INTO vehicles ("externalId", registration, make, model, vin, "customerId") VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING id`, [vehExt || null, cap(reg, 20), cap(norm(r["Make"]), 100), cap(norm(r["Model"]), 100), cap(norm(r["VIN"]), 50), customerId])).rows[0]; vehicleId = res ? res.id : null; }
   }
 
   // 3) document (upsert by externalId) — totals only, NO line items (forward-compatible with full sync)
@@ -83,13 +84,13 @@ for (const r of rows) {
     subPartsNet: money(r["Sub Parts Net"]), subPartsTax: money(r["Sub Parts Tax"]), subLabourNet: money(r["Sub Labour Net"]), subLabourTax: money(r["Sub Labour Tax"]),
     subMotNet: money(r["Sub MOT Net"]), docStatus: norm(r["Date Issued"]) ? "Issued" : "New",
   };
-  const ex = await q("SELECT id FROM serviceHistory WHERE externalId=? LIMIT 1", [docExt]);
+  const ex = await q(`SELECT id FROM "serviceHistory" WHERE "externalId"=$1 LIMIT 1`, [docExt]);
   if (ex[0]) {
     updDoc++; log.push(`~doc ${fields.docType} ${fields.docNo} (${name})`);
-    if (GO) { const sets = Object.keys(fields); await c.query(`UPDATE serviceHistory SET ${sets.map((k) => `${k}=?`).join(",")} WHERE id=?`, [...sets.map((k) => fields[k]), ex[0].id]); }
+    if (GO) { const sets = Object.keys(fields); await c.query(`UPDATE "serviceHistory" SET ${sets.map((k, i) => `"${k}"=$${i + 1}`).join(",")} WHERE id=$${sets.length + 1}`, [...sets.map((k) => fields[k]), ex[0].id]); }
   } else {
     newDoc++; log.push(`+doc ${fields.docType} ${fields.docNo} (${name}) £${fields.totalGross}`);
-    if (GO) { const sets = Object.keys(fields); await c.query(`INSERT INTO serviceHistory (externalId, ${sets.join(",")}) VALUES (?, ${sets.map(() => "?").join(",")})`, [docExt, ...sets.map((k) => fields[k])]); }
+    if (GO) { const sets = Object.keys(fields); await c.query(`INSERT INTO "serviceHistory" ("externalId", ${sets.map((k) => `"${k}"`).join(",")}) VALUES ($1, ${sets.map((_, i) => `$${i + 2}`).join(",")}) ON CONFLICT DO NOTHING`, [docExt, ...sets.map((k) => fields[k])]); }
   }
 }
 
