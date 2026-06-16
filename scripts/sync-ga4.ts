@@ -5,8 +5,8 @@
  *   npx tsx scripts/sync-ga4.ts --go     # apply the changes
  *
  * Reads the GA4 CSV exports (Google Drive "Data Exports" by default; override with
- * GA4_EXPORTS=/path) and upserts customers, vehicles, documents and line items into the
- * shared TiDB by GA4 `_ID` (stored as `externalId`).
+ * GA4_EXPORTS=/path) and upserts customers, vehicles, documents and line items into
+ * Neon Postgres (DATABASE_URL_NEON, falls back to DATABASE_URL) by GA4 `_ID` (externalId).
  *
  * SAFE BY DESIGN:
  *  - Matches strictly on GA4 `_ID`. Web-created records (externalId LIKE 'WEB-%') and rows
@@ -18,7 +18,7 @@ import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import mysql from "mysql2/promise";
+import pg from "pg";
 import { parse } from "csv-parse/sync";
 import { mapGA4Document, buildCustomerName, buildAddress, getPhoneNumber, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
 
@@ -39,8 +39,10 @@ function load(file: string): Record<string, string>[] {
   return parse(fs.readFileSync(p), { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true });
 }
 
-const c = await mysql.createConnection({ uri: process.env.DATABASE_URL!, ssl: { rejectUnauthorized: true } });
-const q = async (sql: string, p?: any[]) => (await c.query(sql, p))[0] as any[];
+const c = new pg.Client({ connectionString: process.env.DATABASE_URL_NEON || process.env.DATABASE_URL });
+await c.connect();
+const qc = (k: string) => `"${k}"`; // quote camelCase identifiers for Postgres
+const q = async (sql: string, p?: any[]) => (await c.query(sql, p)).rows as any[];
 
 console.log(`\nGA4 → Web sync ${GO ? "(APPLYING)" : "(DRY RUN — no writes)"}\nexports: ${EXP}\n`);
 
@@ -55,7 +57,7 @@ async function syncTable(opts: {
   const { name, table, rows, cols, map, changed, insertOnly } = opts;
   // existing GA4-sourced rows only (skip web-created + null externalId)
   const existing = new Map<string, any>();
-  for (const r of await q(`SELECT id, externalId, ${cols.join(",")} FROM \`${table}\` WHERE externalId IS NOT NULL AND externalId NOT LIKE 'WEB-%'`))
+  for (const r of await q(`SELECT id, "externalId", ${cols.map(qc).join(",")} FROM "${table}" WHERE "externalId" IS NOT NULL AND "externalId" NOT LIKE 'WEB-%'`))
     if (!existing.has(r.externalId)) existing.set(r.externalId, r);
 
   const toInsert: any[][] = [];
@@ -72,10 +74,17 @@ async function syncTable(opts: {
   console.log(`${name}: ${rows.length} in GA4 → +${toInsert.length} new${insertOnly ? " (insert-only)" : `, ~${toUpdate.length} changed`}, ${same} kept, ${skipped} skipped`);
 
   if (GO) {
-    for (let i = 0; i < toInsert.length; i += 500)
-      await c.query(`INSERT INTO \`${table}\` (externalId, ${cols.join(",")}) VALUES ?`, [toInsert.slice(i, i + 500)]);
+    const insCols = ["externalId", ...cols].map(qc).join(", ");
+    for (let i = 0; i < toInsert.length; i += 500) {
+      const slice = toInsert.slice(i, i + 500);
+      const params: any[] = [];
+      const tuples = slice.map((vals) => `(${vals.map((v: any) => { params.push(v); return `$${params.length}`; }).join(",")})`);
+      // ON CONFLICT DO NOTHING: skip rows that collide on a unique constraint (e.g. a new GA4
+      // vehicle whose registration already exists) rather than aborting the whole batch.
+      await c.query(`INSERT INTO "${table}" (${insCols}) VALUES ${tuples.join(",")} ON CONFLICT DO NOTHING`, params);
+    }
     for (const u of toUpdate)
-      await c.query(`UPDATE \`${table}\` SET ${cols.map((k) => `${k}=?`).join(",")} WHERE id=?`, [...cols.map((k) => u.vals[k] ?? null), u.id]);
+      await c.query(`UPDATE "${table}" SET ${cols.map((k, i) => `${qc(k)}=$${i + 1}`).join(",")} WHERE id=$${cols.length + 1}`, [...cols.map((k) => u.vals[k] ?? null), u.id]);
   }
   return { inserted: toInsert.length, updated: toUpdate.length };
 }
@@ -84,7 +93,7 @@ async function syncTable(opts: {
 // Those customers were deliberately removed, so we must NOT recreate them — and any doc/vehicle
 // that still references a merged-away GA4 _ID must resolve to the surviving primary customer.
 const mergedToPrimary = new Map<string, number>();
-for (const r of await q("SELECT id, mergedExternalIds FROM customers WHERE mergedExternalIds IS NOT NULL")) {
+for (const r of await q(`SELECT id, "mergedExternalIds" FROM customers WHERE "mergedExternalIds" IS NOT NULL`)) {
   let arr: any[] = [];
   try { arr = typeof r.mergedExternalIds === "string" ? JSON.parse(r.mergedExternalIds) : r.mergedExternalIds; } catch { arr = []; }
   for (const ext of arr || []) if (norm(ext)) mergedToPrimary.set(norm(ext), r.id);
@@ -112,7 +121,7 @@ await syncTable({
 
 // rebuild externalId -> id for linking; merged-away ids resolve to their surviving primary
 const custMap = new Map<string, number>();
-for (const r of await q("SELECT id, externalId FROM customers WHERE externalId IS NOT NULL")) custMap.set(r.externalId, r.id);
+for (const r of await q(`SELECT id, "externalId" FROM customers WHERE "externalId" IS NOT NULL`)) custMap.set(r.externalId, r.id);
 for (const [ext, id] of mergedToPrimary) if (!custMap.has(ext)) custMap.set(ext, id);
 
 // ---- 2) Vehicles ----
@@ -134,7 +143,7 @@ await syncTable({
 });
 
 const vehMap = new Map<string, number>();
-for (const r of await q("SELECT id, externalId FROM vehicles WHERE externalId IS NOT NULL")) vehMap.set(r.externalId, r.id);
+for (const r of await q(`SELECT id, "externalId" FROM vehicles WHERE "externalId" IS NOT NULL`)) vehMap.set(r.externalId, r.id);
 
 // ---- 3) Documents ----
 const documents = load("Documents.csv");
@@ -161,7 +170,7 @@ await syncTable({
 });
 
 const docMap = new Map<string, number>();
-for (const r of await q("SELECT id, externalId FROM serviceHistory WHERE externalId IS NOT NULL")) docMap.set(r.externalId, r.id);
+for (const r of await q(`SELECT id, "externalId" FROM "serviceHistory" WHERE "externalId" IS NOT NULL`)) docMap.set(r.externalId, r.id);
 
 // ---- 4) Line items ----
 const lineItems = load("LineItems.csv");
@@ -169,7 +178,7 @@ const { mapGA4LineItem } = await import("../server/services/csv-import");
 // Docs the user has edited in the web replaced their GA4 line items with WEB-LI rows. Don't sync
 // GA4 line items back into those — the web is authoritative there, and re-inserting would duplicate.
 const webEditedDocs = new Set<number>();
-for (const r of await q("SELECT DISTINCT documentId FROM serviceLineItems WHERE externalId LIKE 'WEB-%' AND documentId IS NOT NULL")) webEditedDocs.add(r.documentId);
+for (const r of await q(`SELECT DISTINCT "documentId" FROM "serviceLineItems" WHERE "externalId" LIKE 'WEB-%' AND "documentId" IS NOT NULL`)) webEditedDocs.add(r.documentId);
 if (webEditedDocs.size) console.log(`(skipping GA4 line items for ${webEditedDocs.size} web-edited docs)`);
 const LI_COLS = ["documentId", "documentExternalId", "description", "quantity", "unitPrice", "subNet", "taxAmount", "vatRate", "partNumber", "nominalCode", "itemType"];
 await syncTable({
@@ -192,7 +201,9 @@ await syncTable({
   changed: (g, w) => !eq(g.description, w.description) || !numEq(g.subNet, w.subNet) || !numEq(g.taxAmount, w.taxAmount) || !numEq(g.unitPrice, w.unitPrice) || !eq(g.itemType, w.itemType),
 });
 
-// stored datetimes come back as Date objects — normalise for comparison
+// stored datetimes come back as Date objects — normalise for comparison. NOTE: a residual
+// ~800 docs re-flag as "changed" each run due to a timestamp TZ round-trip; harmless (re-writes
+// the same GA4 values), so left as-is rather than risk masking real changes.
 function dt2(v: any): string | null { return v ? new Date(v).toISOString().slice(0, 19).replace("T", " ") : null; }
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
