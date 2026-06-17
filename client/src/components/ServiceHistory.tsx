@@ -44,19 +44,56 @@ const cleanText = (text: string | null) => {
         .trim();
 };
 
+// Job sheets wrap each task in **bold** headers; surface just those as a scannable one-liner
+// for the table (the steps in between are the detail, shown on click).
+const jobSummary = (text: string | null): { summary: string; isHeaders: boolean } => {
+    const t = cleanText(text);
+    if (!t) return { summary: "", isHeaders: false };
+    const seen = new Set<string>();
+    const headers = Array.from(t.matchAll(/\*\*\s*([^*]+?)\s*\*\*/g))
+        .map(m => m[1].trim())
+        .filter(h => h.length > 1 && !seen.has(h.toLowerCase()) && seen.add(h.toLowerCase()));
+    if (headers.length) return { summary: headers.join(" · "), isHeaders: true };
+    const firstLine = t.split("\n").map(s => s.trim()).find(Boolean) || t;
+    return { summary: firstLine.length > 140 ? firstLine.slice(0, 140).trimEnd() + "…" : firstLine, isHeaders: false };
+};
+
 const FormattedDescription = ({ text }: { text: string | null }) => {
     if (!text) return null;
+    const t = cleanText(text);
+    const toSteps = (s: string) => s.split(/[\n\r]|(?:\s+[-–—]\s+)/).map(p => p.trim()).filter(p => p.length > 2);
 
-    // Split by common list separators and clean up
-    const points = text
-        .split(/[\n\r]|(?:\s+-\s+)|(?:\s+–\s+)|(?:\s+—\s+)/)
-        .map(p => p.trim())
-        .filter(p => p.length > 3); // Filter out very short segments that might be noise
-
-    if (points.length <= 1) {
-        return <div className="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">{text}</div>;
+    // If the job sheet uses **headers**, render each as a bold heading with its steps beneath.
+    if (/\*\*[^*]+\*\*/.test(t)) {
+        const parts = t.split(/\*\*\s*([^*]+?)\s*\*\*/); // [pre, header, body, header, body, ...]
+        const blocks: { heading: string | null; steps: string[] }[] = [];
+        if (parts[0] && parts[0].trim()) blocks.push({ heading: null, steps: toSteps(parts[0]) });
+        for (let i = 1; i < parts.length; i += 2) blocks.push({ heading: parts[i].trim(), steps: toSteps(parts[i + 1] || "") });
+        return (
+            <div className="space-y-3">
+                {blocks.map((b, i) => (
+                    <div key={i}>
+                        {b.heading && <p className="text-xs font-bold text-slate-800 mb-1">{b.heading}</p>}
+                        {b.steps.length > 0 && (
+                            <ul className="list-none space-y-1 p-0 m-0">
+                                {b.steps.map((s, j) => (
+                                    <li key={j} className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-600">
+                                        <span className="mt-1.5 w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
+                                        <span className="flex-1">{s}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                ))}
+            </div>
+        );
     }
 
+    const points = toSteps(t);
+    if (points.length <= 1) {
+        return <div className="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">{t}</div>;
+    }
     return (
         <ul className="list-none space-y-2 p-0 m-0">
             {points.map((point, i) => (
@@ -185,10 +222,19 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     {docMeta(doc.docType).label}
                                 </span>
                             </TableCell>
-                            <TableCell className="min-w-[200px] max-w-[500px] whitespace-normal">
-                                <div className="break-words">
-                                    {cleanText(doc.mainDescription) || "No details available"}
-                                </div>
+                            <TableCell className="min-w-[200px] max-w-[460px] whitespace-normal align-top">
+                                {(() => {
+                                    const { summary, isHeaders } = jobSummary(doc.mainDescription);
+                                    if (!summary) return <span className="text-muted-foreground text-xs">No details</span>;
+                                    return (
+                                        <div
+                                            className={`break-words line-clamp-2 ${isHeaders ? "text-sm font-medium text-slate-800" : "text-xs text-slate-600"}`}
+                                            title={cleanText(doc.mainDescription)}
+                                        >
+                                            {summary}
+                                        </div>
+                                    );
+                                })()}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-xs font-mono">{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
                             <TableCell>{doc.mileage ? doc.mileage.toLocaleString() : "-"}</TableCell>
