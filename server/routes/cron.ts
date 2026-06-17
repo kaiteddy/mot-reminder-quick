@@ -25,6 +25,13 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
 
     // "today" in the workshop's local (UK) day, regardless of the server's UTC clock
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
+
+    // Go-live date (user request): never send reminders before this UK date.
+    const START_DATE = "2026-06-18";
+    if (today < START_DATE) {
+      return res.json({ ok: true, live, date: today, found: 0, sent: 0, note: `reminders start ${START_DATE} — nothing sent before then` });
+    }
+
     const appts = await getMotAppointmentsForReminder(today);
 
     // Approved WhatsApp template "copy_of_mot_day_reminder" (Utility). Vars: 1=name, 2=make/model,
