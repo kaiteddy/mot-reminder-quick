@@ -27,10 +27,9 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
     const appts = await getMotAppointmentsForReminder(today);
 
-    // Approved WhatsApp template "mot_day_reminder" (Utility). Vars: 1=name, 2=make/model,
-    // 3=reg, 4=date, 5=time. Body: "...your {{2}} ({{3}}) is booked in for its MOT with us
-    // on {{4}} at {{5}}..." with Confirm/Cancel/Reschedule quick-reply buttons.
-    const TEMPLATE_SID = "HX2d6f0471dac103f12c9c929e0a546610";
+    // Approved WhatsApp template "copy_of_mot_day_reminder" (Utility). Vars: 1=name, 2=make/model,
+    // 3=reg, 4=date, 5=time. Body adds "Please arrive 5 minutes prior..." + Confirm/Cancel/Reschedule.
+    const TEMPLATE_SID = "HX57564b5848889be843bfa6ee1c05eddc";
     const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString("en-GB", {
       day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
     });
