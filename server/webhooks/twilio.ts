@@ -22,6 +22,36 @@ interface TwilioWebhookBody {
   MessageStatus?: string;
   SmsStatus?: string;
   SmsSid?: string;
+  ButtonText?: string;    // present when the customer tapped a quick-reply button
+  ButtonPayload?: string; // the button's id (if set in the template)
+}
+
+/** Map a tapped reminder button to an appointment-response action. */
+function buttonToResponse(text: string): "confirmed" | "cancel" | "reschedule" | null {
+  const t = (text || "").trim().toLowerCase();
+  if (/confirm/.test(t)) return "confirmed";
+  if (/cancel/.test(t)) return "cancel";
+  if (/reschedul|rearrang/.test(t)) return "reschedule";
+  return null;
+}
+
+/** Record a customer's reminder button reply against their most recently-reminded appointment. */
+async function recordAppointmentResponse(fromPhone: string, action: "confirmed" | "cancel" | "reschedule"): Promise<boolean> {
+  const { getDb, findCustomerByPhone } = await import("../db");
+  const { appointments } = await import("../../drizzle/schema");
+  const { eq, and, isNotNull, desc } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) return false;
+  const customer = await findCustomerByPhone(fromPhone);
+  if (!customer) return false;
+  const [appt] = await db.select().from(appointments)
+    .where(and(eq(appointments.customerId, customer.id), isNotNull(appointments.reminderSentAt)))
+    .orderBy(desc(appointments.reminderSentAt))
+    .limit(1);
+  if (!appt) return false;
+  await db.update(appointments).set({ customerResponse: action, respondedAt: new Date() }).where(eq(appointments.id, appt.id));
+  console.log(`[Twilio Webhook] ✓ Appointment ${appt.id} marked "${action}" from ${customer.name}`);
+  return true;
 }
 
 /**
@@ -78,23 +108,39 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
       status: body.MessageStatus || body.SmsStatus,
     });
 
-    // Check for opt-out keywords (STOP, UNSUBSCRIBE, etc.)
-    const isOptOut = checkOptOutKeywords(body.Body);
+    // A tapped reminder button (Confirm/Cancel/Reschedule) is an appointment response —
+    // NOT a STOP/opt-out. (Critical: the "Cancel" button must not unsubscribe the customer.)
+    const buttonAction = body.ButtonText ? buttonToResponse(body.ButtonText) : null;
+    const isOptOut = !buttonAction && checkOptOutKeywords(body.Body);
 
     // Log the incoming message
     await logIncomingMessage({
       messageSid: body.MessageSid,
       from: body.From,
       to: body.To,
-      body: body.Body,
+      body: body.Body || body.ButtonText || "",
       status: body.MessageStatus || body.SmsStatus || "unknown",
       timestamp: new Date(),
       isOptOut,
     });
 
+    if (buttonAction) {
+      await recordAppointmentResponse((body.From || "").replace("whatsapp:", ""), buttonAction);
+    }
+
     // Send TwiML response to acknowledge receipt
     res.set("Content-Type", "text/xml");
-    if (isOptOut) {
+    if (buttonAction) {
+      const reply = buttonAction === "confirmed"
+        ? "Thanks for confirming — see you then! ELI Motors, Hendon."
+        : buttonAction === "cancel"
+          ? "Thanks for letting us know. We've flagged your booking for cancellation and will be in touch."
+          : "No problem — we'll contact you to rearrange your MOT. ELI Motors, Hendon.";
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${reply}</Message>
+</Response>`);
+    } else if (isOptOut) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>You have been unsubscribed from MOT reminders. Reply START to opt back in.</Message>

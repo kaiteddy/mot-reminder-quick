@@ -593,6 +593,21 @@ export default function Appointments() {
                                                                                         {appt.status.replace("_", " ")}
                                                                                     </Badge>
                                                                                 )}
+                                                                                {/* Customer's WhatsApp reminder reply — clear at-a-glance status */}
+                                                                                {appt.customerResponse ? (
+                                                                                    <div className={`mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide border ${
+                                                                                        appt.customerResponse === 'confirmed' ? 'bg-green-100 text-green-700 border-green-300'
+                                                                                        : appt.customerResponse === 'cancel' ? 'bg-red-100 text-red-700 border-red-300'
+                                                                                        : 'bg-amber-100 text-amber-700 border-amber-300'}`}>
+                                                                                        {appt.customerResponse === 'confirmed' ? '✓ Confirmed'
+                                                                                            : appt.customerResponse === 'cancel' ? '✕ Wants to cancel'
+                                                                                            : '↻ Wants reschedule'}
+                                                                                    </div>
+                                                                                ) : appt.reminderSentAt ? (
+                                                                                    <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide border bg-slate-50 text-slate-400 border-slate-200">
+                                                                                        ⏳ Awaiting reply
+                                                                                    </div>
+                                                                                ) : null}
                                                                             </div>
                                                                         </div>
                                                                     </CardContent>
