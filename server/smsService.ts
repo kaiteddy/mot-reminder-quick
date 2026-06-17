@@ -38,13 +38,20 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim(),
   };
 
-  console.log(`[SMS Service] Sending message to ${params.to} using SID: ${config.accountSid.substring(0, 6)}...`);
+  // Auth: prefer a Twilio API Key (SID "SK..." + its Secret) over the account Auth Token.
+  // The request URL always uses the Account SID; only the Basic-auth credentials change.
+  const apiKey = (process.env.TWILIO_API_KEY || "").trim();
+  const apiSecret = (process.env.TWILIO_API_SECRET || "").trim();
+  const usingApiKey = apiKey.startsWith("SK") && !!apiSecret;
+  const authHeader = `Basic ${Buffer.from(`${usingApiKey ? apiKey : config.accountSid}:${usingApiKey ? apiSecret : config.authToken}`).toString("base64")}`;
+
+  console.log(`[SMS Service] Sending to ${params.to} via SID ${config.accountSid.substring(0, 6)}... (auth: ${usingApiKey ? "API key" : "auth token"})`);
 
   // Check if Twilio is configured
-  if (!config.accountSid || !config.authToken || !config.whatsappNumber) {
+  if (!config.accountSid || !config.whatsappNumber || (!usingApiKey && !config.authToken)) {
     return {
       success: false,
-      error: "Twilio credentials not configured. Please add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_NUMBER to your environment variables.",
+      error: "Twilio credentials not configured. Need TWILIO_ACCOUNT_SID + TWILIO_WHATSAPP_NUMBER and either TWILIO_AUTH_TOKEN or TWILIO_API_KEY + TWILIO_API_SECRET.",
     };
   }
 
@@ -101,7 +108,7 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Basic ${Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64")}`,
+        "Authorization": authHeader,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: formData.toString(),
@@ -141,7 +148,7 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
           const smsResponse = await fetch(url, {
             method: "POST",
             headers: {
-              "Authorization": `Basic ${Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64")}`,
+              "Authorization": authHeader,
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body: smsFormData.toString(),

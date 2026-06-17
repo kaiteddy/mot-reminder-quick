@@ -21,17 +21,21 @@ export const diagnosticsRouter = router({
 
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
+      // Prefer API Key (SID "SK..." + secret) auth, matching smsService.
+      const apiKey = (process.env.TWILIO_API_KEY || "").trim();
+      const apiSecret = (process.env.TWILIO_API_SECRET || "").trim();
+      const usingApiKey = apiKey.startsWith("SK") && !!apiSecret;
 
-      if (!accountSid || !authToken) {
+      if (!accountSid || (!usingApiKey && !authToken)) {
         results.push({
           service: "Twilio WhatsApp",
           status: "Error",
-          message: "Credentials missing in .env (TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN)",
+          message: "Credentials missing: need TWILIO_ACCOUNT_SID and either TWILIO_AUTH_TOKEN or TWILIO_API_KEY + TWILIO_API_SECRET",
           code: "MISSING_CREDS"
         });
       } else {
         const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`;
-        const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+        const auth = Buffer.from(`${usingApiKey ? apiKey : accountSid}:${usingApiKey ? apiSecret : authToken}`).toString("base64");
 
         const response = await fetch(url, {
           headers: { "Authorization": `Basic ${auth}` }
