@@ -401,22 +401,29 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
   if (!db) return [];
   const q = query.trim();
   if (q.length < 2) return [];
-  const regNorm = q.replace(/\s/g, "").toUpperCase();
-  const digits = q.replace(/\D/g, ""); // for phone matching
-  const term = `%${q}%`;
-  // match the typed text against any vehicle OR owner data point
-  const conds = [
-    ilike(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`),
-    ilike(vehicles.make, term),
-    ilike(vehicles.model, term),
-    ilike(sql`COALESCE(${vehicles.make}, '') || ' ' || COALESCE(${vehicles.model}, '')`, term), // "nissan juke"
-    ilike(customers.name, term),
-    ilike(customers.email, term),
-    ilike(customers.postcode, term),
-    ilike(customers.address, term),
-  ];
-  // phone: strip formatting both sides so "07712 345678" matches "07712345678"
-  if (digits.length >= 4) conds.push(ilike(sql`REPLACE(REPLACE(${customers.phone}, ' ', ''), '+', '')`, `%${digits}%`));
+  // Token-based: split into words; EACH word must match SOME field (words AND-ed together,
+  // fields OR-ed within a word). So "dave rich toyota yaris" matches when dave->email,
+  // rich->name, toyota->make, yaris->model — even though no single field holds the whole phrase.
+  const tokens = q.split(/\s+/).filter(Boolean).slice(0, 6);
+  const perToken = tokens.map((tok) => {
+    const term = `%${tok}%`;
+    const regNorm = tok.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    const digits = tok.replace(/\D/g, "");
+    const ors = [
+      ilike(vehicles.make, term),
+      ilike(vehicles.model, term),
+      ilike(sql`COALESCE(${vehicles.make}, '') || ' ' || COALESCE(${vehicles.model}, '')`, term),
+      ilike(customers.name, term),
+      ilike(customers.email, term),
+      ilike(customers.postcode, term),
+      ilike(customers.address, term),
+    ];
+    if (regNorm) ors.push(ilike(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, `%${regNorm}%`));
+    // phone: strip formatting both sides so "07712 345678" matches "07712345678"
+    if (digits.length >= 4) ors.push(ilike(sql`REPLACE(REPLACE(${customers.phone}, ' ', ''), '+', '')`, `%${digits}%`));
+    return or(...ors);
+  });
+  const fullRegNorm = q.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(); // for reg-prefix ranking
   return db.select({
     id: vehicles.id,
     registration: vehicles.registration,
@@ -430,8 +437,8 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
   })
     .from(vehicles)
     .leftJoin(customers, eq(vehicles.customerId, customers.id))
-    .where(or(...conds))
-    .orderBy(asc(sql`CASE WHEN REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${regNorm + "%"} THEN 0 ELSE 1 END`), vehicles.registration)
+    .where(and(...perToken))
+    .orderBy(asc(sql`CASE WHEN REPLACE(UPPER(${vehicles.registration}), ' ', '') LIKE ${fullRegNorm + "%"} THEN 0 ELSE 1 END`), vehicles.registration)
     .limit(limit);
 }
 
