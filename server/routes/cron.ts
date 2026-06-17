@@ -27,9 +27,10 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
     const appts = await getMotAppointmentsForReminder(today);
 
-    // Approved WhatsApp template "notifications_appointment_reminder_template" (vars: date, time).
-    // Body: "Your appointment is coming up on {{date}} at {{time}}..." with Confirm/Cancel buttons.
-    const TEMPLATE_SID = "HXfe7e2ae7e9b9d581d6862406b4fbeb23";
+    // Approved WhatsApp template "mot_day_reminder" (Utility). Vars: 1=name, 2=make/model,
+    // 3=reg, 4=date, 5=time. Body: "...your {{2}} ({{3}}) is booked in for its MOT with us
+    // on {{4}} at {{5}}..." with Confirm/Cancel/Reschedule quick-reply buttons.
+    const TEMPLATE_SID = "HX2d6f0471dac103f12c9c929e0a546610";
     const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString("en-GB", {
       day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
     });
@@ -49,9 +50,11 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
       if (a.optedOut) { result.skipped.push({ id: a.id, reg: a.registration, why: "opted out" }); continue; }
 
       const timeLabel = fmtTime(a.startTime) || "your booked time";
-      const vars = { date: dateLabel, time: timeLabel };
       const car = [a.make, a.model].filter(Boolean).join(" ") || "your vehicle";
-      const fallback = `Hi, a reminder that your ${car} (${a.registration}) is booked in for its MOT at ELI Motors on ${dateLabel} at ${timeLabel}. If you need to rearrange just reply. Thanks, ELI Motors.`;
+      const firstName = String(a.customerName || "").replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, "").split(" ")[0] || "there";
+      // mot_day_reminder vars: 1=name, 2=make/model, 3=reg, 4=date, 5=time
+      const vars = { "1": firstName, "2": car, "3": String(a.registration || ""), "4": dateLabel, "5": timeLabel };
+      const fallback = `Hi ${firstName}, a reminder that your ${car} (${a.registration}) is booked in for its MOT at ELI Motors on ${dateLabel} at ${timeLabel}. If you need to rearrange just reply. Thanks, ELI Motors.`;
 
       if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, vars, preview: fallback }); continue; }
 
