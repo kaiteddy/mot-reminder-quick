@@ -145,6 +145,37 @@ await syncTable({
 const vehMap = new Map<string, number>();
 for (const r of await q(`SELECT id, "externalId" FROM vehicles WHERE "externalId" IS NOT NULL`)) vehMap.set(r.externalId, r.id);
 
+// ---- 2b) Appointments (so GA4 bookings appear in the web calendar + get day-of reminders) ----
+// Only UPCOMING bookings (>= today) — we don't backfill the 10+ year history into the calendar.
+// Web-created bookings have a null externalId and are never touched.
+const appts = load("Appointments.csv");
+const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
+const apptDate = (s: any) => { const m = norm(s).match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+const apptTime = (s: any) => { const m = norm(s).match(/^(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null; };
+const bayFor = (res: any) => { const r = norm(res).toLowerCase(); if (/mot/.test(r)) return "mot-bay"; const n = r.match(/(?:bay|ramp)\s*([1-3])/); return n ? `ramp-${n[1]}` : "waitlist"; };
+await syncTable({
+  name: "Appointments", table: "appointments", rows: appts,
+  cols: ["customerId", "vehicleId", "registration", "bayId", "appointmentDate", "startTime", "endTime", "status", "notes"],
+  map: (r) => {
+    const ext = norm(r._ID); if (!ext) return null;
+    const d = apptDate(r.ApptDateStart); if (!d || d < todayStr) return null; // upcoming only
+    return {
+      externalId: ext,
+      customerId: custMap.get(norm(r._ID_Customer)) ?? null,
+      vehicleId: vehMap.get(norm(r._ID_Vehicle)) ?? null,
+      registration: cap(norm(r.vehRegistration).toUpperCase(), 20),
+      bayId: bayFor(r.ApptResource),
+      appointmentDate: `${d} 00:00:00`,
+      startTime: apptTime(r.ApptTimeStart),
+      endTime: apptTime(r.ApptTimeEnd),
+      status: "scheduled",
+      notes: clean(r.ApptDescEntry),
+    };
+  },
+  changed: (g, w) => !eq(dt2(w.appointmentDate), `${g.appointmentDate}`.replace("T", " ").slice(0, 19))
+    || !eq(g.startTime, w.startTime) || !eq(g.bayId, w.bayId) || (g.vehicleId && g.vehicleId !== w.vehicleId),
+});
+
 // ---- 3) Documents ----
 const documents = load("Documents.csv");
 const DOC_COLS = ["customerId", "vehicleId", "docType", "docNo", "dateCreated", "dateIssued", "datePaid", "totalNet", "totalTax", "totalGross",

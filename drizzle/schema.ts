@@ -293,6 +293,7 @@ export const appointments = pgTable("appointments", {
   vehicleId: integer("vehicleId"),
   customerId: integer("customerId"),
   registration: varchar("registration", { length: 20 }),
+  externalId: varchar("externalId", { length: 255 }).unique(), // GA4 appointment _ID (null for web-created)
   bayId: varchar("bayId", { length: 50 }).notNull(),
   appointmentDate: timestamp("appointmentDate", { mode: "date" }).notNull(),
   startTime: varchar("startTime", { length: 10 }),
