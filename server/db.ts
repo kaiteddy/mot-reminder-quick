@@ -249,6 +249,7 @@ export async function getMotAppointmentsForReminder(dateStr: string) {
     optedOut: customers.optedOut,
     make: vehicles.make,
     model: vehicles.model,
+    serviceType: appointments.serviceType,
   })
     .from(appointments)
     .leftJoin(customers, eq(appointments.customerId, customers.id))

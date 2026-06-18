@@ -34,9 +34,12 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
 
     const appts = await getMotAppointmentsForReminder(today);
 
-    // Approved WhatsApp template "copy_of_mot_day_reminder" (Utility). Vars: 1=name, 2=make/model,
-    // 3=reg, 4=date, 5=time. Body adds "Please arrive 5 minutes prior..." + Confirm/Cancel/Reschedule.
-    const TEMPLATE_SID = "HX57564b5848889be843bfa6ee1c05eddc";
+    // Approved WhatsApp templates (Utility), same 5 vars (1=name 2=make/model 3=reg 4=date 5=time).
+    // MOT-only says "...for its MOT..."; the service variant says "...for its MOT and a service...".
+    const MOT_TEMPLATE = "HX57564b5848889be843bfa6ee1c05eddc"; // copy_of_mot_day_reminder
+    // TODO: once the "MOT & Service" template is approved, set its SID here. Until then service
+    // bookings fall back to the MOT template (still a valid reminder, just MOT wording).
+    const SERVICE_TEMPLATE = MOT_TEMPLATE;
     const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString("en-GB", {
       day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
     });
@@ -48,23 +51,28 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
       return `${h}:${min}${ap}`;
     };
 
-    const result = { ok: true, live, channel: "whatsapp", template: TEMPLATE_SID, date: today, found: appts.length, sent: 0, skipped: [] as any[], wouldSend: [] as any[] };
+    const result = { ok: true, live, channel: "whatsapp", date: today, found: appts.length, sent: 0, skipped: [] as any[], wouldSend: [] as any[] };
 
     for (const a of appts) {
       const phone = (a.phone || "").trim();
       if (!phone) { result.skipped.push({ id: a.id, reg: a.registration, why: "no phone" }); continue; }
       if (a.optedOut) { result.skipped.push({ id: a.id, reg: a.registration, why: "opted out" }); continue; }
 
+      // Booking type drives the wording: a service-inclusive booking uses the service template.
+      const isService = /service/i.test(a.serviceType || "");
+      const templateSid = isService ? SERVICE_TEMPLATE : MOT_TEMPLATE;
+      const workPhrase = isService ? "its MOT and a service" : "its MOT";
+
       const timeLabel = fmtTime(a.startTime) || "your booked time";
       const car = [a.make, a.model].filter(Boolean).join(" ") || "your vehicle";
       const firstName = String(a.customerName || "").replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, "").split(" ")[0] || "there";
-      // mot_day_reminder vars: 1=name, 2=make/model, 3=reg, 4=date, 5=time
+      // template vars: 1=name, 2=make/model, 3=reg, 4=date, 5=time (wording lives in the template body)
       const vars = { "1": firstName, "2": car, "3": String(a.registration || ""), "4": dateLabel, "5": timeLabel };
-      const fallback = `Hi ${firstName}, a reminder that your ${car} (${a.registration}) is booked in for its MOT at ELI Motors on ${dateLabel} at ${timeLabel}. If you need to rearrange just reply. Thanks, ELI Motors.`;
+      const fallback = `Hi ${firstName}, a reminder that your ${car} (${a.registration}) is booked in for ${workPhrase} at ELI Motors on ${dateLabel} at ${timeLabel}. If you need to rearrange just reply. Thanks, ELI Motors.`;
 
-      if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, vars, preview: fallback }); continue; }
+      if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, serviceType: a.serviceType, template: templateSid, vars, preview: fallback }); continue; }
 
-      const r = await sendSMS({ to: phone, useTemplate: true, templateSid: TEMPLATE_SID, templateVariables: vars, fallbackMessage: fallback });
+      const r = await sendSMS({ to: phone, useTemplate: true, templateSid, templateVariables: vars, fallbackMessage: fallback });
       if (r.success) { await markAppointmentReminded(a.id, r.messageId); result.sent++; }
       else { result.skipped.push({ id: a.id, reg: a.registration, why: r.error || "send failed" }); }
     }

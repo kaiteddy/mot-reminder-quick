@@ -2877,7 +2877,8 @@ export const appRouter = router({
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         vehicleMake: z.string().optional(),
-        vehicleModel: z.string().optional()
+        vehicleModel: z.string().optional(),
+        serviceType: z.string().optional()
       }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -2924,6 +2925,7 @@ export const appRouter = router({
           endTime: input.endTime,
           notes: input.notes,
           orderIndex: input.orderIndex,
+          serviceType: input.serviceType || "MOT",
         }).returning({ id: appointments.id });
 
         return { success: true, id: result[0].id };
@@ -2974,7 +2976,8 @@ export const appRouter = router({
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         vehicleMake: z.string().optional(),
-        vehicleModel: z.string().optional()
+        vehicleModel: z.string().optional(),
+        serviceType: z.string().optional()
       }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -3020,6 +3023,7 @@ export const appRouter = router({
 
         if (autogenVehicleId) updateData.vehicleId = autogenVehicleId;
         if (autogenCustomerId) updateData.customerId = autogenCustomerId;
+        if (input.serviceType) updateData.serviceType = input.serviceType;
 
         if (input.appointmentDate) {
           updateData.appointmentDate = new Date(input.appointmentDate);

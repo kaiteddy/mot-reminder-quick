@@ -294,6 +294,7 @@ export const appointments = pgTable("appointments", {
   customerId: integer("customerId"),
   registration: varchar("registration", { length: 20 }),
   externalId: varchar("externalId", { length: 255 }).unique(), // GA4 appointment _ID (null for web-created)
+  serviceType: varchar("serviceType", { length: 30 }).default("MOT"), // MOT | MOT & Service | Service — drives the reminder wording
   bayId: varchar("bayId", { length: 50 }).notNull(),
   appointmentDate: timestamp("appointmentDate", { mode: "date" }).notNull(),
   startTime: varchar("startTime", { length: 10 }),

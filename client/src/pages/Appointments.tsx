@@ -66,7 +66,8 @@ export default function Appointments() {
         customerName: "",
         customerPhone: "",
         vehicleMake: "",
-        vehicleModel: ""
+        vehicleModel: "",
+        serviceType: "MOT"
     });
 
     // Quick-Booking universal search: find an existing car by ANY data point (reg, name,
@@ -182,7 +183,8 @@ export default function Appointments() {
             customerName: "",
             customerPhone: "",
             vehicleMake: "",
-            vehicleModel: ""
+            vehicleModel: "",
+            serviceType: "MOT"
         });
         setSelectedAppointment(null);
     };
@@ -399,6 +401,7 @@ export default function Appointments() {
             customerPhone: formData.customerPhone,
             vehicleMake: formData.vehicleMake,
             vehicleModel: formData.vehicleModel,
+            serviceType: formData.serviceType,
         }, {
             onSuccess: () => {
                 const targetBayId = selectedAppointment.bayId;
@@ -463,7 +466,8 @@ export default function Appointments() {
             customerName: appt.customer?.name || "",
             customerPhone: appt.customer?.phone || "",
             vehicleMake: appt.vehicle?.make || "",
-            vehicleModel: appt.vehicle?.model || ""
+            vehicleModel: appt.vehicle?.model || "",
+            serviceType: appt.serviceType || "MOT"
         });
         setIsEditOpen(true);
     };
@@ -870,6 +874,18 @@ export default function Appointments() {
                         </div>
 
                         <div className="space-y-2">
+                            <Label className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Booking Type</Label>
+                            <Select value={formData.serviceType} onValueChange={(v) => setFormData({ ...formData, serviceType: v })}>
+                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="MOT">MOT</SelectItem>
+                                    <SelectItem value="MOT & Service">MOT &amp; Service</SelectItem>
+                                    <SelectItem value="Service">Service</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
                             <Label htmlFor="notes" className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Notes & Job Details</Label>
                             <Textarea
                                 id="notes"
@@ -1018,6 +1034,18 @@ export default function Appointments() {
                                     />
                                 </div>
                             )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-xs uppercase text-muted-foreground font-semibold tracking-wider">Booking Type</Label>
+                            <Select value={formData.serviceType} onValueChange={(v) => setFormData({ ...formData, serviceType: v })}>
+                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="MOT">MOT</SelectItem>
+                                    <SelectItem value="MOT & Service">MOT &amp; Service</SelectItem>
+                                    <SelectItem value="Service">Service</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="space-y-2">
