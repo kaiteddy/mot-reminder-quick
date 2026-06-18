@@ -5,7 +5,7 @@ import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
@@ -787,6 +787,23 @@ export default function DocumentDetails() {
                 {editing && (
                   <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
                     {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
+                  </button>
+                )}
+                {form.registration && (
+                  <button
+                    type="button"
+                    title="Order parts on Euro Car Parts (Omnipart) — opens with this reg, also copied to clipboard"
+                    onClick={() => {
+                      const reg = String(form.registration || "").toUpperCase().trim();
+                      if (!reg) return;
+                      const bare = reg.replace(/\s/g, "");
+                      navigator.clipboard?.writeText(bare).catch(() => {});
+                      window.open(`https://omnipart.eurocarparts.com/?vrm=${encodeURIComponent(bare)}`, "_blank", "noopener");
+                      toast.success(`Reg ${reg} copied — paste into Euro Car Parts if it doesn't auto-fill`);
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white rounded px-2 py-1 text-xs"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" /> Euro Car Parts
                   </button>
                 )}
               </div>
