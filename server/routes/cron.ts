@@ -36,11 +36,8 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
 
     // Approved WhatsApp templates (Utility), same 5 vars (1=name 2=make/model 3=reg 4=date 5=time).
     // MOT-only says "...for its MOT..."; the service variant says "...for its MOT and a service...".
-    const MOT_TEMPLATE = "HX57564b5848889be843bfa6ee1c05eddc"; // copy_of_mot_day_reminder
-    // "MOT & Service" template (mot_service_day_reminder) submitted for approval 2026-06-18.
-    // When approved, swap to: "HX0a3c2c703d7405abebce29909cc2c363". Until then service bookings
-    // use the MOT template (still a valid reminder, just MOT wording — sending a pending template fails).
-    const SERVICE_TEMPLATE = MOT_TEMPLATE;
+    const MOT_TEMPLATE = "HX57564b5848889be843bfa6ee1c05eddc"; // copy_of_mot_day_reminder (approved)
+    const SERVICE_TEMPLATE = "HX0a3c2c703d7405abebce29909cc2c363"; // mot_service_day_reminder (approved 2026-06-18)
     const dateLabel = new Date(`${today}T12:00:00`).toLocaleDateString("en-GB", {
       day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
     });
