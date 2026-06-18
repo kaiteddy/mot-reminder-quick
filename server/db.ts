@@ -1588,7 +1588,7 @@ export async function getDuplicateGroups() {
   const byPhone = new Map<string, any[]>();
   for (const cu of custs) { const p = normPhoneKey(cu.phone); if (!p) continue; if (!byPhone.has(p)) byPhone.set(p, []); byPhone.get(p)!.push(cu); }
   const groups = Array.from(byPhone.entries()).filter(([, g]: [string, any[]]) => g.length >= 2);
-  const dismissed = new Set<string>(((await db.execute(sql`SELECT phone FROM duplicateDismissals`)) as any)[0].map((r: any) => r.phone));
+  const dismissed = new Set<string>((((await db.execute(sql`SELECT phone FROM duplicateDismissals`)) as any).rows || []).map((r: any) => r.phone)); // pg returns { rows }, not [rows, fields]
   const ids = groups.flatMap(([, g]: [string, any[]]) => g.map((x: any) => x.id));
   const docCnt = new Map<number, number>(), vehCnt = new Map<number, number>();
   if (ids.length) {
@@ -1642,7 +1642,7 @@ export async function dismissDuplicateGroup(phone: string) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.execute(sql`CREATE TABLE IF NOT EXISTS duplicateDismissals (phone VARCHAR(20) PRIMARY KEY, dismissedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-  await db.execute(sql`INSERT IGNORE INTO duplicateDismissals (phone) VALUES (${phone})`);
+  await db.execute(sql`INSERT INTO duplicateDismissals (phone) VALUES (${phone}) ON CONFLICT (phone) DO NOTHING`); // pg syntax (was MySQL INSERT IGNORE)
   return { dismissed: phone };
 }
 
