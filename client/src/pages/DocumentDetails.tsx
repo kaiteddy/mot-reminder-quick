@@ -828,7 +828,7 @@ export default function DocumentDetails() {
               <div className="flex gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <EF label="Mileage" field="mileage" required={isInvoice} grow {...{ form, set, editing }} />
-              <EF label="Date Reg" field="dateOfRegistration" type="date" grow {...{ form, set, editing }} />
+              <div className="flex gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
             </div>
             {/* customer */}
