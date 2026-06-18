@@ -1005,7 +1005,14 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
-                  <TabsContent value="partsHistory" className="mt-0"><PrevParts vehicleId={(data as any)?.doc?.vehicleId} onOpen={(docId) => setLocation(`/documents/${docId}`)} /></TabsContent>
+                  <TabsContent value="partsHistory" className="mt-0"><PrevParts
+                    vehicleId={(data as any)?.doc?.vehicleId}
+                    onOpen={(docId) => setLocation(`/documents/${docId}`)}
+                    onAdd={(pt) => {
+                      setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20 })]);
+                      toast.success(`Added ${pt.description || "part"} (£${(Number(pt.unitPrice) || 0).toFixed(2)}) — see the Parts tab`);
+                    }}
+                  /></TabsContent>
                   <TabsContent value="mileage" className="mt-0"><MileageTab registration={form.registration} /></TabsContent>
                   <TabsContent value="motadv" className="mt-0">
                     <MOTAdvisoriesTab
@@ -1627,7 +1634,7 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
   );
 }
 
-function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: number) => void }) {
+function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (docId: number) => void; onAdd: (part: any) => void }) {
   const [q, setQ] = useState("");
   const { data: parts, isLoading } = trpc.documents.partsHistory.useQuery({ vehicleId: vehicleId! }, { enabled: !!vehicleId });
   if (!vehicleId) return <p className="text-sm text-muted-foreground py-6 text-center">No vehicle linked to this document.</p>;
@@ -1650,6 +1657,7 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
               <TableHead className="h-8">Date</TableHead><TableHead className="h-8">Doc No</TableHead>
               <TableHead className="h-8">Part No</TableHead><TableHead className="h-8">Description</TableHead>
               <TableHead className="h-8 text-right">Qty</TableHead><TableHead className="h-8 text-right">Unit £</TableHead><TableHead className="h-8 text-right">Net £</TableHead>
+              <TableHead className="h-8" />
             </TableRow></TableHeader>
             <TableBody>
               {filtered.map((p) => (
@@ -1661,6 +1669,16 @@ function PrevParts({ vehicleId, onOpen }: { vehicleId?: number; onOpen: (docId: 
                   <TableCell className="text-right">{p.quantity ?? ""}</TableCell>
                   <TableCell className="text-right">{money(p.unitPrice)}</TableCell>
                   <TableCell className="text-right">{money(p.subNet)}</TableCell>
+                  <TableCell className="text-right">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onAdd(p); }}
+                      className="text-violet-600 hover:text-violet-700 hover:bg-violet-50 border border-violet-200 rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap"
+                      title="Add this part to the current job sheet at the same price"
+                    >
+                      + Add
+                    </button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
