@@ -37,9 +37,9 @@ git add -A && git commit -q -m "..." \
 Pushing to `main` triggers the Vercel deploy.
 
 ## Key integrations
-- **Twilio WhatsApp** reminders. Account SID `AC1572c0e5e4b55bb7440c3d9da482fd36`, auth = Account SID +
-  Auth Token (a 32-char token, NOT an `SK` API key). Sender `+15558340240`. Templates need Meta approval.
-  **Do not keep changing the Twilio credentials** — it breaks auth and needs a redeploy to re-test.
+- **Twilio WhatsApp** reminders. Credentials (Account SID, Auth Token, sender number) live in `.env` and the
+  Twilio console — auth = Account SID + Auth Token (a 32-char token, NOT an `SK` API key). Templates need Meta
+  approval. **Do not keep changing the Twilio credentials** — it breaks auth and needs a redeploy to re-test.
 - **Day-of MOT reminders**: Vercel cron `0 7 * * *` → `GET /api/cron/mot-day-reminders` (`server/routes/cron.ts`).
   Live since 2026-06-18. Enable flag `MOT_DAY_REMINDERS=on` (delete the env var to pause). Inbound +
   status webhooks: `/api/webhooks/twilio` and `/api/webhooks/twilio/status`.
