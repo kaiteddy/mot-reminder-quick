@@ -172,14 +172,18 @@ export async function handleTwilioStatusCallback(req: Request, res: Response) {
       fullBody: body,
     });
 
-    // Update message status in database
-    const updated = await updateMessageStatus({
-      messageSid: body.MessageSid || body.SmsSid || "unknown",
-      status: body.MessageStatus || body.SmsStatus || "unknown",
-      timestamp: new Date(),
-    });
+    const msgSid = body.MessageSid || body.SmsSid || "";
+    const status = body.MessageStatus || body.SmsStatus || "unknown";
 
+    // Update message status in database
+    const updated = await updateMessageStatus({ messageSid: msgSid || "unknown", status, timestamp: new Date() });
     console.log("[Twilio Status] Database update result:", updated);
+
+    // Also reflect delivery status on the day-of MOT reminder, if this SID is one.
+    if (msgSid) {
+      const { updateAppointmentReminderStatus } = await import("../db");
+      await updateAppointmentReminderStatus(msgSid, status);
+    }
 
     res.status(200).send("OK");
   } catch (error) {

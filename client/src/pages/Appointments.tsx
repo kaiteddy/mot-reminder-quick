@@ -603,6 +603,10 @@ export default function Appointments() {
                                                                                             : appt.customerResponse === 'cancel' ? '✕ Wants to cancel'
                                                                                             : '↻ Wants reschedule'}
                                                                                     </div>
+                                                                                ) : (appt.reminderStatus === 'failed' || appt.reminderStatus === 'undelivered') ? (
+                                                                                    <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide border bg-red-100 text-red-700 border-red-300">
+                                                                                        ⚠ Reminder not delivered
+                                                                                    </div>
                                                                                 ) : appt.reminderSentAt ? (
                                                                                     <div className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide border bg-slate-50 text-slate-400 border-slate-200">
                                                                                         ⏳ Awaiting reply

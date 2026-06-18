@@ -65,7 +65,7 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
       if (!live) { result.wouldSend.push({ id: a.id, reg: a.registration, to: phone, vars, preview: fallback }); continue; }
 
       const r = await sendSMS({ to: phone, useTemplate: true, templateSid: TEMPLATE_SID, templateVariables: vars, fallbackMessage: fallback });
-      if (r.success) { await markAppointmentReminded(a.id); result.sent++; }
+      if (r.success) { await markAppointmentReminded(a.id, r.messageId); result.sent++; }
       else { result.skipped.push({ id: a.id, reg: a.registration, why: r.error || "send failed" }); }
     }
 

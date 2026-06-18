@@ -261,10 +261,19 @@ export async function getMotAppointmentsForReminder(dateStr: string) {
     ));
 }
 
-export async function markAppointmentReminded(id: number) {
+export async function markAppointmentReminded(id: number, messageSid?: string) {
   const db = await getDb();
   if (!db) return;
-  await db.update(appointments).set({ reminderSentAt: new Date() }).where(eq(appointments.id, id));
+  await db.update(appointments)
+    .set({ reminderSentAt: new Date(), reminderMessageSid: messageSid ?? null, reminderStatus: "sent" })
+    .where(eq(appointments.id, id));
+}
+
+/** Update a reminder's delivery status (from the Twilio status callback) by its message SID. */
+export async function updateAppointmentReminderStatus(messageSid: string, status: string) {
+  const db = await getDb();
+  if (!db || !messageSid) return;
+  await db.update(appointments).set({ reminderStatus: status }).where(eq(appointments.reminderMessageSid, messageSid));
 }
 
 export async function markMessageAsRead(id: number) {
