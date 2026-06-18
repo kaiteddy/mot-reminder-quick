@@ -1223,13 +1223,8 @@ export const appRouter = router({
             taxStatus: vehicleData?.taxStatus,
             taxDueDate: vehicleData?.taxDueDate ? new Date(vehicleData.taxDueDate) : null
           });
-          // Result from insert is [ResultSetHeader] in mysql2, usually insertId is available
-          // Drizzle insert returns result array? No, mysql2 returns ResultHeader.
-          // My db function returns `result` directly.
-          // Let's assume standard mysql2/drizzle return.
-          // Safest to just fetch it back or check result type.
-          // Drizzle MySQL insert returns [OkPacket].
-          vehicleId = (result as any).insertId;
+          // createVehicle returns { insertId } — the new id, via Postgres RETURNING.
+          vehicleId = result.insertId;
         }
 
         // 4. Create the reminder (Linked)
@@ -1249,8 +1244,7 @@ export const appRouter = router({
           customerId: customerId ?? null
         });
 
-        // @ts-ignore
-        const newReminderId = reminderResult.insertId || reminderResult?.[0]?.insertId;
+        const newReminderId = reminderResult.insertId; // createReminder returns { insertId } via RETURNING
 
         return {
           success: true,
