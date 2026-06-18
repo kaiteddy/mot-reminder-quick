@@ -783,7 +783,7 @@ export default function DocumentDetails() {
               <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                  className="flex-1 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                  className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
                 {editing && (
                   <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
                     {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
@@ -801,9 +801,10 @@ export default function DocumentDetails() {
                       window.open(`https://omnipart.eurocarparts.com/?vrm=${encodeURIComponent(bare)}`, "_blank", "noopener");
                       toast.success(`Reg ${reg} copied — paste into Euro Car Parts if it doesn't auto-fill`);
                     }}
-                    className="shrink-0 inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white rounded px-2 py-1 text-xs"
+                    aria-label="Order parts on Euro Car Parts"
+                    className="shrink-0 inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white rounded h-[28px] w-[30px]"
                   >
-                    <ShoppingCart className="w-3.5 h-3.5" /> Euro Car Parts
+                    <ShoppingCart className="w-4 h-4" />
                   </button>
                 )}
               </div>
