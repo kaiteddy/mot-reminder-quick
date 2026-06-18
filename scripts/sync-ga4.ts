@@ -22,6 +22,7 @@ import pg from "pg";
 import { parse } from "csv-parse/sync";
 import { mapGA4Document, buildCustomerName, buildAddress, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
 import { buildCustomerContacts } from "../server/services/contactCleanup";
+import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -243,6 +244,9 @@ await syncTable({
 // ~800 docs re-flag as "changed" each run due to a timestamp TZ round-trip; harmless (re-writes
 // the same GA4 values), so left as-is rather than risk masking real changes.
 function dt2(v: any): string | null { return v ? new Date(v).toISOString().slice(0, 19).replace("T", " ") : null; }
+
+// ---- 5) Retire web job sheets that GA4 has since invoiced (keeps the transition clean) ----
+await retireInvoicedJobSheets(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
