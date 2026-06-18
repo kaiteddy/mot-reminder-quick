@@ -5,7 +5,8 @@ import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -89,7 +90,10 @@ function applyTemplate(t: { subject: string; body: string }, ctx: any) {
   return { subject: sub(t.subject), message: sub(t.body) };
 }
 
-type Item = { id?: number; itemType: string; description?: string; partNumber?: string; nominalCode?: string; quantity?: any; unitPrice?: any; vatRate?: any; subNet?: any; taxAmount?: any; discount?: any; discountType?: "pct" | "amt" | string };
+type Item = { id?: number; itemType: string; description?: string; partNumber?: string; nominalCode?: string; quantity?: any; unitPrice?: any; vatRate?: any; subNet?: any; taxAmount?: any; discount?: any; discountType?: "pct" | "amt" | string; _k?: string };
+// Stable per-row key for drag-reorder; preserved through recalc's spread, dropped on save.
+let _itemKeyCounter = 0;
+const nextItemKey = () => `ik${++_itemKeyCounter}`;
 
 function recalc(i: Item): Item {
   const q = num(i.quantity) ?? 0, u = num(i.unitPrice) ?? 0, r = num(i.vatRate) ?? 0;
@@ -331,7 +335,7 @@ export default function DocumentDetails() {
     // Labour/Parts/Advisories stay in the line-item tabs; MOT/Sundries/Lubricant/Paint
     // are surfaced as single Extras amounts (XS excess docs keep all their lines).
     const all = (data as any).lineItems as any[];
-    setItems((doc.docType === "XS" ? all : all.filter((li) => !EXTRA_KINDS.includes(li.itemType))).map((li) => ({ ...li })));
+    setItems((doc.docType === "XS" ? all : all.filter((li) => !EXTRA_KINDS.includes(li.itemType))).map((li) => ({ ...li, _k: nextItemKey() })));
   }, [data, isNew]);
 
   // Prefill a brand-new document from ?reg= / ?customerId= (e.g. the "Generate Doc"
@@ -1009,7 +1013,7 @@ export default function DocumentDetails() {
                     vehicleId={(data as any)?.doc?.vehicleId}
                     onOpen={(docId) => setLocation(`/documents/${docId}`)}
                     onAdd={(pt) => {
-                      setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20 })]);
+                      setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20, _k: nextItemKey() })]);
                       toast.success(`Added ${pt.description || "part"} (£${(Number(pt.unitPrice) || 0).toFixed(2)}) — see the Parts tab`);
                     }}
                   /></TabsContent>
@@ -1026,7 +1030,7 @@ export default function DocumentDetails() {
                         try {
                           const year = form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined;
                           const res: any = await partsForDefects.mutateAsync({ defects: texts, make: form.make || undefined, model: form.model || undefined, year });
-                          if (res.parts?.length) setItemsDirty((p) => [...p, ...res.parts.map((pt: any) => recalc({ itemType: "Part", description: pt.description, quantity: 1, unitPrice: 0, vatRate: 20 }))]);
+                          if (res.parts?.length) setItemsDirty((p) => [...p, ...res.parts.map((pt: any) => recalc({ itemType: "Part", description: pt.description, quantity: 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() }))]);
                           toast.success(`Added to description${res.parts?.length ? ` + ${res.parts.length} part${res.parts.length === 1 ? "" : "s"} — set prices in the Parts tab` : ""}`);
                         } catch (e: any) { toast.error(e.message || "Couldn't work out the parts"); }
                       }}
@@ -1926,7 +1930,7 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
 function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
-  const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20 })]);
+  const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20, _k: nextItemKey() })]);
   const remove = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const inp = "w-full bg-white border border-slate-300 rounded-sm px-1.5 py-1 text-[13px] outline-none focus:border-violet-500";
   const KIND_NOUN: Record<string, string> = { Part: "parts", Labour: "labour", Sundries: "sundries", Paint: "paint & materials", Lubricant: "lubricants", Other: "advisories" };
@@ -1934,11 +1938,60 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   const showPartNo = kind === "Part" || kind === "Lubricant";
 
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
+
+  // Drag-reorder within this kind only — other kinds keep their slots in the full items array.
+  const onDragEnd = (r: DropResult) => {
+    if (!r.destination) return;
+    const from = r.source.index, to = r.destination.index;
+    if (from === to) return;
+    setItems((all) => {
+      const positions = all.map((it, i) => (it.itemType === kind ? i : -1)).filter((i) => i >= 0);
+      const ordered = positions.map((i) => all[i]);
+      const [moved] = ordered.splice(from, 1);
+      ordered.splice(to, 0, moved);
+      const next = [...all];
+      positions.forEach((pos, k) => { next[pos] = ordered[k]; });
+      return next;
+    });
+  };
+
+  // The data cells for one row (everything except the drag-handle column).
+  const rowCells = (it: Item, idx: number) => {
+    const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
+    return (<>
+      {showPartNo && <TableCell>{editing
+        ? <PartAutocomplete inp={inp} placeholder="Part No" value={it.partNumber ?? ""}
+            onType={(v) => update(idx, { partNumber: v })}
+            onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+        : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
+      <TableCell>{editing ? (
+        kind === "Labour"
+          ? <LabourDescInput inp={inp} value={it.description ?? ""}
+              onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
+          : showPartNo
+            ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
+                onType={(v) => update(idx, { description: v })}
+                onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+            : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
+      ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
+      <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
+      <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
+      <TableCell className="text-right">{editing
+        ? <input className={inp + " text-right"} placeholder="0" title="Discount % off this line — e.g. 10 for 10% off" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
+        : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>
+      <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
+      <TableCell className="text-right">£{money(it.subNet)}</TableCell>
+      <TableCell className="text-right">£{money(gross)}</TableCell>
+      {editing && <TableCell><button onClick={() => remove(idx)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></TableCell>}
+    </>);
+  };
+
   return (
     <div>
       <Table>
         <TableHeader>
           <TableRow>
+            {editing && <TableHead className="h-8 w-6" />}
             {showPartNo && <TableHead className="h-8">{kind === "Lubricant" ? "Code" : "Part No"}</TableHead>}
             <TableHead className="h-8">Description</TableHead>
             <TableHead className="h-8 text-right w-16">{kind === "Labour" ? "Hrs" : "Qty"}</TableHead>
@@ -1950,40 +2003,33 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
             {editing && <TableHead className="h-8 w-8" />}
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {rows.map(({ it, idx }) => {
-            const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
-            return (
-              <TableRow key={idx}>
-                {showPartNo && <TableCell>{editing
-                  ? <PartAutocomplete inp={inp} placeholder="Part No" value={it.partNumber ?? ""}
-                      onType={(v) => update(idx, { partNumber: v })}
-                      onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
-                  : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
-                <TableCell>{editing ? (
-                  kind === "Labour"
-                    ? <LabourDescInput inp={inp} value={it.description ?? ""}
-                        onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
-                    : showPartNo
-                      ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
-                          onType={(v) => update(idx, { description: v })}
-                          onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
-                      : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
-                ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
-                <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
-                <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
-                <TableCell className="text-right">{editing
-                  ? <input className={inp + " text-right"} placeholder="0" title="Discount % off this line — e.g. 10 for 10% off" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
-                  : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>
-                <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.vatRate ?? ""} onChange={(e) => update(idx, { vatRate: e.target.value })} /> : it.vatRate ?? "-"}</TableCell>
-                <TableCell className="text-right">£{money(it.subNet)}</TableCell>
-                <TableCell className="text-right">£{money(gross)}</TableCell>
-                {editing && <TableCell><button onClick={() => remove(idx)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></TableCell>}
-              </TableRow>
-            );
-          })}
-          {rows.length === 0 && <TableRow><TableCell colSpan={(showPartNo ? 1 : 0) + (editing ? 1 : 0) + 7} className="text-center text-muted-foreground py-4">None yet</TableCell></TableRow>}
-        </TableBody>
+        {editing ? (
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId={`items-${kind}`}>
+              {(prov) => (
+                <tbody ref={prov.innerRef} {...prov.droppableProps}>
+                  {rows.map(({ it, idx }, vi) => (
+                    <Draggable key={it._k || `r${idx}`} draggableId={it._k || `r${idx}`} index={vi}>
+                      {(p, snap) => (
+                        <tr ref={p.innerRef} {...p.draggableProps} style={p.draggableProps.style}
+                          className={`border-b ${snap.isDragging ? "bg-violet-50 shadow-md" : "hover:bg-muted/30"}`}>
+                          <TableCell {...p.dragHandleProps} className="w-6 px-1 align-middle text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"><GripVertical className="w-3.5 h-3.5" /></TableCell>
+                          {rowCells(it, idx)}
+                        </tr>
+                      )}
+                    </Draggable>
+                  ))}
+                  {prov.placeholder}
+                  {rows.length === 0 && <TableRow><TableCell colSpan={(showPartNo ? 1 : 0) + 9} className="text-center text-muted-foreground py-4">None yet — add one below</TableCell></TableRow>}
+                </tbody>
+              )}
+            </Droppable>
+          </DragDropContext>
+        ) : (
+          <TableBody>
+            {rows.map(({ it, idx }) => <TableRow key={it._k || idx}>{rowCells(it, idx)}</TableRow>)}
+          </TableBody>
+        )}
       </Table>
       {editing && <button onClick={add} className="mt-2 inline-flex items-center gap-1.5 text-sm text-violet-700 hover:underline"><Plus className="w-4 h-4" /> Add {kind === "Labour" ? "labour" : kind === "Part" ? "part" : "line"}</button>}
     </div>
