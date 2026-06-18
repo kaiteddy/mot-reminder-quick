@@ -20,7 +20,8 @@ import path from "path";
 import os from "os";
 import pg from "pg";
 import { parse } from "csv-parse/sync";
-import { mapGA4Document, buildCustomerName, buildAddress, getPhoneNumber, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
+import { mapGA4Document, buildCustomerName, buildAddress, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
+import { buildCustomerContacts } from "../server/services/contactCleanup";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -104,14 +105,20 @@ if (mergedToPrimary.size) console.log(`(respecting ${mergedToPrimary.size} inten
 const customers = load("Customers.csv");
 await syncTable({
   name: "Customers", table: "customers", rows: customers,
-  cols: ["name", "phone", "email", "postcode", "address"],
+  cols: ["name", "phone", "email", "postcode", "address", "altContacts"],
   map: (r) => {
     const ext = norm(r._ID);
     if (mergedToPrimary.has(ext)) return null; // deliberately merged away — don't recreate it
+    const name = cap(buildCustomerName(r as any), 255) || "Unknown";
+    // Same split-and-clean rule as scripts/clean-phone-names.ts (shared in contactCleanup):
+    // pull a clean primary number out of any "number+name" mush, and keep extra numbers
+    // (+ recovered names) as additional contacts, so new GA4 customers come in clean.
+    const { phone, altContacts } = buildCustomerContacts([r.contactMobile, r.contactTelephone, r.Telephone, r.Mobile], name);
     return {
-      externalId: ext, name: cap(buildCustomerName(r as any), 255) || "Unknown",
-      phone: cap(getPhoneNumber(r as any), 50), email: cap(getCustomerEmail(r as any), 320),
+      externalId: ext, name,
+      phone: cap(phone, 50), email: cap(getCustomerEmail(r as any), 320),
       postcode: cap(norm(r.addressPostCode), 20) || null, address: cap(buildAddress(r as any), 500) || null,
+      altContacts: altContacts.length ? JSON.stringify(altContacts) : null,
     };
   },
   // Existing customer records came from a different source and disagree with today's export

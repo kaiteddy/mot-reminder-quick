@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -58,6 +58,78 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 
     return results;
 };
+
+// Extra phone numbers kept on the customer record (altContacts: [{ name, phone }]).
+// Names are optional — nameless numbers are preserved. Auto-saves (debounced) so a
+// number can't be lost by navigating away. Reuses the same tRPC endpoints the job
+// sheet's "Other numbers" editor uses.
+function AdditionalNumbers({ customerId }: { customerId: number }) {
+    const utils = trpc.useUtils();
+    const { data: serverContacts } = trpc.customers.contacts.useQuery(
+        { customerId },
+        { enabled: !!customerId, staleTime: 30_000 }
+    );
+    const [rows, setRows] = useState<{ name: string; phone: string }[]>([]);
+    const [dirty, setDirty] = useState(false);
+    const loadedFor = useRef<number | undefined>(undefined);
+
+    useEffect(() => {
+        if (customerId && serverContacts !== undefined && loadedFor.current !== customerId) {
+            setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "" })) : []);
+            setDirty(false);
+            loadedFor.current = customerId;
+        }
+    }, [serverContacts, customerId]);
+
+    const save = trpc.customers.saveContacts.useMutation({
+        onSuccess: () => { setDirty(false); utils.customers.contacts.invalidate(); },
+        onError: (e: any) => toast.error(e.message || "Couldn't save numbers"),
+    });
+
+    // Auto-save (debounced) whenever the list changes — matches the job sheet, so a
+    // number added here can't be lost by navigating away.
+    useEffect(() => {
+        if (!dirty || !customerId) return;
+        const t = setTimeout(() => save.mutate({ customerId, contacts: rows }), 700);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, dirty, customerId]);
+
+    const upd = (i: number, k: "name" | "phone", v: string) => {
+        setRows((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+        setDirty(true);
+    };
+    const add = () => { setRows((p) => [...p, { name: "", phone: "" }]); setDirty(true); };
+    const remove = (i: number) => { setRows((p) => p.filter((_, j) => j !== i)); setDirty(true); };
+
+    return (
+        <div className="pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Additional numbers</span>
+                {(dirty || save.isPending)
+                    ? <span className="text-[11px] text-violet-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving…</span>
+                    : save.isSuccess ? <span className="text-[11px] text-green-600">Saved ✓</span> : null}
+            </div>
+            <div className="space-y-2">
+                {rows.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                        <Input value={r.name} onChange={(e) => upd(i, "name", e.target.value)} placeholder="Name (optional)" className="w-28 shrink-0 h-8 text-sm" />
+                        <Input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} placeholder="Phone number" className="flex-1 h-8 text-sm" />
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-red-500 hover:text-red-700" onClick={() => remove(i)}>
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    </div>
+                ))}
+                {rows.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">No additional numbers yet.</p>
+                )}
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-2 text-violet-700 hover:text-violet-800" onClick={add}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add number
+            </Button>
+        </div>
+    );
+}
 
 export default function CustomerDetails() {
     const [match, params] = useRoute("/customers/:id");
@@ -284,6 +356,7 @@ export default function CustomerDetails() {
                             ) : (
                                 <div className="text-sm text-muted-foreground italic">No contact information available</div>
                             )}
+                            <AdditionalNumbers customerId={customer.id as number} />
                             {(customer.address || customer.postcode) && (
                                 <div className="flex items-start gap-2 text-sm">
                                     <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />

@@ -108,3 +108,6 @@ temp/
 *.sqlite
 *.sqlite3
 .vercel
+
+# Local data-cleanup backups (contain customer PII — never commit)
+scripts/.cleanup-backups/
