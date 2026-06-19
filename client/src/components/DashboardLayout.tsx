@@ -56,12 +56,10 @@ import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuGroups = [
-  { section: "", items: [
-    { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
-  ] },
   { section: "Workshop", items: [
     { icon: FileText, label: "Live Jobs", path: "/documents" },
     { icon: Search, label: "MOT Check", path: "/mot-check" },
+    { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
     { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
     { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
@@ -89,7 +87,6 @@ const menuGroups = [
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },
     { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
-    { icon: DatabaseIcon, label: "Database", path: "/database" },
     { icon: Mail, label: "Email Settings", path: "/email-settings" },
   ] },
 ];
