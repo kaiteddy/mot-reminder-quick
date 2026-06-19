@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2, Search, ArrowLeftRight } from "lucide-react";
+import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2, Search, ArrowLeftRight, Navigation } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,10 +273,10 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
         <div>
           <h4 className="font-semibold text-lg">{customer.name}</h4>
           {customer.phone && (
-            <div className="flex items-center gap-2 text-muted-foreground mt-2">
+            <a href={`tel:${String(customer.phone).replace(/[^\d+]/g, "")}`} className="flex items-center gap-2 text-primary font-medium mt-2 hover:underline">
               <Phone className="h-4 w-4" />
               <span>{customer.phone}</span>
-            </div>
+            </a>
           )}
         </div>
         <div>
@@ -286,6 +286,19 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
               {customer.address || "No address on file"}
             </div>
           </div>
+          {customer.address && (() => {
+            const dest = encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "));
+            return (
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                <a href={`https://www.google.com/maps/search/?api=1&query=${dest}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-100 active:scale-95 transition">
+                  <Navigation className="w-4 h-4" /> Google Maps
+                </a>
+                <a href={`https://waze.com/ul?q=${dest}&navigate=yes`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-100 active:scale-95 transition">
+                  <Navigation className="w-4 h-4" /> Waze
+                </a>
+              </div>
+            );
+          })()}
         </div>
         {vehicleId && (
           <div className="mt-4 flex flex-wrap justify-end gap-2 sm:absolute sm:bottom-2 sm:right-4 sm:mt-0">
