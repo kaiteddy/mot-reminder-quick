@@ -304,7 +304,7 @@ export default function WorkshopMOTCheck() {
             {/* Start a job sheet for this vehicle, right here at the car — primary action, so it
                 sits up top. Hands the reg to the new-document flow, which auto-fills the vehicle +
                 its linked customer and auto-saves. */}
-            <Link href={`/documents/new?reg=${encodeURIComponent(vehicleData.registration)}&docType=JS`}>
+            <Link href={`/workshop/job?reg=${encodeURIComponent(vehicleData.registration)}`}>
               <Button className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl">
                 <FileText className="w-5 h-5 mr-2" />
                 Create Job Sheet
