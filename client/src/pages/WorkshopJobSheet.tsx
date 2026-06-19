@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck } from "lucide-react";
+import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck, Printer, Receipt, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -74,6 +74,10 @@ export default function WorkshopJobSheet() {
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savedId, setSavedId] = useState<number | null>(null);
+  const [savedType, setSavedType] = useState<"Job Sheet" | "Invoice">("Job Sheet");
+  const [printing, setPrinting] = useState(false);
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     if (!reg) { setLoading(false); return; }
@@ -99,9 +103,38 @@ export default function WorkshopJobSheet() {
   const rm = (id: number) => setLines((p) => p.filter((l) => l.id !== id));
 
   const save = trpc.documents.save.useMutation({
-    onSuccess: () => { toast.success("Job sheet created ✓"); setLocation(`/workshop?reg=${encodeURIComponent(reg)}`); },
+    onSuccess: (res: any) => { toast.success("Job sheet created ✓"); setSavedId(res?.id ?? null); },
     onError: (e: any) => toast.error(e.message || "Couldn't save the job sheet"),
   });
+
+  // Convert + print reuse the SAME backend the desktop uses, so output/behaviour match exactly.
+  const convert = trpc.documents.convert.useMutation({
+    onSuccess: (res: any) => { setSavedType("Invoice"); if (res?.id) setSavedId(res.id); toast.success("Converted to invoice ✓"); },
+    onError: (e: any) => toast.error("Convert failed: " + (e.message || "")),
+  });
+
+  async function handlePrint() {
+    if (!savedId) return;
+    setPrinting(true);
+    try {
+      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: savedId });
+      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+      const bytes = atob(res.content); const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      await new Promise<void>((resolve) => {
+        let fired = false;
+        const fire = () => { if (fired) return; fired = true; try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); } catch { window.open(url, "_blank"); } resolve(); };
+        iframe.onload = () => setTimeout(fire, 800);
+        iframe.src = url; document.body.appendChild(iframe);
+        setTimeout(fire, 5000);
+      });
+      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
+    } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
+    finally { setPrinting(false); }
+  }
 
   const onSave = () => {
     const nameParts = custName.trim().split(/\s+/).filter(Boolean);
@@ -138,7 +171,26 @@ export default function WorkshopJobSheet() {
         </div>
       </div>
 
-      {loading ? (
+      {savedId ? (
+        <div className="p-4 space-y-4 flex-1">
+          <div className="bg-white rounded-xl p-6 text-center shadow-sm">
+            <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+            <h2 className="text-xl font-bold text-slate-900">{savedType} saved</h2>
+            <p className="text-slate-500 mt-1 font-mono tracking-widest">{reg}</p>
+          </div>
+          <Button onClick={handlePrint} disabled={printing} className="w-full h-14 text-lg font-bold bg-slate-900 hover:bg-slate-800 rounded-xl">
+            {printing ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Printer className="w-5 h-5 mr-2" />}
+            Print {savedType}
+          </Button>
+          {savedType === "Job Sheet" && (
+            <Button onClick={() => convert.mutate({ id: savedId!, toType: "SI" })} disabled={convert.isPending} variant="outline" className="w-full h-14 text-lg font-bold rounded-xl border-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50">
+              {convert.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Receipt className="w-5 h-5 mr-2" />}
+              Convert to Invoice
+            </Button>
+          )}
+          <Button onClick={() => setLocation(`/workshop?reg=${encodeURIComponent(reg)}`)} variant="ghost" className="w-full h-12 text-slate-600">Done</Button>
+        </div>
+      ) : loading ? (
         <div className="flex-1 flex items-center justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
       ) : (
         <div className="p-3 space-y-2.5 flex-1">
@@ -166,7 +218,7 @@ export default function WorkshopJobSheet() {
 
           <Section id="mot" open={open} setOpen={setOpen} icon={ShieldCheck} title="MOT" summary={motNet > 0 ? money(motNet) : undefined}>
             {motFee === "" ? (
-              <Button type="button" variant="outline" className="w-full h-12 border-dashed text-violet-700" onClick={() => setMotFee("54.85")}>
+              <Button type="button" variant="outline" className="w-full h-12 border-dashed text-violet-700" onClick={() => setMotFee("45")}>
                 <Plus className="w-4 h-4 mr-2" /> Add MOT
               </Button>
             ) : (
@@ -185,18 +237,20 @@ export default function WorkshopJobSheet() {
         </div>
       )}
 
-      <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 z-50" style={{ boxShadow: "0 -2px 10px rgba(0,0,0,0.06)" }}>
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="text-xs text-slate-500">Total (inc VAT)</div>
-            <div className="text-xl font-bold text-slate-900">{money(total)}</div>
+      {!savedId && (
+        <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 z-50" style={{ boxShadow: "0 -2px 10px rgba(0,0,0,0.06)" }}>
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <div className="text-xs text-slate-500">Total (inc VAT)</div>
+              <div className="text-xl font-bold text-slate-900">{money(total)}</div>
+            </div>
+            <Button onClick={onSave} disabled={save.isPending || !reg} className="h-14 px-6 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 rounded-xl">
+              {save.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
+              Save Job Sheet
+            </Button>
           </div>
-          <Button onClick={onSave} disabled={save.isPending || !reg} className="h-14 px-6 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 rounded-xl">
-            {save.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
-            Save Job Sheet
-          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
