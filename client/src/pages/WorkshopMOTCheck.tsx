@@ -282,6 +282,16 @@ export default function WorkshopMOTCheck() {
             </form>
           </CardContent>
         </Card>
+        {/* Primary action: create a job sheet for the scanned vehicle — above Scan Another Vehicle */}
+        {vehicleData && (
+          <Link href={`/workshop/job?reg=${encodeURIComponent(vehicleData.registration)}`} className="block">
+            <Button className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl">
+              <FileText className="w-5 h-5 mr-2" />
+              Create Job Sheet
+            </Button>
+          </Link>
+        )}
+
         {/* Floating Scan New Vehicle Button */}
         {vehicleData && (
           <Button 
@@ -504,14 +514,6 @@ export default function WorkshopMOTCheck() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Primary action + customer details, directly under the critical MOT info */}
-            <Link href={`/workshop/job?reg=${encodeURIComponent(vehicleData.registration)}`} className="block">
-              <Button className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl">
-                <FileText className="w-5 h-5 mr-2" />
-                Create Job Sheet
-              </Button>
-            </Link>
 
             <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
