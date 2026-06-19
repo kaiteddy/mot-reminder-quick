@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, StickyNote } from "lucide-react";
+import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -60,14 +60,17 @@ function LineRows({ rows, kind, upd, rm, add }: {
 }
 
 export default function WorkshopJobSheet() {
-  const reg = (new URLSearchParams(window.location.search).get("reg") || "").replace(/\s+/g, "").toUpperCase();
+  const params = new URLSearchParams(window.location.search);
+  const reg = (params.get("reg") || "").replace(/\s+/g, "").toUpperCase();
+  const motMileage = (params.get("mileage") || "").replace(/\D/g, ""); // last odometer from MOT, passed by the workshop screen
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState("labour");
   const [customer, setCustomer] = useState<any>(null);
   const [vehicle, setVehicle] = useState<any>(null);
   const [custName, setCustName] = useState("");
   const [custPhone, setCustPhone] = useState("");
-  const [mileage, setMileage] = useState("");
+  const [mileage, setMileage] = useState(motMileage);
+  const [motFee, setMotFee] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +91,8 @@ export default function WorkshopJobSheet() {
   const parts = lines.filter((l) => l.kind === "Part");
   const lineTotal = (l: Line) => (parseFloat(l.price) || 0) * (parseFloat(l.qty) || 1);
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
-  const total = subtotal * 1.2; // inc 20% VAT
+  const motNet = parseFloat(motFee) || 0;
+  const total = subtotal * 1.2 + motNet; // labour/parts inc 20% VAT; MOT is VAT-exempt
 
   const add = (kind: "Labour" | "Part") => { setLines((p) => [...p, { id: _lid++, kind, description: "", price: kind === "Labour" ? "70" : "", qty: "1" }]); setOpen(kind === "Labour" ? "labour" : "parts"); };
   const upd = (id: number, patch: Partial<Line>) => setLines((p) => p.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -111,9 +115,12 @@ export default function WorkshopJobSheet() {
       custTelephone: custPhone || undefined,
       mileage: mileage ? Number(String(mileage).replace(/\D/g, "")) || null : null,
       description: notes || undefined,
-      lineItems: lines
-        .filter((l) => l.description.trim() || parseFloat(l.price))
-        .map((l) => { const net = lineTotal(l); return { itemType: l.kind, description: l.description, quantity: Number(l.qty) || 1, unitPrice: parseFloat(l.price) || 0, vatRate: 20, subNet: net, taxAmount: net * 0.2 }; }),
+      lineItems: [
+        ...lines
+          .filter((l) => l.description.trim() || parseFloat(l.price))
+          .map((l) => { const net = lineTotal(l); return { itemType: l.kind, description: l.description, quantity: Number(l.qty) || 1, unitPrice: parseFloat(l.price) || 0, vatRate: 20, subNet: net, taxAmount: net * 0.2 }; }),
+        ...(motNet > 0 ? [{ itemType: "MOT", description: "MOT Test", quantity: 1, unitPrice: motNet, vatRate: 0, subNet: motNet, taxAmount: 0 }] : []),
+      ],
     } as any);
   };
 
@@ -139,6 +146,7 @@ export default function WorkshopJobSheet() {
             {(vehicle?.make || vehicle?.model) && <div className="text-sm font-medium text-slate-700">{vehicle?.make} {vehicle?.model}</div>}
             <label className="text-sm text-slate-500 block">Mileage</label>
             <Input value={mileage} onChange={(e) => setMileage(e.target.value)} inputMode="numeric" placeholder="Current mileage" className={inputCls} />
+            {motMileage && <p className="text-xs text-slate-400">Pulled from last MOT ({Number(motMileage).toLocaleString()} mi) — adjust if needed.</p>}
           </Section>
 
           <Section id="customer" open={open} setOpen={setOpen} icon={User} title="Customer" summary={custName || (customer ? undefined : "Not linked")}>
@@ -156,8 +164,23 @@ export default function WorkshopJobSheet() {
             <LineRows rows={parts} kind="Part" upd={upd} rm={rm} add={add} />
           </Section>
 
-          <Section id="notes" open={open} setOpen={setOpen} icon={StickyNote} title="Notes" summary={notes ? notes.slice(0, 22) : undefined}>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Work to be carried out…" rows={4} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[16px] outline-none focus:border-violet-500" />
+          <Section id="mot" open={open} setOpen={setOpen} icon={ShieldCheck} title="MOT" summary={motNet > 0 ? money(motNet) : undefined}>
+            {motFee === "" ? (
+              <Button type="button" variant="outline" className="w-full h-12 border-dashed text-violet-700" onClick={() => setMotFee("54.85")}>
+                <Plus className="w-4 h-4 mr-2" /> Add MOT
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-base text-slate-500 shrink-0">£</span>
+                <Input value={motFee} onChange={(e) => setMotFee(e.target.value)} inputMode="decimal" placeholder="MOT fee" className={inputCls} />
+                <Button type="button" variant="ghost" size="icon" className="h-12 w-10 text-red-500 shrink-0" onClick={() => setMotFee("")}><Trash2 className="w-5 h-5" /></Button>
+              </div>
+            )}
+            <p className="text-xs text-slate-400">MOT is VAT-exempt.</p>
+          </Section>
+
+          <Section id="notes" open={open} setOpen={setOpen} icon={FileText} title="Job Description" summary={notes ? notes.slice(0, 22) : undefined}>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Describe the work to be carried out…" rows={4} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[16px] outline-none focus:border-violet-500" />
           </Section>
         </div>
       )}
