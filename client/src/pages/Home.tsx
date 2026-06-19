@@ -21,7 +21,8 @@ import {
   MessageSquare,
   AlertCircle,
   Trash2,
-  Calendar
+  Calendar,
+  Smartphone
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -390,6 +391,11 @@ export default function Home() {
             <p className="text-muted-foreground mt-2">Dashboard Overview</p>
           </div>
           <div className="flex gap-2">
+            <Link href="/workshop">
+              <Button variant="outline" className="border-slate-300 font-semibold">
+                <Smartphone className="w-4 h-4 mr-2" /> Workshop Mode
+              </Button>
+            </Link>
             <Button onClick={() => setShowUpload(!showUpload)}>
               <Search className="w-4 h-4 mr-2" /> Upload Screenshot
             </Button>
