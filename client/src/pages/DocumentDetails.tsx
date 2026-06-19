@@ -808,12 +808,12 @@ export default function DocumentDetails() {
                   </button>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                 <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} className={boxCls(editing) + " flex-1 self-end uppercase"} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
               </div>
               <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
-              <div className="flex gap-2 items-center">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
                 {form.vin && (
                   <button type="button" title="Search this VIN on PartSouq"
@@ -823,12 +823,12 @@ export default function DocumentDetails() {
                   </button>
                 )}
               </div>
-              <div className="flex gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <EF label="Mileage" field="mileage" required={isInvoice} grow {...{ form, set, editing }} />
-              <div className="flex gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="flex-1" /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
             </div>
             {/* customer */}
@@ -1168,7 +1168,8 @@ export default function DocumentDetails() {
 }
 
 const boxCls = (editing: boolean) =>
-  `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-[3px] text-[14px] h-[32px] outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
+  // Mobile: taller touch target + 16px text (stops iOS zoom-on-focus). sm+: the compact desktop size.
+  `min-w-0 bg-white border border-slate-300 rounded-sm px-2 py-2 text-[16px] h-[44px] sm:py-[3px] sm:text-[14px] sm:h-[32px] outline-none ${editing ? "focus:border-violet-500" : "read-only:bg-slate-50"}`;
 
 // A right-aligned numeric input with a leading £ symbol, used for every amount entry.
 function MoneyInput({ value, onChange, readOnly = false, w = "w-24", big = false, placeholder = "0.00" }: { value: any; onChange: (v: string) => void; readOnly?: boolean; w?: string; big?: boolean; placeholder?: string }) {
@@ -1413,11 +1414,11 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
 function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
   const empty = !String(form[field] ?? "").trim();
   return (
-    <div className={`flex items-center gap-2 ${grow ? "flex-1" : ""}`}>
-      <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
+    <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
+      <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
       <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
         placeholder={required ? "Required" : undefined}
-        className={boxCls(editing) + " flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+        className={boxCls(editing) + " w-full sm:flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
     </div>
   );
 }
