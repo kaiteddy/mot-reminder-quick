@@ -205,7 +205,7 @@ export default function WorkshopMOTCheck() {
         </div>
       </div>
 
-      <div className="p-3 space-y-4 flex-1">
+      <div className="p-3 space-y-5 flex-1">
 
         {/* Search Form */}
         <Card className="shadow-lg border-primary/20 bg-white">
@@ -300,7 +300,7 @@ export default function WorkshopMOTCheck() {
 
         {/* Vehicle Details */}
         {vehicleData && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* MOT Status Card — critical info first, right at the top */}
             <Card className="border-2">
               <CardHeader>
