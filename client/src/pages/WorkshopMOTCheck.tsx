@@ -304,12 +304,12 @@ export default function WorkshopMOTCheck() {
             {/* MOT Status Card — critical info first, right at the top */}
             <Card className="border-2">
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <CardTitle className="text-2xl font-mono">
                       {vehicleData.registration}
                     </CardTitle>
-                    <CardDescription className="text-lg mt-1">
+                    <CardDescription className="text-lg mt-1 break-words">
                       {vehicleData.make} {vehicleData.model}
                     </CardDescription>
                   </div>
@@ -425,12 +425,12 @@ export default function WorkshopMOTCheck() {
                     </div>
                   )}
                   {vehicleData.vin && (
-                    <div className="flex items-center gap-2 lg:col-span-2">
-                      <FileText className="w-4 h-4 text-slate-500" />
-                      <div>
+                    <div className="flex items-center gap-2 lg:col-span-2 min-w-0">
+                      <FileText className="w-4 h-4 text-slate-500 shrink-0" />
+                      <div className="min-w-0">
                         <div className="text-xs text-slate-500">VIN</div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono font-bold uppercase">{vehicleData.vin}</span>
+                          <span className="font-mono font-bold uppercase break-all">{vehicleData.vin}</span>
                           <a href={`https://partsouq.com/en/search/all?q=${vehicleData.vin}`} target="_blank" rel="noopener noreferrer" className="text-[10px] sm:text-xs bg-blue-50 px-2 py-0.5 rounded text-blue-600 hover:bg-blue-100 transition-colors shrink-0">
                             Search on PartSouq
                           </a>

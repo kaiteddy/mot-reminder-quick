@@ -195,7 +195,33 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </button>
                 ))}
             </div>
-            <Table className="w-full">
+            {/* Mobile: stacked cards instead of the wide 7-column table (no sideways scroll) */}
+            <div className="sm:hidden space-y-2.5">
+                {shown.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No documents.</p>}
+                {shown.map((doc: any) => {
+                    const { summary } = jobSummary(doc.mainDescription);
+                    return (
+                        <div key={doc.id} onClick={() => setSelectedDoc(doc.id)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                            <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
+                                <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
+                                <span className="ml-auto font-bold text-slate-900">£{Number(doc.totalGross).toFixed(2)}</span>
+                            </div>
+                            {summary && <div className="text-sm text-slate-700 mt-2 break-words line-clamp-2">{summary}</div>}
+                            <div className="flex items-center justify-between gap-2 mt-2.5">
+                                <span className="text-xs text-muted-foreground font-mono truncate">{doc.docNo || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
+                                <div className="flex gap-1.5 shrink-0">
+                                    <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
+                                    <Button variant="outline" size="sm" className="h-9 px-3" onClick={(e) => { e.stopPropagation(); setSelectedDoc(doc.id); }}><FileText className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <Table className="w-full hidden sm:table">
                 <TableHeader>
                     <TableRow>
                         <TableHead className="w-[100px] whitespace-nowrap">Date</TableHead>
