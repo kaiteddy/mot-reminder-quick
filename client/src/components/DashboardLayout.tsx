@@ -56,6 +56,9 @@ import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 
 const menuGroups = [
+  { section: "", items: [
+    { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
+  ] },
   { section: "Workshop", items: [
     { icon: FileText, label: "Live Jobs", path: "/documents" },
     { icon: Search, label: "MOT Check", path: "/mot-check" },
@@ -81,7 +84,6 @@ const menuGroups = [
     { icon: Brain, label: "Pricing AI", path: "/pricing-intelligence" },
   ] },
   { section: "Insights", items: [
-    { icon: LayoutDashboard, label: "Dashboard", path: "/" },
     { icon: BarChart, label: "Analytics", path: "/analytics" },
   ] },
   { section: "System", items: [
@@ -206,7 +208,7 @@ function DashboardLayoutContent({
         <SidebarContent className="px-2">
           {menuGroups.map((group) => (
             <div key={group.section} className="mb-1">
-              {!isCollapsed && (
+              {!isCollapsed && group.section && (
                 <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                   {group.section}
                 </div>
