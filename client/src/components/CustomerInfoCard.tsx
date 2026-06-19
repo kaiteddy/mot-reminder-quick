@@ -138,12 +138,12 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
 
   return (
     <Card className="border-2 border-primary/20 bg-primary/5">
-      <CardHeader className="pb-4 flex flex-row items-center justify-between">
+      <CardHeader className="pb-4 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-xl flex items-center gap-2">
           <User className="h-5 w-5 text-primary" />
           Customer Information
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {vehicleId && (
             <Dialog>
               <DialogTrigger asChild>
@@ -288,7 +288,7 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
           </div>
         </div>
         {vehicleId && (
-          <div className="absolute bottom-2 right-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap justify-end gap-2 sm:absolute sm:bottom-2 sm:right-4 sm:mt-0">
             <AssignCustomerDialog 
               vehicleId={vehicleId}
               triggerButton={

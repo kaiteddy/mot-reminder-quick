@@ -301,19 +301,7 @@ export default function WorkshopMOTCheck() {
         {/* Vehicle Details */}
         {vehicleData && (
           <div className="space-y-4">
-            {/* Start a job sheet for this vehicle, right here at the car — primary action, so it
-                sits up top. Hands the reg to the new-document flow, which auto-fills the vehicle +
-                its linked customer and auto-saves. */}
-            <Link href={`/workshop/job?reg=${encodeURIComponent(vehicleData.registration)}`}>
-              <Button className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl">
-                <FileText className="w-5 h-5 mr-2" />
-                Create Job Sheet
-              </Button>
-            </Link>
-
-            <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
-
-            {/* MOT Status Card */}
+            {/* MOT Status Card — critical info first, right at the top */}
             <Card className="border-2">
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -516,6 +504,16 @@ export default function WorkshopMOTCheck() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Primary action + customer details, directly under the critical MOT info */}
+            <Link href={`/workshop/job?reg=${encodeURIComponent(vehicleData.registration)}`}>
+              <Button className="w-full h-14 text-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl">
+                <FileText className="w-5 h-5 mr-2" />
+                Create Job Sheet
+              </Button>
+            </Link>
+
+            <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
             {/* Premium UKVD Vehicle Image/Tech Details (Only shown if Full Check was used) */}
             {(vehicleData.imageUrl || vehicleData.transmission || vehicleData.dimensions || vehicleData.weights || vehicleData.fuelTankCapacity) && (
