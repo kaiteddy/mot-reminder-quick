@@ -1838,6 +1838,9 @@ export async function saveDocument(input: SaveDocInput) {
 
   // 3) document fields
   const docFields: any = undef({
+    // Manually-set document number (to match an external system e.g. GA4). When omitted,
+    // a new doc gets the next auto number and an existing doc keeps its current number.
+    docNo: input.docNo != null && String(input.docNo).trim() ? String(input.docNo).trim().slice(0, 50) : undefined,
     docType, vehicleId, customerId: input.customerId ?? customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
     customerName: input.customerName || [input.custTitle, input.custForename, input.custSurname].filter(Boolean).join(" ") || undefined,
     custTitle: input.custTitle, custForename: input.custForename, custSurname: input.custSurname,
@@ -1859,7 +1862,7 @@ export async function saveDocument(input: SaveDocInput) {
   if (docId) {
     await db.update(serviceHistory).set(docFields).where(eq(serviceHistory.id, docId));
   } else {
-    const docNo = await getNextDocNo(docType);
+    const docNo = docFields.docNo || await getNextDocNo(docType);
     const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     // new docs always get a creation date (so the list never shows a blank date)
     const [{ id }] = await db.insert(serviceHistory).values({ ...docFields, docNo, externalId, dateCreated: docFields.dateCreated ?? new Date(), balance: String(totalGross.toFixed(2)) }).returning({ id: serviceHistory.id });

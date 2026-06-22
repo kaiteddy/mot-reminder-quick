@@ -303,6 +303,7 @@ export default function DocumentDetails() {
     const nm = splitName(doc.customerName || customer?.name);
     setForm({
       docType: doc.docType || "JS",
+      docNo: doc.docNo || "",
       customerId: doc.customerId ?? undefined,
       registration: vehicle?.registration || doc.registration || "",
       make: vehicle?.make || "", model: vehicle?.model || "", derivative: vehicle?.derivative || "", colour: vehicle?.colour || "",
@@ -528,7 +529,7 @@ export default function DocumentDetails() {
 
   function buildPayload(): any {
     return {
-      id: isNew ? undefined : id, docType: form.docType || "JS", registration: form.registration,
+      id: isNew ? undefined : id, docType: form.docType || "JS", docNo: String(form.docNo ?? "").trim() || undefined, registration: form.registration,
       customerId: form.customerId || undefined,
       createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
       vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
@@ -725,7 +726,16 @@ export default function DocumentDetails() {
           <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold">
               <span className="text-amber-300">★</span>
-              {typeLabel}{docNo ? `: ${docNo}` : isNew ? " (new)" : ""}
+              <span>{typeLabel}</span>
+              <span className="text-white/60">No.</span>
+              <input
+                value={form.docNo ?? ""}
+                onChange={(e) => set("docNo", e.target.value)}
+                placeholder={isNew ? "(auto)" : "number"}
+                title="Set the document number to match GA4 — saves automatically"
+                spellCheck={false}
+                className="w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"
+              />
             </div>
             <div className="flex items-center gap-3">
               {!isNew && isInvoice && (

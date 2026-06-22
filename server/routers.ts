@@ -232,6 +232,7 @@ export const appRouter = router({
       .input(z.object({
         id: z.number().optional(),
         docType: z.string().optional(),
+        docNo: z.string().optional(),
         registration: z.string().optional(),
         customerId: z.number().optional(),
         createCustomer: z.boolean().optional(),
