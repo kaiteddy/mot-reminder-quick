@@ -429,8 +429,16 @@ export default function Home() {
                 <SelectTrigger className="w-48"><SelectValue placeholder="Date Range" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Dates</SelectItem>
-                  <SelectItem value="expiring-30">Next 30 Days</SelectItem>
-                  <SelectItem value="expired-30">Last 30 Days</SelectItem>
+                  <SelectItem value="expiring-7">Due in 7 days</SelectItem>
+                  <SelectItem value="expiring-14">Due in 14 days</SelectItem>
+                  <SelectItem value="expiring-30">Due in 30 days</SelectItem>
+                  <SelectItem value="expiring-60">Due in 60 days</SelectItem>
+                  <SelectItem value="expiring-90">Due in 90 days</SelectItem>
+                  <SelectItem value="expired-all">Expired (any)</SelectItem>
+                  <SelectItem value="expired-7">Expired ≤ 7 days</SelectItem>
+                  <SelectItem value="expired-30">Expired ≤ 30 days</SelectItem>
+                  <SelectItem value="expired-60">Expired ≤ 60 days</SelectItem>
+                  <SelectItem value="expired-90">Expired ≤ 90 days</SelectItem>
                 </SelectContent>
               </Select>
             </div>
