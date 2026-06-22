@@ -976,11 +976,13 @@ export async function getServiceHistoryByCustomerId(customerId: number) {
     createdAt: serviceHistory.createdAt,
     description: serviceHistory.description,
     mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
+    registration: vehicles.registration,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
     .where(eq(serviceHistory.customerId, customerId))
-    .groupBy(serviceHistory.id)
+    .groupBy(serviceHistory.id, vehicles.registration)
     .orderBy(desc(serviceHistory.dateCreated));
 
   // Deduplicate by docType and docNo

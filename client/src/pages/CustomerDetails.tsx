@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2 } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -58,6 +58,124 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 
     return results;
 };
+
+// One row in the customer's service-history list. Collapsed it shows the summary;
+// expanded it lazily loads the document's line items and lays them out like a job
+// card — Labour and Parts & Consumables broken out — so it's easy to see exactly
+// what was done and which parts were fitted on each visit.
+function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void }) {
+    const [open, setOpen] = useState(false);
+    const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
+        { documentId: h.id },
+        { enabled: open, staleTime: 60_000 }
+    );
+
+    const sub = (i: any) => Number(i.subNet ?? (Number(i.quantity || 0) * Number(i.unitPrice || 0)));
+    const labour = (items || []).filter((i: any) => i.itemType === "Labour");
+    const parts = (items || []).filter((i: any) => i.itemType === "Part");
+    const others = (items || []).filter((i: any) => i.itemType !== "Labour" && i.itemType !== "Part");
+    const fullDescription = h.description || h.mainDescription;
+
+    return (
+        <div className="rounded-lg border bg-card overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 transition-colors"
+            >
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${h.docType === 'SI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-600'}`}>
+                        {h.docType === 'SI' ? <FileText className="w-5 h-5" /> : <History className="w-5 h-5" />}
+                    </div>
+                    <div className="min-w-0">
+                        <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
+                            {h.docType === 'SI' ? 'Invoice' : 'Estimate'} #{h.docNo || h.id}
+                            {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
+                        </div>
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                            {h.mainDescription || "No job description"}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 pl-2">
+                    <div className="text-right">
+                        <div className="text-sm font-bold">£{Number(h.totalGross || 0).toFixed(2)}</div>
+                        <div className="text-[10px] text-muted-foreground">{format(new Date(h.dateCreated), "dd MMM yyyy")}</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+                </div>
+            </button>
+
+            {open && (
+                <div className="border-t bg-muted/20 px-4 py-3">
+                    {isLoading ? (
+                        <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                    ) : (
+                        <div className="space-y-4">
+                            {fullDescription && (
+                                <div className="text-xs text-slate-600 whitespace-pre-wrap bg-white rounded-md border p-2.5">{fullDescription}</div>
+                            )}
+
+                            {labour.length > 0 && (
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase text-blue-600 mb-1.5 tracking-wider flex items-center gap-2">Labour<div className="h-px flex-1 bg-blue-100" /></h4>
+                                    <div className="space-y-0.5">
+                                        {labour.map((item: any) => (
+                                            <div key={item.id} className="flex justify-between gap-3 text-[12px] py-1 border-b border-slate-100 last:border-0">
+                                                <span className="text-slate-600 flex-1">{item.description}</span>
+                                                <span className="font-semibold text-slate-900 shrink-0">£{sub(item).toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {parts.length > 0 && (
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase text-orange-600 mb-1.5 tracking-wider flex items-center gap-2">Parts &amp; Consumables<div className="h-px flex-1 bg-orange-100" /></h4>
+                                    <div className="space-y-0.5">
+                                        {parts.map((item: any) => (
+                                            <div key={item.id} className="flex justify-between gap-3 text-[12px] py-1 border-b border-slate-100 last:border-0">
+                                                <span className="text-slate-600 flex-1">{item.description}</span>
+                                                <div className="text-right shrink-0">
+                                                    <span className="text-[10px] text-slate-400 mr-2">{Number(item.quantity || 0)} x £{Number(item.unitPrice || 0).toFixed(2)}</span>
+                                                    <span className="font-semibold text-slate-900">£{sub(item).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {others.length > 0 && (
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-wider flex items-center gap-2">Other<div className="h-px flex-1 bg-slate-100" /></h4>
+                                    <div className="space-y-0.5">
+                                        {others.map((item: any) => (
+                                            <div key={item.id} className="flex justify-between gap-3 text-[12px] py-1 border-b border-slate-100 last:border-0">
+                                                <span className="text-slate-600 flex-1">{item.description}{item.itemType ? <span className="text-slate-400"> · {item.itemType}</span> : null}</span>
+                                                <span className="font-semibold text-slate-900 shrink-0">£{sub(item).toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!isLoading && (items?.length ?? 0) === 0 && !fullDescription && (
+                                <div className="text-center text-xs text-muted-foreground py-2 italic">No itemised parts or labour recorded on this document.</div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-1">
+                                <button type="button" onClick={onOpenFull} className="text-xs text-blue-600 hover:underline font-medium">Open full record →</button>
+                                <div className="text-sm font-bold">Total £{Number(h.totalGross || 0).toFixed(2)}</div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // Extra phone numbers kept on the customer record (altContacts: [{ name, phone }]).
 // Names are optional — nameless numbers are preserved. Auto-saves (debounced) so a
@@ -485,29 +603,14 @@ export default function CustomerDetails() {
                                         {data.history && data.history.length > 0 ? (
                                             <div className="space-y-3">
                                                 {data.history.map((h: any) => (
-                                                    <div key={h.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer group" onClick={() => {
-                                                        setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
-                                                        setHistoryOpen(true);
-                                                    }}>
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${h.docType === 'SI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-600'}`}>
-                                                                {h.docType === 'SI' ? <FileText className="w-5 h-5" /> : <History className="w-5 h-5" />}
-                                                            </div>
-                                                            <div>
-                                                                <div className="text-sm font-bold flex items-center gap-2">
-                                                                    {h.docType === 'SI' ? 'Invoice' : 'Estimate'} #{h.docNo || h.id}
-                                                                    {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
-                                                                </div>
-                                                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
-                                                                    {h.mainDescription || "No job description"}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-sm font-bold">£{Number(h.totalGross || 0).toFixed(2)}</div>
-                                                            <div className="text-[10px] text-muted-foreground">{format(new Date(h.dateCreated), "dd MMM yyyy")}</div>
-                                                        </div>
-                                                    </div>
+                                                    <HistoryActivityRow
+                                                        key={h.id}
+                                                        h={h}
+                                                        onOpenFull={() => {
+                                                            setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
+                                                            setHistoryOpen(true);
+                                                        }}
+                                                    />
                                                 ))}
                                             </div>
                                         ) : (
