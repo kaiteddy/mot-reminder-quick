@@ -439,7 +439,7 @@ export const appRouter = router({
         return result;
       }),
     sendVehicleHistory: publicProcedure
-      .input(z.object({ vehicleId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
+      .input(z.object({ vehicleId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendVehicleHistoryEmail } = await import("./services/email");
         const { getDb, addCustomerLog } = await import("./db");
@@ -2845,10 +2845,10 @@ export const appRouter = router({
       }),
 
     getServiceHistoryPDF: publicProcedure
-      .input(z.object({ vehicleId: z.number() }))
+      .input(z.object({ vehicleId: z.number(), includeInvoices: z.boolean().optional() }))
       .query(async ({ input }) => {
         const { getServiceHistoryPDF } = await import("./db");
-        const { content, filename } = await getServiceHistoryPDF(input.vehicleId);
+        const { content, filename } = await getServiceHistoryPDF(input.vehicleId, { includeInvoices: input.includeInvoices });
         return { content, filename };
       }),
 

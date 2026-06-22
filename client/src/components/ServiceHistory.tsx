@@ -138,14 +138,16 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const emailHistoryMut = trpc.email.sendVehicleHistory.useMutation();
     const [emailOpen, setEmailOpen] = useState(false);
     const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+    const [includeInvoices, setIncludeInvoices] = useState(true);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
 
     // Build the exact PDF that will be attached, so it can be previewed before sending.
-    const loadPreview = async () => {
+    // withInvoices appends every individual invoice after the summary (one merged file).
+    const loadPreview = async (withInvoices: boolean) => {
         setPreviewLoading(true);
         try {
-            const res: any = await utils.serviceHistory.getServiceHistoryPDF.fetch({ vehicleId });
+            const res: any = await utils.serviceHistory.getServiceHistoryPDF.fetch({ vehicleId, includeInvoices: withInvoices });
             const bytes = atob(res.content);
             const arr = new Uint8Array(bytes.length);
             for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
@@ -163,13 +165,15 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     };
     const openEmail = () => {
         setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
+        setIncludeInvoices(true);
         setEmailOpen(true);
-        loadPreview();
+        loadPreview(true);
     };
+    const toggleInvoices = (on: boolean) => { setIncludeInvoices(on); loadPreview(on); };
     const sendHistoryEmail = async () => {
         if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
         try {
-            await emailHistoryMut.mutateAsync({ vehicleId, to: emailForm.to, subject: emailForm.subject || undefined, message: emailForm.message || undefined });
+            await emailHistoryMut.mutateAsync({ vehicleId, to: emailForm.to, subject: emailForm.subject || undefined, message: emailForm.message || undefined, includeInvoices });
             toast.success(`Service history emailed to ${emailForm.to}`);
             setEmailOpen(false);
         } catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
@@ -246,6 +250,20 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             Sends the full service history for this vehicle as a PDF attachment{recipient?.name ? ` to ${recipient.name}` : ""}.
                         </DialogDescription>
                     </DialogHeader>
+
+                    <label className="flex items-start gap-2 mb-3 cursor-pointer select-none rounded-md border bg-slate-50 px-3 py-2">
+                        <input
+                            type="checkbox"
+                            checked={includeInvoices}
+                            onChange={(e) => toggleInvoices(e.target.checked)}
+                            disabled={previewLoading}
+                            className="mt-0.5 h-4 w-4 accent-violet-700"
+                        />
+                        <span className="text-xs text-slate-700">
+                            <span className="font-medium">Include full invoice copies</span>
+                            <span className="block text-slate-500">Appends a complete copy of every invoice after the summary, so the customer has all their documents in one file.</span>
+                        </span>
+                    </label>
 
                     <div className="mb-3">
                         <div className="flex items-center justify-between mb-1">

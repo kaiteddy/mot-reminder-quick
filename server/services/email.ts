@@ -76,13 +76,13 @@ export async function sendDocumentEmail(opts: { docId: number; to: string; cc?: 
 }
 
 /** Email a vehicle's full service history (PDF attached) to a recipient via SMTP. */
-export async function sendVehicleHistoryEmail(opts: { vehicleId: number; to: string; cc?: string; subject?: string; message?: string; registration?: string }) {
+export async function sendVehicleHistoryEmail(opts: { vehicleId: number; to: string; cc?: string; subject?: string; message?: string; registration?: string; includeInvoices?: boolean }) {
   const s = await getEmailSettings();
   if (!s.host || !s.user) throw new Error("Email is not set up. Configure SMTP in Email Settings first.");
   if (!opts.to || !opts.to.includes("@")) throw new Error("A valid recipient email address is required.");
 
   const { getServiceHistoryPDF } = await import("../db");
-  const pdf: any = await getServiceHistoryPDF(opts.vehicleId);
+  const pdf: any = await getServiceHistoryPDF(opts.vehicleId, { includeInvoices: !!opts.includeInvoices });
   const from = s.fromName ? `"${s.fromName}" <${s.fromAddress || s.user}>` : (s.fromAddress || s.user);
   const reg = (opts.registration || "").trim();
   const body = opts.message || `Please find attached the full service history for your vehicle${reg ? ` (${reg})` : ""}, detailing the work we have completed.`;

@@ -2405,8 +2405,10 @@ export async function getRichPDF(documentId: number) {
 
 /**
  * Generate a Vehicle Service History PDF for all documents associated with a vehicle.
+ * With { includeInvoices: true } the full PDF of every invoice is appended after the
+ * summary (merged into one document), so the customer gets all their copies in one file.
  */
-export async function getServiceHistoryPDF(vehicleId: number) {
+export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeInvoices?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -2483,7 +2485,7 @@ export async function getServiceHistoryPDF(vehicleId: number) {
     };
   }));
 
-  return generateServiceHistoryPDF({
+  const summary = await generateServiceHistoryPDF({
     company_name: 'ELI MOTORS LIMITED',
     address: '49 VICTORIA ROAD, HENDON, LONDON, NW4 2RP',
     phone: '020 8203 6449, Sales 07950 250970',
@@ -2495,6 +2497,25 @@ export async function getServiceHistoryPDF(vehicleId: number) {
     total_records: entries.length,
     cumulative_spend: `£${cumulative.toFixed(2)}`,
   });
+
+  if (!opts?.includeInvoices || docs.length === 0) return summary;
+
+  // Append the full PDF of each invoice after the summary, merged into one document so the
+  // customer gets all their copies in a single file (newest first, matching the summary order).
+  const { PDFDocument } = await import("pdf-lib");
+  const merged = await PDFDocument.create();
+  const append = async (b64: string) => {
+    const src = await PDFDocument.load(Buffer.from(b64, "base64"));
+    const pages = await merged.copyPages(src, src.getPageIndices());
+    pages.forEach((p) => merged.addPage(p));
+  };
+  await append(summary.content);
+  for (const d of docs) {
+    try { await append((await getRichPDF(d.id)).content); }
+    catch (e) { console.error(`[history bundle] skipped invoice ${d.docNo}:`, (e as any)?.message); }
+  }
+  const content = Buffer.from(await merged.save()).toString("base64");
+  return { content, filename: summary.filename.replace(/\.pdf$/i, "_with_invoices.pdf") };
 }
 
 export async function deleteServiceDocument(id: number) {
