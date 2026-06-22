@@ -304,6 +304,7 @@ export function mapGA4Document(row: GA4Document) {
     staffMotTester: pick(row, "staffMOTTester"),
     motClass: pick(row, "motClass"),
     motStatus: pick(row, "motStatus"),
+    origJobSheet: pick(row, "docNumber_Orig_JS"),
     excessNet: parseGA4Money(pick(row, "excessNET")),
     excessTax: parseGA4Money(pick(row, "excessTax")),
     excessGross: parseGA4Money(pick(row, "excessGross")),

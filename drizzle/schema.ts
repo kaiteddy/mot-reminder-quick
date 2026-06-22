@@ -238,6 +238,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   staffMotTester: varchar("staffMotTester", { length: 100 }),
   motClass: varchar("motClass", { length: 50 }),
   motStatus: varchar("motStatus", { length: 50 }),
+  origJobSheetNo: integer("origJobSheetNo"), // GA4 docNumber_Orig_JS — links an invoice to the job sheet that holds the work narrative
   excessNet: numeric("excessNet", { precision: 10, scale: 2 }),
   excessTax: numeric("excessTax", { precision: 10, scale: 2 }),
   excessGross: numeric("excessGross", { precision: 10, scale: 2 }),

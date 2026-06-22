@@ -186,13 +186,21 @@ await syncTable({
 
 // ---- 3) Documents ----
 const documents = load("Documents.csv");
+// Document_Extras holds the work narrative ("Labour Description") + docNotes, keyed by doc _ID.
+const docExtras = load("Document_Extras.csv");
+const extrasById = new Map<string, string>();
+for (const e of docExtras) {
+  const desc = clean([e["Labour Description"], e["docNotes"]].filter(Boolean).join("\n"))?.slice(0, 65000) || "";
+  if (norm(e["_ID"]) && desc) extrasById.set(norm(e["_ID"]), desc);
+}
 const DOC_COLS = ["customerId", "vehicleId", "docType", "docNo", "dateCreated", "dateIssued", "datePaid", "totalNet", "totalTax", "totalGross",
-  "totalReceipts", "balance", "mileage", "docStatus", "registration"];
+  "totalReceipts", "balance", "mileage", "docStatus", "registration", "motStatus", "motClass", "origJobSheetNo", "description"];
 await syncTable({
   name: "Documents", table: "serviceHistory", rows: documents, cols: DOC_COLS,
   map: (r) => {
     const m = mapGA4Document(r as any);
     if (!m.externalId) return null;
+    const origJS = parseInt(String(m.origJobSheet || "").replace(/\D/g, ""), 10);
     return {
       externalId: m.externalId, customerId: custMap.get(norm(m.customerExternalId)) ?? null, vehicleId: vehMap.get(norm(m.vehicleExternalId)) ?? null,
       docType: cap(m.docTypeRaw, 20), docNo: cap(m.docNo, 50),
@@ -200,6 +208,8 @@ await syncTable({
       totalNet: money(m.totalNet), totalTax: money(m.totalTax), totalGross: money(m.totalGross),
       totalReceipts: money(m.totalReceipts), balance: money(m.balance), mileage: m.mileage,
       docStatus: cap(m.docStatus, 50), registration: cap(norm(m.registration).toUpperCase(), 20),
+      motStatus: cap(m.motStatus, 50), motClass: cap(m.motClass, 50), origJobSheetNo: Number.isFinite(origJS) && origJS > 0 ? origJS : null,
+      description: extrasById.get(norm(m.externalId)) || null,
     };
   },
   // docs have no GA4 modification timestamp — diff the mutable fields

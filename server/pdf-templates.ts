@@ -949,114 +949,99 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('No maintenance records found for this vehicle on the digital database.', PAGE_M, y + 20, { width: CW, align: 'center' });
   }
 
+  const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
+  const fmtQty = (q: any) => { const n = Number(q) || 0; return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(4))); };
+
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
-    const { workItems } = parseDescription(entry.description || ''); // free-text narrative ("work carried out")
-    const bd = entry.breakdown;                                      // itemised costs from the invoice line items
-    const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
-    const hasBreakdown = !!(bd && ((bd.labour && bd.labour.length) || (bd.parts && bd.parts.length) || bd.mot));
-
-    // Estimate height so the bordered box fits its content and page-breaks land cleanly.
-    doc.font('Helvetica').fontSize(9);
-    let workH = 0;
-    for (const item of workItems) {
-      workH += doc.heightOfString(`\u2022  ${item}`, { width: CW - 30 }) + 4;
-    }
-    let bdH = 0;
-    if (hasBreakdown) {
-      bdH = 15; // section label
-      if (bd.labour && bd.labour.length) bdH += 12 + bd.labour.length * 13;
-      if (bd.parts && bd.parts.length) bdH += 12 + bd.parts.length * 15;
-      if (bd.mot) bdH += 13;
-      bdH += 12 + 13 * 3; // divider + subtotal / VAT / total rows
-    }
-
     const headerH = 24;
-    const padding = 20;
-    const noDetail = workH === 0 && !hasBreakdown;
-    const boxH = headerH + (workH > 0 ? workH + 15 : 0) + (bdH > 0 ? bdH + 12 : 0) + (noDetail ? 16 : 0) + padding;
+    const labelX = PAGE_M + 12;
+    const innerW = CW - 24;          // text width inside the box
+    const amtBoxW = CW - 12 - 4;     // amount right-aligned from labelX to the right edge
+    const rowTextW = innerW - 72;    // leave room on the right for the amount
 
-    y = checkBreak(boxH + 15);
+    // Build the section rows (GA4 order: MOT, Labour, Parts) with our prices.
+    const motRows = entry.mot ? [{ text: entry.mot.label, amount: entry.mot.amount > 0 ? entry.mot.amount : null }] : [];
+    const labourRows = (entry.labour || []).map((l: any) => ({ text: `${fmtQty(l.qty)}    ${l.label}`, amount: l.amount }));
+    const partRows = (entry.parts || []).map((p: any) => ({ text: `${fmtQty(p.qty)}    ${p.code ? p.code + '  ' : ''}${p.label}`, amount: p.amount }));
 
-    // Entry Header Bar (Dark Blue)
+    // \u2500\u2500 Measure (so the bordered box exactly fits, and page-breaks land cleanly) \u2500\u2500
+    const measureRow = (text: string) => { doc.font('Helvetica').fontSize(8.5); return Math.max(doc.heightOfString(text, { width: rowTextW }), 11) + 2; };
+    for (const r of [...motRows, ...labourRows, ...partRows] as any[]) r.h = measureRow(r.text);
+    const sectionH = (rows: any[]) => rows.length ? 13 + rows.reduce((s, r) => s + r.h, 0) + 4 : 0;
+
+    doc.font('Helvetica-Bold').fontSize(10);
+    const titleH = entry.title ? doc.heightOfString(entry.title, { width: innerW }) + 3 : 0;
+    doc.font('Helvetica').fontSize(9);
+    const narrH = entry.narrative ? doc.heightOfString(entry.narrative, { width: innerW }) + 6 : 0;
+    const totalsH = 8 + 13 * 3;
+    const boxH = headerH + 12 + titleH + narrH + sectionH(motRows) + sectionH(labourRows) + sectionH(partRows) + totalsH + 10;
+
+    y = checkBreak(boxH + 14);
+
+    // \u2500\u2500 Header bar (dark blue): doc ref \u00b7 date \u00b7 mileage \u00b7 value \u2500\u2500
     doc.save().roundedRect(PAGE_M, y, CW, headerH, 3).fill(BRAND_BLUE).restore();
-    
-    doc.font('Helvetica').fontSize(10).fillColor('#ffffff');
-    doc.text(`DATE: ${entry.date}`, PAGE_M + 10, y + 7);
-    
-    if (entry.mileage) {
-      doc.text(`MILEAGE: ${entry.mileage}`, PAGE_M + 150, y + 7);
-    }
-    
-    doc.text(`REF: ${entry.invoice_number}`, PAGE_M + 280, y + 7);
-    
-    doc.text(`VALUE: ${entry.total}`, PAGE_M, y + 7, { width: CW - 10, align: 'right' });
-    
-    // Entry Body (Bordered Box attached to header)
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff');
+    doc.text(entry.doc_ref || entry.invoice_number, PAGE_M + 10, y + 7);
+    doc.font('Helvetica').fontSize(10);
+    doc.text(`Date: ${entry.date}`, PAGE_M + 150, y + 7);
+    if (entry.mileage) doc.text(`Mileage: ${entry.mileage}`, PAGE_M + 300, y + 7);
+    doc.text(entry.total, PAGE_M, y + 7, { width: CW - 10, align: 'right' });
+
+    // \u2500\u2500 Body box border \u2500\u2500
     doc.save().moveTo(PAGE_M, y + headerH).lineTo(PAGE_M, y + boxH - 3).quadraticCurveTo(PAGE_M, y + boxH, PAGE_M + 3, y + boxH)
        .lineTo(PAGE_M + CW - 3, y + boxH).quadraticCurveTo(PAGE_M + CW, y + boxH, PAGE_M + CW, y + boxH - 3)
        .lineTo(PAGE_M + CW, y + headerH).strokeColor(MID_GREY).lineWidth(1).stroke().restore();
 
     let contentY = y + headerH + 12;
 
-    if (workItems.length > 0) {
-      doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
-      doc.text('WORK CARRIED OUT:', PAGE_M + 12, contentY);
-      contentY += 12;
-
+    // Narrative: heading line + body, mirroring GA4.
+    if (entry.title) {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
+      doc.text(entry.title, labelX, contentY, { width: innerW });
+      contentY = doc.y + 3;
+    }
+    if (entry.narrative) {
       doc.font('Helvetica').fontSize(9).fillColor(DARK_TEXT);
-      for (const item of workItems) {
-        const itemH = doc.heightOfString(item, { width: CW - 30 });
-        doc.text(`\u2022   ${item}`, PAGE_M + 12, contentY, { width: CW - 30 });
-        contentY += itemH + 4;
-      }
-      contentY += 6;
+      doc.text(entry.narrative, labelX, contentY, { width: innerW });
+      contentY = doc.y + 6;
     }
 
-    if (hasBreakdown) {
-      if (workItems.length > 0) { addDividerLine(contentY, 0.5, '#e5e7eb'); contentY += 10; }
-
-      doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
-      doc.text('COST BREAKDOWN:', PAGE_M + 12, contentY);
+    // MOT / Labour / Parts sections with prices.
+    const renderSection = (name: string, rows: any[]) => {
+      if (!rows.length) return;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_BLUE);
+      doc.text(name, labelX, contentY);
       contentY += 13;
-
-      const labelX = PAGE_M + 16;
-      const amtBoxW = CW - 16 - 4;   // amount right-aligned across the content width
-      const labelW = CW - 16 - 78;   // reserve ~78pt on the right for the amount
-      const line = (label: string, amount: string, o: any = {}) => {
-        doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 8.5).fillColor(o.color || '#374151');
-        const h = Math.max(doc.heightOfString(label, { width: labelW }), 11);
-        doc.text(label, labelX, contentY, { width: labelW });
-        doc.text(amount, labelX, contentY, { width: amtBoxW, align: 'right' });
-        contentY += h + 2;
-      };
-      const groupLabel = (t: string) => { doc.font('Helvetica-Bold').fontSize(7).fillColor('#6b7280').text(t.toUpperCase(), labelX, contentY); contentY += 11; };
-
-      if (bd.labour && bd.labour.length) {
-        groupLabel('Labour');
-        for (const l of bd.labour) line(l.label || 'Labour', money(l.amount));
+      for (const r of rows) {
+        doc.font('Helvetica').fontSize(8.5).fillColor('#374151');
+        doc.text(r.text, labelX + 4, contentY, { width: rowTextW });
+        if (r.amount != null) {
+          doc.fillColor('#111827').text(money(r.amount), labelX, contentY, { width: amtBoxW, align: 'right' });
+        }
+        contentY += r.h;
       }
-      if (bd.parts && bd.parts.length) {
-        groupLabel('Parts & Consumables');
-        for (const p of bd.parts) line(p.qty && p.qty !== 1 ? `${p.label || 'Part'}  (${p.qty} \u00D7 ${money(p.unit)})` : (p.label || 'Part'), money(p.amount));
-      }
-      if (bd.mot) line('MOT Test (VAT exempt)', money(bd.mot));
-
-      contentY += 2;
-      addDividerLine(contentY, 0.5, '#cbd5e1');
-      contentY += 6;
-      line('Subtotal (excl. VAT)', money(bd.net));
-      line('VAT', money(bd.vat));
-      line('Total', money(bd.gross), { bold: true, size: 10, color: BRAND_BLUE });
       contentY += 4;
-    }
+    };
+    renderSection('MOT', motRows);
+    renderSection('Labour', labourRows);
+    renderSection('Parts', partRows);
 
-    if (noDetail) {
-      doc.font('Helvetica-Oblique').fontSize(9).fillColor('#9ca3af');
-      doc.text('No detailed breakdown was digitally recorded for this visit.', PAGE_M + 12, contentY);
-    }
+    // Totals.
+    addDividerLine(contentY, 0.5, '#cbd5e1');
+    contentY += 6;
+    const t = entry.totals || { net: 0, vat: 0, gross: 0 };
+    const totalLine = (label: string, amount: number, o: any = {}) => {
+      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 9).fillColor(o.color || '#374151');
+      doc.text(label, labelX, contentY, { width: innerW - 70, align: 'right' });
+      doc.text(money(amount), labelX, contentY, { width: amtBoxW, align: 'right' });
+      contentY += 13;
+    };
+    totalLine('Subtotal (excl. VAT)', t.net);
+    totalLine('VAT', t.vat);
+    totalLine('Total', t.gross, { bold: true, size: 10, color: BRAND_BLUE });
 
-    y += boxH + 15;
+    y += boxH + 14;
   }
 
   // Final Footer string on the last page

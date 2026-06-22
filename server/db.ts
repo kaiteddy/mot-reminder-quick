@@ -2426,43 +2426,57 @@ export async function getServiceHistoryPDF(vehicleId: number) {
     'July', 'August', 'September', 'October', 'November', 'December'];
 
   const num = (x: any) => Number(x) || 0;
+  const norm = (x: any) => String(x ?? '').trim();
   const entries = await Promise.all(docs.map(async (d) => {
     const dateObj = d.dateCreated ? new Date(d.dateCreated) : new Date();
     const dateStr = `${String(dateObj.getDate()).padStart(2, '0')} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
     const mileage = d.mileage ? `${Number(d.mileage).toLocaleString()} MI` : null;
 
-    // Cost breakdown from the invoice line items, reconciled to the stored totals (mirrors
-    // getRichPDF): MOT is zero-rated and lives in a MOT line or subMotNet; any remaining net
-    // gap (sundries/adjustments) becomes its own line so the parts always sum to the subtotal.
+    // Mirror the GA4 Vehicle History Report: the work narrative, then MOT / Labour / Parts
+    // sections — but with our prices added and reconciled to the stored totals. The MOT fee is
+    // zero-rated (a MOT line or subMotNet); any leftover net gap (sundries) becomes its own
+    // part line so the items always sum to the subtotal.
     const items = await getServiceLineItemsByDocumentId(d.id);
-    const mk = (i: any) => ({ label: String(i.description || '').trim(), qty: num(i.quantity), unit: num(i.unitPrice), amount: num(i.subNet) });
-    const labour = items.filter((i: any) => i.itemType === 'Labour').map(mk);
-    const parts = items.filter((i: any) => i.itemType === 'Part').map(mk);
-    const other = items.filter((i: any) => !['Labour', 'Part', 'MOT'].includes(String(i.itemType))).map(mk);
+    const labour = items.filter((i: any) => i.itemType === 'Labour')
+      .map((i: any) => ({ qty: num(i.quantity), label: norm(i.description) || 'Labour', amount: num(i.subNet) }));
+    const parts = items.filter((i: any) => i.itemType === 'Part')
+      .map((i: any) => ({ qty: num(i.quantity), code: norm(i.partNumber), label: norm(i.description) || 'Part', amount: num(i.subNet) }));
+    const other = items.filter((i: any) => !['Labour', 'Part', 'MOT'].includes(String(i.itemType)))
+      .map((i: any) => ({ qty: num(i.quantity), code: norm(i.partNumber), label: norm(i.description) || 'Item', amount: num(i.subNet) }));
+
     const motLineNet = items.filter((i: any) => i.itemType === 'MOT').reduce((a: number, i: any) => a + num(i.subNet), 0);
     const motNet = motLineNet || num((d as any).subMotNet);
+    const motStatus = norm(d.motStatus);
+    const motClass = norm(d.motClass);
+    const mot = motNet > 0
+      ? { label: motStatus ? `MOT Full${motClass ? ` ${motClass}` : ''} - ${motStatus}` : 'MOT Test', amount: +motNet.toFixed(2) }
+      : (motStatus ? { label: `MOT Full${motClass ? ` ${motClass}` : ''} - ${motStatus}`, amount: 0 } : null);
 
     const itemsNet = items.reduce((a: number, i: any) => a + num(i.subNet), 0);
     const net = num(d.totalNet) || (itemsNet + motNet);
     const gross = num(d.totalGross) || 0;
     const vat = num(d.totalTax) || Math.max(0, +(gross - net).toFixed(2));
     const gapNet = +(net - (itemsNet + motNet)).toFixed(2);
-    if (Math.abs(gapNet) >= 0.01) other.push({ label: gapNet >= 0 ? 'Other / sundries' : 'Discount', qty: 1, unit: gapNet, amount: gapNet });
+    if (Math.abs(gapNet) >= 0.01) other.push({ qty: 1, code: '', label: gapNet >= 0 ? 'Other / sundries' : 'Discount', amount: gapNet });
+
+    // Split the narrative into a heading (first non-empty line) + the rest, like GA4.
+    const descLines = norm(d.description).split('\n');
+    const titleIdx = descLines.findIndex((l) => l.trim());
+    const title = titleIdx >= 0 ? descLines[titleIdx].trim() : '';
+    const narrative = titleIdx >= 0 ? descLines.slice(titleIdx + 1).join('\n').replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd() : '';
 
     return {
       date: dateStr,
+      doc_ref: `${d.docType} ${d.docNo}`,
       invoice_number: `#${d.docNo}`,
       mileage,
       total: `£${(gross || (net + vat)).toFixed(2)}`,
-      description: d.description || '',
-      breakdown: {
-        labour,
-        parts: parts.concat(other),
-        mot: motNet > 0 ? +Number(motNet).toFixed(2) : null,
-        net: +net.toFixed(2),
-        vat: +vat.toFixed(2),
-        gross: +(gross || (net + vat)).toFixed(2),
-      },
+      title,
+      narrative,
+      mot,
+      labour,
+      parts: parts.concat(other),
+      totals: { net: +net.toFixed(2), vat: +vat.toFixed(2), gross: +(gross || (net + vat)).toFixed(2) },
     };
   }));
 
