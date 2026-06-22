@@ -2193,10 +2193,35 @@ export async function getRichPDF(documentId: number) {
   const d2: any = doc;
   const docName = [d2.custTitle, d2.custForename, d2.custSurname].filter(Boolean).join(" ").trim();
   const docAddress = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty, d2.custPostcode].filter(Boolean).join(", ");
+  // Collect EVERY number we hold for this customer — the doc's mobile/tel, the linked
+  // customer's primary phone, and any "Other numbers" (altContacts) — so the printed sheet
+  // shows all of them. Dedupe on the digits (treating +44… and 0… as the same UK number).
+  const normPhone = (s: any) => {
+    let d = String(s ?? '').replace(/\D/g, '');
+    if (d.startsWith('44')) d = '0' + d.slice(2);
+    return d;
+  };
+  const phones: { label?: string; value: string }[] = [];
+  const seenPhones = new Set<string>();
+  const addPhone = (value: any, label?: string) => {
+    const v = String(value ?? '').trim();
+    if (!v) return;
+    const key = normPhone(v);
+    if (!key || seenPhones.has(key)) return;
+    seenPhones.add(key);
+    phones.push({ label: (label || '').trim() || undefined, value: v });
+  };
+  addPhone(d2.custMobile, 'Mobile');
+  addPhone(d2.custTelephone, 'Tel');
+  addPhone(customer?.phone, 'Tel');
+  const altList = Array.isArray((customer as any)?.altContacts) ? (customer as any).altContacts : [];
+  for (const ct of altList) addPhone(ct?.phone, ct?.name);
+
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
     address_lines: (docAddress || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean),
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
+    phones,
     billTo,
   };
 

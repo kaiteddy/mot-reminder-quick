@@ -159,10 +159,18 @@ function customerAndDoc(
   for (const line of customer.address_lines || []) {
     doc.text(line, M + 30, cy); cy += 14;
   }
-  for (const k of ['tel', 'mobile', 'phone']) {
-    if (customer[k]) {
-      doc.text(`${k === 'mobile' ? 'Mobile' : 'Tel'}: ${customer[k]}`, M + 30, cy);
+  const custPhones = Array.isArray(customer.phones) ? customer.phones : [];
+  if (custPhones.length) {
+    for (const p of custPhones) {
+      doc.text(p.label ? `${p.label}: ${p.value}` : p.value, M + 30, cy);
       cy += 14;
+    }
+  } else {
+    for (const k of ['tel', 'mobile', 'phone']) {
+      if (customer[k]) {
+        doc.text(`${k === 'mobile' ? 'Mobile' : 'Tel'}: ${customer[k]}`, M + 30, cy);
+        cy += 14;
+      }
     }
   }
 
@@ -588,7 +596,12 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     for (const line of data.customer.address_lines || []) {
       doc.text(line, M, cy); cy += 14;
     }
-    if (data.customer.mobile) {
+    const jsPhones = Array.isArray(data.customer.phones) ? data.customer.phones : [];
+    if (jsPhones.length) {
+      for (const p of jsPhones) {
+        doc.text(p.label ? `${p.label}: ${p.value}` : p.value, M, cy); cy += 14;
+      }
+    } else if (data.customer.mobile) {
       doc.text(`Mobile: ${data.customer.mobile}`, M, cy); cy += 14;
     } else if (data.customer.tel) {
       doc.text(`Tel: ${data.customer.tel}`, M, cy); cy += 14;
