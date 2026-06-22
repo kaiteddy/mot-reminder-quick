@@ -138,9 +138,33 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const emailHistoryMut = trpc.email.sendVehicleHistory.useMutation();
     const [emailOpen, setEmailOpen] = useState(false);
     const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
+    // Build the exact PDF that will be attached, so it can be previewed before sending.
+    const loadPreview = async () => {
+        setPreviewLoading(true);
+        try {
+            const res: any = await utils.serviceHistory.getServiceHistoryPDF.fetch({ vehicleId });
+            const bytes = atob(res.content);
+            const arr = new Uint8Array(bytes.length);
+            for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+            setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
+        } catch (e: any) {
+            toast.error("Couldn't generate preview: " + (e.message || ""));
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+    const closeEmail = (open: boolean) => {
+        setEmailOpen(open);
+        if (!open) setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; });
+    };
     const openEmail = () => {
         setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
         setEmailOpen(true);
+        loadPreview();
     };
     const sendHistoryEmail = async () => {
         if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
@@ -214,14 +238,33 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 </div>
             </div>
 
-            <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
-                <DialogContent className="max-w-lg">
+            <Dialog open={emailOpen} onOpenChange={closeEmail}>
+                <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Email service history</DialogTitle>
                         <DialogDescription>
                             Sends the full service history for this vehicle as a PDF attachment{recipient?.name ? ` to ${recipient.name}` : ""}.
                         </DialogDescription>
                     </DialogHeader>
+
+                    <div className="mb-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-muted-foreground">Preview — this is exactly what will be attached</span>
+                            {previewUrl && (
+                                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-700 hover:underline font-medium">Open full size ↗</a>
+                            )}
+                        </div>
+                        <div className="rounded-md border bg-slate-50 h-[340px] overflow-hidden flex items-center justify-center">
+                            {previewLoading ? (
+                                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                            ) : previewUrl ? (
+                                <iframe src={previewUrl} title="Service history preview" className="w-full h-full" />
+                            ) : (
+                                <span className="text-xs text-muted-foreground">No preview available.</span>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="space-y-3">
                         <div>
                             <label className="text-xs font-medium text-muted-foreground">To</label>
