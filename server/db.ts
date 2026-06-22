@@ -2425,32 +2425,45 @@ export async function getServiceHistoryPDF(vehicleId: number) {
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
+  const num = (x: any) => Number(x) || 0;
   const entries = await Promise.all(docs.map(async (d) => {
-    const total = Number(d.totalGross) || 0;
     const dateObj = d.dateCreated ? new Date(d.dateCreated) : new Date();
     const dateStr = `${String(dateObj.getDate()).padStart(2, '0')} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
     const mileage = d.mileage ? `${Number(d.mileage).toLocaleString()} MI` : null;
-    const base = {
+
+    // Cost breakdown from the invoice line items, reconciled to the stored totals (mirrors
+    // getRichPDF): MOT is zero-rated and lives in a MOT line or subMotNet; any remaining net
+    // gap (sundries/adjustments) becomes its own line so the parts always sum to the subtotal.
+    const items = await getServiceLineItemsByDocumentId(d.id);
+    const mk = (i: any) => ({ label: String(i.description || '').trim(), qty: num(i.quantity), unit: num(i.unitPrice), amount: num(i.subNet) });
+    const labour = items.filter((i: any) => i.itemType === 'Labour').map(mk);
+    const parts = items.filter((i: any) => i.itemType === 'Part').map(mk);
+    const other = items.filter((i: any) => !['Labour', 'Part', 'MOT'].includes(String(i.itemType))).map(mk);
+    const motLineNet = items.filter((i: any) => i.itemType === 'MOT').reduce((a: number, i: any) => a + num(i.subNet), 0);
+    const motNet = motLineNet || num((d as any).subMotNet);
+
+    const itemsNet = items.reduce((a: number, i: any) => a + num(i.subNet), 0);
+    const net = num(d.totalNet) || (itemsNet + motNet);
+    const gross = num(d.totalGross) || 0;
+    const vat = num(d.totalTax) || Math.max(0, +(gross - net).toFixed(2));
+    const gapNet = +(net - (itemsNet + motNet)).toFixed(2);
+    if (Math.abs(gapNet) >= 0.01) other.push({ label: gapNet >= 0 ? 'Other / sundries' : 'Discount', qty: 1, unit: gapNet, amount: gapNet });
+
+    return {
       date: dateStr,
       invoice_number: `#${d.docNo}`,
       mileage,
-      total: `£${total.toFixed(2)}`,
+      total: `£${(gross || (net + vat)).toFixed(2)}`,
       description: d.description || '',
+      breakdown: {
+        labour,
+        parts: parts.concat(other),
+        mot: motNet > 0 ? +Number(motNet).toFixed(2) : null,
+        net: +net.toFixed(2),
+        vat: +vat.toFixed(2),
+        gross: +(gross || (net + vat)).toFixed(2),
+      },
     };
-
-    // No written description? Fall back to the line items so the work still shows
-    // (labour/MOT as "services performed", parts as "components installed").
-    if (!String(d.description || '').trim()) {
-      const items = await getServiceLineItemsByDocumentId(d.id);
-      const workItems = items
-        .filter((i: any) => i.itemType !== 'Part' && String(i.description || '').trim())
-        .map((i: any) => String(i.description).trim());
-      const parts = items
-        .filter((i: any) => i.itemType === 'Part' && String(i.description || '').trim())
-        .map((i: any) => { const q = Number(i.quantity) || 0; return `${q > 1 ? `${q}x ` : ''}${String(i.description).trim()}`; });
-      if (workItems.length || parts.length) return { ...base, workItems, parts };
-    }
-    return base;
   }));
 
   return generateServiceHistoryPDF({

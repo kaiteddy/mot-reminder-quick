@@ -951,30 +951,30 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
-    // Prefer explicit line-item arrays when the caller supplies them (e.g. an invoice with no
-    // written description); otherwise parse the free-text description into work + parts.
-    const { workItems, parts: partsList } = (entry.workItems || entry.parts)
-      ? { workItems: entry.workItems || [], parts: entry.parts || [] }
-      : parseDescription(entry.description || '');
+    const { workItems } = parseDescription(entry.description || ''); // free-text narrative ("work carried out")
+    const bd = entry.breakdown;                                      // itemised costs from the invoice line items
+    const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
+    const hasBreakdown = !!(bd && ((bd.labour && bd.labour.length) || (bd.parts && bd.parts.length) || bd.mot));
 
-    // Estimate height
+    // Estimate height so the bordered box fits its content and page-breaks land cleanly.
     doc.font('Helvetica').fontSize(9);
     let workH = 0;
     for (const item of workItems) {
       workH += doc.heightOfString(`\u2022  ${item}`, { width: CW - 30 }) + 4;
     }
-    let partsH = 0;
-    if (partsList.length > 0) {
-      partsH = 20; // Label
-      for (const part of partsList) {
-        partsH += doc.heightOfString(part, { width: (CW / 2) - 30 }) + 4; // Rendered in columns
-      }
-      partsH = (partsH / 2) + 15; // Rough estimate since we do 2 columns
+    let bdH = 0;
+    if (hasBreakdown) {
+      bdH = 15; // section label
+      if (bd.labour && bd.labour.length) bdH += 12 + bd.labour.length * 13;
+      if (bd.parts && bd.parts.length) bdH += 12 + bd.parts.length * 15;
+      if (bd.mot) bdH += 13;
+      bdH += 12 + 13 * 3; // divider + subtotal / VAT / total rows
     }
 
     const headerH = 24;
     const padding = 20;
-    const boxH = headerH + (workH > 0 ? workH + 15 : 0) + (partsH > 0 ? partsH + 10 : 0) + padding;
+    const noDetail = workH === 0 && !hasBreakdown;
+    const boxH = headerH + (workH > 0 ? workH + 15 : 0) + (bdH > 0 ? bdH + 12 : 0) + (noDetail ? 16 : 0) + padding;
 
     y = checkBreak(boxH + 15);
 
@@ -1001,7 +1001,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
     if (workItems.length > 0) {
       doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
-      doc.text('SERVICES PERFORMED:', PAGE_M + 12, contentY);
+      doc.text('WORK CARRIED OUT:', PAGE_M + 12, contentY);
       contentY += 12;
 
       doc.font('Helvetica').fontSize(9).fillColor(DARK_TEXT);
@@ -1010,47 +1010,48 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
         doc.text(`\u2022   ${item}`, PAGE_M + 12, contentY, { width: CW - 30 });
         contentY += itemH + 4;
       }
-      contentY += 5;
+      contentY += 6;
     }
 
-    if (partsList.length > 0) {
-      if (workItems.length > 0) {
-        addDividerLine(contentY, 0.5, '#e5e7eb');
-        contentY += 10;
-      }
+    if (hasBreakdown) {
+      if (workItems.length > 0) { addDividerLine(contentY, 0.5, '#e5e7eb'); contentY += 10; }
 
       doc.font('Helvetica').fontSize(8).fillColor(BRAND_BLUE);
-      doc.text('COMPONENTS INSTALLED:', PAGE_M + 12, contentY);
-      contentY += 12;
+      doc.text('COST BREAKDOWN:', PAGE_M + 12, contentY);
+      contentY += 13;
 
-      doc.font('Helvetica').fontSize(8.5).fillColor('#4b5563');
-      
-      // Print parts in 2 columns
-      let leftCol = true;
-      let startColY = contentY;
-      let maxColY = contentY;
-      
-      const colW = (CW - 40) / 2;
-      for (const part of partsList) {
-        const cx = leftCol ? PAGE_M + 12 : PAGE_M + 12 + colW + 10;
-        const cy = leftCol ? contentY : startColY;
-        
-        const partH = doc.heightOfString(`\u25B8  ${part}`, { width: colW });
-        doc.text(`\u25B8  ${part}`, cx, cy, { width: colW });
-        
-        if (leftCol) {
-          contentY += partH + 4;
-          leftCol = false;
-        } else {
-          startColY += partH + 4;
-          leftCol = true;
-        }
-        maxColY = Math.max(contentY, startColY);
+      const labelX = PAGE_M + 16;
+      const amtBoxW = CW - 16 - 4;   // amount right-aligned across the content width
+      const labelW = CW - 16 - 78;   // reserve ~78pt on the right for the amount
+      const line = (label: string, amount: string, o: any = {}) => {
+        doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 8.5).fillColor(o.color || '#374151');
+        const h = Math.max(doc.heightOfString(label, { width: labelW }), 11);
+        doc.text(label, labelX, contentY, { width: labelW });
+        doc.text(amount, labelX, contentY, { width: amtBoxW, align: 'right' });
+        contentY += h + 2;
+      };
+      const groupLabel = (t: string) => { doc.font('Helvetica-Bold').fontSize(7).fillColor('#6b7280').text(t.toUpperCase(), labelX, contentY); contentY += 11; };
+
+      if (bd.labour && bd.labour.length) {
+        groupLabel('Labour');
+        for (const l of bd.labour) line(l.label || 'Labour', money(l.amount));
       }
-      contentY = maxColY + 5;
+      if (bd.parts && bd.parts.length) {
+        groupLabel('Parts & Consumables');
+        for (const p of bd.parts) line(p.qty && p.qty !== 1 ? `${p.label || 'Part'}  (${p.qty} \u00D7 ${money(p.unit)})` : (p.label || 'Part'), money(p.amount));
+      }
+      if (bd.mot) line('MOT Test (VAT exempt)', money(bd.mot));
+
+      contentY += 2;
+      addDividerLine(contentY, 0.5, '#cbd5e1');
+      contentY += 6;
+      line('Subtotal (excl. VAT)', money(bd.net));
+      line('VAT', money(bd.vat));
+      line('Total', money(bd.gross), { bold: true, size: 10, color: BRAND_BLUE });
+      contentY += 4;
     }
 
-    if (workItems.length === 0 && partsList.length === 0) {
+    if (noDetail) {
       doc.font('Helvetica-Oblique').fontSize(9).fillColor('#9ca3af');
       doc.text('No detailed breakdown was digitally recorded for this visit.', PAGE_M + 12, contentY);
     }
