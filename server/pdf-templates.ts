@@ -408,7 +408,7 @@ function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: 
   return y;
 }
 
-export async function generateInvoicePDF(data: any): Promise<{ content: string; filename: string }> {
+export async function generateInvoicePDF(data: any, opts: { customerCopyOnly?: boolean } = {}): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
   let y = M;
   let copyLabel = '';
@@ -479,10 +479,13 @@ export async function generateInvoicePDF(data: any): Promise<{ content: string; 
     tcAndTotals(doc, data.totals, y, 'Total', 0.50, checkBreak);
   };
 
-  // Always print two copies — one for the customer, one for the office.
-  copyLabel = 'Customer Copy'; renderCopy();
-  doc.addPage();
-  copyLabel = 'Office Copy'; renderCopy();
+  // Customer copy, then an office copy — unless the caller only wants the customer's copy
+  // (e.g. the history bundle the customer receives).
+  copyLabel = opts.customerCopyOnly ? '' : 'Customer Copy'; renderCopy();
+  if (!opts.customerCopyOnly) {
+    doc.addPage();
+    copyLabel = 'Office Copy'; renderCopy();
+  }
 
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `${data.invoice?.number || 'Invoice'}.pdf` };
@@ -957,7 +960,51 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
   const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
   const fmtQty = (q: any) => { const n = Number(q) || 0; return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(4))); };
 
-  for (let idx = 0; idx < entries.length; idx++) {
+  // \u2500\u2500 Compact mode: a one-page overview table of every visit. Used when the full invoice
+  //    copies are attached after it, so the summary doesn't duplicate their detail. \u2500\u2500
+  if (data.compact) {
+    const colRef = PAGE_M + 82;
+    const colMile = PAGE_M + 140;
+    const colWork = PAGE_M + 208;
+    const workW = (PW - PAGE_M - 74) - colWork;
+    const rowH = 17;
+
+    doc.save().rect(PAGE_M, y, CW, 18).fill(BRAND_BLUE).restore();
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
+    doc.text('Date', PAGE_M + 6, y + 5);
+    doc.text('Ref', colRef, y + 5);
+    doc.text('Mileage', colMile, y + 5);
+    doc.text('Work carried out', colWork, y + 5);
+    doc.text('Total', PAGE_M, y + 5, { width: CW - 6, align: 'right' });
+    y += 18;
+
+    entries.forEach((e: any, i: number) => {
+      y = checkBreak(rowH + 4);
+      if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#f4f6f8').restore(); }
+      doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
+      const dp = String(e.date || '').split(' ');
+      const shortDate = dp.length === 3 ? `${dp[0]} ${dp[1].slice(0, 3)} ${dp[2]}` : (e.date || '');
+      doc.text(shortDate, PAGE_M + 6, y + 4, { width: 74, lineBreak: false });
+      doc.text(e.doc_ref || '', colRef, y + 4, { width: 56, lineBreak: false });
+      doc.text(e.mileage || '', colMile, y + 4, { width: 64, lineBreak: false });
+      doc.text(e.title || 'Service', colWork, y + 4, { width: workW, height: 11, ellipsis: true, lineBreak: false });
+      doc.font('Helvetica-Bold').text(e.total || '', PAGE_M, y + 4, { width: CW - 6, align: 'right' });
+      doc.save().strokeColor('#e5e7eb').lineWidth(0.5).moveTo(PAGE_M, y + rowH).lineTo(PW - PAGE_M, y + rowH).stroke().restore();
+      y += rowH;
+    });
+
+    y += 4;
+    doc.save().strokeColor(MID_GREY).lineWidth(1).moveTo(PAGE_M, y).lineTo(PW - PAGE_M, y).stroke().restore();
+    y += 8;
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
+    doc.text('Total invoiced', colWork - 60, y, { width: workW + 60, align: 'right' });
+    doc.text(data.cumulative_spend || '', PAGE_M, y, { width: CW - 6, align: 'right' });
+    y += 18;
+    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
+    doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
+  }
+
+  if (!data.compact) for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
     const headerH = 24;
     const labelX = PAGE_M + 12;

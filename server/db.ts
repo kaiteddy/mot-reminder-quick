@@ -2164,7 +2164,7 @@ export async function updateServiceDocument(id: number, doc: any, items: any[]) 
   });
 }
 
-export async function getRichPDF(documentId: number) {
+export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -2400,7 +2400,7 @@ export async function getRichPDF(documentId: number) {
     work_title, work_items,
     mot: motItems.length > 0 ? motItems : undefined,
     labour, parts, totals,
-  });
+  }, { customerCopyOnly: opts?.customerCopyOnly });
 }
 
 /**
@@ -2496,6 +2496,9 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
     entries,
     total_records: entries.length,
     cumulative_spend: `£${cumulative.toFixed(2)}`,
+    // When the full invoices are appended, the summary is a brief one-page overview (the detail
+    // lives in the invoice copies); on its own it stays the full itemised report.
+    compact: !!opts?.includeInvoices,
   });
 
   if (!opts?.includeInvoices || docs.length === 0) return summary;
@@ -2511,7 +2514,7 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
   };
   await append(summary.content);
   for (const d of docs) {
-    try { await append((await getRichPDF(d.id)).content); }
+    try { await append((await getRichPDF(d.id, { customerCopyOnly: true })).content); }
     catch (e) { console.error(`[history bundle] skipped invoice ${d.docNo}:`, (e as any)?.message); }
   }
   const content = Buffer.from(await merged.save()).toString("base64");
