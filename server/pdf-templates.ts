@@ -845,6 +845,10 @@ export function parseDescription(text: string): { workItems: string[]; parts: st
 
 export async function generateServiceHistoryPDF(data: any): Promise<{ content: string; filename: string }> {
   const { doc, finish } = makePDF();
+  // We paginate manually (checkBreak). Drop pdfkit's bottom margin so a near-bottom draw
+  // (e.g. the page footer at PH-30) never triggers an automatic page break — that was
+  // inserting a phantom footer-only page after every real page.
+  doc.page.margins.bottom = 0;
   const PAGE_M = 40; // 40pt Margins
   const CW = PW - PAGE_M * 2; // Content Width
   const BRAND_BLUE = '#0a2342';
@@ -933,8 +937,9 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     if (y + needed > PH - 50) {
       // Add footer to current page before breaking
       doc.font('Helvetica').fontSize(7).fillColor('#9ca3af');
-      doc.text('Certified by Eli Motors Management Suite', PAGE_M, PH - 30, { width: CW, align: 'center' });
+      doc.text('Certified by Eli Motors Management Suite', PAGE_M, PH - 30, { width: CW, align: 'center', lineBreak: false });
       doc.addPage();
+      doc.page.margins.bottom = 0; // keep auto-pagination off on the new page too
       pageNum++;
       y = pageHeader();
     }
@@ -1046,7 +1051,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
   // Final Footer string on the last page
   doc.font('Helvetica').fontSize(7).fillColor('#9ca3af');
-  doc.text('Certified by Eli Motors Management Suite — Official Digital Record', PAGE_M, PH - 30, { width: CW, align: 'center' });
+  doc.text('Certified by Eli Motors Management Suite — Official Digital Record', PAGE_M, PH - 30, { width: CW, align: 'center', lineBreak: false });
 
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `Vehicle_History_${data.vehicle_reg || 'Report'}.pdf` };
