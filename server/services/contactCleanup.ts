@@ -35,17 +35,36 @@ export function isRealName(alpha: string): boolean {
  * Returns { phone, name } — phone is +44/E.164 (or null if unusable); name is the
  * extracted contact name (or null if none / it was a title/label).
  */
+/**
+ * Normalize a number, recovering bare London landlines. GA4 stores London numbers
+ * without their `020` area code (e.g. "8346 8981"), which fails validation and gets
+ * dropped. A bare 8-digit number whose local part starts 3, 7 or 8 is exactly the
+ * subscriber part of an 020 number, so retry with the prefix. Scoped to contact
+ * cleanup only (not the reminder-send path), and only fires when the plain number
+ * is invalid, so it never rewrites an already-valid number.
+ */
+function normalizeWithLondonFallback(num: string | null | undefined): string | null {
+  const v = normalizePhoneNumber(num);
+  if (v.normalized) return v.normalized;
+  const digits = String(num || "").replace(/\D/g, "");
+  if (/^[378]\d{7}$/.test(digits)) {
+    const v2 = normalizePhoneNumber("020" + digits);
+    if (v2.normalized) return v2.normalized;
+  }
+  return null;
+}
+
 export function cleanNumberAndName(raw: string | null | undefined): { phone: string | null; name: string | null } {
   if (!raw) return { phone: null, name: null };
   const s = String(raw).trim();
   if (/[A-Za-z]/.test(s)) {
     const split = splitPhoneName(s);
     if (!split) return { phone: null, name: null };
-    const v = normalizePhoneNumber(split.num);
-    return { phone: v.normalized, name: v.normalized && isRealName(split.alpha) ? titleCase(split.alpha) : null };
+    const normalized = normalizeWithLondonFallback(split.num);
+    return { phone: normalized, name: normalized && isRealName(split.alpha) ? titleCase(split.alpha) : null };
   }
-  const v = normalizePhoneNumber(s);
-  return { phone: v.normalized, name: null };
+  const normalized = normalizeWithLondonFallback(s);
+  return { phone: normalized, name: null };
 }
 
 /**
