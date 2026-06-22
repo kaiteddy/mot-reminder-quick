@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2, Search, ArrowLeftRight, Navigation } from "lucide-react";
+import { User, Phone, MapPin, Smartphone, Copy, Edit, Loader2, Search, ArrowLeftRight, Navigation, Mail } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -276,6 +276,27 @@ export function CustomerInfoCard({ customer, vehicleId }: { customer: any, vehic
             <a href={`tel:${String(customer.phone).replace(/[^\d+]/g, "")}`} className="flex items-center gap-2 text-primary font-medium mt-2 hover:underline">
               <Phone className="h-4 w-4" />
               <span>{customer.phone}</span>
+            </a>
+          )}
+          {(Array.isArray(customer.altContacts) ? customer.altContacts : [])
+            .filter((c: any) => c && String(c.phone || "").trim())
+            .map((c: any, i: number) => (
+              <a
+                key={i}
+                href={`tel:${String(c.phone).replace(/[^\d+]/g, "")}`}
+                className="flex items-center gap-2 text-primary font-medium mt-2 hover:underline"
+              >
+                <Smartphone className="h-4 w-4 shrink-0" />
+                <span>
+                  {c.phone}
+                  {c.name ? <span className="text-muted-foreground font-normal"> · {c.name}</span> : null}
+                </span>
+              </a>
+            ))}
+          {customer.email && (
+            <a href={`mailto:${customer.email}`} className="flex items-center gap-2 text-primary font-medium mt-2 hover:underline break-all">
+              <Mail className="h-4 w-4 shrink-0" />
+              <span>{customer.email}</span>
             </a>
           )}
         </div>
