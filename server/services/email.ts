@@ -74,3 +74,27 @@ export async function sendDocumentEmail(opts: { docId: number; to: string; cc?: 
   });
   return { success: true, messageId: info.messageId };
 }
+
+/** Email a vehicle's full service history (PDF attached) to a recipient via SMTP. */
+export async function sendVehicleHistoryEmail(opts: { vehicleId: number; to: string; cc?: string; subject?: string; message?: string; registration?: string }) {
+  const s = await getEmailSettings();
+  if (!s.host || !s.user) throw new Error("Email is not set up. Configure SMTP in Email Settings first.");
+  if (!opts.to || !opts.to.includes("@")) throw new Error("A valid recipient email address is required.");
+
+  const { getServiceHistoryPDF } = await import("../db");
+  const pdf: any = await getServiceHistoryPDF(opts.vehicleId);
+  const from = s.fromName ? `"${s.fromName}" <${s.fromAddress || s.user}>` : (s.fromAddress || s.user);
+  const reg = (opts.registration || "").trim();
+  const body = opts.message || `Please find attached the full service history for your vehicle${reg ? ` (${reg})` : ""}, detailing the work we have completed.`;
+
+  const info = await buildTransport(s).sendMail({
+    from,
+    to: opts.to,
+    cc: [opts.cc, s.copyTo].filter(Boolean).join(",") || undefined,
+    subject: opts.subject || `Service History${reg ? ` — ${reg}` : ""} — ELI Motors Limited`,
+    text: `${body}\n\nKind regards,\nELI Motors Limited\n020 8203 6449 · www.elimotors.co.uk`,
+    html: `<p>${body.replace(/\n/g, "<br>")}</p><p>Kind regards,<br><strong>ELI Motors Limited</strong><br>020 8203 6449 · <a href="https://www.elimotors.co.uk">www.elimotors.co.uk</a></p>`,
+    attachments: [{ filename: pdf.filename, content: Buffer.from(pdf.content, "base64"), contentType: "application/pdf" }],
+  });
+  return { success: true, messageId: info.messageId };
+}

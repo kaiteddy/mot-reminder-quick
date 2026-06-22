@@ -46,6 +46,21 @@ export const appRouter = router({
       return getAllCustomers();
     }),
 
+    // The customer linked to a vehicle — used to pre-fill the "Email history" recipient.
+    byVehicleId: publicProcedure
+      .input(z.object({ vehicleId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb, getCustomerById } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+        const veh: any = await db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1).then((r: any) => r[0]);
+        if (!veh?.customerId) return null;
+        const c: any = await getCustomerById(veh.customerId);
+        return c ? { id: c.id, name: c.name, email: c.email, phone: c.phone } : null;
+      }),
+
     search: publicProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
@@ -417,6 +432,29 @@ export const appRouter = router({
             documentId: input.docId,
             type: "email", direction: "out",
             subject: input.subject || `Emailed document to ${input.to}`,
+            body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
+          } as any);
+        } catch { /* logging must never block the send */ }
+        return result;
+      }),
+    sendVehicleHistory: publicProcedure
+      .input(z.object({ vehicleId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const { sendVehicleHistoryEmail } = await import("./services/email");
+        const { getDb, addCustomerLog } = await import("./db");
+        const { vehicles } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        const veh: any = db ? await db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1).then((r: any) => r[0]) : null;
+        const result = await sendVehicleHistoryEmail({ ...input, registration: veh?.registration });
+        // record the email in the customer communication log (best-effort)
+        try {
+          await addCustomerLog({
+            customerId: veh?.customerId ?? null,
+            vehicleId: input.vehicleId,
+            documentId: null,
+            type: "email", direction: "out",
+            subject: input.subject || `Emailed service history to ${input.to}`,
             body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
           } as any);
         } catch { /* logging must never block the send */ }

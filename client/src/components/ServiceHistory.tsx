@@ -17,7 +17,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, FileText, Loader2, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
@@ -133,6 +133,24 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
         documentTitle: `Vehicle_History_${vehicleId}`,
     });
 
+    // Email the full service history (server-rendered PDF) to the customer.
+    const { data: recipient } = trpc.customers.byVehicleId.useQuery({ vehicleId }, { staleTime: 60_000 });
+    const emailHistoryMut = trpc.email.sendVehicleHistory.useMutation();
+    const [emailOpen, setEmailOpen] = useState(false);
+    const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+    const openEmail = () => {
+        setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
+        setEmailOpen(true);
+    };
+    const sendHistoryEmail = async () => {
+        if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
+        try {
+            await emailHistoryMut.mutateAsync({ vehicleId, to: emailForm.to, subject: emailForm.subject || undefined, message: emailForm.message || undefined });
+            toast.success(`Service history emailed to ${emailForm.to}`);
+            setEmailOpen(false);
+        } catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
+    };
+
     const handleDelete = (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
         if (window.confirm("Are you sure you want to delete this document? This action cannot be undone.")) {
@@ -174,16 +192,80 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     <span className="font-semibold text-foreground">{history.length}</span> document{history.length === 1 ? "" : "s"}
                     {invoiceSpend > 0 && <> · <span className="font-semibold text-foreground">£{invoiceSpend.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> invoiced</>}
                 </p>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePrint()}
-                    className="border-primary/20 hover:bg-primary/5 text-primary font-bold shadow-sm transition-all"
-                >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export Full History (PDF)
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={openEmail}
+                        className="border-primary/20 hover:bg-primary/5 text-primary font-bold shadow-sm transition-all"
+                    >
+                        <Mail className="w-4 h-4 mr-2" />
+                        Email History
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePrint()}
+                        className="border-primary/20 hover:bg-primary/5 text-primary font-bold shadow-sm transition-all"
+                    >
+                        <Download className="w-4 h-4 mr-2" />
+                        Export Full History (PDF)
+                    </Button>
+                </div>
             </div>
+
+            <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Email service history</DialogTitle>
+                        <DialogDescription>
+                            Sends the full service history for this vehicle as a PDF attachment{recipient?.name ? ` to ${recipient.name}` : ""}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-medium text-muted-foreground">To</label>
+                            <input
+                                className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500"
+                                value={emailForm.to}
+                                onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))}
+                                placeholder="customer@email.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-muted-foreground">Subject <span className="text-slate-400">(optional)</span></label>
+                            <input
+                                className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500"
+                                value={emailForm.subject}
+                                onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))}
+                                placeholder="Service History — ELI Motors Limited"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-muted-foreground">Message <span className="text-slate-400">(optional)</span></label>
+                            <textarea
+                                rows={5}
+                                className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 resize-y outline-none focus:border-violet-500"
+                                value={emailForm.message}
+                                onChange={(e) => setEmailForm((f) => ({ ...f, message: e.target.value }))}
+                                placeholder="Leave blank to use the default covering message."
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="outline" size="sm" onClick={() => setEmailOpen(false)}>Cancel</Button>
+                        <Button
+                            size="sm"
+                            onClick={sendHistoryEmail}
+                            disabled={emailHistoryMut.isPending}
+                            className="bg-violet-700 text-white hover:bg-violet-800"
+                        >
+                            {emailHistoryMut.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                            Send
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
             <div className="flex flex-wrap gap-2">
                 {chips.map(([key, label, n]) => (
                     <button
