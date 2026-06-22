@@ -359,6 +359,18 @@ export default function Home() {
     setCurrentPage(1);
   }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows]);
 
+  // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
+  // longer in view, so "N selected" / the send count always matches what's actually on screen.
+  useEffect(() => {
+    setSelectedVehicleIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(filteredAndSortedVehicles.map((v) => v.id));
+      const next = new Set<number>();
+      prev.forEach((id) => { if (visible.has(id)) next.add(id); });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filteredAndSortedVehicles]);
+
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
     let expired = 0, due = 0, valid = 0, noData = 0, e90 = 0, e60 = 0, e30 = 0, e7 = 0, x7 = 0, x14 = 0, x30 = 0, x60 = 0, x90 = 0;
