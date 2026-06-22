@@ -2413,28 +2413,45 @@ export async function getServiceHistoryPDF(vehicleId: number) {
     .where(eq(vehicles.id, vehicleId)).limit(1).then(r => r[0]);
   if (!vehicle) throw new Error("Vehicle not found");
 
-  const docs = await db.select().from(serviceHistory)
+  // A customer-facing service history covers invoiced work only — never job sheets (internal,
+  // in-progress) or estimates (quotes). Only SI (invoice) and XS (policy-excess invoice).
+  const INVOICE_TYPES = new Set(["SI", "XS"]);
+  const allDocs = await db.select().from(serviceHistory)
     .where(eq(serviceHistory.vehicleId, vehicleId))
     .orderBy(desc(serviceHistory.dateCreated));
+  const docs = allDocs.filter((d) => INVOICE_TYPES.has(String(d.docType)));
 
-  let cumulative = 0;
-  const entries = docs.map(d => {
+  const cumulative = docs.reduce((s, d) => s + (Number(d.totalGross) || 0), 0);
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const entries = await Promise.all(docs.map(async (d) => {
     const total = Number(d.totalGross) || 0;
-    cumulative += total;
     const dateObj = d.dateCreated ? new Date(d.dateCreated) : new Date();
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
     const dateStr = `${String(dateObj.getDate()).padStart(2, '0')} ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
     const mileage = d.mileage ? `${Number(d.mileage).toLocaleString()} MI` : null;
-
-    return {
+    const base = {
       date: dateStr,
       invoice_number: `#${d.docNo}`,
       mileage,
       total: `£${total.toFixed(2)}`,
       description: d.description || '',
     };
-  });
+
+    // No written description? Fall back to the line items so the work still shows
+    // (labour/MOT as "services performed", parts as "components installed").
+    if (!String(d.description || '').trim()) {
+      const items = await getServiceLineItemsByDocumentId(d.id);
+      const workItems = items
+        .filter((i: any) => i.itemType !== 'Part' && String(i.description || '').trim())
+        .map((i: any) => String(i.description).trim());
+      const parts = items
+        .filter((i: any) => i.itemType === 'Part' && String(i.description || '').trim())
+        .map((i: any) => { const q = Number(i.quantity) || 0; return `${q > 1 ? `${q}x ` : ''}${String(i.description).trim()}`; });
+      if (workItems.length || parts.length) return { ...base, workItems, parts };
+    }
+    return base;
+  }));
 
   return generateServiceHistoryPDF({
     company_name: 'ELI MOTORS LIMITED',

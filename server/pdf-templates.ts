@@ -951,7 +951,11 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
-    const { workItems, parts: partsList } = parseDescription(entry.description || '');
+    // Prefer explicit line-item arrays when the caller supplies them (e.g. an invoice with no
+    // written description); otherwise parse the free-text description into work + parts.
+    const { workItems, parts: partsList } = (entry.workItems || entry.parts)
+      ? { workItems: entry.workItems || [], parts: entry.parts || [] }
+      : parseDescription(entry.description || '');
 
     // Estimate height
     doc.font('Helvetica').fontSize(9);
