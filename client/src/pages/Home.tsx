@@ -523,6 +523,17 @@ export default function Home() {
           </CardContent>
         </Card>
 
+        {selectedVehicleIds.size > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-sm">
+            <span className="text-sm font-semibold text-primary">{selectedVehicleIds.size} selected</span>
+            <Button onClick={handleBatchSend} disabled={isSendingBatch} className="ml-auto">
+              {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Send MOT Reminders ({selectedVehicleIds.size})
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedVehicleIds(new Set())} disabled={isSendingBatch}>Clear</Button>
+          </div>
+        )}
+
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <ComprehensiveVehicleTable
@@ -534,6 +545,7 @@ export default function Home() {
               onSendReminder={handleSendReminder}
               onBookMOT={handleBookMOTClick}
               onDelete={handleDelete}
+              isSendingBatch={isSendingBatch}
               isDeletingBatch={deleteVehicleMutation.isPending}
               pendingVehicleId={pendingVehicle?.id}
               onViewHistory={(vehicle) => {
