@@ -55,7 +55,8 @@ export default function Home() {
   const [sortField, setSortField] = useState<SortField>("registration");
   const [motStatusFilter, setMOTStatusFilter] = useState<MOTStatusFilter>("all");
   const [taxStatusFilter, setTaxStatusFilter] = useState<TaxStatusFilter>("all");
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
+  const [motWindows, setMotWindows] = useState<Set<string>>(new Set());
+  const toggleWindow = (key: string, on: boolean) => setMotWindows((prev) => { const next = new Set(prev); on ? next.add(key) : next.delete(key); return next; });
   const [showDeadVehicles, setShowDeadVehicles] = useState(false);
   const [hideMissingPhone, setHideMissingPhone] = useState(true);
   const [hideSorn, setHideSorn] = useState(true);
@@ -331,35 +332,32 @@ export default function Home() {
         const status = vehicle.taxStatus?.toLowerCase() || "untaxed";
         if (taxStatusFilter !== status) return false;
       }
-      if (dateRangeFilter !== "all") {
+      // MOT-window tick boxes: show a vehicle if its MOT falls in ANY ticked window.
+      // Uses getMOTStatus so it matches the Status badge exactly (windows are cumulative ≤N days).
+      if (motWindows.size > 0) {
         if (!vehicle.motExpiryDate) return false;
-        const today = new Date();
-        const lastSent = vehicle.lastReminderSent ? new Date(vehicle.lastReminderSent).getTime() : 0;
-        if ((today.getTime() - lastSent) < 30 * 24 * 60 * 60 * 1000) return false;
-        const expiry = new Date(vehicle.motExpiryDate);
-        const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        switch (dateRangeFilter) {
-          case "expired-all": if (diffDays >= 0) return false; break;
-          case "expired-90": if (diffDays >= 0 || diffDays < -90) return false; break;
-          case "expired-60": if (diffDays >= 0 || diffDays < -60) return false; break;
-          case "expired-30": if (diffDays >= 0 || diffDays < -30) return false; break;
-          case "expired-7": if (diffDays >= 0 || diffDays < -7) return false; break;
-          case "expiring-7": if (diffDays < 0 || diffDays > 7) return false; break;
-          case "expiring-14": if (diffDays < 0 || diffDays > 14) return false; break;
-          case "expiring-30": if (diffDays < 0 || diffDays > 30) return false; break;
-          case "expiring-60": if (diffDays < 0 || diffDays > 60) return false; break;
-          case "expiring-90": if (diffDays < 0 || diffDays > 90) return false; break;
-        }
+        const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
+        const d = daysLeft ?? 0;
+        const inAnyWindow =
+          (motWindows.has("expired") && status === "expired") ||
+          (status !== "expired" && (
+            (motWindows.has("due-7") && d <= 7) ||
+            (motWindows.has("due-14") && d <= 14) ||
+            (motWindows.has("due-30") && d <= 30) ||
+            (motWindows.has("due-60") && d <= 60) ||
+            (motWindows.has("due-90") && d <= 90)
+          ));
+        if (!inAnyWindow) return false;
       }
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, dateRangeFilter]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows]);
 
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
@@ -425,22 +423,16 @@ export default function Home() {
                   className="pl-10" 
                 />
               </div>
-              <Select value={dateRangeFilter} onValueChange={(v) => setDateRangeFilter(v as any)}>
-                <SelectTrigger className="w-48"><SelectValue placeholder="Date Range" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dates</SelectItem>
-                  <SelectItem value="expiring-7">Due in 7 days</SelectItem>
-                  <SelectItem value="expiring-14">Due in 14 days</SelectItem>
-                  <SelectItem value="expiring-30">Due in 30 days</SelectItem>
-                  <SelectItem value="expiring-60">Due in 60 days</SelectItem>
-                  <SelectItem value="expiring-90">Due in 90 days</SelectItem>
-                  <SelectItem value="expired-all">Expired (any)</SelectItem>
-                  <SelectItem value="expired-7">Expired ≤ 7 days</SelectItem>
-                  <SelectItem value="expired-30">Expired ≤ 30 days</SelectItem>
-                  <SelectItem value="expired-60">Expired ≤ 60 days</SelectItem>
-                  <SelectItem value="expired-90">Expired ≤ 90 days</SelectItem>
-                </SelectContent>
-              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 mt-4">
+              <span className="text-sm font-semibold text-muted-foreground">MOT:</span>
+              {([["expired", "Expired"], ["due-7", "Due ≤ 7 days"], ["due-14", "Due ≤ 14 days"], ["due-30", "Due ≤ 30 days"], ["due-60", "Due ≤ 60 days"], ["due-90", "Due ≤ 90 days"]] as [string, string][]).map(([key, label]) => (
+                <div key={key} className="flex items-center space-x-2">
+                  <Checkbox id={`mw-${key}`} checked={motWindows.has(key)} onCheckedChange={(c) => toggleWindow(key, c as boolean)} />
+                  <label htmlFor={`mw-${key}`} className="text-sm font-medium leading-none cursor-pointer">{label}</label>
+                </div>
+              ))}
             </div>
 
             <div className="flex flex-wrap gap-4 mt-4">
