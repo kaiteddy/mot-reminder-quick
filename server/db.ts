@@ -2424,7 +2424,12 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
   const allDocs = await db.select().from(serviceHistory)
     .where(eq(serviceHistory.vehicleId, vehicleId))
     .orderBy(desc(serviceHistory.dateCreated));
-  const docs = allDocs.filter((d) => INVOICE_TYPES.has(String(d.docType)));
+  const docs = allDocs
+    .filter((d) => INVOICE_TYPES.has(String(d.docType)))
+    // Customer-facing history: only the current owner's invoices. Drop anything explicitly
+    // billed to a different customer — pre-sales/sales prep and previous-owner work (e.g. ELI's
+    // internal trade account) shouldn't appear on the owner's copy. Unlinked docs are kept.
+    .filter((d) => !vehicle.customerId || !d.customerId || d.customerId === vehicle.customerId);
 
   const cumulative = docs.reduce((s, d) => s + (Number(d.totalGross) || 0), 0);
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
