@@ -658,6 +658,22 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   y = vehicleTable(doc, data.vehicle, y);
   y += 12;
 
+  // Acceptable engine-oil grades — printed prominently so the mechanic can see every grade the
+  // engine takes (e.g. 5W-30 / 0W-20 / 0W-30) and pick the right one, not just the preferred.
+  const oilGrades: string[] = Array.isArray(data.vehicle?.oil_grades) ? data.vehicle.oil_grades : [];
+  if (oilGrades.length > 1) {
+    const pref: string[] = Array.isArray(data.vehicle?.oil_preferred) ? data.vehicle.oil_preferred : [];
+    const cap = data.vehicle?.oil_capacity ? `   ·   Capacity ${data.vehicle.oil_capacity}` : '';
+    const line = `Engine Oil — acceptable grades:   ${oilGrades.map((g) => pref.includes(g) ? `${g} (preferred)` : g).join('     ')}${cap}`;
+    doc.font('Helvetica-Bold').fontSize(9.5);
+    const h = doc.heightOfString(line, { width: CW - 12 }) + 8;
+    y = checkBreak(h + 6);
+    doc.save().rect(M, y, CW, h).fill('#fff7e6').restore();
+    doc.save().rect(M, y, CW, h).lineWidth(0.8).stroke('#d9a441').restore();
+    doc.fillColor('black').font('Helvetica-Bold').fontSize(9.5).text(line, M + 6, y + 4, { width: CW - 12 });
+    y += h + 10;
+  }
+
   // The work to do is now listed as tick-off rows in the Service / Parts table below
   // (so the mechanic can mark each off as completed), rather than as a plain text block.
 

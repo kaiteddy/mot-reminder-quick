@@ -1422,9 +1422,16 @@ export async function liveVehicleTech(registration: string) {
     } else {
       console.log(`[liveVehicleTech] tech cache HIT for ${reg} — no paid API call`);
     }
-    const oil = (ctd?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    const oils = (ctd?.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const oil = oils[0];
     out.oilSpec = oil?.specification ?? null;
     out.oilCapacity = oil?.capacity ?? null;
+    // distinct SAE grades the engine accepts (preferred first) so callers can print every option
+    const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
+    const prefG = Array.from(new Set(oils.filter((o: any) => /preferred/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    const allG = Array.from(new Set(oils.map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    out.oilGrades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    out.oilPreferred = prefG;
     out.airconType = ctd?.aircon?.type ?? null;
     out.airconCapacity = ctd?.aircon?.quantity ?? ctd?.aircon?.capacity ?? null;
     out.imageUrl = cleanImg(ctd?.ukvd?.imageUrl);
@@ -2266,6 +2273,19 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   const recOil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
   const oilSpec = lt?.oilSpec || recOil?.specification || "";
   const oilCap = lt?.oilCapacity || recOil?.capacity || "";
+  // All distinct grades the engine accepts (for the job sheet) — prefer the live tech result,
+  // fall back to deriving from the cached record's lubricants, then to the single spec.
+  const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
+  let oilGrades: string[] = Array.isArray(lt?.oilGrades) ? lt.oilGrades : [];
+  let oilPreferred: string[] = Array.isArray(lt?.oilPreferred) ? lt.oilPreferred : [];
+  if (!oilGrades.length) {
+    const recOils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const prefG = Array.from(new Set(recOils.filter((o: any) => /preferred/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    const allG = Array.from(new Set(recOils.map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    oilGrades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    oilPreferred = prefG;
+  }
+  if (!oilGrades.length) { const g = gradeOf(oilSpec); if (g) oilGrades = [g]; }
   const airType = lt?.airconType || td.aircon?.type || "";
   const airQty = lt?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity ?? "";
   const motRaw = lt?.motExpiry || vehicle?.motExpiryDate;
@@ -2289,6 +2309,9 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     colour: vehicle?.colour || '',
     // boxed tech row
     engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',
+    oil_grades: oilGrades,
+    oil_preferred: oilPreferred,
+    oil_capacity: oilCap || '',
     air_con: airType ? `${airType}${airQty ? ` ${airQty}` : ''}` : '',
     mot_expiry: motExp,
     tax_info: taxStatus ? `${taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
