@@ -658,9 +658,8 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   y = vehicleTable(doc, data.vehicle, y);
   y += 12;
 
-  // Work description lines — width-wrapped so long text never overwrites
-  y = workBlock(doc, '', data.work_description, y, jsHeader);
-  y -= 2;
+  // The work to do is now listed as tick-off rows in the Service / Parts table below
+  // (so the mechanic can mark each off as completed), rather than as a plain text block.
 
   // Oil specs
   if (data.oil_specs && data.oil_specs.length > 0) {
@@ -701,27 +700,41 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   }
   y += 5;
 
-  // ── Blank Parts table ──
-  const numParts = data.parts_rows || 5;
-  y = checkBreak(ROW_H + numParts * blankRowH);
+  // ── Service / Parts table ──
+  // Pre-fill the job's services (the work to do) as tick-off rows so the mechanic marks each
+  // off once completed, then leave a few blank rows for any extra parts fitted on the job.
+  const services = (data.work_description || [])
+    .map((s: string) => String(s || '').replace(/^[\s•–—-]+/, '').trim())
+    .filter(Boolean);
+  const blankAfter = 4;
   const pcw = [0.64, 0.24, 0.12].map((r) => CW * r);
 
+  y = checkBreak(ROW_H + blankRowH);
   filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
   cellDividers(doc, M, y, ROW_H, pcw);
   doc.font('Helvetica').fontSize(8.5).fillColor('black');
   cx = M;
-  ['Parts', 'Part No.', 'Done'].forEach((h, i) => {
+  ['Service / Parts', 'Part No.', 'Done'].forEach((h, i) => {
     doc.text(h, cx + 6, y + 6, { width: pcw[i] - 12, align: 'center' });
     cx += pcw[i];
   });
   y += ROW_H;
 
-  for (let r = 0; r < numParts; r++) {
+  // pre-filled service rows — height grows to fit the full task text (never truncated)
+  for (const task of services) {
+    doc.font('Helvetica').fontSize(8.5).fillColor('black');
+    const rowH = Math.max(blankRowH, doc.heightOfString(task, { width: pcw[0] - 12 }) + 6);
+    y = checkBreak(rowH);
     cx = M;
-    for (const w of pcw) {
-      doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore();
-      cx += w;
-    }
+    for (const w of pcw) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
+    doc.text(task, M + 6, y + 4, { width: pcw[0] - 12 });
+    y += rowH;
+  }
+  // blank rows for additional parts
+  for (let r = 0; r < blankAfter; r++) {
+    y = checkBreak(blankRowH);
+    cx = M;
+    for (const w of pcw) { doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore(); cx += w; }
     y += blankRowH;
   }
   y += 4;
