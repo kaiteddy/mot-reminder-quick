@@ -56,7 +56,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Vehicles">
               {data.vehicles.map((v: any) => (
                 <Item key={"v" + v.id} icon={<Car className="w-4 h-4 text-sky-600" />} onClick={() => go(`/view-vehicle/${encodeURIComponent(v.registration)}`)}
-                  main={v.registration} sub={[v.make, v.model].filter(Boolean).join(" ")} />
+                  main={v.registration} sub={[[v.make, v.model].filter(Boolean).join(" "), v.ownerName].filter(Boolean).join(" · ")} />
               ))}
             </Group>
           )}

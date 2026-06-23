@@ -54,6 +54,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
+import UniversalSearch from "./UniversalSearch";
 
 const menuGroups = [
   { section: "Workshop", items: [
@@ -319,6 +320,11 @@ function DashboardLayoutContent({
                 {activeMenuItem.label}
               </h2>
             </div>
+          </div>
+
+          {/* Global search — available on every page */}
+          <div className="flex-1 max-w-xl mx-4 hidden sm:block">
+            <UniversalSearch placeholder="Search any customer, vehicle, reg, make/model, phone…" />
           </div>
 
           <div className="flex items-center gap-4">

@@ -1487,10 +1487,11 @@ export async function globalSearch(query: string) {
       .from(customers)
       .where(or(ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s), ilike(customers.address, s)))
       .orderBy(customers.name).limit(8),
-    db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId })
+    db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId, ownerName: customers.name })
       .from(vehicles)
+      .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(or(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${sReg}`, ilike(vehicles.make, s), ilike(vehicles.model, s)))
-      .limit(8),
+      .orderBy(customers.name).limit(15),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
       .where(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(serviceHistory.customerName, s), ilike(serviceHistory.accountNumber, s)))
