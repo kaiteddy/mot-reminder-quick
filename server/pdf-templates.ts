@@ -29,7 +29,7 @@ const MUTED = '#888888';
 const PARTS_ACCENT = '#5a7fb5';
 
 // Column width ratios
-const V_RATIOS = [0.12, 0.12, 0.40, 0.24, 0.12];
+const V_RATIOS = [0.12, 0.12, 0.34, 0.22, 0.20]; // Reg, Make, Model, Chassis, Mileage — wider Mileage
 const LP_RATIOS = [0.52, 0.10, 0.14, 0.10, 0.14];
 
 // T&C wording
