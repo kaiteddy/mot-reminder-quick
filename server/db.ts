@@ -534,7 +534,10 @@ export async function findCustomerByPhone(phone: string) {
   }
 
   const conditions = formats.map(p => eq(customers.phone, p));
-  const result = await db.select().from(customers).where(or(...conditions)).limit(1);
+  // Fail-safe for duplicate records sharing a phone: if ANY of them is opted out, return that
+  // one so the opt-out guard blocks the send. Without this ordering, limit(1) could pick an
+  // opted-in duplicate and we'd message someone who sent STOP on their other record.
+  const result = await db.select().from(customers).where(or(...conditions)).orderBy(desc(customers.optedOut)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -1647,11 +1650,18 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   const hasTitle = (n: string) => _DUP_TITLES.test(String(n || "").trim().split(/\s+/)[0] || "");
   const name = all.map((r) => r.name).filter(Boolean).sort((a, b) => ((hasTitle(b) ? 1e3 : 0) + b.length) - ((hasTitle(a) ? 1e3 : 0) + a.length))[0] || primary.name;
   const pick = (f: string) => primary[f] || secs.map((s) => s[f]).find(Boolean) || null;
+  // Opt-out must be sticky: if ANY merged record opted out, the survivor stays opted out
+  // (otherwise folding an opted-out duplicate into an opted-in record would silently
+  // re-enable reminders for someone who sent STOP). Keep the earliest opt-out timestamp.
+  const optedOut = all.some((r: any) => r.optedOut) ? 1 : 0;
+  const optedOutAt = optedOut
+    ? (all.map((r: any) => r.optedOutAt).filter(Boolean).map((d: any) => new Date(d)).sort((a: any, b: any) => a.getTime() - b.getTime())[0] ?? new Date())
+    : null;
   const seen = new Set<string>(), alt: any[] = [];
   for (const r of all) for (const ct of parse(r.altContacts)) { const k = String(ct.phone || ct.name || "").replace(/\s+/g, "").toLowerCase(); if (k && !seen.has(k)) { seen.add(k); alt.push({ name: ct.name || "", phone: ct.phone || "" }); } }
   const aliases = new Set<string>(parse(primary.mergedExternalIds));
   for (const s of secs) { for (const a of parse(s.mergedExternalIds)) aliases.add(a); if (s.externalId && !String(s.externalId).startsWith("WEB-")) aliases.add(s.externalId); }
-  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null }).where(eq(customers.id, primaryId));
+  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null }).where(eq(customers.id, primaryId));
   await db.delete(customers).where(inArray(customers.id, secondaryIds));
   return { moved, primaryId, merged: secondaryIds.length, name };
 }

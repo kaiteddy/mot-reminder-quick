@@ -2567,10 +2567,11 @@ export const appRouter = router({
         const { reminderLogs } = await import("../drizzle/schema");
         const { inArray, eq } = await import("drizzle-orm");
 
+        const { findCustomerByPhone } = await import("./db");
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        if (input.logIds.length === 0) return { success: true, count: 0, failCount: 0 };
+        if (input.logIds.length === 0) return { success: true, count: 0, failCount: 0, skippedOptOut: 0 };
 
         // Fetch the logs to resend
         const logsToResend = await db
@@ -2580,8 +2581,12 @@ export const appRouter = router({
 
         let successCount = 0;
         let failCount = 0;
+        let skippedOptOut = 0;
 
         for (const log of logsToResend) {
+          // Never resend to a customer who has opted out since the original (failed) send.
+          const recipientCustomer = await findCustomerByPhone(log.recipient);
+          if (recipientCustomer && recipientCustomer.optedOut) { skippedOptOut++; continue; }
           try {
             let messageContent = log.messageContent;
 
@@ -2651,7 +2656,7 @@ export const appRouter = router({
           }
         }
 
-        return { success: true, count: successCount, failCount };
+        return { success: true, count: successCount, failCount, skippedOptOut };
       }),
   }),
 
