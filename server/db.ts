@@ -2356,6 +2356,12 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
 
   if (doc.docType === 'JS') {
     const work_description = (doc.description || '').split('\n');
+    // The actual parts on the job, so the job sheet lists them (not the description) for ticking off.
+    const jsParts = items.filter((i) => i.itemType === 'Part').map((i) => ({
+      description: i.description || '',
+      partNumber: (i as any).partNumber || '',
+      quantity: Number(i.quantity) || 1,
+    }));
 
     let oil_specs: any[] = [];
     try {
@@ -2379,6 +2385,7 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
         technician: '',
       },
       work_description,
+      parts: jsParts,
       oil_specs,
       labour_rows: 5,
       parts_rows: 5,

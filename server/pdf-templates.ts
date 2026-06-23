@@ -674,69 +674,53 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   }
   y += 4;
 
-  // ── Blank Labour table ──
-  const numLabour = data.labour_rows || 5;
   const blankRowH = 16;
-  y = checkBreak(ROW_H + numLabour * blankRowH);
-  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
-
-  filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
-  cellDividers(doc, M, y, ROW_H, lcw);
-  doc.font('Helvetica').fontSize(8.5).fillColor('black');
   let cx = M;
-  ['Labour', 'Tech', 'Qty', 'Done'].forEach((h, i) => {
-    doc.text(h, cx + 6, y + 6, { width: lcw[i] - 12, align: 'center' });
-    cx += lcw[i];
-  });
-  y += ROW_H;
-
-  for (let r = 0; r < numLabour; r++) {
+  // A pre-filled, tick-off table: a header, then one row per item (height grows to fit the
+  // text), then a few blank rows for anything added on the job. cols = [main, mid?, Done].
+  const tickTable = (headers: string[], cols: number[], rows: { main: string; mid?: string }[], blanks: number) => {
+    y = checkBreak(ROW_H + blankRowH);
+    filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
+    cellDividers(doc, M, y, ROW_H, cols);
+    doc.font('Helvetica').fontSize(8.5).fillColor('black');
     cx = M;
-    for (const w of lcw) {
-      doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore();
-      cx += w;
+    headers.forEach((h, i) => { doc.text(h, cx + 6, y + 6, { width: cols[i] - 12, align: 'center' }); cx += cols[i]; });
+    y += ROW_H;
+    for (const row of rows) {
+      doc.font('Helvetica').fontSize(8.5).fillColor('black');
+      const rowH = Math.max(blankRowH, doc.heightOfString(row.main, { width: cols[0] - 12 }) + 6);
+      y = checkBreak(rowH);
+      cx = M;
+      for (const w of cols) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
+      doc.text(row.main, M + 6, y + 4, { width: cols[0] - 12 });
+      if (row.mid && cols.length === 3) doc.text(row.mid, M + cols[0] + 6, y + 4, { width: cols[1] - 12 });
+      y += rowH;
     }
-    y += blankRowH;
-  }
-  y += 5;
+    for (let r = 0; r < blanks; r++) {
+      y = checkBreak(blankRowH);
+      cx = M;
+      for (const w of cols) { doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore(); cx += w; }
+      y += blankRowH;
+    }
+  };
 
-  // ── Service / Parts table ──
-  // Pre-fill the job's services (the work to do) as tick-off rows so the mechanic marks each
-  // off once completed, then leave a few blank rows for any extra parts fitted on the job.
+  // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
+  // for the mechanic to log labour (Tech / Qty / Done).
   const services = (data.work_description || [])
     .map((s: string) => String(s || '').replace(/^[\s•–—-]+/, '').trim())
-    .filter(Boolean);
-  const blankAfter = 4;
+    .filter(Boolean)
+    .map((s: string) => ({ main: s }));
+  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
+  tickTable(['Service / Labour', 'Tech', 'Qty', 'Done'], lcw, services, 5);
+  y += 5;
+
+  // ── Parts table ── the actual parts on the job, tick-off, plus blank rows for extras.
+  const partRows = ((data.parts || []) as any[]).map((p) => ({
+    main: `${p.quantity && Number(p.quantity) !== 1 ? `${Number(p.quantity)} x ` : ''}${p.description || ''}`.trim(),
+    mid: p.partNumber ? String(p.partNumber) : '',
+  }));
   const pcw = [0.64, 0.24, 0.12].map((r) => CW * r);
-
-  y = checkBreak(ROW_H + blankRowH);
-  filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
-  cellDividers(doc, M, y, ROW_H, pcw);
-  doc.font('Helvetica').fontSize(8.5).fillColor('black');
-  cx = M;
-  ['Service / Parts', 'Part No.', 'Done'].forEach((h, i) => {
-    doc.text(h, cx + 6, y + 6, { width: pcw[i] - 12, align: 'center' });
-    cx += pcw[i];
-  });
-  y += ROW_H;
-
-  // pre-filled service rows — height grows to fit the full task text (never truncated)
-  for (const task of services) {
-    doc.font('Helvetica').fontSize(8.5).fillColor('black');
-    const rowH = Math.max(blankRowH, doc.heightOfString(task, { width: pcw[0] - 12 }) + 6);
-    y = checkBreak(rowH);
-    cx = M;
-    for (const w of pcw) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
-    doc.text(task, M + 6, y + 4, { width: pcw[0] - 12 });
-    y += rowH;
-  }
-  // blank rows for additional parts
-  for (let r = 0; r < blankAfter; r++) {
-    y = checkBreak(blankRowH);
-    cx = M;
-    for (const w of pcw) { doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore(); cx += w; }
-    y += blankRowH;
-  }
+  tickTable(['Parts', 'Part No.', 'Done'], pcw, partRows, 4);
   y += 4;
 
   // Car diagram
