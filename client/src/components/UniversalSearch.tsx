@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Search, Loader2, User, Car, FileText, X } from "lucide-react";
+import { RegPlate } from "./RegPlate";
 
 const DOC_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess", PA: "Purchase", VS: "Sale" };
 
@@ -48,7 +49,16 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Customers">
               {data.customers.map((c: any) => (
                 <Item key={"c" + c.id} icon={<User className="w-4 h-4 text-violet-600" />} onClick={() => go(`/customers/${c.id}`)}
-                  main={c.name} sub={[c.phone, c.postcode, c.address].filter(Boolean).join(" · ")} />
+                  main={c.name} sub={[c.phone, c.postcode, c.address].filter(Boolean).join(" · ")}
+                  extra={c.vehicles?.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      {c.vehicles.map((v: any) => (
+                        <span key={v.registration} className="inline-flex items-center gap-1" title={[v.make, v.model].filter(Boolean).join(" ")}>
+                          <RegPlate reg={v.registration} size="xs" />
+                        </span>
+                      ))}
+                    </div>
+                  )} />
               ))}
             </Group>
           )}
@@ -56,7 +66,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Vehicles">
               {data.vehicles.map((v: any) => (
                 <Item key={"v" + v.id} icon={<Car className="w-4 h-4 text-sky-600" />} onClick={() => go(`/view-vehicle/${encodeURIComponent(v.registration)}`)}
-                  main={v.registration} sub={[[v.make, v.model].filter(Boolean).join(" "), v.ownerName].filter(Boolean).join(" · ")} />
+                  main={<RegPlate reg={v.registration} />} sub={[[v.make, v.model].filter(Boolean).join(" "), v.ownerName].filter(Boolean).join(" · ")} />
               ))}
             </Group>
           )}
@@ -65,7 +75,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
               {data.documents.map((d: any) => (
                 <Item key={"d" + d.id} icon={<FileText className="w-4 h-4 text-slate-500" />} onClick={() => go(`/documents/${d.id}`)}
                   main={`${DOC_LABEL[d.docType] || d.docType || "Doc"} ${d.docNo || ""}`.trim()}
-                  sub={[d.registration, d.customerName, d.accountNumber].filter(Boolean).join(" · ")} />
+                  sub={<span className="inline-flex items-center gap-1.5">{d.registration && <RegPlate reg={d.registration} size="xs" />}<span>{[d.customerName, d.accountNumber].filter(Boolean).join(" · ")}</span></span>} />
               ))}
             </Group>
           )}
@@ -79,13 +89,14 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   return <div><div className="px-3 py-1.5 text-[10px] uppercase font-semibold text-slate-400 bg-slate-50 sticky top-0">{title}</div>{children}</div>;
 }
 
-function Item({ icon, main, sub, onClick }: { icon: ReactNode; main: string; sub?: string; onClick: () => void }) {
+function Item({ icon, main, sub, extra, onClick }: { icon: ReactNode; main: ReactNode; sub?: ReactNode; extra?: ReactNode; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-violet-50 border-b border-slate-50 last:border-0">
-      <span className="shrink-0">{icon}</span>
+    <button type="button" onClick={onClick} className="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-violet-50 border-b border-slate-50 last:border-0">
+      <span className="shrink-0 mt-0.5">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-slate-800 truncate">{main}</span>
         {sub && <span className="block text-[11px] text-slate-500 truncate">{sub}</span>}
+        {extra}
       </span>
     </button>
   );

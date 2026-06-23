@@ -1497,7 +1497,23 @@ export async function globalSearch(query: string) {
       .where(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(serviceHistory.customerName, s), ilike(serviceHistory.accountNumber, s)))
       .orderBy(desc(serviceHistory.dateCreated)).limit(8),
   ]);
-  return { customers: cust, vehicles: veh, documents: docs };
+
+  // Attach each matched customer's vehicles so they show next to the name.
+  const custIds = cust.map((c) => c.id);
+  const vehByCust = new Map<number, { registration: string; make: string | null; model: string | null }[]>();
+  if (custIds.length) {
+    const cv = await db.select({ customerId: vehicles.customerId, registration: vehicles.registration, make: vehicles.make, model: vehicles.model })
+      .from(vehicles).where(inArray(vehicles.customerId, custIds)).orderBy(vehicles.registration);
+    for (const v of cv) {
+      if (v.customerId == null || !v.registration) continue;
+      const list = vehByCust.get(v.customerId) || [];
+      list.push({ registration: v.registration, make: v.make, model: v.model });
+      vehByCust.set(v.customerId, list);
+    }
+  }
+  const customersWithVehicles = cust.map((c) => ({ ...c, vehicles: (vehByCust.get(c.id) || []).slice(0, 6) }));
+
+  return { customers: customersWithVehicles, vehicles: veh, documents: docs };
 }
 
 // Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.
