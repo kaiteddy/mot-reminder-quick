@@ -215,15 +215,17 @@ CRITICAL INSTRUCTIONS:
 "${input.job}"
 
 Write a job specification for the job sheet / invoice listing, as bullet points, the WORK
-REQUIRED to complete the job — each task the technician carries out, start to finish.
-- 5 to 9 bullets covering the full scope: gaining access (panels, wheels, covers), the
-  replacement/repair itself, fluids/bleeding, adjustments, torque/calibration, and a final
-  check / road test where relevant.
+REQUIRED — each task the technician carries out, start to finish.
+- Cover EVERYTHING written above. If several jobs or tasks are described, include the steps
+  for EVERY one of them — do not drop, merge or summarise away any job the user mentioned.
+- Use as many bullets as needed for the full scope of ALL the work: gaining access (panels,
+  wheels, covers), each replacement/repair itself, fluids/bleeding, adjustments,
+  torque/calibration, and a final check / road test where relevant.
 - ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps
   into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
 - Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
 - UK terminology. No prices, no part numbers, no preamble.
-- Title: 3–6 words naming the job (e.g. "Front Brake Hose Replacement"). Do NOT repeat the make/model.
+- Title: 3–6 words naming the job (or covering the main theme if several jobs, e.g. "Service & Repairs"). Do NOT repeat the make/model.
 
 Example — note each bullet is ONE short step (Front Brake Discs & Pads):
 Title: "Front Brake Discs & Pads"
@@ -239,9 +241,9 @@ Title: "Front Brake Discs & Pads"
         const provider = getRuntimeProvider();
         const { object } = await generateObject({
           model: provider(AI_MODEL),
-          system: "You are an expert UK master technician writing job specifications as a list of clear, short workshop steps — ONE action per bullet, covering the full scope of the job. Never cram multiple steps into one bullet; no filler or padding.",
+          system: "You are an expert UK master technician writing job specifications as a list of clear, short workshop steps — ONE action per bullet, covering the full scope of ALL the work described (every job mentioned, none dropped). Never cram multiple steps into one bullet; no filler or padding.",
           prompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(10) }),
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) }),
         });
         return object;
       } catch (e: any) {

@@ -1017,6 +1017,16 @@ export default function DocumentDetails() {
                 <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
                   <TabsContent value="description" className="mt-0">
                     {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {editing && (
+                      <ServicePartsPicker
+                        vehInfo={vehInfo}
+                        onAdd={(label, parts) => {
+                          setItemsDirty((p) => [...p, ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() }))]);
+                          set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${label}`);
+                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"} — set prices in the Parts tab`);
+                        }}
+                      />
+                    )}
                     {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     {editing ? (
                       <>
@@ -1643,6 +1653,40 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
       <button type="button" onClick={generate} disabled={gen.isPending} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 shrink-0 hover:bg-violet-800">
         {gen.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} AI job spec
       </button>
+    </div>
+  );
+}
+
+// Pick a service type and it drops the right PARTS straight onto the job (not labour),
+// pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
+// oil quantity matches the engine. Multiple services can be added (pick each in turn).
+function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number }[]) => void }) {
+  const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
+  const oil = { description: vehInfo?.oilSpec ? `Engine Oil — ${vehInfo.oilSpec}` : "Engine Oil", quantity: oilCap || 1 };
+  const oilFilter = { description: "Oil Filter", quantity: 1 };
+  const hasAircon = !!vehInfo?.airconType;
+  const acGas = { description: `Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), quantity: 1 };
+
+  const SETS: Record<string, { label: string; parts: { description: string; quantity: number }[] }> = {
+    small: { label: "Small Service", parts: [oil, oilFilter] },
+    major: { label: "Major Service", parts: [oil, oilFilter, { description: "Air Filter", quantity: 1 }, { description: "Cabin Filter", quantity: 1 }, { description: "Sump Plug", quantity: 1 }] },
+    aircon: { label: "Air Con Re-Gas", parts: [acGas] },
+  };
+
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+      <Cog className="w-4 h-4 text-slate-500 shrink-0" />
+      <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
+      <select
+        className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
+        value=""
+        onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
+      >
+        <option value="">Select a service to add its parts…</option>
+        <option value="small">Small Service — oil + oil filter</option>
+        <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
+        {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
+      </select>
     </div>
   );
 }
