@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export default function Conversations() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -46,6 +47,43 @@ export default function Conversations() {
     },
     onError: (e) => toast.error(e.message || "Couldn't update reminder status"),
   });
+
+  // Book the customer in for an MOT — drops them into the MOT bay so the day-of reminder cron
+  // texts them automatically on the morning of the appointment.
+  const [bookOpen, setBookOpen] = useState(false);
+  const [bookForm, setBookForm] = useState({ date: "", time: "09:00", notes: "" });
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  const addMins = (hhmm: string, mins: number) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    const t = h * 60 + m + mins;
+    return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+  };
+  const createApptMutation = trpc.appointments.create.useMutation({
+    onSuccess: () => {
+      toast.success("Booked in — a reminder will go out on the morning of the appointment");
+      setBookOpen(false);
+      refetchThreads();
+    },
+    onError: (e) => toast.error(e.message || "Couldn't create the booking"),
+  });
+  const submitBooking = () => {
+    if (!selectedThread) return;
+    if (!bookForm.date) { toast.error("Pick a date"); return; }
+    createApptMutation.mutate({
+      customerId: selectedThread.customerId,
+      registration: selectedThread.vehicleRegistration || undefined,
+      customerName: selectedThread.customerName,
+      customerPhone: selectedThread.customerPhone,
+      vehicleMake: selectedThread.vehicleMake || undefined,
+      vehicleModel: selectedThread.vehicleModel || undefined,
+      bayId: "mot-bay",
+      serviceType: "MOT",
+      appointmentDate: bookForm.date,
+      startTime: bookForm.time || undefined,
+      endTime: bookForm.time ? addMins(bookForm.time, 60) : undefined,
+      notes: bookForm.notes || undefined,
+    });
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -219,19 +257,67 @@ export default function Conversations() {
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={optOutMutation.isPending}
-                    onClick={() => optOutMutation.mutate({ customerId: selectedThread.customerId, optOut: !selectedThread.optedOut })}
-                    className={cn("shrink-0", selectedThread.optedOut
-                      ? "border-green-300 text-green-700 hover:bg-green-50"
-                      : "border-red-300 text-red-700 hover:bg-red-50")}
-                    title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
-                  >
-                    {selectedThread.optedOut ? <><Bell className="w-4 h-4 mr-1.5" /> Re-enable reminders</> : <><BellOff className="w-4 h-4 mr-1.5" /> Stop reminders</>}
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setBookForm({ date: "", time: "09:00", notes: "" }); setBookOpen(true); }}
+                      className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                      title="Book this customer in for an MOT — sends a reminder on the day"
+                    >
+                      <CalendarPlus className="w-4 h-4 mr-1.5" /> Book in
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={optOutMutation.isPending}
+                      onClick={() => optOutMutation.mutate({ customerId: selectedThread.customerId, optOut: !selectedThread.optedOut })}
+                      className={cn(selectedThread.optedOut
+                        ? "border-green-300 text-green-700 hover:bg-green-50"
+                        : "border-red-300 text-red-700 hover:bg-red-50")}
+                      title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
+                    >
+                      {selectedThread.optedOut ? <><Bell className="w-4 h-4 mr-1.5" /> Re-enable reminders</> : <><BellOff className="w-4 h-4 mr-1.5" /> Stop reminders</>}
+                    </Button>
+                  </div>
                 </div>
+
+                {/* Book-in dialog */}
+                <Dialog open={bookOpen} onOpenChange={setBookOpen}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Book in {selectedThread.customerName}</DialogTitle>
+                      <DialogDescription>
+                        Creates an MOT booking{selectedThread.vehicleRegistration ? ` for ${selectedThread.vehicleRegistration}` : ""}. A WhatsApp reminder is sent automatically on the morning of the appointment.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs font-medium text-slate-600">Date</label>
+                          <input type="date" min={todayStr} value={bookForm.date} onChange={(e) => setBookForm((f) => ({ ...f, date: e.target.value }))}
+                            className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" />
+                        </div>
+                        <div className="w-28">
+                          <label className="text-xs font-medium text-slate-600">Time</label>
+                          <input type="time" value={bookForm.time} onChange={(e) => setBookForm((f) => ({ ...f, time: e.target.value }))}
+                            className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">Notes <span className="text-slate-400">(optional)</span></label>
+                        <input value={bookForm.notes} onChange={(e) => setBookForm((f) => ({ ...f, notes: e.target.value }))} placeholder="e.g. confirmed by WhatsApp"
+                          className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" size="sm" onClick={() => setBookOpen(false)}>Cancel</Button>
+                      <Button size="sm" onClick={submitBooking} disabled={createApptMutation.isPending} className="bg-blue-600 text-white hover:bg-blue-700">
+                        <CalendarPlus className="w-4 h-4 mr-1.5" /> Book in
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
