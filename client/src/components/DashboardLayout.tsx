@@ -186,19 +186,16 @@ function DashboardLayoutContent({
               <img
                 src={APP_LOGO}
                 alt={APP_TITLE}
-                className="h-8 w-8 rounded-lg object-cover shadow-sm"
+                className="h-8 w-8 object-contain"
               />
             </div>
           ) : (
-            <div className="flex items-center gap-3 w-full animate-in fade-in slide-in-from-left-4 duration-300">
+            <div className="flex items-center w-full animate-in fade-in slide-in-from-left-4 duration-300">
               <img
                 src={APP_LOGO}
                 alt={APP_TITLE}
-                className="h-10 w-10 rounded-xl object-cover shadow-md"
+                className="h-11 w-auto max-w-full object-contain"
               />
-              <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
-                {APP_TITLE}
-              </span>
             </div>
           )}
         </SidebarHeader>
