@@ -18,6 +18,7 @@ export interface ConversationThread {
   lastMessagePreview: string;
   unreadCount: number;
   deliveryStatus: string | null;
+  optedOut: boolean;
 }
 
 export interface ConversationMessage {
@@ -127,6 +128,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         lastMessagePreview: (log.lastMessagePreview || "").substring(0, 100),
         unreadCount: 0, // Will be calculated from received messages
         deliveryStatus: log.deliveryStatus,
+        optedOut: false,
       });
     } else if (existing) {
       // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
@@ -166,14 +168,20 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         lastMessagePreview: (msg.lastMessagePreview || "").substring(0, 100),
         unreadCount: msg.read === 0 ? 1 : 0,
         deliveryStatus: null,
+        optedOut: false,
       });
     }
   });
+
+  // Flag opted-out customers so the UI can show it and offer to re-enable.
+  const optedOutRows = await db.select({ id: customers.id }).from(customers).where(eq(customers.optedOut, 1));
+  const optedOutSet = new Set(optedOutRows.map((r) => r.id));
 
   // Convert to array and sort by:
   // 1. Unread status (unread first)
   // 2. Last message time (descending)
   return Array.from(conversationMap.values())
+    .map((t) => ({ ...t, optedOut: optedOutSet.has(t.customerId) }))
     .sort((a, b) => {
       // First sort by unread count (any unread comes before no unread)
       if (a.unreadCount > 0 && b.unreadCount === 0) return -1;

@@ -46,6 +46,18 @@ export const appRouter = router({
       return getAllCustomers();
     }),
 
+    // Stop / re-enable MOT reminders for a customer (they replied STOP). The reminder
+    // logic already skips opted-out customers, and the GA4 customer sync is insert-only so
+    // this flag is never overwritten by a re-import.
+    setOptOut: publicProcedure
+      .input(z.object({ customerId: z.number(), optOut: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const { setCustomerOptOut, setCustomerOptIn } = await import("./db");
+        if (input.optOut) await setCustomerOptOut(input.customerId);
+        else await setCustomerOptIn(input.customerId);
+        return { optedOut: input.optOut };
+      }),
+
     // The customer linked to a vehicle — used to pre-fill the "Email history" recipient.
     byVehicleId: publicProcedure
       .input(z.object({ vehicleId: z.number() }))

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -37,6 +37,14 @@ export default function Conversations() {
     onError: (error) => {
       toast.error(`Failed to send message: ${error.message}`);
     },
+  });
+
+  const optOutMutation = trpc.customers.setOptOut.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.optedOut ? "Reminders stopped for this customer" : "Reminders re-enabled");
+      refetchThreads();
+    },
+    onError: (e) => toast.error(e.message || "Couldn't update reminder status"),
   });
 
   // Auto-scroll to bottom when messages change
@@ -184,26 +192,45 @@ export default function Conversations() {
             {selectedThread ? (
               <>
                 {/* Conversation Header */}
-                <div className="bg-white border-b px-6 py-4">
-                  <h2 className="font-semibold text-lg text-slate-900">
-                    {selectedThread.customerName}
-                  </h2>
-                  <div className="flex items-center gap-3 text-sm text-slate-600 mt-1">
-                    <span>{selectedThread.customerPhone}</span>
-                    {selectedThread.vehicleRegistration && (
-                      <>
-                        <span>•</span>
-                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
-                          {selectedThread.vehicleRegistration}
+                <div className="bg-white border-b px-6 py-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="font-semibold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
+                      {selectedThread.customerName}
+                      {selectedThread.optedOut && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                          <BellOff className="w-3 h-3" /> Reminders stopped
                         </span>
-                        {selectedThread.vehicleMake && (
-                          <span className="text-slate-500">
-                            {selectedThread.vehicleMake} {selectedThread.vehicleModel}
+                      )}
+                    </h2>
+                    <div className="flex items-center gap-3 text-sm text-slate-600 mt-1 flex-wrap">
+                      <span>{selectedThread.customerPhone}</span>
+                      {selectedThread.vehicleRegistration && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                            {selectedThread.vehicleRegistration}
                           </span>
-                        )}
-                      </>
-                    )}
+                          {selectedThread.vehicleMake && (
+                            <span className="text-slate-500">
+                              {selectedThread.vehicleMake} {selectedThread.vehicleModel}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={optOutMutation.isPending}
+                    onClick={() => optOutMutation.mutate({ customerId: selectedThread.customerId, optOut: !selectedThread.optedOut })}
+                    className={cn("shrink-0", selectedThread.optedOut
+                      ? "border-green-300 text-green-700 hover:bg-green-50"
+                      : "border-red-300 text-red-700 hover:bg-red-50")}
+                    title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
+                  >
+                    {selectedThread.optedOut ? <><Bell className="w-4 h-4 mr-1.5" /> Re-enable reminders</> : <><BellOff className="w-4 h-4 mr-1.5" /> Stop reminders</>}
+                  </Button>
                 </div>
 
                 {/* Messages */}
