@@ -1668,7 +1668,7 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
   const acGas = { description: `Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), quantity: 1 };
 
   const SETS: Record<string, { label: string; parts: { description: string; quantity: number }[] }> = {
-    small: { label: "Small Service", parts: [oil, oilFilter] },
+    small: { label: "Small Service", parts: [oil, oilFilter, { description: "Sump Plug Seal", quantity: 1 }] },
     major: { label: "Major Service", parts: [oil, oilFilter, { description: "Air Filter", quantity: 1 }, { description: "Cabin Filter", quantity: 1 }, { description: "Sump Plug", quantity: 1 }] },
     aircon: { label: "Air Con Re-Gas", parts: [acGas] },
   };
@@ -1683,7 +1683,7 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
         onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
       >
         <option value="">Select a service to add its parts…</option>
-        <option value="small">Small Service — oil + oil filter</option>
+        <option value="small">Small Service — oil, oil filter + sump plug seal</option>
         <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
         {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
       </select>
