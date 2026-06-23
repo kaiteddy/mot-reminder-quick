@@ -48,17 +48,31 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
           {data?.customers?.length > 0 && (
             <Group title="Customers">
               {data.customers.map((c: any) => (
-                <Item key={"c" + c.id} icon={<User className="w-4 h-4 text-violet-600" />} onClick={() => go(`/customers/${c.id}`)}
-                  main={c.name} sub={[c.phone, c.postcode, c.address].filter(Boolean).join(" · ")}
-                  extra={c.vehicles?.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                <div key={"c" + c.id} className="border-b border-slate-50 last:border-0 hover:bg-violet-50">
+                  {/* name/details → the customer record */}
+                  <button type="button" onClick={() => go(`/customers/${c.id}`)} className="w-full flex items-start gap-2.5 px-3 pt-2 pb-0.5 text-left">
+                    <span className="shrink-0 mt-0.5"><User className="w-4 h-4 text-violet-600" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium text-slate-800 truncate">{c.name}</span>
+                      {[c.phone, c.postcode, c.address].filter(Boolean).length > 0 && (
+                        <span className="block text-[11px] text-slate-500 truncate">{[c.phone, c.postcode, c.address].filter(Boolean).join(" · ")}</span>
+                      )}
+                    </span>
+                  </button>
+                  {/* each plate → that vehicle's record */}
+                  {c.vehicles?.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 px-3 pb-2 pl-[30px]">
                       {c.vehicles.map((v: any) => (
-                        <span key={v.registration} className="inline-flex items-center gap-1" title={[v.make, v.model].filter(Boolean).join(" ")}>
+                        <button key={v.registration} type="button"
+                          onClick={(e) => { e.stopPropagation(); go(`/view-vehicle/${encodeURIComponent(v.registration)}`); }}
+                          title={`Open ${v.registration}${[v.make, v.model].filter(Boolean).length ? ` — ${[v.make, v.model].filter(Boolean).join(" ")}` : ""}`}
+                          className="transition-transform hover:scale-105">
                           <RegPlate reg={v.registration} size="xs" />
-                        </span>
+                        </button>
                       ))}
                     </div>
-                  )} />
+                  )}
+                </div>
               ))}
             </Group>
           )}
