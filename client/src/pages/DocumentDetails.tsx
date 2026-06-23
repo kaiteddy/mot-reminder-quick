@@ -495,9 +495,19 @@ export default function DocumentDetails() {
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
     const td = (v?.comprehensiveTechnicalData as any) || {};
-    const oil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+    const oils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const oil = oils[0];
+    // SWS lists one engine-oil row per ACEA/API standard; collapse to the distinct SAE grades
+    // (e.g. 5W-30, 0W-30, 0W-20), preferred first, so every grade the engine accepts is visible.
+    const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
+    const prefG = Array.from(new Set(oils.filter((o: any) => /preferred/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    const allG = Array.from(new Set(oils.map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
+    let oilGrades: string[] = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    if (!oilGrades.length) { const g = gradeOf(lookupTech?.oilSpec ?? oil?.specification); if (g) oilGrades = [g]; }
     return {
       oilSpec: lookupTech?.oilSpec ?? oil?.specification,
+      oilGrades,
+      oilPreferred: prefG,
       oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
       airconType: lookupTech?.airconType ?? td.aircon?.type,
       airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity,
@@ -988,7 +998,8 @@ export default function DocumentDetails() {
           {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
             <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
-                main={vehInfo.oilSpec || "—"} sub={vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : undefined} />
+                main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
+                sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
                 main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
@@ -1661,8 +1672,14 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
 // pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
 // oil quantity matches the engine. Multiple services can be added (pick each in turn).
 function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number }[]) => void }) {
+  const grades: string[] = vehInfo?.oilGrades || [];
+  const [grade, setGrade] = useState<string>(grades[0] || "");
+  // vehInfo can resolve after this mounts (async lookup) — keep the selected grade valid.
+  useEffect(() => { if (grades.length && !grades.includes(grade)) setGrade(grades[0]); }, [grades.join(",")]);
+
   const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
-  const oil = { description: vehInfo?.oilSpec ? `Engine Oil — ${vehInfo.oilSpec}` : "Engine Oil", quantity: oilCap || 1 };
+  const oilLabel = grade || vehInfo?.oilSpec || "";
+  const oil = { description: oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", quantity: oilCap || 1 };
   const oilFilter = { description: "Oil Filter", quantity: 1 };
   const hasAircon = !!vehInfo?.airconType;
   const acGas = { description: `Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), quantity: 1 };
@@ -1674,19 +1691,38 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
   };
 
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-      <Cog className="w-4 h-4 text-slate-500 shrink-0" />
-      <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
-      <select
-        className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
-        value=""
-        onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
-      >
-        <option value="">Select a service to add its parts…</option>
-        <option value="small">Small Service — oil, oil filter + sump plug seal</option>
-        <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
-        {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
-      </select>
+    <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+      <div className="flex items-center gap-2">
+        <Cog className="w-4 h-4 text-slate-500 shrink-0" />
+        <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
+        <select
+          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
+          value=""
+          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
+        >
+          <option value="">Select a service to add its parts…</option>
+          <option value="small">Small Service — oil, oil filter + sump plug seal</option>
+          <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
+          {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
+        </select>
+      </div>
+      {grades.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+          <Droplet className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          {grades.length > 1 ? (
+            <>
+              <span className="text-[11px] text-slate-500 shrink-0">Oil grade for this job</span>
+              <select value={grade} onChange={(e) => setGrade(e.target.value)}
+                className="bg-white border border-slate-300 rounded-sm px-2 py-0.5 text-[12px] outline-none focus:border-violet-500">
+                {grades.map((g) => <option key={g} value={g}>{g}{vehInfo.oilPreferred?.includes(g) ? " (preferred)" : ""}</option>)}
+              </select>
+              <span className="text-[11px] text-slate-400">accepts: {grades.join(" · ")}</span>
+            </>
+          ) : (
+            <span className="text-[11px] text-slate-500">Oil grade: <span className="font-medium text-slate-700">{grades[0]}</span></span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
