@@ -1266,7 +1266,9 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       // A known vehicle imported from GA4 is often sparse (e.g. only the make). The SWS-derived
       // fields (derivative, model, fuel, engine code, A/C, oil) are only fetched for brand-new
       // regs — so backfill any MISSING fields from SWS+DVLA on lookup, then cache them back.
-      const empty = (s: any) => !String(s ?? "").trim();
+      // Treat a blank OR the literal string "null"/"NULL" (a GA4 import artifact) as empty, so a
+      // record showing "NULL" for make/model/derivative gets backfilled instead of looking filled.
+      const empty = (s: any) => { const t = String(s ?? "").trim(); return !t || /^null$/i.test(t); };
       // Free self-heal: if the derivative is blank but the SWS data we already stored has it,
       // fill it from cache (no API call). Covers vehicles enriched before the derivative was saved.
       if (empty(v.derivative)) {
@@ -1282,21 +1284,24 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           const sws: any = await fetchRichVehicleData(reg, true);
           const u = sws?.ukvd || {}; const sp = sws?.specs || {};
           const _img = cleanImg(u.imageUrl); if (_img) v.imageUrl = _img;
-          const fn = sp.fullName || "";
+          // SWS/UKVD can hand back junk placeholders ("NULL", "undefined", and via fullName even
+          // "undefined undefined") for fields it can't resolve — scrub them so they're never stored.
+          const clean = (s: any) => { const t = String(s ?? "").trim(); return /^(null|undefined)(\s+(null|undefined))*$/i.test(t) ? "" : t; };
+          const fn = clean(sp.fullName);
           const updates: any = {};
           // force = an explicit lookup after the reg was changed → OVERWRITE the identity fields
           // with the fresh data (clears stale data from a previous, wrong reg). Otherwise fill blanks.
           const want = (field: string) => force || empty(v[field]);
-          const swsMake = u.make || (fn ? fn.trim().split(/\s+/)[0] : "");
+          const swsMake = clean(u.make) || (fn ? fn.trim().split(/\s+/)[0] : "");
           if (want("make") && swsMake) v.make = updates.make = String(swsMake).toUpperCase();
           const newMake = updates.make ?? v.make;
           const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && String(newMake || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
-          if (want("model")) { const m = (u.model || (fn ? stripMake(fn).split("(")[0].trim() : "")) || ""; if (m) v.model = updates.model = m; }
-          if (want("derivative") && (fn || sp.name)) v.derivative = updates.derivative = tidyDerivative(fn || sp.name, newMake);
-          if (want("fuelType") && (u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = (u.fuelType || sp.fuelType);
-          if (want("engineCode") && sp.engineCode) v.engineCode = updates.engineCode = sp.engineCode;
-          if (want("colour") && u.colour) v.colour = updates.colour = u.colour;
-          if (want("vin") && (u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = (u.vin || sp.vin || sws?.raw?.vinNumber);
+          if (want("model")) { const m = clean(u.model) || (fn ? clean(stripMake(fn).split("(")[0].trim()) : ""); if (m) v.model = updates.model = m; }
+          if (want("derivative")) { const dv = clean(tidyDerivative(fn || clean(sp.name), newMake)); if (dv) v.derivative = updates.derivative = dv; }
+          if (want("fuelType") && clean(u.fuelType || sp.fuelType)) v.fuelType = updates.fuelType = clean(u.fuelType || sp.fuelType);
+          if (want("engineCode") && clean(sp.engineCode)) v.engineCode = updates.engineCode = clean(sp.engineCode);
+          if (want("colour") && clean(u.colour)) v.colour = updates.colour = clean(u.colour);
+          if (want("vin") && clean(u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = clean(u.vin || sp.vin || sws?.raw?.vinNumber);
           if (want("engineCC") && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
           if (force) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
           updates.swsLastUpdated = new Date(); // mark "SWS/UKVD attempted" so we never re-pay for this vehicle
@@ -1322,6 +1327,9 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (d) {
             if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
             const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
+            // DVLA make is authoritative for UK plates — fill it when UKVD couldn't (e.g. grey imports
+            // where UKVD returns no/"NULL" make), so the record never shows a blank or "NULL" make.
+            if ((force || empty(v.make)) && d.make) { v.make = du.make = String(d.make).toUpperCase(); }
             if ((force || empty(v.colour)) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
             // date of first registration — prefer DVLA's month, else the year of manufacture
             if ((force || empty(v.dateOfRegistration)) && (d.monthOfFirstRegistration || d.yearOfManufacture)) {

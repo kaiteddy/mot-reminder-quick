@@ -233,7 +233,12 @@ export function mapLineItemType(itemType: string | undefined): "Labour" | "Part"
 export function pick(row: GA4Document, ...keys: string[]): string | undefined {
   for (const k of keys) {
     const v = row[k];
-    if (v != null && String(v).trim() !== "") return String(v).trim();
+    if (v != null) {
+      const s = String(v).trim();
+      // GA4 exports sometimes carry the literal text "null"/"NULL" for empty cells — treat as blank
+      // so it never lands in the record as a real value (and the lookup can backfill it).
+      if (s !== "" && !/^null$/i.test(s)) return s;
+    }
   }
   return undefined;
 }

@@ -121,14 +121,17 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
 
         console.log(`[UKVD DEBUG] Mapping checks: modelId=${!!modelId}, emissions=${!!emissions}, powertrain=${!!powertrain}, transmission=${!!transmission}`);
 
+        // UKVD returns the literal string "NULL" for fields it can't resolve (common on grey
+        // imports) — coerce those to undefined so they never get stored as a real make/model/colour.
+        const nz = (x: any) => { const s = x == null ? "" : String(x).trim(); return (!s || /^null$/i.test(s)) ? undefined : s; };
         const mapped: UKVDResponse = {
             vrm: cleanVRM,
-            vin: vehicleDetails?.VehicleIdentification?.Vin,
-            make: modelId?.Make,
-            model: modelId?.Model,
+            vin: nz(vehicleDetails?.VehicleIdentification?.Vin),
+            make: nz(modelId?.Make),
+            model: nz(modelId?.Model),
             engineSize: dvlaTech?.EngineCapacityCc || modelDetails?.Powertrain?.IceDetails?.EngineCapacityCc,
-            fuelType: vehicleDetails?.VehicleIdentification?.DvlaFuelType || modelDetails?.Powertrain?.FuelType,
-            colour: vehicleDetails?.VehicleIdentification?.Colour,
+            fuelType: nz(vehicleDetails?.VehicleIdentification?.DvlaFuelType || modelDetails?.Powertrain?.FuelType),
+            colour: nz(vehicleDetails?.VehicleIdentification?.Colour),
             imageUrl: foundImageUrl,
             dimensions: {
                 height: dimensions?.HeightMm,

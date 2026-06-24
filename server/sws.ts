@@ -316,10 +316,11 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
                 console.log(`[UKVD] Successfully merged enhanced data for ${cleanVRM}`);
                 result.ukvd = ukvdData;
 
-                // If SWS specs are missing, UKVD can provide basics
+                // If SWS specs are missing, UKVD can provide basics. Only build fullName from the
+                // parts that actually exist — otherwise a missing make/model yields "undefined undefined".
                 if (!result.specs) {
                     result.specs = {
-                        fullName: `${ukvdData.make} ${ukvdData.model}`,
+                        fullName: [ukvdData.make, ukvdData.model].filter(Boolean).join(" ") || undefined,
                         fuelType: ukvdData.fuelType,
                         engineSize: ukvdData.engineSize
                     };
