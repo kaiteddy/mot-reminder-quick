@@ -551,13 +551,18 @@ export default function DocumentDetails() {
     return { changes, sig: `${name}|${phone}|${email}|${postcode}` };
   }, [form.customerId, form.customerName, form.custTitle, form.custForename, form.custSurname, form.custMobile, form.custTelephone, form.custEmail, form.custPostcode]);
 
+  // Effective customer name — the form edits the split Title/Forename/Surname fields, so the legacy
+  // single `customerName` is usually empty. Build the name from those parts (falling back to the
+  // single field) for deciding whether to register a new customer and for the "will be created" hint.
+  const custDisplayName = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
+
   function buildPayload(): any {
     return {
       id: isNew ? undefined : id, docType: form.docType || "JS", docNo: String(form.docNo ?? "").trim() || undefined, registration: form.registration,
       customerId: form.customerId || undefined,
-      createCustomer: !form.customerId && !!form.customerName && (isNew || newCust),
+      createCustomer: !form.customerId && !!custDisplayName && (isNew || newCust),
       vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
-      customerName: [form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName,
+      customerName: custDisplayName || undefined,
       custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
       company: form.company, accountNumber: form.accountNumber,
       custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
@@ -580,6 +585,8 @@ export default function DocumentDetails() {
       const res = await save.mutateAsync(buildPayload());
       if (editSeq.current === seq) setDirty(false); // nothing changed during the save
       setSaveStatus("saved");
+      // Capture the resolved/created customer so later auto-saves don't register a duplicate.
+      if (res?.customerId) setForm((f) => (f.customerId ? f : { ...f, customerId: res.customerId }));
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
         setLocation(`/documents/${res.id}`, { replace: true });
@@ -878,7 +885,7 @@ export default function DocumentDetails() {
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
                       <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
-                    ) : (isNew || newCust) && form.customerName ? (
+                    ) : (isNew || newCust) && custDisplayName ? (
                       <span className="text-[11px] text-green-700">New customer will be created</span>
                     ) : null}
                     <button type="button" onClick={() => { setNewCust(true); setForm((f) => ({ ...f, customerId: undefined, customerName: "", custTitle: "", custForename: "", custSurname: "", company: "", accountNumber: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" })); markDirty(); }}

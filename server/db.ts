@@ -1943,7 +1943,7 @@ export async function saveDocument(input: SaveDocInput) {
       discount: i.discount != null ? String(i.discount) : null, discountType: i.discountType ?? null,
     })) as any);
   }
-  return { id: docId };
+  return { id: docId, customerId };
 }
 
 /** Convert a document to another type (Estimate↔Job Sheet↔Invoice…), copying all data into a new document. */
