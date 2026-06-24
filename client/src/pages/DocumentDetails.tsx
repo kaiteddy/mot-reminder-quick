@@ -442,7 +442,7 @@ export default function DocumentDetails() {
     setLooking(true);
     try {
       const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg, force });
-      const v = res?.vehicle, c = res?.customer;
+      const v = res?.vehicle, c = res?.customer, last = res?.lastCustomer;
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
       const sn = c ? splitName(c.name) : null;
       // on a forced (reg-changed) lookup, take the looked-up value outright (clearing stale fields);
@@ -454,8 +454,22 @@ export default function DocumentDetails() {
         engineCC: pick(v.engineCC, f.engineCC), engineNo: pick(v.engineNo, f.engineNo), engineCode: pick(v.engineCode, f.engineCode),
         vin: pick(v.vin, f.vin), paintCode: pick(v.paintCode, f.paintCode), keyCode: pick(v.keyCode, f.keyCode), radioCode: pick(v.radioCode, f.radioCode),
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : (force ? "" : f.dateOfRegistration),
-        ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad } : {}),
+        ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad }
+          // No linked owner, but this vehicle has a previous document — carry that customer's
+          // details forward (unlinked, so saving creates + links a real customer record).
+          : last ? {
+              customerId: undefined,
+              customerName: (last.customerName || [last.custTitle, last.custForename, last.custSurname].filter(Boolean).join(" ")) || f.customerName,
+              custTitle: last.custTitle || f.custTitle, custForename: last.custForename || f.custForename, custSurname: last.custSurname || f.custSurname,
+              company: last.company || f.company, accountNumber: last.accountNumber || f.accountNumber,
+              custHouseNo: last.custHouseNo || f.custHouseNo, custRoad: last.custRoad || f.custRoad, custLocality: last.custLocality || f.custLocality,
+              custTown: last.custTown || f.custTown, custCounty: last.custCounty || f.custCounty, custPostcode: last.custPostcode || f.custPostcode,
+              custTelephone: last.custTelephone || f.custTelephone, custMobile: last.custMobile || f.custMobile, custEmail: last.custEmail || f.custEmail,
+            } : {}),
       }));
+      // Treat a carried-forward customer as a new-customer entry so the save creates and links
+      // the record (and adopts this ownerless vehicle) instead of leaving the details unlinked.
+      if (!c && last) { setNewCust(true); toast.message("Customer carried over from this vehicle's last invoice — check the details, then save to link them."); }
       regOnLoadRef.current = reg.toUpperCase().replace(/\s/g, ""); // this reg is now loaded — don't force again unless it changes
       setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
       if (!silent) markDirty();

@@ -1332,7 +1332,33 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (Object.keys(du).length) await db.update(vehicles).set(du).where(eq(vehicles.id, v.id));
         } catch { /* DVLA/DVSA unavailable */ }
       }
-      return { found: true, source: "database", vehicle: v, customer: cust, warning: await ukvdWarning() };
+      // No owner linked to the vehicle? Fall back to the customer on this vehicle's MOST RECENT
+      // document, so a new sheet can still pre-fill name/address/phone — this covers invoices that
+      // were typed without ever linking/creating a customer record. If that prior document WAS
+      // linked to a real customer, return it as the owner instead.
+      let lastCustomer: any = null;
+      if (!cust) {
+        const prior: any = (await db.select({
+          customerId: serviceHistory.customerId,
+          customerName: serviceHistory.customerName,
+          custTitle: serviceHistory.custTitle, custForename: serviceHistory.custForename, custSurname: serviceHistory.custSurname,
+          company: serviceHistory.company, accountNumber: serviceHistory.accountNumber,
+          custHouseNo: serviceHistory.custHouseNo, custRoad: serviceHistory.custRoad, custLocality: serviceHistory.custLocality,
+          custTown: serviceHistory.custTown, custCounty: serviceHistory.custCounty, custPostcode: serviceHistory.custPostcode,
+          custTelephone: serviceHistory.custTelephone, custMobile: serviceHistory.custMobile, custEmail: serviceHistory.custEmail,
+        })
+          .from(serviceHistory)
+          .where(and(eq(serviceHistory.vehicleId, v.id),
+            sql`(COALESCE(${serviceHistory.customerName}, '') <> '' OR COALESCE(${serviceHistory.custSurname}, '') <> '' OR COALESCE(${serviceHistory.company}, '') <> '')`))
+          .orderBy(desc(serviceHistory.dateIssued), desc(serviceHistory.id))
+          .limit(1))[0];
+        if (prior?.customerId) {
+          const linked = (await db.select().from(customers).where(eq(customers.id, prior.customerId)).limit(1))[0];
+          if (linked) return { found: true, source: "database", vehicle: v, customer: linked, warning: await ukvdWarning() };
+        }
+        if (prior && (prior.customerName || prior.custSurname || prior.company)) lastCustomer = prior;
+      }
+      return { found: true, source: "database", vehicle: v, customer: cust, lastCustomer, warning: await ukvdWarning() };
     }
   }
   // Not in our DB — do a live VRM lookup like GA4: SWS (rich: make/model/colour/
