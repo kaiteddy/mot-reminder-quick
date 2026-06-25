@@ -118,7 +118,7 @@ export default function GA4Scanner() {
     const [showBookedDialog, setShowBookedDialog] = useState(false);
     const [bookingTargetRegs, setBookingTargetRegs] = useState<Set<string> | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
-    const [hideSuccessful, setHideSuccessful] = useState(false);
+    const [filterMode, setFilterMode] = useState<"all" | "never" | "sent" | "motdone">("all");
     const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
     const createMutation = trpc.reminders.createManualReminder.useMutation();
@@ -262,11 +262,24 @@ export default function GA4Scanner() {
         .map(reg => results.find(r => r.registration === reg)?.vehicleId)
         .filter((id): id is number => id !== null && id !== undefined);
 
+    const motDaysLeft = (r: any) => r.liveMotExpiryDate ? Math.ceil((new Date(r.liveMotExpiryDate).getTime() - Date.now()) / 86400000) : null;
+    // "MOT done" = GA4 flagged it as due, but the live MOT is now comfortably in the future (>60 days),
+    // so it's been renewed — it just needs updating in GA4, not a reminder.
+    const isMotDone = (r: any) => { const d = motDaysLeft(r); return d != null && d > 60; };
+    const filterCounts = {
+        all: results.length,
+        never: results.filter((r) => !r.lastSent).length,
+        sent: results.filter((r) => !!r.lastSent).length,
+        motdone: results.filter(isMotDone).length,
+    };
+
     const sortedFilteredResults = [...results].filter(item => {
         const matchesSearch = item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesSearch) return false;
-        if (hideSuccessful && (item.lastStatus === "read" || item.lastStatus === "delivered" || item.lastStatus === "sent")) return false;
+        if (filterMode === "never" && item.lastSent) return false;
+        if (filterMode === "sent" && !item.lastSent) return false;
+        if (filterMode === "motdone" && !isMotDone(item)) return false;
         return true;
     }).sort((a, b) => {
         const timeA = a.lastSent ? new Date(a.lastSent).getTime() : 0;
@@ -377,12 +390,27 @@ export default function GA4Scanner() {
                                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                         <Input placeholder="Search reg or name…" className="pl-8 h-9 bg-white" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                     </div>
-                                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
-                                        <Checkbox checked={hideSuccessful} onCheckedChange={(c) => setHideSuccessful(c as boolean)} />
-                                        Hide sent
-                                    </label>
+                                    <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+                                        {([["all", "All"], ["never", "Never sent"], ["sent", "Sent"], ["motdone", "MOT done"]] as const).map(([key, label]) => (
+                                            <button key={key} type="button" onClick={() => setFilterMode(key)}
+                                                className={`px-2.5 py-1 rounded-md text-[12px] font-medium whitespace-nowrap transition-colors ${filterMode === key ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
+                                                {label}<span className={`ml-1 ${filterMode === key ? "text-violet-600" : "text-slate-400"}`}>{filterCounts[key]}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
+
+                            {filterMode === "never" && (
+                                <div className="px-4 py-2 text-[12px] text-violet-800 bg-violet-50 border-b border-violet-100">
+                                    These haven't had a reminder sent from here yet — select them and hit <span className="font-medium">Send reminders</span>. (Ones sent within the last 7 days live on the <a href="/urgent-follow-ups" className="font-medium underline">Urgent Follow Ups</a> page.)
+                                </div>
+                            )}
+                            {filterMode === "motdone" && (
+                                <div className="px-4 py-2 text-[12px] text-emerald-800 bg-emerald-50 border-b border-emerald-100">
+                                    These MOTs are no longer due — they've been renewed (60+ days left). No reminder needed; update them in GA4 so they drop off your reminder list.
+                                </div>
+                            )}
 
                             {/* Selection action bar */}
                             {selectedRegs.size > 0 && (
