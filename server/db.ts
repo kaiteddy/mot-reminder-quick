@@ -153,7 +153,7 @@ export async function getAllReminderLogs() {
   const db = await getDb();
   if (!db) return [];
 
-  return db
+  const rows: any[] = await db
     .select({
       id: reminderLogs.id,
       vehicleId: reminderLogs.vehicleId,
@@ -164,6 +164,7 @@ export async function getAllReminderLogs() {
       recipient: reminderLogs.recipient,
       messageContent: reminderLogs.messageContent,
       customerName: customers.name,
+      logCustomerName: reminderLogs.customerName,
       vehicleRegistration: vehicles.registration,
       registration: reminderLogs.registration,
       dueDate: reminderLogs.dueDate,
@@ -182,6 +183,34 @@ export async function getAllReminderLogs() {
     .leftJoin(customers, eq(reminderLogs.customerId, customers.id))
     .leftJoin(vehicles, eq(reminderLogs.vehicleId, vehicles.id))
     .orderBy(desc(reminderLogs.sentAt));
+
+  // Resolve a display name: linked customer → the name stored on the log → matched by recipient
+  // phone. Many older / GA4-scanner logs were written with customerId=null, which showed as
+  // "Unknown" even though the customer exists and is reachable on that number.
+  const norm = (p: any) => { let s = String(p || "").replace(/^whatsapp:/i, "").replace(/[\s\-()]/g, ""); if (s.startsWith("0")) s = "+44" + s.slice(1); if (s.startsWith("44")) s = "+" + s; return s; };
+  const needByPhone = new Map<string, number[]>();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    r.customerName = r.customerName || r.logCustomerName || null;
+    if ((!r.customerName || !r.customerId) && r.recipient) {
+      const k = norm(r.recipient);
+      if (k.length >= 8) { if (!needByPhone.has(k)) needByPhone.set(k, []); needByPhone.get(k)!.push(i); }
+    }
+  }
+  if (needByPhone.size) {
+    const variants: string[] = [];
+    for (const k of needByPhone.keys()) { variants.push(k); if (k.startsWith("+44")) variants.push("0" + k.slice(3)); }
+    const matched: any[] = await db.select({ id: customers.id, name: customers.name, phone: customers.phone })
+      .from(customers).where(inArray(customers.phone, variants));
+    const byPhone = new Map<string, { id: number; name: string }>();
+    for (const c of matched) { const k = norm(c.phone); if (k && c.name && !byPhone.has(k)) byPhone.set(k, { id: c.id, name: c.name }); }
+    for (const [k, idxs] of needByPhone) {
+      const hit = byPhone.get(k);
+      if (hit) for (const i of idxs) { rows[i].customerName = rows[i].customerName || hit.name; rows[i].customerId = rows[i].customerId || hit.id; }
+    }
+  }
+  for (const r of rows) delete r.logCustomerName;
+  return rows;
 }
 
 export async function getReminderLogsByCustomerId(customerId: number) {
