@@ -2301,6 +2301,15 @@ export const appRouter = router({
           failed,
           skipped,
           errors: errors.slice(0, 10), // Return first 10 errors
+          // Per-vehicle fresh data so callers (e.g. the GA4 Scanner) can update their list in place
+          // without re-scanning the screenshot.
+          vehicles: updates.map((u) => ({
+            id: u.id,
+            motExpiryDate: u.motExpiryDate ?? null,
+            taxStatus: u.taxStatus ?? null,
+            taxDueDate: u.taxDueDate ?? null,
+            lastChecked: (u as any).lastChecked ?? null,
+          })),
         };
       }),
 

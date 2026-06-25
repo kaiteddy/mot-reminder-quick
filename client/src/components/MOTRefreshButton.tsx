@@ -8,7 +8,7 @@ interface MOTRefreshButtonProps {
   vehicleIds?: number[];
   limit?: number;
   label?: string;
-  onComplete?: () => void;
+  onComplete?: (updated: Array<{ id: number; motExpiryDate: string | null; taxStatus: string | null; taxDueDate: string | null; lastChecked: string | null }>) => void;
   variant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
   size?: "default" | "sm" | "lg" | "icon";
   disabled?: boolean;
@@ -38,6 +38,7 @@ export function MOTRefreshButton({
     let totalUpdated = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
+    const allUpdated: any[] = [];
 
     try {
       if (vehicleIds && vehicleIds.length > 0) {
@@ -49,6 +50,7 @@ export function MOTRefreshButton({
           totalUpdated += res.updated;
           totalFailed += res.failed;
           totalSkipped += res.skipped;
+          if (res.vehicles) allUpdated.push(...res.vehicles);
           setProgress({ current: Math.min(i + chunkSize, vehicleIds.length), total: vehicleIds.length });
         }
       } else {
@@ -56,6 +58,7 @@ export function MOTRefreshButton({
         totalUpdated += res.updated;
         totalFailed += res.failed;
         totalSkipped += res.skipped;
+        if (res.vehicles) allUpdated.push(...res.vehicles);
       }
 
       const totalCount = limit || vehicleIds?.length || 0;
@@ -68,7 +71,7 @@ export function MOTRefreshButton({
 
     setProgress(null);
     setIsUpdating(false);
-    onComplete?.();
+    onComplete?.(allUpdated);
   };
 
   const count = limit || vehicleIds?.length || 0;

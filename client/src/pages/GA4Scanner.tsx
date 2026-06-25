@@ -430,9 +430,26 @@ export default function GA4Scanner() {
                                             variant="outline"
                                             size="sm"
                                             label="Refresh MOT"
-                                            onComplete={() => {
-                                                if (file) { handleScan(); setSelectedRegs(new Set()); }
-                                                else toast.message("Upload the screenshot and scan again to see the updated results");
+                                            onComplete={(updated) => {
+                                                // Merge the freshly-checked MOT/tax straight into the scan results — no
+                                                // need to re-upload or re-scan the screenshot.
+                                                const byId = new Map((updated || []).map((u) => [u.id, u]));
+                                                const next = results.map((r) => {
+                                                    const u = r.vehicleId ? byId.get(r.vehicleId) : undefined;
+                                                    if (!u) return r;
+                                                    return {
+                                                        ...r,
+                                                        liveMotExpiryDate: u.motExpiryDate ?? r.liveMotExpiryDate,
+                                                        liveTaxStatus: u.taxStatus ?? r.liveTaxStatus,
+                                                        liveTaxDueDate: u.taxDueDate ?? r.liveTaxDueDate,
+                                                        lastChecked: u.lastChecked ?? r.lastChecked,
+                                                    };
+                                                });
+                                                setResults(next);
+                                                localStorage.setItem("ga4_scan_results", JSON.stringify(next));
+                                                setSelectedRegs(new Set());
+                                                const n = (updated || []).length;
+                                                toast.success(n ? `MOT & tax refreshed for ${n} vehicle${n === 1 ? "" : "s"}` : "No databased vehicles to refresh");
                                             }}
                                         />
                                         <Button size="sm" variant="ghost" onClick={() => setSelectedRegs(new Set())} className="text-muted-foreground">Clear</Button>
