@@ -1053,7 +1053,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   if (opts.docType && opts.docType !== "all") conds.push(eq(serviceHistory.docType, opts.docType));
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
-    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s)));
+    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc
@@ -1067,7 +1067,8 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     date: sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`, // expression-indexed below
 
     customer: custNameExpr,
-    vehicle: serviceHistory.registration,
+    registration: serviceHistory.registration,
+    vehicle: sql`CONCAT_WS(' ', ${vehicles.make}, ${vehicles.model})`,
     total: sql`CAST(${serviceHistory.totalGross} AS DECIMAL(12,2))`,
     balance: sql`CAST(${serviceHistory.balance} AS DECIMAL(12,2))`,
     status: serviceHistory.docStatus,

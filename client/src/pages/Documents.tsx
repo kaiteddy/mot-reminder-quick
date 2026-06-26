@@ -10,6 +10,7 @@ import { useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import UniversalSearch from "@/components/UniversalSearch";
+import { RegPlate } from "@/components/RegPlate";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -149,6 +150,7 @@ export default function Documents() {
                     <SortHead label="Type" col="type" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Date" col="date" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Customer" col="customer" {...{ sortKey, sortDir, sortBy }} />
+                    <SortHead label="Reg" col="registration" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Vehicle" col="vehicle" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Total" col="total" align="right" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Balance" col="balance" align="right" {...{ sortKey, sortDir, sortBy }} />
@@ -157,10 +159,10 @@ export default function Documents() {
                 </TableHeader>
                 <TableBody>
                   {isLoading && (
-                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!isLoading && (docs?.length ?? 0) === 0 && (
-                    <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
                     <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
@@ -179,8 +181,10 @@ export default function Documents() {
                         {d.phone && <div className="text-[11px] text-muted-foreground truncate">{d.phone}</div>}
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono">{d.registration || "—"}</span>
-                        {d.make && <span className="text-muted-foreground text-xs ml-1">{d.make} {d.model}</span>}
+                        {d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-600">
+                        {[d.make, d.model].filter(Boolean).join(" ") || <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right">{money(d.totalGross)}</TableCell>
                       <TableCell className="text-right">
