@@ -22,7 +22,8 @@ export default function QuickMOTCheck() {
     document.addEventListener("mousedown", onClick); document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey); };
   }, []);
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 30); }, [open]);
+  // Open fresh every time — clear the previous reg and result so a stale record never lingers.
+  useEffect(() => { if (open) { setReg(""); lookup.reset(); setTimeout(() => inputRef.current?.focus(), 30); } }, [open]);
 
   const check = () => { const r = reg.trim(); if (r.length >= 2) lookup.mutate({ registration: r }); };
 
@@ -45,7 +46,7 @@ export default function QuickMOTCheck() {
         <div className="absolute right-0 mt-2 w-[340px] rounded-xl border border-slate-200 bg-white shadow-xl z-50 p-3">
           <div className="flex items-center gap-2">
             <input ref={inputRef} value={reg}
-              onChange={(e) => setReg(e.target.value.toUpperCase())}
+              onChange={(e) => { setReg(e.target.value.toUpperCase()); if (lookup.data || lookup.error) lookup.reset(); }}
               onKeyDown={(e) => { if (e.key === "Enter") check(); }}
               placeholder="Enter registration…"
               className="flex-1 h-9 px-2.5 rounded-lg border border-slate-300 font-mono font-semibold tracking-wide uppercase text-[14px] outline-none focus:border-violet-500" />
