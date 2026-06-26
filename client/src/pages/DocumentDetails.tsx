@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart } from "lucide-react";
+import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
@@ -1828,14 +1829,26 @@ function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string
   const reg = (registration || "").replace(/\s/g, "");
   const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
   const tests = (data as any[]) || [];
+  const printRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: `MOT Advisories ${reg}` });
   const sevCls = (t: string) => /fail|major|dangerous/i.test(t) ? "bg-red-100 text-red-700 border-red-200"
     : /advisory|minor/i.test(t) ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-600 border-slate-200";
   if (!reg) return <p className="text-sm text-muted-foreground py-6 text-center">Enter a registration to see MOT advisories.</p>;
   if (isLoading) return <p className="text-sm text-muted-foreground py-6 text-center">Loading MOT history…</p>;
   if (!tests.length) return <p className="text-sm text-muted-foreground py-6 text-center">No MOT history on record for this vehicle.</p>;
+  const advisoryTests = tests.filter((t: any) => (t.defects || []).length > 0);
+  const lastTwo = advisoryTests.slice(0, 2);
   return (
     <div className="space-y-2 p-2">
-      <p className="text-[11px] text-muted-foreground">Advisories &amp; failures from every MOT test. Tap <b>+ Add</b> to put a defect into the job <b>Description</b> and auto-add the <b>parts</b> needed (price them in the Parts tab). {busy && <span className="text-violet-600 font-medium">Working out parts…</span>}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] text-muted-foreground flex-1">Advisories &amp; failures from every MOT test. Tap <b>+ Add</b> to put a defect into the job <b>Description</b> and auto-add the <b>parts</b> needed (price them in the Parts tab). {busy && <span className="text-violet-600 font-medium">Working out parts…</span>}</p>
+        {advisoryTests.length > 0 && (
+          <button type="button" onClick={() => handlePrint()} title="Print the most recent advisories for your records"
+            className="shrink-0 inline-flex items-center gap-1 border border-slate-300 rounded px-2 py-1 text-[12px] hover:bg-slate-50">
+            <Printer className="w-3.5 h-3.5" /> Print last {Math.min(2, advisoryTests.length)}
+          </button>
+        )}
+      </div>
       {tests.map((t: any, ti: number) => {
         const defects = (t.defects || []) as any[];
         const failed = /fail/i.test(t.testResult || "");
@@ -1869,6 +1882,28 @@ function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string
           </div>
         );
       })}
+
+      {/* Off-screen printable copy of the most recent advisories (for a paper record). */}
+      <div style={{ position: "fixed", left: "-10000px", top: 0 }} aria-hidden>
+        <div ref={printRef} style={{ width: "720px" }} className="bg-white text-black p-6">
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>MOT Advisories — {registration}</h2>
+          <p style={{ fontSize: 12, color: "#555", margin: "4px 0 16px" }}>Most recent advisories from the DVSA MOT history.</p>
+          {lastTwo.length === 0 && <p style={{ fontSize: 13 }}>No advisories recorded.</p>}
+          {lastTwo.map((t: any, i: number) => (
+            <div key={i} style={{ marginBottom: 14, border: "1px solid #ddd", borderRadius: 6, overflow: "hidden" }}>
+              <div style={{ background: "#f1f5f9", padding: "6px 12px", fontWeight: 600, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span>{t.completedDate ? new Date(t.completedDate).toLocaleDateString("en-GB") : "—"} — {t.testResult || "—"}</span>
+                <span>{t.odometerValue ? Number(t.odometerValue).toLocaleString("en-GB") + " mi" : ""}</span>
+              </div>
+              <ul style={{ margin: 0, padding: "8px 12px 8px 28px" }}>
+                {(t.defects || []).map((d: any, di: number) => (
+                  <li key={di} style={{ fontSize: 13, marginBottom: 4 }}><b>{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}:</b> {d.text}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
