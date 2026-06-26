@@ -55,6 +55,7 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 import UniversalSearch from "./UniversalSearch";
+import QuickMOTCheck from "./QuickMOTCheck";
 
 const menuGroups = [
   { section: "Workshop", items: [
@@ -325,6 +326,7 @@ function DashboardLayoutContent({
           </div>
 
           <div className="flex items-center gap-4">
+            <QuickMOTCheck />
             <div className="hidden md:flex flex-col items-end">
               <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
               <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
