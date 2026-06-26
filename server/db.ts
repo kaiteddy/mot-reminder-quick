@@ -1553,21 +1553,26 @@ export async function globalSearch(query: string) {
   const db = await getDb();
   const qq = String(query ?? "").trim();
   if (!db || qq.length < 2) return { customers: [], vehicles: [], documents: [] };
-  const s = `%${qq}%`;
-  const sReg = `%${qq.toUpperCase().replace(/\s+/g, "")}%`;
+  // Every typed word must match SOMEWHERE on the row — an AND of (per-word OR-across-fields).
+  // So "Honda Jazz John" finds the Honda Jazz owned by John: words can span make/model/owner/reg.
+  const tokens = qq.split(/\s+/).filter(Boolean);
+  const likeOf = (t: string) => `%${t}%`;
+  const regLikeOf = (t: string) => `%${t.toUpperCase().replace(/\s+/g, "")}%`;
+  const allTokens = (colsFor: (t: string) => any[]) => and(...tokens.map((t) => or(...colsFor(t))));
+
   const [cust, veh, docs] = await Promise.all([
     db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
       .from(customers)
-      .where(or(ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s), ilike(customers.address, s)))
+      .where(allTokens((t) => { const l = likeOf(t); return [ilike(customers.name, l), ilike(customers.phone, l), ilike(customers.email, l), ilike(customers.postcode, l), ilike(customers.address, l)]; }))
       .orderBy(customers.name).limit(8),
     db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId, ownerName: customers.name })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
-      .where(or(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${sReg}`, ilike(vehicles.make, s), ilike(vehicles.model, s)))
+      .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
       .orderBy(customers.name).limit(15),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
-      .where(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(serviceHistory.customerName, s), ilike(serviceHistory.accountNumber, s)))
+      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
       .orderBy(desc(serviceHistory.dateCreated)).limit(8),
   ]);
 
