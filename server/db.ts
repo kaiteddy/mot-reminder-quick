@@ -1538,10 +1538,17 @@ export async function findCustomersByPhone(phone: string, limit = 5) {
 export async function searchCustomers(query: string, limit = 10) {
   const db = await getDb();
   if (!db || !query || query.trim().length < 2) return [];
-  const s = `%${query.trim()}%`;
+  const q = query.trim();
+  const s = `%${q}%`;
+  const conds: any[] = [ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s)];
+  // Match on the national significant number so "07951387353" finds "+447951387353" (and vice
+  // versa) — strip the 0 / +44 / 44 prefix and match the remaining digits as a substring.
+  let core = q.replace(/\D/g, "");
+  if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
+  if (core.length >= 6) conds.push(ilike(customers.phone, `%${core}%`));
   return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address })
     .from(customers)
-    .where(or(ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s)))
+    .where(or(...conds))
     .orderBy(customers.name)
     .limit(limit);
 }
@@ -1564,7 +1571,13 @@ export async function globalSearch(query: string, full = false) {
   const [cust, veh, docs] = await Promise.all([
     db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
       .from(customers)
-      .where(allTokens((t) => { const l = likeOf(t); return [ilike(customers.name, l), ilike(customers.phone, l), ilike(customers.email, l), ilike(customers.postcode, l), ilike(customers.address, l)]; }))
+      .where(allTokens((t) => {
+        const l = likeOf(t);
+        const cols = [ilike(customers.name, l), ilike(customers.phone, l), ilike(customers.email, l), ilike(customers.postcode, l), ilike(customers.address, l)];
+        let core = t.replace(/\D/g, ""); if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
+        if (core.length >= 6) cols.push(ilike(customers.phone, `%${core}%`)); // match national number across 0/+44 formats
+        return cols;
+      }))
       .orderBy(customers.name).limit(limC),
     db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, colour: vehicles.colour, customerId: vehicles.customerId, ownerName: customers.name, ownerPhone: customers.phone })
       .from(vehicles)
