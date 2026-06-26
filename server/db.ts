@@ -1566,7 +1566,7 @@ export async function globalSearch(query: string, full = false) {
       .from(customers)
       .where(allTokens((t) => { const l = likeOf(t); return [ilike(customers.name, l), ilike(customers.phone, l), ilike(customers.email, l), ilike(customers.postcode, l), ilike(customers.address, l)]; }))
       .orderBy(customers.name).limit(limC),
-    db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId, ownerName: customers.name })
+    db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, colour: vehicles.colour, customerId: vehicles.customerId, ownerName: customers.name, ownerPhone: customers.phone })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
@@ -1592,7 +1592,18 @@ export async function globalSearch(query: string, full = false) {
   }
   const customersWithVehicles = cust.map((c) => ({ ...c, vehicles: (vehByCust.get(c.id) || []).slice(0, 6) }));
 
-  return { customers: customersWithVehicles, vehicles: veh, documents: docs };
+  // Last visit per matched vehicle = the newest document (invoice/job sheet/etc.) for that car,
+  // so the results show when the customer was last in.
+  const vehIds = veh.map((v) => v.id).filter((id): id is number => id != null);
+  const lastVisitByVeh = new Map<number, any>();
+  if (vehIds.length) {
+    const visits = await db.select({ vehicleId: serviceHistory.vehicleId, last: sql<string>`MAX(COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))` })
+      .from(serviceHistory).where(inArray(serviceHistory.vehicleId, vehIds)).groupBy(serviceHistory.vehicleId);
+    for (const r of visits) if (r.vehicleId != null) lastVisitByVeh.set(r.vehicleId, r.last);
+  }
+  const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: lastVisitByVeh.get(v.id) || null }));
+
+  return { customers: customersWithVehicles, vehicles: vehiclesWithVisit, documents: docs };
 }
 
 // Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.

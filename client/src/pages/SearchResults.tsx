@@ -87,7 +87,10 @@ export default function SearchResults() {
   const vehicleCols: Col[] = [
     { key: "reg", label: "Registration", sortable: true, sortVal: (v) => v.registration || "", cell: (v) => <RegPlate reg={v.registration} /> },
     { key: "vehicle", label: "Make / Model", sortable: true, sortVal: (v) => [v.make, v.model].filter(Boolean).join(" "), cell: (v) => <span className="text-slate-700">{[v.make, v.model].filter(Boolean).join(" ") || "—"}</span> },
-    { key: "owner", label: "Owner", sortable: true, sortVal: (v) => v.ownerName || "", cell: (v) => <span className="text-slate-600">{v.ownerName || "—"}</span> },
+    { key: "colour", label: "Colour", sortable: true, sortVal: (v) => v.colour || "", cell: (v) => <span className="text-slate-600 capitalize">{v.colour ? String(v.colour).toLowerCase() : "—"}</span> },
+    { key: "owner", label: "Owner", sortable: true, sortVal: (v) => v.ownerName || "", cell: (v) => <span className="text-slate-700 whitespace-nowrap">{v.ownerName || "—"}</span> },
+    { key: "mobile", label: "Mobile", sortable: true, sortVal: (v) => v.ownerPhone || "", cell: (v) => <span className="font-mono text-[12px] text-slate-600">{v.ownerPhone || "—"}</span> },
+    { key: "lastVisit", label: "Last Visit", sortable: true, sortVal: (v) => v.lastVisit ? new Date(v.lastVisit).getTime() : 0, cell: (v) => <span className="text-slate-600 whitespace-nowrap">{v.lastVisit ? new Date(v.lastVisit).toLocaleDateString("en-GB") : "—"}</span> },
   ];
   const docCols: Col[] = [
     { key: "type", label: "Type", sortable: true, sortVal: (d) => DOC_LABEL[d.docType] || d.docType || "", cell: (d) => <span className="font-medium text-slate-700">{DOC_LABEL[d.docType] || d.docType || "Doc"}</span> },
