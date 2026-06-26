@@ -1549,10 +1549,11 @@ export async function searchCustomers(query: string, limit = 10) {
 // Universal omni-search across customers, vehicles and jobs (documents). Used by the popup
 // search on the Live Jobs page — matches name/surname, phone, email, address/postcode,
 // registration, make/model, doc number and account number.
-export async function globalSearch(query: string) {
+export async function globalSearch(query: string, full = false) {
   const db = await getDb();
   const qq = String(query ?? "").trim();
   if (!db || qq.length < 2) return { customers: [], vehicles: [], documents: [] };
+  const limC = full ? 100 : 8, limV = full ? 200 : 15, limD = full ? 60 : 8;
   // Every typed word must match SOMEWHERE on the row — an AND of (per-word OR-across-fields).
   // So "Honda Jazz John" finds the Honda Jazz owned by John: words can span make/model/owner/reg.
   const tokens = qq.split(/\s+/).filter(Boolean);
@@ -1564,16 +1565,16 @@ export async function globalSearch(query: string) {
     db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
       .from(customers)
       .where(allTokens((t) => { const l = likeOf(t); return [ilike(customers.name, l), ilike(customers.phone, l), ilike(customers.email, l), ilike(customers.postcode, l), ilike(customers.address, l)]; }))
-      .orderBy(customers.name).limit(8),
+      .orderBy(customers.name).limit(limC),
     db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, customerId: vehicles.customerId, ownerName: customers.name })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
-      .orderBy(customers.name).limit(15),
+      .orderBy(customers.name).limit(limV),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
       .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
-      .orderBy(desc(serviceHistory.dateCreated)).limit(8),
+      .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
   ]);
 
   // Attach each matched customer's vehicles so they show next to the name.

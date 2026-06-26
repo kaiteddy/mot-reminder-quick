@@ -36,6 +36,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
       <input value={term} autoFocus={autoFocus}
         onChange={(e) => { setTerm(e.target.value); setOpen(true); }}
         onFocus={() => term.trim().length >= 2 && setOpen(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" && term.trim().length >= 2) go(`/search?q=${encodeURIComponent(term.trim())}`); }}
         placeholder={placeholder}
         className="w-full h-10 pl-9 pr-9 rounded-lg border border-slate-300 bg-white text-[14px] outline-none focus:border-violet-500" />
       {term && <button type="button" onClick={() => { setTerm(""); setDebounced(""); setOpen(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}
@@ -92,6 +93,12 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                   sub={<span className="inline-flex items-center gap-1.5">{d.registration && <RegPlate reg={d.registration} size="xs" />}<span>{[d.customerName, d.accountNumber].filter(Boolean).join(" · ")}</span></span>} />
               ))}
             </Group>
+          )}
+          {data && hasResults && (
+            <button type="button" onClick={() => go(`/search?q=${encodeURIComponent(term.trim())}`)}
+              className="w-full sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 text-[12px] font-medium text-violet-700 hover:bg-violet-50 text-center">
+              See all results for “{debounced}” →
+            </button>
           )}
         </div>
       )}

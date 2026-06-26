@@ -313,10 +313,10 @@ export const appRouter = router({
         return getRepairPricing(input);
       }),
     globalSearch: publicProcedure
-      .input(z.object({ query: z.string() }))
+      .input(z.object({ query: z.string(), full: z.boolean().optional() }))
       .query(async ({ input }) => {
         const { globalSearch } = await import("./db");
-        return globalSearch(input.query);
+        return globalSearch(input.query, input.full);
       }),
     customerLog: publicProcedure
       .input(z.object({ customerId: z.number().optional(), vehicleId: z.number().optional() }))
