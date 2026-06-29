@@ -15,6 +15,7 @@ const SALES: Group[] = [
   { grouping: "All", reports: [
     { id: "sales-summary", label: "Sales - Summary (On screen view)", impl: true, viewOnly: true },
     { id: "sales-summary", label: "Sales - Summary", impl: true },
+    { id: "sales-by-month", label: "Sales - Issued (by Month)", impl: true },
     { id: "sales-summary-extended", label: "Sales - Summary Extended", impl: false },
   ] },
   { grouping: "All", reports: [{ id: "mot-sales-summary", label: "MOT Sales - Summary", impl: true }] },
@@ -212,9 +213,17 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
               </thead>
               <tbody>
                 {data.rows.map((row: any, i: number) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    {data.columns.map((c: any) => <td key={c.key} className={`px-3 py-1.5 ${c.align === "right" ? "text-right tabular-nums" : "text-slate-700"}`}>{cell(row[c.key], c.kind)}</td>)}
-                  </tr>
+                  row._group ? (
+                    <tr key={i} className="bg-slate-100/80"><td colSpan={data.columns.length} className="px-3 py-2 font-bold text-slate-800">{row._group}</td></tr>
+                  ) : row._subtotal ? (
+                    <tr key={i} className="border-t border-slate-300 font-semibold bg-slate-50/40">
+                      {data.columns.map((c: any) => <td key={c.key} className={`px-3 py-1.5 ${c.align === "right" ? "text-right tabular-nums" : "text-slate-600"}`}>{c.key === "customer" ? "Sub Totals" : (["balance", "net", "tax", "gross", "running"].includes(c.key) ? cell(row[c.key], c.kind) : "")}</td>)}
+                    </tr>
+                  ) : (
+                    <tr key={i} className="border-t border-slate-100">
+                      {data.columns.map((c: any) => <td key={c.key} className={`px-3 py-1.5 ${c.align === "right" ? "text-right tabular-nums" : "text-slate-700"}`}>{cell(row[c.key], c.kind)}</td>)}
+                    </tr>
+                  )
                 ))}
                 {data.totals && (
                   <tr className="border-t-2 border-slate-300 font-semibold bg-slate-50/60">

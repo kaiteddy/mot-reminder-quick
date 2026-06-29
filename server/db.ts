@@ -1160,6 +1160,48 @@ export async function getSalesSummary(opts: { from: string; to: string; basedOn?
   };
 }
 
+/** GA4 "Sales Issued ... grouped by Month": every invoice/credit note issued in the range, in
+ *  date order, with the per-doc net/VAT/gross (grouping, running totals & sub-totals done client-side). */
+export async function getSalesListing(opts: { from: string; to: string; basedOn?: "issue" | "created"; department?: string }) {
+  const db = await getDb();
+  if (!db) return { rows: [] as any[] };
+  const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
+  const from = new Date(opts.from + "T00:00:00");
+  const to = new Date(opts.to + "T23:59:59.999");
+  const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
+  const conds: any[] = [gte(dateCol, from), lte(dateCol, to), inArray(serviceHistory.docType, ["SI", "CR"])];
+  if (opts.department) conds.push(eq(serviceHistory.department, opts.department));
+  const rows = await db.select({
+    date: dateCol,
+    docType: serviceHistory.docType,
+    docNo: serviceHistory.docNo,
+    accountNumber: serviceHistory.accountNumber,
+    customerName: custNameExpr,
+    balance: serviceHistory.balance,
+    net: serviceHistory.totalNet,
+    tax: serviceHistory.totalTax,
+    gross: serviceHistory.totalGross,
+    receipts: serviceHistory.totalReceipts,
+  })
+    .from(serviceHistory)
+    .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
+    .where(and(...conds))
+    .orderBy(asc(dateCol), asc(serviceHistory.docNo));
+  const num = (x: any) => Number(x) || 0;
+  return {
+    rows: rows.map((r) => {
+      const bal = num(r.balance), rec = num(r.receipts);
+      const sign = r.docType === "CR" ? -1 : 1;
+      return {
+        date: r.date, docType: r.docType, docNo: r.docNo,
+        accountNumber: r.accountNumber || "", customerName: r.customerName || "",
+        payMethod: bal > 0.005 && rec > 0.005 ? "Partial" : "",
+        balance: num(r.balance), net: sign * num(r.net), tax: sign * num(r.tax), gross: sign * num(r.gross),
+      };
+    }),
+  };
+}
+
 export type ReportColumn = { key: string; label: string; align?: "right"; kind?: "money" | "int" | "text" };
 export type ReportResult = { title: string; subtitle?: string; columns: ReportColumn[]; rows: any[]; totals?: any; note?: string };
 
@@ -1187,6 +1229,32 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
         columns: [{ key: "type", label: "Type" }, { key: "count", label: "Count", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
         rows: s.rows.map((r) => ({ type: DOC_LABEL[r.docType!] || r.docType || "—", count: r.count, net: r.net, tax: r.tax, gross: r.gross })),
         totals: { type: "Net Sales (inv + excess − credits)", count, net, tax, gross },
+      };
+    }
+    case "sales-by-month": {
+      // GA4 "Sales Issued ... grouped by Month": per-invoice lines, monthly sub-totals, running total.
+      const { rows: items } = await getSalesListing(opts);
+      const MN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const out: any[] = [];
+      let running = 0, curMonth = "", sB = 0, sN = 0, sT = 0, sG = 0, gB = 0, gN = 0, gT = 0, gG = 0;
+      const flush = () => { if (curMonth) out.push({ _subtotal: true, balance: sB, net: sN, tax: sT, gross: sG, running }); sB = sN = sT = sG = 0; };
+      for (const it of items) {
+        const d = new Date(it.date as any);
+        const mk = `${MN[d.getMonth()]} ${d.getFullYear()}`;
+        if (mk !== curMonth) { flush(); curMonth = mk; out.push({ _group: mk }); }
+        running += it.gross;
+        out.push({ date: d.toLocaleDateString("en-GB"), docType: it.docType, docNo: it.docNo, acc: it.accountNumber, customer: it.customerName, pay: it.payMethod, balance: it.balance, net: it.net, tax: it.tax, gross: it.gross, running });
+        sB += it.balance; sN += it.net; sT += it.tax; sG += it.gross; gB += it.balance; gN += it.net; gT += it.tax; gG += it.gross;
+      }
+      flush();
+      return {
+        title: "Sales — Issued (grouped by Month)",
+        columns: [
+          { key: "date", label: "Date" }, { key: "docType", label: "Type" }, { key: "docNo", label: "No." }, { key: "acc", label: "Acc" }, { key: "customer", label: "Customer" }, { key: "pay", label: "Pay" },
+          { key: "balance", label: "Balance", align: "right", kind: "money" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }, { key: "running", label: "Running Total", align: "right", kind: "money" },
+        ],
+        rows: out,
+        totals: { customer: "Total", balance: gB, net: gN, tax: gT, gross: gG, running },
       };
     }
     case "mot-sales-summary": {
