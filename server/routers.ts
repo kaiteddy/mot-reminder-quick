@@ -391,17 +391,22 @@ export const appRouter = router({
   }),
 
   reports: router({
-    salesSummary: publicProcedure
+    run: publicProcedure
       .input(z.object({
+        reportId: z.string(),
         from: z.string(),
         to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
         department: z.string().optional(),
       }))
       .query(async ({ input }) => {
-        const { getSalesSummary } = await import("./db");
-        return getSalesSummary(input);
+        const { runReport } = await import("./db");
+        return runReport(input);
       }),
+    filters: publicProcedure.query(async () => {
+      const { getReportFilters } = await import("./db");
+      return getReportFilters();
+    }),
   }),
 
   descriptionPresets: router({

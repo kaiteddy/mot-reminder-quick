@@ -1160,6 +1160,88 @@ export async function getSalesSummary(opts: { from: string; to: string; basedOn?
   };
 }
 
+export type ReportColumn = { key: string; label: string; align?: "right"; kind?: "money" | "int" | "text" };
+export type ReportResult = { title: string; subtitle?: string; columns: ReportColumn[]; rows: any[]; totals?: any; note?: string };
+
+const _numExpr = (c: any) => sql`COALESCE(NULLIF(regexp_replace(${c}::text, '[^0-9.\-]', '', 'g'), '')::numeric, 0)`;
+
+/** Run a named business report over a date range — returns a normalised {columns, rows, totals}
+ *  so the launcher can render any report the same way. */
+export async function runReport(opts: { reportId: string; from: string; to: string; basedOn?: "issue" | "created"; department?: string }): Promise<ReportResult> {
+  const db = await getDb();
+  if (!db) return { title: "Unavailable", columns: [], rows: [] };
+  const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
+  const from = new Date(opts.from + "T00:00:00");
+  const to = new Date(opts.to + "T23:59:59.999");
+  const inRange = and(gte(dateCol, from), lte(dateCol, to), ...(opts.department ? [eq(serviceHistory.department, opts.department)] : []));
+  const DOC_LABEL: Record<string, string> = { SI: "Invoices", ES: "Estimates", JS: "Job Sheets", CR: "Credit Notes", XS: "Excess", PA: "Purchases", VS: "Vehicle Sales", VP: "Vehicle Purchases" };
+
+  switch (opts.reportId) {
+    case "sales-summary": {
+      const s = await getSalesSummary(opts);
+      const REV = new Set(["SI", "XS"]); const NEG = new Set(["CR"]);
+      let net = 0, tax = 0, gross = 0, count = 0;
+      for (const r of s.rows) { const sign = NEG.has(r.docType!) ? -1 : 1; if (REV.has(r.docType!) || NEG.has(r.docType!)) { net += sign * r.net; tax += sign * r.tax; gross += sign * r.gross; count += r.count; } }
+      return {
+        title: "Sales — Summary",
+        columns: [{ key: "type", label: "Type" }, { key: "count", label: "Count", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
+        rows: s.rows.map((r) => ({ type: DOC_LABEL[r.docType!] || r.docType || "—", count: r.count, net: r.net, tax: r.tax, gross: r.gross })),
+        totals: { type: "Net Sales (inv + excess − credits)", count, net, tax, gross },
+      };
+    }
+    case "mot-sales-summary": {
+      const r: any = (await db.select({
+        count: sql<number>`COUNT(*)`, net: _moneySum(serviceHistory.subMotNet), tax: _moneySum(serviceHistory.subMotTax), gross: _moneySum(serviceHistory.subMotGross),
+      }).from(serviceHistory).where(and(inRange, sql`${_numExpr(serviceHistory.subMotGross)} > 0`)))[0];
+      return {
+        title: "MOT Sales — Summary",
+        columns: [{ key: "period", label: "Period" }, { key: "count", label: "MOTs", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
+        rows: [{ period: `${opts.from} → ${opts.to}`, count: Number(r.count), net: Number(r.net), tax: Number(r.tax), gross: Number(r.gross) }],
+      };
+    }
+    case "payments-summary": {
+      const conds: any[] = [gte(payments.paymentDate, from), lte(payments.paymentDate, to)];
+      const rows: any = await db.select({
+        method: sql<string>`INITCAP(LOWER(TRIM(${payments.method})))`, count: sql<number>`COUNT(*)`, amount: sql<string>`COALESCE(SUM(${payments.amount}), 0)`,
+      }).from(payments).where(and(...conds)).groupBy(sql`INITCAP(LOWER(TRIM(${payments.method})))`).orderBy(desc(sql`SUM(${payments.amount})`));
+      let total = 0, n = 0; const out = rows.map((r: any) => { const a = Number(r.amount) || 0; total += a; n += Number(r.count); return { method: r.method || "—", count: Number(r.count), amount: a }; });
+      return {
+        title: "Payments — Summary",
+        columns: [{ key: "method", label: "Method" }, { key: "count", label: "Count", align: "right", kind: "int" }, { key: "amount", label: "Amount", align: "right", kind: "money" }],
+        rows: out, totals: { method: "Total", count: n, amount: total },
+      };
+    }
+    case "unpaid-list": {
+      const rows: any = await db.select({
+        docNo: serviceHistory.docNo,
+        date: sql<string>`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`,
+        customer: sql<string>`COALESCE(NULLIF(${customers.name}, ''), ${serviceHistory.customerName})`,
+        gross: _numExpr(serviceHistory.totalGross), balance: _numExpr(serviceHistory.balance),
+      }).from(serviceHistory).leftJoin(customers, eq(serviceHistory.customerId, customers.id))
+        .where(and(inArray(serviceHistory.docType, ["SI", "XS"]), sql`${_numExpr(serviceHistory.balance)} > 0.005`))
+        .orderBy(desc(_numExpr(serviceHistory.balance))).limit(500);
+      let total = 0; const out = rows.map((r: any) => { const b = Number(r.balance) || 0; total += b; return { docNo: r.docNo || "—", date: r.date ? new Date(r.date).toLocaleDateString("en-GB") : "", customer: r.customer || "—", gross: Number(r.gross) || 0, balance: b }; });
+      return {
+        title: "Unpaid List (still outstanding)",
+        subtitle: "Every invoice with an outstanding balance — not limited to the date range.",
+        columns: [{ key: "docNo", label: "Doc No" }, { key: "date", label: "Date" }, { key: "customer", label: "Customer" }, { key: "gross", label: "Gross", align: "right", kind: "money" }, { key: "balance", label: "Outstanding", align: "right", kind: "money" }],
+        rows: out, totals: { docNo: "", date: "", customer: `${out.length} invoice(s)`, gross: null, balance: total },
+      };
+    }
+    default:
+      return { title: "Coming soon", columns: [{ key: "msg", label: "" }], rows: [], note: "This report isn't built into the web app yet — tell me and I'll add it next." };
+  }
+}
+
+/** Filter options for the reports launcher (departments only carry meaning today). */
+export async function getReportFilters() {
+  const db = await getDb();
+  if (!db) return { departments: [] as string[] };
+  const deptRows = await db.selectDistinct({ d: serviceHistory.department }).from(serviceHistory)
+    .where(sql`COALESCE(${serviceHistory.department}, '') <> ''`).orderBy(serviceHistory.department);
+  return { departments: deptRows.map((d) => d.d!).filter(Boolean) };
+}
+
 // An insurance/accident-management/fleet-claims bill-to (the insurer pays the repair; the
 // vehicle owner pays the policy excess). Deliberately insurer-specific so ordinary business
 // customers (e.g. "Doppio Coffee Ltd") are NOT treated as insurance jobs.
