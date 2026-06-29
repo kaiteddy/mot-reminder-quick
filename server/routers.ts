@@ -390,6 +390,20 @@ export const appRouter = router({
       }),
   }),
 
+  reports: router({
+    salesSummary: publicProcedure
+      .input(z.object({
+        from: z.string(),
+        to: z.string(),
+        basedOn: z.enum(["issue", "created"]).optional(),
+        department: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getSalesSummary } = await import("./db");
+        return getSalesSummary(input);
+      }),
+  }),
+
   descriptionPresets: router({
     list: publicProcedure.query(async () => {
       const { getDescriptionPresets } = await import("./db");

@@ -85,6 +85,7 @@ const menuGroups = [
   ] },
   { section: "Insights", items: [
     { icon: BarChart, label: "Analytics", path: "/analytics" },
+    { icon: FileText, label: "Reports", path: "/reports" },
   ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },

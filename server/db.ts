@@ -1,4 +1,4 @@
-import { eq, or, inArray, and, sql, desc, asc, isNotNull, isNull, ilike, gte, ne } from "drizzle-orm";
+import { eq, or, inArray, and, sql, desc, asc, isNotNull, isNull, ilike, gte, lte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import os from "os";
@@ -1112,6 +1112,52 @@ export async function getDocumentStats() {
   }).from(serviceHistory).groupBy(serviceHistory.docType);
   const total = rows.reduce((a, r) => a + Number(r.n), 0);
   return { total, byType: rows.map(r => ({ docType: r.docType, n: Number(r.n) })) };
+}
+
+// --- Business reports ---------------------------------------------------------
+// Sum a money column stored as text, robustly: strip anything that isn't a digit/dot/minus, treat
+// blanks as 0, then SUM. (GA4-imported totals are text.)
+const _moneySum = (c: any) => sql<string>`COALESCE(SUM(COALESCE(NULLIF(regexp_replace(${c}::text, '[^0-9.\-]', '', 'g'), '')::numeric, 0)), 0)`;
+
+/** Sales summary for a date range: per document-type totals (count/net/VAT/gross) + a parts /
+ *  labour / MOT split, filtered by issue or created date and optionally department. */
+export async function getSalesSummary(opts: { from: string; to: string; basedOn?: "issue" | "created"; department?: string }) {
+  const db = await getDb();
+  const empty = { rows: [] as any[], departments: [] as string[] };
+  if (!db) return empty;
+  const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
+  const from = new Date(opts.from + "T00:00:00");
+  const to = new Date(opts.to + "T23:59:59.999");
+  const conds: any[] = [gte(dateCol, from), lte(dateCol, to)];
+  if (opts.department) conds.push(eq(serviceHistory.department, opts.department));
+
+  const rows = await db.select({
+    docType: serviceHistory.docType,
+    count: sql<number>`COUNT(*)`,
+    net: _moneySum(serviceHistory.totalNet),
+    tax: _moneySum(serviceHistory.totalTax),
+    gross: _moneySum(serviceHistory.totalGross),
+    partsNet: _moneySum(serviceHistory.subPartsNet),
+    labourNet: _moneySum(serviceHistory.subLabourNet),
+    motNet: _moneySum(serviceHistory.subMotNet),
+  })
+    .from(serviceHistory)
+    .where(and(...conds))
+    .groupBy(serviceHistory.docType);
+
+  // distinct departments for the filter dropdown
+  const deptRows = await db.selectDistinct({ d: serviceHistory.department }).from(serviceHistory)
+    .where(sql`COALESCE(${serviceHistory.department}, '') <> ''`).orderBy(serviceHistory.department);
+
+  return {
+    rows: rows.map((r) => ({
+      docType: r.docType,
+      count: Number(r.count),
+      net: Number(r.net), tax: Number(r.tax), gross: Number(r.gross),
+      partsNet: Number(r.partsNet), labourNet: Number(r.labourNet), motNet: Number(r.motNet),
+    })),
+    departments: deptRows.map((d) => d.d!).filter(Boolean),
+  };
 }
 
 // An insurance/accident-management/fleet-claims bill-to (the insurer pays the repair; the
