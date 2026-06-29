@@ -311,7 +311,11 @@ export default function WorkshopMOTCheck() {
         {/* Vehicle Details */}
         {vehicleData && (
           <div className="space-y-5">
-            {/* MOT Status Card — critical info first, right at the top */}
+            {/* Customer / owner details first — who the car belongs to + all their numbers */}
+            {customerData?.customer && (
+              <CustomerInfoCard customer={customerData.customer} vehicleId={customerData?.vehicle?.id} />
+            )}
+            {/* MOT Status Card */}
             <Card className="border-2">
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
@@ -514,8 +518,6 @@ export default function WorkshopMOTCheck() {
                 </div>
               </CardContent>
             </Card>
-
-            <CustomerInfoCard customer={customerData?.customer} vehicleId={customerData?.vehicle?.id} />
 
             {/* Premium UKVD Vehicle Image/Tech Details (Only shown if Full Check was used) */}
             {(vehicleData.imageUrl || vehicleData.transmission || vehicleData.dimensions || vehicleData.weights || vehicleData.fuelTankCapacity) && (
