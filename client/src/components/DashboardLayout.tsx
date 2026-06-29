@@ -149,7 +149,9 @@ function DashboardLayoutContent({
   children: React.ReactNode;
   setSidebarWidth: (width: number) => void;
 }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  // Flip to the touch-friendly workshop view — carry the registration when we're on a vehicle page.
+  const workshopHref = (() => { const m = location.match(/^\/(?:view-vehicle|v)\/([^/]+)/); return m ? `/workshop?reg=${encodeURIComponent(decodeURIComponent(m[1]))}` : "/workshop"; })();
   const { isMobile, state: sidebarState } = useSidebar();
   const isCollapsed = sidebarState === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
@@ -327,6 +329,10 @@ function DashboardLayoutContent({
           </div>
 
           <div className="flex items-center gap-4">
+            <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
+              <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>
+            </button>
             <QuickMOTCheck />
             <div className="hidden md:flex flex-col items-end">
               <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
