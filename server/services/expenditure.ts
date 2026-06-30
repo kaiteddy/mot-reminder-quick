@@ -6,8 +6,9 @@
  * (section 'receipts'), shown for cross-check, NOT added to P&L revenue.
  */
 import crypto from "crypto";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { getDb } from "../db";
+import { carDeals } from "../../drizzle/schema";
 
 const OTHER = "OTHER / to label";
 
@@ -75,7 +76,24 @@ export async function getReconciliation(opts: { from: string; to: string }) {
     const c = catMap.get(r.category); c.amounts[i] += num(r.amt); c.total += num(r.amt);
   }
   const categories = [...catMap.values()].sort((a, b) => a.sortOrder - b.sortOrder);
-  return { months, sales, sections, categories };
+
+  // Car trading: sold cars matched by sale month (revenue, cost-of-cars-sold, margin)
+  const carRows: any = await db.execute(sql`
+    SELECT to_char(d."saleDate",'YYYY-MM') m,
+      SUM(COALESCE(d."salePrice",0)) revenue,
+      SUM(COALESCE(d."purchaseCost", lp.total, 0) + COALESCE(d."reconditioningCost",0)) cost
+    FROM "carDeals" d
+    LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId" IS NOT NULL GROUP BY "carDealId") lp ON lp."carDealId"=d."id"
+    WHERE d."status"='sold' AND d."saleDate" IS NOT NULL
+    GROUP BY 1`);
+  const carTrading = { revenue: months.map(() => 0), cost: months.map(() => 0), margin: months.map(() => 0) };
+  for (const r of carRows.rows || []) {
+    const i = idx[r.m]; if (i === undefined) continue;
+    carTrading.revenue[i] = num(r.revenue);
+    carTrading.cost[i] = num(r.cost);
+    carTrading.margin[i] = num(r.revenue) - num(r.cost);
+  }
+  return { months, sales, sections, categories, carTrading };
 }
 
 /** Paged, filtered transaction list with resolved category. */
@@ -337,4 +355,114 @@ export async function importTransactions(input: { source: "bank" | "card"; csvTe
     if ((res.rows || []).length) newLabels++;
   }
   return { inserted, skipped: parsed.length - inserted, total: parsed.length, newLabels };
+}
+
+// ── Car trading ledger ──────────────────────────────────────────────────────
+const VEHICLE_STOCK = "Cost of sales — vehicle stock";
+
+/** All car deals with linked-purchase totals and computed margin. In-stock first. */
+export async function getCarDeals() {
+  const db = await getDb();
+  if (!db) return [];
+  const res: any = await db.execute(sql`
+    SELECT d."id", d."registration", d."description", d."purchaseCost",
+           to_char(d."purchaseDate",'YYYY-MM-DD') "purchaseDate", d."salePrice",
+           to_char(d."saleDate",'YYYY-MM-DD') "saleDate", d."askingPrice",
+           d."reconditioningCost", d."status", d."notes",
+           COALESCE(p.linked,0) "linkedPurchaseTotal", COALESCE(p.cnt,0) "linkedCount"
+    FROM "carDeals" d
+    LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) linked, COUNT(*) cnt
+               FROM "bankTransactions" WHERE "carDealId" IS NOT NULL GROUP BY "carDealId") p
+      ON p."carDealId"=d."id"
+    ORDER BY (d."status"='sold'), d."registration" NULLS LAST`);
+  return (res.rows || []).map((r: any) => {
+    const purchase = r.purchaseCost != null ? num(r.purchaseCost) : num(r.linkedPurchaseTotal);
+    const recond = num(r.reconditioningCost);
+    const sale = r.salePrice != null ? num(r.salePrice) : null;
+    const effectiveCost = purchase + recond;
+    return {
+      id: r.id, registration: r.registration, description: r.description,
+      purchaseCost: r.purchaseCost != null ? num(r.purchaseCost) : null,
+      purchaseDate: r.purchaseDate, salePrice: sale, saleDate: r.saleDate,
+      askingPrice: r.askingPrice != null ? num(r.askingPrice) : null,
+      reconditioningCost: r.reconditioningCost != null ? recond : null,
+      status: r.status, notes: r.notes,
+      linkedPurchaseTotal: num(r.linkedPurchaseTotal), linkedCount: num(r.linkedCount),
+      effectiveCost,
+      margin: r.status === "sold" && sale != null ? sale - effectiveCost : null,
+    };
+  });
+}
+
+const toDate = (s: any) => (s ? new Date(s + "T12:00:00") : null); // noon: date-safe across TZs
+const numOrNull = (x: any) => (x == null || x === "" ? null : String(x));
+
+function dealFields(input: any) {
+  const f: any = {};
+  if ("registration" in input) f.registration = input.registration || null;
+  if ("description" in input) f.description = input.description || null;
+  if ("purchaseCost" in input) f.purchaseCost = numOrNull(input.purchaseCost);
+  if ("purchaseDate" in input) f.purchaseDate = toDate(input.purchaseDate);
+  if ("salePrice" in input) f.salePrice = numOrNull(input.salePrice);
+  if ("saleDate" in input) f.saleDate = toDate(input.saleDate);
+  if ("askingPrice" in input) f.askingPrice = numOrNull(input.askingPrice);
+  if ("reconditioningCost" in input) f.reconditioningCost = numOrNull(input.reconditioningCost);
+  if ("status" in input) f.status = input.status;
+  if ("notes" in input) f.notes = input.notes || null;
+  return f;
+}
+
+/** Create or partially update a car deal. */
+export async function upsertCarDeal(input: any) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const f = dealFields(input);
+  if (input.id) {
+    f.updatedAt = new Date();
+    await db.update(carDeals).set(f).where(eq(carDeals.id, input.id));
+    return { id: input.id };
+  }
+  const [row]: any = await db.insert(carDeals).values(f).returning({ id: carDeals.id });
+  return { id: row.id };
+}
+
+export async function deleteCarDeal(input: { id: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.execute(sql`UPDATE "bankTransactions" SET "carDealId"=NULL WHERE "carDealId"=${input.id}`);
+  await db.execute(sql`DELETE FROM "carDeals" WHERE "id"=${input.id}`);
+  return { ok: true };
+}
+
+/** Vehicle-stock purchase transactions, with their current car-deal link (for association UI). */
+export async function getVehiclePurchases() {
+  const db = await getDb();
+  if (!db) return [];
+  const res: any = await db.execute(sql`
+    SELECT t."id", to_char(t."txnDate",'YYYY-MM-DD') date, t."counterparty", t."amount",
+           t."carDealId", d."registration" "dealReg", d."description" "dealDesc"
+    FROM "bankTransactions" t
+    LEFT JOIN "transactionLabels" l ON l."source"=t."source" AND l."counterpartyKey"=t."counterpartyKey"
+    LEFT JOIN "carDeals" d ON d."id"=t."carDealId"
+    WHERE COALESCE(t."categoryOverride", l."category", '')=${VEHICLE_STOCK}
+    ORDER BY t."txnDate" DESC`);
+  return (res.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
+}
+
+/** Link (or unlink with null) a purchase transaction to a car deal; auto-fills cost/date if unset. */
+export async function linkPurchase(input: { txnId: number; carDealId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.execute(sql`UPDATE "bankTransactions" SET "carDealId"=${input.carDealId} WHERE "id"=${input.txnId}`);
+  if (input.carDealId) {
+    await db.execute(sql`
+      UPDATE "carDeals" d SET
+        "purchaseCost"=COALESCE(d."purchaseCost", x.total),
+        "purchaseDate"=COALESCE(d."purchaseDate", x.first),
+        "updatedAt"=now()
+      FROM (SELECT SUM(ABS("amount")) total, MIN("txnDate") first
+            FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
+      WHERE d."id"=${input.carDealId}`);
+  }
+  return { ok: true };
 }

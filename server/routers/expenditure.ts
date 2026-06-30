@@ -59,4 +59,43 @@ export const expenditureRouter = router({
       const { importTransactions } = await import("../services/expenditure");
       return importTransactions(input);
     }),
+
+  // ── Car trading ledger ──
+  carDeals: publicProcedure.query(async () => {
+    const { getCarDeals } = await import("../services/expenditure");
+    return getCarDeals();
+  }),
+
+  upsertCarDeal: publicProcedure
+    .input(z.object({
+      id: z.number().optional(),
+      registration: z.string().nullish(), description: z.string().nullish(),
+      purchaseCost: z.number().nullish(), purchaseDate: z.string().nullish(),
+      salePrice: z.number().nullish(), saleDate: z.string().nullish(),
+      askingPrice: z.number().nullish(), reconditioningCost: z.number().nullish(),
+      status: z.enum(["in_stock", "sold"]).optional(), notes: z.string().nullish(),
+    }))
+    .mutation(async ({ input }) => {
+      const { upsertCarDeal } = await import("../services/expenditure");
+      return upsertCarDeal(input);
+    }),
+
+  deleteCarDeal: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const { deleteCarDeal } = await import("../services/expenditure");
+      return deleteCarDeal(input);
+    }),
+
+  vehiclePurchases: publicProcedure.query(async () => {
+    const { getVehiclePurchases } = await import("../services/expenditure");
+    return getVehiclePurchases();
+  }),
+
+  linkPurchase: publicProcedure
+    .input(z.object({ txnId: z.number(), carDealId: z.number().nullable() }))
+    .mutation(async ({ input }) => {
+      const { linkPurchase } = await import("../services/expenditure");
+      return linkPurchase(input);
+    }),
 });

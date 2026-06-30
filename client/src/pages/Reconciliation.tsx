@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Upload, AlertTriangle } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2 } from "lucide-react";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
 const monthLabel = (m: string) => {
@@ -59,12 +59,14 @@ export default function Reconciliation() {
         <Tabs defaultValue="summary">
           <TabsList>
             <TabsTrigger value="summary">Summary (P&amp;L)</TabsTrigger>
+            <TabsTrigger value="cars">Car Trading</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="labels">Labels</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
           </TabsList>
 
           <TabsContent value="summary"><SummaryTab from={from} to={to} /></TabsContent>
+          <TabsContent value="cars"><CarTradingTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
           <TabsContent value="labels"><LabelsTab /></TabsContent>
           <TabsContent value="import"><ImportTab /></TabsContent>
@@ -78,13 +80,17 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.reconciliation.useQuery({ from, to });
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
-  const { months, sales, sections } = q.data as any;
+  const { months, sales, sections, carTrading } = q.data as any;
 
   const sec = (k: string): number[] => sections[k] || months.map(() => 0);
   const cogs = sec("cogs"), overheads = sec("overheads"), cartrade = sec("cartrade"),
         taxes = sec("taxes"), receipts = sec("receipts"), financing = sec("financing");
   const gross = months.map((_: string, i: number) => sales[i] + cogs[i]);
   const opProfit = months.map((_: string, i: number) => gross[i] + overheads[i]);
+  const carRev = carTrading?.revenue || months.map(() => 0);
+  const carCostNeg = (carTrading?.cost || months.map(() => 0)).map((x: number) => -x);
+  const carMargin = carTrading?.margin || months.map(() => 0);
+  const totalProfit = months.map((_: string, i: number) => opProfit[i] + carMargin[i]);
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white" : bold ? "bg-slate-100 font-semibold" : ""}>
@@ -113,9 +119,15 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent />
             <Row label="Gross profit" vals={gross} bold />
             <Row label="Overheads" vals={overheads} indent />
-            <Row label="Workshop operating profit" vals={opProfit} hl />
+            <Row label="Workshop operating profit" vals={opProfit} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
-            <Row label="Car purchases (trading)" vals={cartrade} indent />
+            <Row label="Car sales" vals={carRev} />
+            <Row label="Cost of cars sold" vals={carCostNeg} indent />
+            <Row label="Car trading margin" vals={carMargin} bold />
+            <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
+            <Row label="TOTAL BUSINESS PROFIT" vals={totalProfit} hl />
+            <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
+            <Row label="Car purchases — cash out on stock" vals={cartrade} indent />
             <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
             <Row label="Bank takings (cash in)" vals={receipts} indent />
             <Row label="Financing / drawings / contra" vals={financing} indent />
@@ -123,7 +135,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
         </Table>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          Car purchases sit outside the workshop P&amp;L because car-sale revenue isn't yet recorded (phase 2). "Bank takings" are cash received, shown for cross-check — not added to revenue.
+          Car trading margin comes from sold cars on the <b className="mx-1">Car Trading</b> tab. "Car purchases — cash out on stock" is what you spent buying stock that month (cash view); "Bank takings" are cash received, shown for cross-check — not added to revenue.
         </p>
       </CardContent>
     </Card>
@@ -309,6 +321,140 @@ function ImportTab() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function Stat({ label, value, sub, accent }: any) {
+  return (
+    <div className={`rounded-lg border p-3 ${accent ? "bg-slate-900 text-white" : "bg-white"}`}>
+      <div className={`text-xs ${accent ? "text-slate-300" : "text-slate-500"}`}>{label}</div>
+      <div className="text-lg font-bold tabular-nums">{value}</div>
+      {sub && <div className={`text-xs ${accent ? "text-slate-300" : "text-slate-400"}`}>{sub}</div>}
+    </div>
+  );
+}
+
+function EditCell({ v, onSave, type, w, placeholder, align }: any) {
+  const [val, setVal] = useState(v ?? "");
+  useEffect(() => { setVal(v ?? ""); }, [v]);
+  const commit = () => {
+    if (type === "number") {
+      const nv = val === "" ? null : Number(val);
+      if (nv !== (v ?? null)) onSave(nv);
+    } else if ((val || "") !== (v || "")) onSave(val || null);
+  };
+  return (
+    <Input type={type === "number" ? "number" : type || "text"} value={val} placeholder={placeholder}
+      onChange={(e) => setVal(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className={`h-8 ${align === "right" ? "text-right" : ""}`} style={{ width: w || "120px" }} />
+  );
+}
+
+function CarTradingTab() {
+  const utils = trpc.useUtils();
+  const inval = () => {
+    utils.expenditure.carDeals.invalidate();
+    utils.expenditure.vehiclePurchases.invalidate();
+    utils.expenditure.reconciliation.invalidate();
+  };
+  const deals = trpc.expenditure.carDeals.useQuery();
+  const purchases = trpc.expenditure.vehiclePurchases.useQuery();
+  const upsert = trpc.expenditure.upsertCarDeal.useMutation({ onSuccess: inval });
+  const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
+  const link = trpc.expenditure.linkPurchase.useMutation({ onSuccess: inval });
+  const save = (id: number, patch: any) => upsert.mutate({ id, ...patch });
+
+  if (deals.isLoading) return <Loading />;
+  const rows: any[] = deals.data || [];
+  const inStock = rows.filter((r) => r.status === "in_stock");
+  const sold = rows.filter((r) => r.status === "sold");
+  const stockCost = inStock.reduce((s, r) => s + (r.effectiveCost || 0), 0);
+  const soldRevenue = sold.reduce((s, r) => s + (r.salePrice || 0), 0);
+  const soldMargin = sold.reduce((s, r) => s + (r.margin || 0), 0);
+  const purch: any[] = purchases.data || [];
+  const toLink = purch.filter((p) => !p.carDealId).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="In stock" value={`${inStock.length} cars`} sub={`${money(stockCost)} tied up`} />
+        <Stat label="Sold" value={`${sold.length} cars`} sub={`${money(soldRevenue)} revenue`} />
+        <Stat label="Trading margin" value={money(soldMargin)} sub="on sold cars" accent />
+        <Stat label="Purchases to link" value={`${toLink}`} sub="vehicle-stock payments" />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+          <CardTitle className="mr-auto">Cars</CardTitle>
+          <Button size="sm" onClick={() => upsert.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />Add car</Button>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
+                <TableHead className="text-right">Purchase £</TableHead><TableHead className="text-right">Recond £</TableHead>
+                <TableHead className="text-right">Sale £</TableHead><TableHead>Sale date</TableHead>
+                <TableHead className="text-right">Margin</TableHead><TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id} className={r.status === "sold" ? "bg-green-50/40" : ""}>
+                  <TableCell><EditCell v={r.registration} onSave={(v: any) => save(r.id, { registration: v })} w="90px" /></TableCell>
+                  <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
+                  <TableCell>
+                    <Select value={r.status} onValueChange={(v) => save(r.id, { status: v })}>
+                      <SelectTrigger className="h-8 w-[108px]"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-right"><EditCell v={r.purchaseCost} type="number" align="right" w="100px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="number" align="right" w="90px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.salePrice} type="number" align="right" w="100px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
+                  <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
+                  <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <p className="mt-2 text-xs text-slate-500">Set a car to <b>Sold</b> and fill in the sale price + date to book the margin. A greyed "Purchase £" hint = the total of associated bank purchases (below).</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Vehicle-stock purchases — associate each to a car</CardTitle></CardHeader>
+        <CardContent className="overflow-x-auto">
+          {purchases.isLoading ? <Loading /> : (
+            <Table>
+              <TableHeader>
+                <TableRow><TableHead>Date</TableHead><TableHead>Payee</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Associated car</TableHead></TableRow>
+              </TableHeader>
+              <TableBody>
+                {purch.map((p) => (
+                  <TableRow key={p.id} className={p.carDealId ? "" : "bg-orange-50"}>
+                    <TableCell className="whitespace-nowrap">{p.date}</TableCell>
+                    <TableCell>{p.counterparty}</TableCell>
+                    <TableCell className="text-right tabular-nums text-red-600">{money(p.amount)}</TableCell>
+                    <TableCell>
+                      <Select value={p.carDealId ? String(p.carDealId) : "none"} onValueChange={(v) => link.mutate({ txnId: p.id, carDealId: v === "none" ? null : Number(v) })}>
+                        <SelectTrigger className="h-8 w-[260px]"><SelectValue placeholder="— unassigned —" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— unassigned —</SelectItem>
+                          {rows.map((d) => <SelectItem key={d.id} value={String(d.id)}>{(d.registration || "(no reg)") + " · " + (d.description || "")}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

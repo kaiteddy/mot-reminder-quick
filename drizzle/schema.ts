@@ -542,6 +542,7 @@ export const bankTransactions = pgTable("bankTransactions", {
   bankCategoryHint: varchar("bankCategoryHint", { length: 120 }), // Barclaycard's own category / bank subcategory
   subcategory: varchar("subcategory", { length: 120 }),
   categoryOverride: varchar("categoryOverride", { length: 80 }), // per-row manual override
+  carDealId: integer("carDealId"), // links a vehicle-stock purchase to a car deal (carDeals.id)
   dedupeKey: varchar("dedupeKey", { length: 64 }).notNull().unique(), // hash(source|date|amount|memo) to block re-import dupes
   importBatch: varchar("importBatch", { length: 40 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
@@ -553,3 +554,31 @@ export const bankTransactions = pgTable("bankTransactions", {
 
 export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = typeof bankTransactions.$inferInsert;
+
+/**
+ * Car-trading ledger: each vehicle bought to resell. Purchase cost + sale price
+ * give per-car margin; sold cars feed car-sales revenue into the P&L. Bank
+ * vehicle-stock purchases are associated via bankTransactions.carDealId.
+ */
+export const carDeals = pgTable("carDeals", {
+  id: serial("id").primaryKey(),
+  registration: varchar("registration", { length: 20 }),
+  description: varchar("description", { length: 160 }),
+  purchaseCost: numeric("purchaseCost", { precision: 12, scale: 2 }),   // confirmed buy price
+  purchaseDate: timestamp("purchaseDate", { mode: "date" }),
+  salePrice: numeric("salePrice", { precision: 12, scale: 2 }),         // actual sale (null until sold)
+  saleDate: timestamp("saleDate", { mode: "date" }),
+  askingPrice: numeric("askingPrice", { precision: 12, scale: 2 }),     // forecourt reference price
+  reconditioningCost: numeric("reconditioningCost", { precision: 12, scale: 2 }),
+  status: varchar("status", { length: 12 }).$type<"in_stock" | "sold">().notNull().default("in_stock"),
+  salesStockId: integer("salesStockId"),                               // link to forecourt stock row
+  notes: text("notes"),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  regIdx: index("car_deals_reg_idx").on(table.registration),
+  statusIdx: index("car_deals_status_idx").on(table.status),
+}));
+
+export type CarDeal = typeof carDeals.$inferSelect;
+export type InsertCarDeal = typeof carDeals.$inferInsert;
