@@ -257,6 +257,9 @@ export const serviceHistory = pgTable("serviceHistory", {
   subPartsCostGross: numeric("subPartsCostGross", { precision: 10, scale: 2 }),
   labourQty: numeric("labourQty", { precision: 10, scale: 2 }),
   totalSurcharge: numeric("totalSurcharge", { precision: 10, scale: 2 }),
+  // GA4 us_TotalDiscount — invoice-level discount (line subtotals above are pre-discount; net = subtotals − discount)
+  totalDiscountNet: numeric("totalDiscountNet", { precision: 10, scale: 2 }),
+  totalDiscountGross: numeric("totalDiscountGross", { precision: 10, scale: 2 }),
   motQty: integer("motQty"),
   motCost: numeric("motCost", { precision: 10, scale: 2 }),
   motOutsourced: varchar("motOutsourced", { length: 10 }),

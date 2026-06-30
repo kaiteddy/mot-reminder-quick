@@ -1297,6 +1297,75 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
         rows: out, totals: { docNo: "", date: "", customer: `${out.length} invoice(s)`, gross: null, balance: total },
       };
     }
+    case "activity-brief":
+    case "activity-fixed": {
+      // GA4 "Activity" reports — one row per day. Fixed-Price Breakdown splits each day's net into
+      // category columns (Labour / Parts / MOT / Sundries / Lubricants / Paint / Excess); "Other"
+      // absorbs any net GA4 didn't itemise (the ~4% of docs it leaves without a stored breakdown),
+      // so each row's categories always reconcile to that day's Net.
+      const dayExpr = sql<string>`to_char(date_trunc('day', ${dateCol}), 'YYYY-MM-DD')`;
+      const S = (c: any) => sql<number>`SUM(CASE WHEN ${serviceHistory.docType}='CR' THEN -1 ELSE 1 END * ${_numExpr(c)})`;
+      const rows: any = await db.select({
+        day: dayExpr, n: sql<number>`COUNT(*)`,
+        labour: S(serviceHistory.subLabourNet), parts: S(serviceHistory.subPartsNet), mot: S(serviceHistory.subMotNet),
+        sundries: S(serviceHistory.fixedItem1Net), lubricants: S(serviceHistory.fixedItem2Net), paint: S(serviceHistory.fixedItem3Net),
+        excess: S(serviceHistory.excessNet), net: S(serviceHistory.totalNet), tax: S(serviceHistory.totalTax), gross: S(serviceHistory.totalGross),
+      }).from(serviceHistory).where(and(inRange, inArray(serviceHistory.docType, ["SI", "XS", "CR"]))).groupBy(dayExpr).orderBy(dayExpr);
+      const g: any = { n: 0, labour: 0, parts: 0, mot: 0, sundries: 0, lubricants: 0, paint: 0, excess: 0, other: 0, net: 0, tax: 0, gross: 0 };
+      const fmt = (d: string) => { const [y, m, dd] = d.split("-"); return `${dd}/${m}/${y}`; };
+      const out = rows.map((r: any) => {
+        const v: any = {}; for (const k of ["n", "labour", "parts", "mot", "sundries", "lubricants", "paint", "excess", "net", "tax", "gross"]) v[k] = Number(r[k]) || 0;
+        v.other = +(v.net - (v.labour + v.parts + v.mot + v.sundries + v.lubricants + v.paint + v.excess)).toFixed(2);
+        for (const k of Object.keys(g)) g[k] += v[k] || 0;
+        return { date: fmt(r.day), ...v };
+      });
+      if (opts.reportId === "activity-brief") {
+        return {
+          title: "Activity — Brief (by Day)",
+          columns: [{ key: "date", label: "Date" }, { key: "n", label: "Docs", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
+          rows: out.map((r: any) => ({ date: r.date, n: r.n, net: r.net, tax: r.tax, gross: r.gross })),
+          totals: { date: "Total", n: g.n, net: g.net, tax: g.tax, gross: g.gross },
+        };
+      }
+      return {
+        title: "Activity — Fixed Price Breakdown (by Day)",
+        subtitle: "Each day's net split by GA4 category. ‘Other’ nets off invoice discounts (shown −) and any net GA4 didn't itemise; columns always reconcile to Net.",
+        columns: [
+          { key: "date", label: "Date" },
+          { key: "labour", label: "Labour", align: "right", kind: "money" }, { key: "parts", label: "Parts", align: "right", kind: "money" },
+          { key: "mot", label: "MOT", align: "right", kind: "money" }, { key: "sundries", label: "Sundries", align: "right", kind: "money" },
+          { key: "lubricants", label: "Lubricants", align: "right", kind: "money" }, { key: "paint", label: "Paint & Mat.", align: "right", kind: "money" },
+          { key: "excess", label: "Excess", align: "right", kind: "money" }, { key: "other", label: "Other", align: "right", kind: "money" },
+          { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" },
+        ],
+        rows: out,
+        totals: { date: "Total", labour: g.labour, parts: g.parts, mot: g.mot, sundries: g.sundries, lubricants: g.lubricants, paint: g.paint, excess: g.excess, other: g.other, net: g.net, tax: g.tax, gross: g.gross },
+      };
+    }
+    case "activity-detailed": {
+      // Per-document listing grouped by day, with daily sub-totals + running total.
+      const { rows: items } = await getSalesListing(opts);
+      const out: any[] = [];
+      let running = 0, curDay = "", sN = 0, sT = 0, sG = 0, gN = 0, gT = 0, gG = 0;
+      const flush = () => { if (curDay) out.push({ _subtotal: true, net: sN, tax: sT, gross: sG, running }); sN = sT = sG = 0; };
+      for (const it of items) {
+        const dk = new Date(it.date as any).toLocaleDateString("en-GB");
+        if (dk !== curDay) { flush(); curDay = dk; out.push({ _group: dk }); }
+        running += it.gross;
+        out.push({ docType: it.docType, docNo: it.docNo, acc: it.accountNumber, customer: it.customerName, net: it.net, tax: it.tax, gross: it.gross, running });
+        sN += it.net; sT += it.tax; sG += it.gross; gN += it.net; gT += it.tax; gG += it.gross;
+      }
+      flush();
+      return {
+        title: "Activity — Detailed (by Day)",
+        columns: [
+          { key: "docType", label: "Type" }, { key: "docNo", label: "No." }, { key: "acc", label: "Acc" }, { key: "customer", label: "Customer" },
+          { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }, { key: "running", label: "Running Total", align: "right", kind: "money" },
+        ],
+        rows: out,
+        totals: { customer: "Total", net: gN, tax: gT, gross: gG, running },
+      };
+    }
     default:
       return { title: "Coming soon", columns: [{ key: "msg", label: "" }], rows: [], note: "This report isn't built into the web app yet — tell me and I'll add it next." };
   }

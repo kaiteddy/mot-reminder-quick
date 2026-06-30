@@ -5,7 +5,7 @@ import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { BarChart3, Printer, FileText, Eye, Loader2, X } from "lucide-react";
 
-const money = (n: number) => `£${(n || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number) => { const v = n || 0; return `${v < 0 ? "-" : ""}£${Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 type Report = { id: string; label: string; impl: boolean; viewOnly?: boolean };
@@ -20,9 +20,9 @@ const SALES: Group[] = [
   ] },
   { grouping: "All", reports: [{ id: "mot-sales-summary", label: "MOT Sales - Summary", impl: true }] },
   { grouping: "Day", reports: [
-    { id: "activity-brief", label: "Activity - Brief", impl: false },
-    { id: "activity-detailed", label: "Activity - Detailed", impl: false },
-    { id: "activity-fixed", label: "Activity - Fixed Price Breakdown", impl: false },
+    { id: "activity-brief", label: "Activity - Brief", impl: true },
+    { id: "activity-detailed", label: "Activity - Detailed", impl: true },
+    { id: "activity-fixed", label: "Activity - Fixed Price Breakdown", impl: true },
     { id: "activity-tax", label: "Activity - Tax Breakdown", impl: false },
   ] },
   { grouping: "Ungrouped", reports: [
@@ -187,7 +187,7 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mt-8 mb-8" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl mt-8 mb-8" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800">{data?.title || "Report"}</h3>
           <div className="flex items-center gap-2">
@@ -205,6 +205,7 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
           ) : !data?.rows?.length ? (
             <p className="py-8 text-center text-slate-400 text-sm">No data for this period.</p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50/60 text-[11px] uppercase tracking-wide text-slate-500">
@@ -232,6 +233,7 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
                 )}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
