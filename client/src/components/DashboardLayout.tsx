@@ -34,6 +34,7 @@ import {
   UserCheck,
   Search,
   FileText,
+  FileSpreadsheet,
   Mail,
   Settings,
   ShieldCheck,
@@ -86,6 +87,7 @@ const menuGroups = [
   { section: "Insights", items: [
     { icon: BarChart, label: "Analytics", path: "/analytics" },
     { icon: FileText, label: "Reports", path: "/reports" },
+    { icon: FileSpreadsheet, label: "Accounts Export", path: "/accounts-export" },
   ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },

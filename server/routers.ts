@@ -7,6 +7,7 @@ import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
 import { aiRouter } from "./routers/ai";
 import { omnipartRouter } from "./routers/omnipart";
+import { accountsExportRouter } from "./routers/accountsExport";
 
 import { desc, eq, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
 import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
@@ -18,6 +19,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   ai: aiRouter,
   omnipart: omnipartRouter,
+  accountsExport: accountsExportRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

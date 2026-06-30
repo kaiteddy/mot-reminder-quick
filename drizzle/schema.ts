@@ -269,6 +269,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   excessDiscount: numeric("excessDiscount", { precision: 10, scale: 2 }),
   custVatRegistered: integer("custVatRegistered"),
   terms: varchar("terms", { length: 255 }),
+  accountsExportedAt: timestamp("accountsExportedAt", { mode: "date" }), // set when exported to the accounts package (Sage CSV); prevents re-export
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),

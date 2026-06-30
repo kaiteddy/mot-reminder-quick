@@ -20,6 +20,7 @@ const EmailSettings = lazy(() => import("./pages/EmailSettings"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const SearchResults = lazy(() => import("./pages/SearchResults"));
 const Reports = lazy(() => import("./pages/Reports"));
+const AccountsExport = lazy(() => import("./pages/AccountsExport"));
 const Vehicles = lazy(() => import("./pages/Vehicles"));
 const VehicleDetails = lazy(() => import("./pages/VehicleDetails"));
 const Duplicates = lazy(() => import("./pages/Duplicates"));
@@ -78,6 +79,7 @@ function Router() {
       {/* Other routes */}
       <Route path="/analytics" component={Analytics} />
       <Route path="/reports" component={Reports} />
+      <Route path="/accounts-export" component={AccountsExport} />
       <Route path="/search" component={SearchResults} />
       <Route path="/database" component={Database} />
       <Route path="/mot-check" component={MOTCheck} />
