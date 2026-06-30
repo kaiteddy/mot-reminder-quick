@@ -38,7 +38,8 @@ const dt = (d: Date | null) => (d ? d.toISOString().slice(0, 19).replace("T", " 
 function load(file: string): Record<string, string>[] {
   const p = path.join(EXP, file);
   if (!fs.existsSync(p)) { console.log(`  ! ${file} not found at ${p}`); return []; }
-  return parse(fs.readFileSync(p), { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true });
+  // skip_records_with_error: a single malformed quote in a GA4 export must not abort the whole sync.
+  return parse(fs.readFileSync(p), { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true, skip_records_with_error: true });
 }
 
 const c = new pg.Client({ connectionString: process.env.DATABASE_URL_NEON || process.env.DATABASE_URL });
