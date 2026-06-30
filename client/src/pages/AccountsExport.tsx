@@ -13,12 +13,39 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const lastDayISO = (m: number, y: number) => { const d = new Date(y, m, 0); return `${y}-${String(m).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-function downloadCSV(name: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+function downloadBlob(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+const concat = (arrs: Uint8Array[]): Uint8Array => {
+  let len = 0; for (const a of arrs) len += a.length;
+  const out = new Uint8Array(len); let o = 0; for (const a of arrs) { out.set(a, o); o += a.length; } return out;
+};
+// Minimal STORE (uncompressed) zip — bundles the export files into ONE download
+// (browsers block multiple sequential downloads; a single zip also matches GA4's dated folder).
+function makeZip(files: { name: string; content: string }[]): Blob {
+  const enc = new TextEncoder();
+  const tbl = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; tbl[n] = c >>> 0; }
+  const crc32 = (b: Uint8Array) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = tbl[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const u16 = (n: number) => new Uint8Array([n & 0xFF, (n >>> 8) & 0xFF]);
+  const u32 = (n: number) => new Uint8Array([n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]);
+  const local: Uint8Array[] = [], central: Uint8Array[] = [];
+  let offset = 0;
+  for (const f of files) {
+    const nameB = enc.encode(f.name), data = enc.encode(f.content), crc = crc32(data);
+    const lh = concat([u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0), nameB]);
+    local.push(lh, data);
+    central.push(concat([u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), nameB]));
+    offset += lh.length + data.length;
+  }
+  const cd = concat(central);
+  const eocd = concat([u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cd.length), u32(offset), u16(0)]);
+  const all = concat([concat(local), cd, eocd]);
+  return new Blob([all as BlobPart], { type: "application/zip" });
 }
 
 // Labels for the sales nominal category rows (key -> display)
@@ -62,9 +89,9 @@ export default function AccountsExport() {
       if (res.counts.invoices === 0 && res.counts.payments === 0 && res.counts.customers === 0) {
         toast.message("Nothing to export", { description: "No un-exported records were found in that range." });
       } else {
-        res.files.forEach((f: any, i: number) => setTimeout(() => downloadCSV(f.name, f.content), i * 400));
+        downloadBlob(`${res.folder}.zip`, makeZip(res.files));
         toast.success(`Exported ${res.counts.invoices} invoices, ${res.counts.payments} payments`, {
-          description: `${res.counts.customers} customers · ${res.counts.invoiceLines} invoice lines · 3 files downloading${markAfter ? " · marked as exported" : ""}`,
+          description: `${res.counts.customers} customers · ${res.counts.invoiceLines} invoice lines · ${res.folder}.zip (3 files)${markAfter ? " · marked as exported" : ""}`,
         });
         logsQuery.refetch();
       }
