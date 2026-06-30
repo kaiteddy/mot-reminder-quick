@@ -1169,7 +1169,8 @@ export async function getSalesListing(opts: { from: string; to: string; basedOn?
   const from = new Date(opts.from + "T00:00:00");
   const to = new Date(opts.to + "T23:59:59.999");
   const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
-  const conds: any[] = [gte(dateCol, from), lte(dateCol, to), inArray(serviceHistory.docType, ["SI", "CR"])];
+  // GA4's "Sales Issued" report counts invoices (SI), excess/counter-sales (XS) and credit notes (CR).
+  const conds: any[] = [gte(dateCol, from), lte(dateCol, to), inArray(serviceHistory.docType, ["SI", "XS", "CR"])];
   if (opts.department) conds.push(eq(serviceHistory.department, opts.department));
   const rows = await db.select({
     date: dateCol,
