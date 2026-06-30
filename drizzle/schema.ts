@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Postgres schema (Neon). Ported from the original MySQL/TiDB schema:
@@ -492,3 +492,64 @@ export const salesStock = pgTable("salesStock", {
 }));
 
 export type SalesStock = typeof salesStock.$inferSelect;
+
+/**
+ * ── Expenditure reconciliation (bank + Barclaycard cashbook) ──────────────
+ * Additive tables for the Finance / Profit & Cashbook feature. Bank + card
+ * transactions are stored signed (money out = negative, in = positive) and
+ * resolve to a category via the transactionLabels cascade (counterparty ->
+ * category), with an optional per-row override. Categories carry a P&L
+ * `section` so the reconciliation can roll up to Gross / Operating profit.
+ */
+export const expenditureCategories = pgTable("expenditureCategories", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 80 }).notNull().unique(),
+  section: varchar("section", { length: 20 }).$type<"receipts" | "cogs" | "cartrade" | "overheads" | "taxes" | "financing">().notNull(),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  isContra: integer("isContra").notNull().default(0), // 1 = transfer/settlement, excluded from P&L
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+  sectionIdx: index("expenditure_categories_section_idx").on(table.section),
+}));
+
+export type ExpenditureCategory = typeof expenditureCategories.$inferSelect;
+
+/** Cascade map: a payee/merchant (normalised key) -> category. Set once, applies to all its transactions. */
+export const transactionLabels = pgTable("transactionLabels", {
+  id: serial("id").primaryKey(),
+  source: varchar("source", { length: 8 }).$type<"bank" | "card">().notNull(),
+  counterpartyKey: varchar("counterpartyKey", { length: 200 }).notNull(),
+  category: varchar("category", { length: 80 }).notNull(),
+  note: text("note"),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  keyIdx: uniqueIndex("transaction_labels_source_key_idx").on(table.source, table.counterpartyKey),
+}));
+
+export type TransactionLabel = typeof transactionLabels.$inferSelect;
+
+/** Individual bank (Barclays) and card (Barclaycard) transactions. */
+export const bankTransactions = pgTable("bankTransactions", {
+  id: serial("id").primaryKey(),
+  source: varchar("source", { length: 8 }).$type<"bank" | "card">().notNull(),
+  txnDate: timestamp("txnDate", { mode: "date" }).notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(), // signed: out = negative
+  direction: varchar("direction", { length: 4 }).$type<"IN" | "OUT">().notNull(),
+  counterparty: varchar("counterparty", { length: 255 }), // raw payee/merchant for display
+  counterpartyKey: varchar("counterpartyKey", { length: 200 }), // normalised, joins to transactionLabels
+  memo: text("memo"),
+  cardHolder: varchar("cardHolder", { length: 120 }), // card only
+  bankCategoryHint: varchar("bankCategoryHint", { length: 120 }), // Barclaycard's own category / bank subcategory
+  subcategory: varchar("subcategory", { length: 120 }),
+  categoryOverride: varchar("categoryOverride", { length: 80 }), // per-row manual override
+  dedupeKey: varchar("dedupeKey", { length: 64 }).notNull().unique(), // hash(source|date|amount|memo) to block re-import dupes
+  importBatch: varchar("importBatch", { length: 40 }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+  dateIdx: index("bank_transactions_date_idx").on(table.txnDate),
+  sourceIdx: index("bank_transactions_source_idx").on(table.source),
+  keyIdx: index("bank_transactions_counterparty_key_idx").on(table.counterpartyKey),
+}));
+
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = typeof bankTransactions.$inferInsert;

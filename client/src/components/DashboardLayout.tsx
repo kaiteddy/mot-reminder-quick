@@ -89,6 +89,9 @@ const menuGroups = [
     { icon: FileText, label: "Reports", path: "/reports" },
     { icon: FileSpreadsheet, label: "Accounts Export", path: "/accounts-export" },
   ] },
+  { section: "Finance", items: [
+    { icon: PoundSterling, label: "Profit & Cashbook", path: "/reconciliation" },
+  ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },
     { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
