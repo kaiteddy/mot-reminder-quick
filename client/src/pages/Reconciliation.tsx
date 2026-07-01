@@ -80,7 +80,8 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.reconciliation.useQuery({ from, to });
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
-  const { months, sales, sections, carTrading, vat } = q.data as any;
+  const { months, sales, sections, carTrading, vat, categories } = q.data as any;
+  const catAmts = (name: string): number[] => (categories || []).find((c: any) => c.name === name)?.amounts || months.map(() => 0);
 
   const vatDue = vat?.due || months.map(() => 0);
   const vatDueWorkshop = vat?.dueWorkshop || months.map(() => 0);
@@ -162,6 +163,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
             <Row label="Bank takings (cash in)" vals={receipts} indent />
             <Row label="Financing / drawings / contra" vals={financing} indent />
+            <Row label="→ Adam Rutstein (drawings / loan)" vals={catAmts("Director — Adam Rutstein")} indent />
+            <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent />
+            <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
             <TableRow className="bg-violet-50"><TableCell colSpan={months.length + 2} className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">VAT — Barclays expenditure is VAT-inclusive</TableCell></TableRow>
             <Row label="VAT due — workshop (output)" vals={vatDueWorkshop} indent />
