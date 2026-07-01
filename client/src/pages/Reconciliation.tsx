@@ -80,8 +80,11 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.reconciliation.useQuery({ from, to });
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
-  const { months, sales, sections, carTrading } = q.data as any;
+  const { months, sales, sections, carTrading, vat } = q.data as any;
 
+  const vatDue = vat?.due || months.map(() => 0);
+  const vatReclaimedNeg = (vat?.reclaimed || months.map(() => 0)).map((x: number) => -x);
+  const vatNet = vat?.net || months.map(() => 0);
   const sec = (k: string): number[] => sections[k] || months.map(() => 0);
   const cogs = sec("cogs"), overheads = sec("overheads"), cartrade = sec("cartrade"),
         taxes = sec("taxes"), receipts = sec("receipts"), financing = sec("financing");
@@ -103,6 +106,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   );
 
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader><CardTitle>Monthly P&amp;L — workshop</CardTitle></CardHeader>
       <CardContent className="overflow-x-auto">
@@ -131,12 +135,53 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
             <Row label="Bank takings (cash in)" vals={receipts} indent />
             <Row label="Financing / drawings / contra" vals={financing} indent />
+            <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
+            <TableRow className="bg-violet-50"><TableCell colSpan={months.length + 2} className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">VAT — Barclays expenditure is VAT-inclusive</TableCell></TableRow>
+            <Row label="VAT due (output — on sales)" vals={vatDue} />
+            <Row label="VAT reclaimed (input — on expenditure)" vals={vatReclaimedNeg} indent />
+            <Row label="VAT net payable to HMRC" vals={vatNet} bold />
           </TableBody>
         </Table>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          Car trading margin comes from sold cars on the <b className="mx-1">Car Trading</b> tab. "Car purchases — cash out on stock" is what you spent buying stock that month (cash view); "Bank takings" are cash received, shown for cross-check — not added to revenue.
+          Car trading margin comes from sold cars on the <b className="mx-1">Car Trading</b> tab. "Car purchases — cash out on stock" is what you spent buying stock that month (cash view); "Bank takings" are cash received, shown for cross-check — not added to revenue. Expenditure is shown <b className="mx-1">net of reclaimable VAT</b>; adjust which categories carry VAT below.
         </p>
+      </CardContent>
+    </Card>
+    <CategoryVatEditor />
+    </div>
+  );
+}
+
+/** Per-category default VAT rate — drives how much input VAT is stripped from each Barclays txn. */
+function CategoryVatEditor() {
+  const cats = trpc.expenditure.categories.useQuery();
+  const utils = trpc.useUtils();
+  const setVat = trpc.expenditure.setCategoryVat.useMutation({
+    onSuccess: () => { utils.expenditure.categories.invalidate(); utils.expenditure.reconciliation.invalidate(); },
+  });
+  if (!cats.data) return null;
+  const rows = (cats.data as any[]).filter((c) => c.name !== "OTHER / to label" && !/^INCOME/.test(c.name));
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">VAT rate by category</CardTitle></CardHeader>
+      <CardContent>
+        <p className="mb-3 text-xs text-slate-500">Barclays &amp; Barclaycard amounts are VAT-inclusive. Set each category's input-VAT rate — 20% strips reclaimable VAT, 0% for exempt / outside-scope (wages, insurance, HMRC, financing, MOT/DVLA, bank charges, used-car margin stock).</p>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((c) => (
+            <div key={c.name} className="flex items-center justify-between gap-2 border-b border-slate-50 py-1 text-[13px]">
+              <span className="truncate text-slate-600" title={c.name}>{c.name}</span>
+              <Select value={String(c.vatRate)} onValueChange={(v) => setVat.mutate({ name: c.name, vatRate: Number(v) })}>
+                <SelectTrigger className="h-7 w-[76px] shrink-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20%</SelectItem>
+                  <SelectItem value="5">5%</SelectItem>
+                  <SelectItem value="0">0%</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

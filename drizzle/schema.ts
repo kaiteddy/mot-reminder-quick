@@ -507,6 +507,7 @@ export const expenditureCategories = pgTable("expenditureCategories", {
   section: varchar("section", { length: 20 }).$type<"receipts" | "cogs" | "cartrade" | "overheads" | "taxes" | "financing">().notNull(),
   sortOrder: integer("sortOrder").notNull().default(0),
   isContra: integer("isContra").notNull().default(0), // 1 = transfer/settlement, excluded from P&L
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }).notNull().default("20"), // default input-VAT rate for txns in this category; 0 = exempt/outside-scope
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   sectionIdx: index("expenditure_categories_section_idx").on(table.section),
@@ -542,6 +543,7 @@ export const bankTransactions = pgTable("bankTransactions", {
   bankCategoryHint: varchar("bankCategoryHint", { length: 120 }), // Barclaycard's own category / bank subcategory
   subcategory: varchar("subcategory", { length: 120 }),
   categoryOverride: varchar("categoryOverride", { length: 80 }), // per-row manual override
+  vatRateOverride: numeric("vatRateOverride", { precision: 5, scale: 2 }), // per-txn VAT rate; overrides the category default when the merchant differs (e.g. non-VAT-registered)
   carDealId: integer("carDealId"), // links a vehicle-stock purchase to a car deal (carDeals.id)
   dedupeKey: varchar("dedupeKey", { length: 64 }).notNull().unique(), // hash(source|date|amount|memo) to block re-import dupes
   importBatch: varchar("importBatch", { length: 40 }),

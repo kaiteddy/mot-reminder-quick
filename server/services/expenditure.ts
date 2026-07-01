@@ -39,23 +39,33 @@ export async function getReconciliation(opts: { from: string; to: string }) {
   const months = monthList(opts.from, opts.to);
   const idx = Object.fromEntries(months.map((m, i) => [m, i]));
 
-  // Workshop sales (SI+XS-CR net) by month
+  // Workshop sales (SI+XS-CR) — net AND output VAT (VAT due) by month
   const salesRows: any = await db.execute(sql`
     SELECT to_char(date_trunc('month',"dateIssued"),'YYYY-MM') m,
-      SUM(CASE WHEN "docType" IN ('SI','XS') THEN 1 WHEN "docType"='CR' THEN -1 ELSE 0 END
-          * COALESCE(NULLIF(regexp_replace("totalNet"::text,'[^0-9.\-]','','g'),'')::numeric,0)) net
-    FROM "serviceHistory"
-    WHERE "docType" IN ('SI','XS','CR') AND "dateIssued" >= ${opts.from}::date AND "dateIssued" < (${opts.to}::date + INTERVAL '1 day')
-    GROUP BY 1`);
+      SUM(sgn * netv) net, SUM(sgn * taxv) vat
+    FROM (
+      SELECT "dateIssued",
+        CASE WHEN "docType" IN ('SI','XS') THEN 1 WHEN "docType"='CR' THEN -1 ELSE 0 END sgn,
+        COALESCE(NULLIF(regexp_replace("totalNet"::text,'[^0-9.\-]','','g'),'')::numeric,0) netv,
+        COALESCE(NULLIF(regexp_replace("totalTax"::text,'[^0-9.\-]','','g'),'')::numeric,0) taxv
+      FROM "serviceHistory"
+      WHERE "docType" IN ('SI','XS','CR') AND "dateIssued" >= ${opts.from}::date AND "dateIssued" < (${opts.to}::date + INTERVAL '1 day')
+    ) s GROUP BY 1`);
   const sales = months.map(() => 0);
-  for (const r of salesRows.rows || []) if (r.m in idx) sales[idx[r.m]] = num(r.net);
+  const vatDue = months.map(() => 0);
+  for (const r of salesRows.rows || []) if (r.m in idx) { sales[idx[r.m]] = num(r.net); vatDue[idx[r.m]] = num(r.vat); }
 
-  // Expenditure by month x category (with section)
+  // Barclays bank/card amounts are VAT-inclusive. Effective input-VAT rate per txn:
+  // per-row override -> category default -> 20. NET = gross ex-VAT; the remainder is reclaimable VAT.
+  const ER = sql`COALESCE(t."vatRateOverride", c."vatRate", 20)`;
+  const NET = sql`(t."amount"::numeric * 100.0 / (100 + ${ER}))`;
+
+  // Expenditure by month x category (with section) — amounts are NET of reclaimable VAT
   const expRows: any = await db.execute(sql`
     SELECT to_char(date_trunc('month',t."txnDate"),'YYYY-MM') m,
            ${RESOLVED} category, COALESCE(c."section",'overheads') section,
            COALESCE(c."sortOrder",999) "sortOrder", COALESCE(c."isContra",0) "isContra",
-           SUM(t."amount") amt
+           SUM(${NET}) amt
     ${JOIN}
     WHERE t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day')
     GROUP BY 1,2,3,4,5`);
@@ -77,6 +87,16 @@ export async function getReconciliation(opts: { from: string; to: string }) {
   }
   const categories = [...catMap.values()].sort((a, b) => a.sortOrder - b.sortOrder);
 
+  // Input VAT reclaimed on expenditure (money-out only) by month
+  const vatRows: any = await db.execute(sql`
+    SELECT to_char(date_trunc('month',t."txnDate"),'YYYY-MM') m, SUM(t."amount"::numeric - ${NET}) vatp
+    ${JOIN}
+    WHERE t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day') AND t."amount"::numeric < 0
+    GROUP BY 1`);
+  const vatReclaimed = months.map(() => 0);
+  for (const r of vatRows.rows || []) if (r.m in idx) vatReclaimed[idx[r.m]] = -num(r.vatp); // vatp is negative for money-out
+  const vatNet = months.map((_, i) => vatDue[i] - vatReclaimed[i]); // net VAT payable to HMRC
+
   // Car trading: sold cars matched by sale month (revenue, cost-of-cars-sold, margin)
   const carRows: any = await db.execute(sql`
     SELECT to_char(d."saleDate",'YYYY-MM') m,
@@ -93,7 +113,7 @@ export async function getReconciliation(opts: { from: string; to: string }) {
     carTrading.cost[i] = num(r.cost);
     carTrading.margin[i] = num(r.revenue) - num(r.cost);
   }
-  return { months, sales, sections, categories, carTrading };
+  return { months, sales, sections, categories, carTrading, vat: { due: vatDue, reclaimed: vatReclaimed, net: vatNet } };
 }
 
 /** Paged, filtered transaction list with resolved category. */
@@ -130,8 +150,26 @@ export async function listTransactions(opts: {
 export async function getCategories() {
   const db = await getDb();
   if (!db) return [];
-  const res: any = await db.execute(sql`SELECT "name","section","sortOrder","isContra" FROM "expenditureCategories" ORDER BY "sortOrder"`);
-  return (res.rows || []).map((r: any) => ({ ...r, sortOrder: num(r.sortOrder), isContra: num(r.isContra) }));
+  const res: any = await db.execute(sql`SELECT "name","section","sortOrder","isContra","vatRate" FROM "expenditureCategories" ORDER BY "sortOrder"`);
+  return (res.rows || []).map((r: any) => ({ ...r, sortOrder: num(r.sortOrder), isContra: num(r.isContra), vatRate: num(r.vatRate) }));
+}
+
+/** Set the default input-VAT rate for a category (0 = exempt/outside-scope, 20 = standard). */
+export async function setCategoryVat(input: { name: string; vatRate: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("no db");
+  const rate = Math.max(0, Math.min(100, Number(input.vatRate) || 0));
+  await db.execute(sql`UPDATE "expenditureCategories" SET "vatRate"=${rate} WHERE "name"=${input.name}`);
+  return { ok: true };
+}
+
+/** Per-transaction VAT-rate override (null clears it, falling back to the category default). */
+export async function setTxnVatOverride(input: { id: number; vatRate: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("no db");
+  const rate = input.vatRate == null ? null : Math.max(0, Math.min(100, Number(input.vatRate) || 0));
+  await db.execute(sql`UPDATE "bankTransactions" SET "vatRateOverride"=${rate} WHERE "id"=${input.id}`);
+  return { ok: true };
 }
 
 /** Counterparty label list: each payee/merchant with txn count, total, current category. */

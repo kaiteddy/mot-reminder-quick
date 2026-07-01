@@ -32,6 +32,20 @@ export const expenditureRouter = router({
     return getCategories();
   }),
 
+  setCategoryVat: publicProcedure
+    .input(z.object({ name: z.string(), vatRate: z.number() }))
+    .mutation(async ({ input }) => {
+      const { setCategoryVat } = await import("../services/expenditure");
+      return setCategoryVat(input);
+    }),
+
+  setTxnVatOverride: publicProcedure
+    .input(z.object({ id: z.number(), vatRate: z.number().nullable() }))
+    .mutation(async ({ input }) => {
+      const { setTxnVatOverride } = await import("../services/expenditure");
+      return setTxnVatOverride(input);
+    }),
+
   labels: publicProcedure
     .input(z.object({ source: source.optional() }))
     .query(async ({ input }) => {
