@@ -95,25 +95,31 @@ export async function getReconciliation(opts: { from: string; to: string }) {
     GROUP BY 1`);
   const vatReclaimed = months.map(() => 0);
   for (const r of vatRows.rows || []) if (r.m in idx) vatReclaimed[idx[r.m]] = -num(r.vatp); // vatp is negative for money-out
-  const vatNet = months.map((_, i) => vatDue[i] - vatReclaimed[i]); // net VAT payable to HMRC
+  const vatDueWorkshop = [...vatDue]; // output VAT from GA4 workshop sales; car-margin VAT added below
 
-  // Car trading: sold cars matched by sale month (revenue, cost-of-cars-sold, margin)
+  // Car trading: sold cars matched by sale month (revenue, cost-of-cars-sold, margin).
+  // Margin-scheme VAT = vehicle margin (sale − vehicle purchase price, excl. fees/recon) × 1/6.
   const carRows: any = await db.execute(sql`
     SELECT to_char(d."saleDate",'YYYY-MM') m,
       SUM(COALESCE(d."salePrice",0)) revenue,
-      SUM(COALESCE(d."purchaseCost", lp.total, 0) + COALESCE(d."reconditioningCost",0)) cost
+      SUM(COALESCE(d."purchaseCost", lp.total, 0) + COALESCE(d."reconditioningCost",0)) cost,
+      SUM(GREATEST(COALESCE(d."salePrice",0) - COALESCE(d."purchaseCost",0), 0)) vmargin
     FROM "carDeals" d
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId" IS NOT NULL GROUP BY "carDealId") lp ON lp."carDealId"=d."id"
     WHERE d."status"='sold' AND d."saleDate" IS NOT NULL
     GROUP BY 1`);
   const carTrading = { revenue: months.map(() => 0), cost: months.map(() => 0), margin: months.map(() => 0) };
+  const vatDueCars = months.map(() => 0);
   for (const r of carRows.rows || []) {
     const i = idx[r.m]; if (i === undefined) continue;
     carTrading.revenue[i] = num(r.revenue);
     carTrading.cost[i] = num(r.cost);
     carTrading.margin[i] = num(r.revenue) - num(r.cost);
+    vatDueCars[i] = num(r.vmargin) / 6;   // margin-scheme output VAT (1/6 of the vehicle margin)
+    vatDue[i] += vatDueCars[i];           // total output VAT = workshop + car margins
   }
-  return { months, sales, sections, categories, carTrading, vat: { due: vatDue, reclaimed: vatReclaimed, net: vatNet } };
+  const vatNet = months.map((_, i) => vatDue[i] - vatReclaimed[i]); // net VAT payable to HMRC
+  return { months, sales, sections, categories, carTrading, vat: { due: vatDue, dueWorkshop: vatDueWorkshop, dueCars: vatDueCars, reclaimed: vatReclaimed, net: vatNet } };
 }
 
 /** Paged, filtered transaction list with resolved category. */

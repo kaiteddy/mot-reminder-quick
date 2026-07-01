@@ -83,6 +83,8 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const { months, sales, sections, carTrading, vat } = q.data as any;
 
   const vatDue = vat?.due || months.map(() => 0);
+  const vatDueWorkshop = vat?.dueWorkshop || months.map(() => 0);
+  const vatDueCars = vat?.dueCars || months.map(() => 0);
   const vatReclaimedNeg = (vat?.reclaimed || months.map(() => 0)).map((x: number) => -x);
   const vatNet = vat?.net || months.map(() => 0);
   const sec = (k: string): number[] => sections[k] || months.map(() => 0);
@@ -137,7 +139,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Financing / drawings / contra" vals={financing} indent />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
             <TableRow className="bg-violet-50"><TableCell colSpan={months.length + 2} className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">VAT — Barclays expenditure is VAT-inclusive</TableCell></TableRow>
-            <Row label="VAT due (output — on sales)" vals={vatDue} />
+            <Row label="VAT due — workshop (output)" vals={vatDueWorkshop} indent />
+            <Row label="VAT due — car margins (÷6)" vals={vatDueCars} indent />
+            <Row label="VAT due (output — total)" vals={vatDue} />
             <Row label="VAT reclaimed (input — on expenditure)" vals={vatReclaimedNeg} indent />
             <Row label="VAT net payable to HMRC" vals={vatNet} bold />
           </TableBody>
