@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Upload, AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
@@ -60,6 +61,7 @@ export default function Reconciliation() {
         <Tabs defaultValue="summary">
           <TabsList>
             <TabsTrigger value="summary">Summary (P&amp;L)</TabsTrigger>
+            <TabsTrigger value="export">Export for AI</TabsTrigger>
             <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
             <TabsTrigger value="cars">Car Trading</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
@@ -68,6 +70,7 @@ export default function Reconciliation() {
           </TabsList>
 
           <TabsContent value="summary"><SummaryTab from={from} to={to} /></TabsContent>
+          <TabsContent value="export"><ExportTab from={from} to={to} /></TabsContent>
           <TabsContent value="suppliers"><SuppliersTab from={from} to={to} /></TabsContent>
           <TabsContent value="cars"><CarTradingTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
@@ -228,6 +231,197 @@ function CategoryVatEditor() {
       </CardContent>
     </Card>
   );
+}
+
+/** Export the whole Profit & Cashbook as a self-contained Markdown brief to paste into an AI reviewer. */
+function ExportTab({ from, to }: { from: string; to: string }) {
+  const recon = trpc.expenditure.reconciliation.useQuery({ from, to });
+  const supp = trpc.expenditure.supplierSpend.useQuery({ from, to });
+  const cars = trpc.expenditure.carDeals.useQuery();
+  const [copied, setCopied] = useState(false);
+
+  if (recon.isLoading || supp.isLoading || cars.isLoading) return <Loading />;
+  if (!recon.data) return <p className="p-4 text-slate-500">No data.</p>;
+
+  const md = buildExportMarkdown(recon.data as any, supp.data as any, (cars.data as any) || [], from, to);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopied(true); toast.success("Copied — paste straight into ChatGPT or Claude");
+      setTimeout(() => setCopied(false), 2500);
+    } catch { toast.error("Copy blocked — click the text, ⌘A, ⌘C to copy manually"); }
+  };
+  const download = () => {
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `eli-motors-profit-cashbook_${from}_to_${to}.md`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Export for AI review</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-slate-500">
+          A self-contained Markdown brief of the whole Profit &amp; Cashbook for the selected period — business context,
+          the full monthly P&amp;L, VAT, per-car trading detail, supplier spend, data caveats and suggested review questions.
+          <b> Copy it and paste into ChatGPT / Claude</b>, or download the <code>.md</code> file to attach.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={copy}>{copied ? "Copied ✓" : "Copy to clipboard"}</Button>
+          <Button variant="outline" onClick={download}>Download .md</Button>
+          <span className="text-xs text-slate-400">{md.length.toLocaleString("en-GB")} chars · {md.split("\n").length} lines · period {from} → {to}</span>
+        </div>
+        <Textarea
+          readOnly value={md}
+          onFocus={(e) => e.currentTarget.select()}
+          className="h-[62vh] w-full font-mono text-[11px] leading-relaxed"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Build the Markdown brief from the reconciliation, supplier-spend and car-deal data. Pure function. */
+function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, to: string): string {
+  const { months = [], sales = [], sections = {}, carTrading = {}, vat = {}, categories = [] } = recon || {};
+  const fmt = (n: number) => (n < 0 ? "-" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
+  const zeros = () => months.map(() => 0);
+  const cat = (name: string): number[] => (categories || []).find((c: any) => c.name === name)?.amounts || zeros();
+  const sec = (k: string): number[] => sections?.[k] || zeros();
+  const cogs = sec("cogs"), overheads = sec("overheads"), cartrade = sec("cartrade"),
+        taxes = sec("taxes"), receipts = sec("receipts"), financing = sec("financing");
+  const gross = months.map((_: any, i: number) => (sales[i] || 0) + (cogs[i] || 0));
+  const carRev = carTrading?.revenue || zeros();
+  const carCostNeg = (carTrading?.cost || zeros()).map((x: number) => -x);
+  const carMargin = carTrading?.margin || zeros();
+  const combined = months.map((_: any, i: number) => gross[i] + (carMargin[i] || 0));
+  const net = months.map((_: any, i: number) => combined[i] + (overheads[i] || 0));
+  const adamLoan = cat("Director — Adam Rutstein"), adamWage = cat("Wages — Adam Rutstein");
+  const adamTot = months.map((_: any, i: number) => (adamLoan[i] || 0) + (adamWage[i] || 0));
+  const hillel = cat("Director — Hillel Rutstein"), brittain = cat("Rent — Douglas Brittain");
+  const vDue = vat?.due || zeros(), vWs = vat?.dueWorkshop || zeros(), vCar = vat?.dueCars || zeros();
+  const vRec = (vat?.reclaimed || zeros()).map((x: number) => -x), vNet = vat?.net || zeros();
+  const carInc = months.map((_: any, i: number) => (cartrade[i] || 0) < -50 && Math.round(carRev[i] || 0) === 0);
+
+  const nMonths = Math.max(months.length, 1);
+  const ohMonthly = Math.abs(sumArr(overheads)) / nMonths;
+  const wsGrossMonthly = sumArr(gross) / nMonths;
+  const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
+  const beDaily = ohMonthly / 26, wsEquiv = ohMonthly / 0.57;
+
+  const hdr = ["Line item", ...months.map(monthLabel), "Total"];
+  const headRow = "| " + hdr.join(" | ") + " |";
+  const sepRow = "| " + hdr.map(() => "---").join(" | ") + " |";
+  const rowFor = (label: string, vals: number[], inc?: boolean[]) =>
+    "| " + [label, ...vals.map((v: number, i: number) => (inc?.[i] ? "⚠ n/a" : fmt(v))), fmt(sumArr(vals))].join(" | ") + " |";
+  const tbl = (rows: string[]) => [headRow, sepRow, ...rows].join("\n");
+
+  const o: string[] = [];
+  o.push("# Eli Motors — Profit & Cashbook (management P&L)");
+  o.push(`_Period: ${from} to ${to}. Generated from the live reconciliation; figures rounded to £._`);
+  o.push("");
+  o.push("## What this is");
+  o.push("Eli Motors Ltd is a UK automatic-transmission specialist **garage (workshop)** that also **buys and sells used cars**. This internal management P&L reconciles:");
+  o.push("- **Workshop sales** — every job invoice from the garage system (GA4); VAT-registered, standard-rated work.");
+  o.push("- **Expenditure** — every Barclays bank + Barclaycard transaction, each categorised. Amounts are VAT-inclusive; the P&L shows them **net of reclaimable VAT**.");
+  o.push("- **Car trading** — used-car disposals under the **VAT margin scheme** (output VAT = (sale − purchase) ÷ 6), plus occasional standard-rated (STD) cars (VAT on full price ÷ 6). From the accountant's quarterly VAT margin schedules.");
+  o.push("");
+  o.push("**How to read it:** workshop and car trading are two profit centres. Overheads (wages, rent, advertising, insurance) are a **shared whole-business cost** taken off *combined* gross profit — not charged to the workshop alone. 'Cash movements & drawings' are owner/balance-sheet items shown for cash visibility, **not** part of profit.");
+  o.push("");
+  o.push("## Headline");
+  o.push(`- **Break-even overhead nut:** ${fmt(ohMonthly)}/month · ${fmt(beDaily)}/day (26 working days).`);
+  o.push(`- **Workshop gross covers ${wsCoverage}%** of the nut; car trading funds the rest.`);
+  o.push(`- **Workshop-only break-even:** ${fmt(wsEquiv)}/month of sales at ~57% gross margin, if there were no car sales.`);
+  o.push(`- **Period totals:** workshop sales ${fmt(sumArr(sales))} · workshop gross ${fmt(sumArr(gross))} · car margin ${fmt(sumArr(carMargin))} · combined gross ${fmt(sumArr(combined))} · overheads ${fmt(sumArr(overheads))} · **net business profit ${fmt(sumArr(net))}**.`);
+  o.push(`- **VAT (period):** output due ${fmt(sumArr(vDue))} (workshop ${fmt(sumArr(vWs))} + car margins ${fmt(sumArr(vCar))}) · input reclaimed ${fmt(-sumArr(vRec))} · **net payable ${fmt(sumArr(vNet))}**.`);
+  o.push("");
+  o.push("## Monthly P&L — trading");
+  o.push(tbl([
+    rowFor("Workshop sales", sales),
+    rowFor("— Cost of sales (parts & sublet)", cogs),
+    rowFor("Workshop gross profit", gross),
+    rowFor("Car sales", carRev, carInc),
+    rowFor("— Cost of cars sold", carCostNeg),
+    rowFor("Car trading margin", carMargin),
+    rowFor("Combined gross profit (workshop + cars)", combined),
+    rowFor("— Overheads (whole business, shared)", overheads),
+    rowFor("NET BUSINESS PROFIT", net),
+  ]));
+  o.push("");
+  o.push("> ⚠ n/a in **Car sales** = stock bought that month but disposals not yet digitised, so that month's car margin & profit are **understated, not zero** (see data gaps).");
+  o.push("");
+  o.push("## Cash movements & drawings (memo — not in profit)");
+  o.push(tbl([
+    rowFor("Car purchases — cash out on stock", cartrade),
+    rowFor("Taxes paid (VAT / Corp Tax)", taxes),
+    rowFor("Bank takings (cash in, cross-check only)", receipts),
+    rowFor("Financing / drawings / contra", financing),
+    rowFor("→ Adam Rutstein (drawings / loan)", adamLoan),
+    rowFor("→ Adam Rutstein (wages)", adamWage),
+    rowFor("→ Adam Rutstein — total drawn", adamTot),
+    rowFor("→ Hillel Rutstein (drawings / loan)", hillel),
+    rowFor("→ Douglas Brittain (rent, landlord)", brittain),
+  ]));
+  o.push("");
+  o.push("## VAT (Barclays expenditure is VAT-inclusive)");
+  o.push(tbl([
+    rowFor("VAT due — workshop (output)", vWs),
+    rowFor("VAT due — car margins (÷6)", vCar),
+    rowFor("VAT due (output, total)", vDue),
+    rowFor("VAT reclaimed (input, on expenditure)", vRec),
+    rowFor("VAT net payable to HMRC", vNet),
+  ]));
+  o.push("");
+
+  const sold = (cars || []).filter((c: any) => c.status === "sold" && c.saleDate)
+    .sort((a: any, b: any) => (a.saleDate < b.saleDate ? -1 : 1));
+  if (sold.length) {
+    o.push(`## Car trading detail — ${sold.length} sold`);
+    o.push("| Sold | Reg | Vehicle | Cost | Sale | Margin | VAT | Basis |");
+    o.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const c of sold) {
+      const std = /STD|standard-rated/i.test(c.notes || "");
+      const vatCar = std ? (c.salePrice || 0) / 6 : Math.max((c.salePrice || 0) - (c.effectiveCost || 0), 0) / 6;
+      const desc = String(c.description || "").replace(/\|/g, "/");
+      o.push(`| ${c.saleDate || ""} | ${c.registration || "—"} | ${desc} | ${fmt(c.effectiveCost || 0)} | ${fmt(c.salePrice || 0)} | ${fmt(c.margin || 0)} | ${fmt(vatCar)} | ${std ? "STD full-price" : "margin"} |`);
+    }
+    o.push("");
+  }
+
+  const allSup = supp?.suppliers || [];
+  const sup = allSup.slice(0, 30);
+  if (sup.length) {
+    o.push(`## Top suppliers by spend (${allSup.length} total, showing ${sup.length})`);
+    o.push("| # | Supplier | Category | Total | Trend (last 3mo vs prior 3mo) |");
+    o.push("| --- | --- | --- | --- | --- |");
+    sup.forEach((s: any, i: number) => {
+      const t = s.trendPct > 8 ? `up ${s.trendPct}%` : s.trendPct < -8 ? `down ${Math.abs(s.trendPct)}%` : "flat";
+      o.push(`| ${i + 1} | ${String(s.payee || "").replace(/\|/g, "/")} | ${String(s.category || "").replace(/\|/g, "/")} | ${fmt(s.total)} | ${t} |`);
+    });
+    o.push("");
+  }
+
+  o.push("## Known data gaps & treatments (factor into any review)");
+  o.push("- **Car disposals Nov 2025 – Apr 2026 are not yet digitised** (accountant hasn't finalised those quarterly VAT margin schedules). ⚠ months have stock purchases but no matching sales, so their car margin/profit and net are understated. Full-year car margin is materially higher than shown.");
+  o.push("- **Overheads are deliberately shared**, not allocated to workshop vs cars.");
+  o.push("- **BUPA / director medical** is a **director benefit (drawings)**, not an operating overhead — per the accountant's Directors Loan Account.");
+  o.push("- **Foreign SaaS** (Neon/Vercel/Anthropic/OpenAI/Google/Apple etc.) is **reverse-charge, 0% input VAT**. Rent and insurance are outside/exempt (0%).");
+  o.push("- **Bank takings** (cash in) are for cross-checking only and are **not** added to revenue (revenue = GA4 workshop invoices).");
+  o.push("- Director drawings split by memo: 'LOAN FT' = loan, 'BBP' = wages, to avoid double-counting.");
+  o.push("");
+  o.push("## Suggested questions for the reviewer");
+  o.push("1. Are the workshop gross margin (~57%) and monthly break-even reasonable for a specialist garage this size?");
+  o.push("2. Any categorisation that looks wrong, or an overhead that should be a direct cost (or vice-versa)?");
+  o.push("3. Is the VAT treatment sound (margin scheme ÷6, reverse-charge SaaS, 0% rent/insurance)? Any exposure?");
+  o.push("4. Cash flow / drawings: are the director extractions sustainable given net profit?");
+  o.push("5. Where are costs rising fastest (supplier trends) and what would you challenge?");
+  o.push("");
+  o.push(`_${(cars || []).length} car deals on file · ${months.length} months in range._`);
+  return o.join("\n");
 }
 
 /** Supplier spend analytics — monthly trend chart + per-supplier month-by-month table with rolling trend. */
