@@ -98,6 +98,13 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const netProfit = months.map((_: string, i: number) => combinedGross[i] + overheads[i]);   // shared overheads taken once
   // months where stock was bought but no car sales digitised yet → the car-sale rows are incomplete, not zero
   const carIncomplete = months.map((_: string, i: number) => cartrade[i] < -50 && Math.round(carRev[i]) === 0);
+  // break-even: monthly overhead "nut" the business must cover with gross profit
+  const nMonths = Math.max(months.length, 1);
+  const ohMonthly = Math.abs(sumArr(overheads)) / nMonths;
+  const wsGrossMonthly = sumArr(gross) / nMonths;
+  const beDaily = ohMonthly / 26;
+  const wsEquiv = ohMonthly / 0.57;
+  const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white" : bold ? "bg-slate-100 font-semibold" : ""}>
@@ -114,6 +121,12 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
     <Card>
       <CardHeader><CardTitle>Monthly P&amp;L — whole business</CardTitle></CardHeader>
       <CardContent className="overflow-x-auto">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / month</div><div className="text-lg font-bold text-slate-800">{money(ohMonthly)}</div><div className="text-[11px] text-slate-500">gross profit to cover overheads</div></div>
+          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / day</div><div className="text-lg font-bold text-slate-800">{money(beDaily)}</div><div className="text-[11px] text-slate-500">gross, over 26 working days</div></div>
+          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop sales equiv.</div><div className="text-lg font-bold text-slate-800">{money(wsEquiv)}</div><div className="text-[11px] text-slate-500">/mo at 57% margin, if no car sales</div></div>
+          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop covers</div><div className="text-lg font-bold text-slate-800">{wsCoverage}%</div><div className="text-[11px] text-slate-500">of the nut; cars fund the rest</div></div>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
