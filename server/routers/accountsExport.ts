@@ -5,6 +5,7 @@ const nominalPair = z.object({ std: z.string(), acct: z.string() });
 const configSchema = z.object({
   format: z.string(),
   combineInvoicesPayments: z.boolean(),
+  paymentsFromInvoices: z.boolean(),
   sales: z.object({ simpleFormat: z.boolean(), cashAccounting: z.boolean(), paidInFullOnly: z.boolean(), nonAccountPoolAcct: z.string() }),
   expenses: z.object({ cashAccounting: z.boolean(), paidInFullOnly: z.boolean(), departmentOverride: z.string(), nonAccountPoolAcct: z.string() }),
   vehicle: z.object({ partExPoolAll: z.boolean(), partExAcct: z.string(), purchasePoolAll: z.boolean(), purchaseAcct: z.string() }),
@@ -52,4 +53,20 @@ export const accountsExportRouter = router({
       const { markSalesExported } = await import("../services/accounts-export");
       return markSalesExported(input.toDate);
     }),
+
+  unpaidList: publicProcedure.query(async () => {
+    const { getUnpaidInvoices } = await import("../services/accounts-export");
+    return getUnpaidInvoices();
+  }),
+
+  searchInvoices: publicProcedure.input(z.object({ term: z.string() })).query(async ({ input }) => {
+    if (!input.term.trim()) return [];
+    const { searchInvoices } = await import("../services/accounts-export");
+    return searchInvoices(input.term);
+  }),
+
+  setUnpaid: publicProcedure.input(z.object({ id: z.number(), unpaid: z.boolean() })).mutation(async ({ input }) => {
+    const { setInvoiceUnpaid } = await import("../services/accounts-export");
+    return setInvoiceUnpaid(input.id, input.unpaid);
+  }),
 });

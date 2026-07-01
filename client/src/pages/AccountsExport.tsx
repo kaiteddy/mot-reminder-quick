@@ -65,6 +65,7 @@ export default function AccountsExport() {
   const [cfg, setCfg] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [newMethod, setNewMethod] = useState("");
+  const [unpaidSearch, setUnpaidSearch] = useState("");
 
   const cfgQuery = trpc.accountsExport.getConfig.useQuery();
   const logsQuery = trpc.accountsExport.logs.useQuery();
@@ -72,6 +73,13 @@ export default function AccountsExport() {
   const runSales = trpc.accountsExport.runSales.useMutation();
   const runExpenses = trpc.accountsExport.runExpenses.useMutation();
   const markExported = trpc.accountsExport.markExported.useMutation();
+  const unpaidList = trpc.accountsExport.unpaidList.useQuery();
+  const invSearch = trpc.accountsExport.searchInvoices.useQuery({ term: unpaidSearch }, { enabled: unpaidSearch.trim().length > 0 });
+  const setUnpaid = trpc.accountsExport.setUnpaid.useMutation();
+  const toggleUnpaid = async (id: number, unpaid: boolean) => {
+    try { await setUnpaid.mutateAsync({ id, unpaid }); unpaidList.refetch(); invSearch.refetch(); }
+    catch (e: any) { toast.error(e.message); }
+  };
 
   useEffect(() => { if (cfgQuery.data && !cfg) setCfg(cfgQuery.data); }, [cfgQuery.data]);
 
@@ -192,7 +200,7 @@ export default function AccountsExport() {
             <CardContent className="p-0">
               <Tabs defaultValue="info">
                 <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0 h-auto">
-                  {["info", "settings", "nominals", "payments", "logs"].map((t) => (
+                  {["info", "settings", "nominals", "payments", "unpaid", "logs"].map((t) => (
                     <TabsTrigger key={t} value={t} className="rounded-none border-b-2 border-transparent data-[state=active]:border-violet-600 data-[state=active]:shadow-none capitalize px-4 py-2.5">{t}</TabsTrigger>
                   ))}
                 </TabsList>
@@ -213,6 +221,10 @@ export default function AccountsExport() {
                 {/* Settings */}
                 <TabsContent value="settings" className="p-4 mt-0">
                   <ToggleRow label="Combine Invoices & Payments to single Audit Trail file" checked={cfg.combineInvoicesPayments} onChange={(v) => set("combineInvoicesPayments", v)} />
+                  <div className="flex items-center justify-between py-1.5 text-[13px]">
+                    <span className="text-slate-700">Payments from issued invoices <span className="text-[11px] text-slate-400">(each invoice = paid on issue date unless flagged unpaid)</span></span>
+                    <Switch checked={cfg.paymentsFromInvoices} onCheckedChange={(v) => set("paymentsFromInvoices", v)} />
+                  </div>
                   <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 items-center mt-3 text-[13px]">
                     <div className="font-semibold text-slate-600"></div><div className="font-semibold text-slate-500 text-center px-2">Sales</div><div className="font-semibold text-slate-500 text-center px-2">Exp.</div>
                     <SettingPair label="Simple export format" hint="One grand-total line per invoice instead of category breakdown." sales={cfg.sales.simpleFormat} onSales={(v) => set("sales.simpleFormat", v)} exp={null} />
@@ -259,6 +271,40 @@ export default function AccountsExport() {
                       </div>
                     ))}
                   </div>
+                </TabsContent>
+
+                {/* Unpaid */}
+                <TabsContent value="unpaid" className="p-4 mt-0">
+                  <div className="text-[12px] text-slate-500 mb-2">Invoices are treated as <b>paid on their issue date</b>. Flag any that <b>haven't been paid yet</b> — they're excluded from the payments export until you clear the flag.</div>
+                  <div className="mb-3">
+                    <Input value={unpaidSearch} onChange={(e) => setUnpaidSearch(e.target.value)} placeholder="Search invoice no. / customer / reg to flag…" className="h-8" />
+                    {unpaidSearch.trim() && (
+                      <div className="divide-y border rounded-md mt-2 max-h-56 overflow-auto">
+                        {(invSearch.data || []).length === 0 ? (
+                          <div className="px-3 py-3 text-[12px] text-slate-400 text-center">{invSearch.isFetching ? "Searching…" : "No matching invoices."}</div>
+                        ) : (invSearch.data || []).map((d: any) => (
+                          <div key={d.id} className="flex items-center justify-between px-3 py-1.5 text-[12px]">
+                            <span className="text-slate-700"><b>{d.docType} {d.docNo}</b> · {d.date ? new Date(d.date).toLocaleDateString("en-GB") : ""} · {d.customer || "—"} · £{Number(d.gross || 0).toFixed(2)}</span>
+                            <label className="flex items-center gap-1.5 shrink-0 cursor-pointer"><span className="text-[11px] text-slate-500">unpaid</span>
+                              <Switch checked={Number(d.unpaid) === 1} onCheckedChange={(v) => toggleUnpaid(d.id, v)} /></label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1">Currently flagged unpaid ({(unpaidList.data || []).length})</div>
+                  {(unpaidList.data || []).length === 0 ? (
+                    <div className="text-[13px] text-slate-400 py-4 text-center border rounded-md">None — all issued invoices are treated as paid.</div>
+                  ) : (
+                    <div className="divide-y border rounded-md">
+                      {(unpaidList.data || []).map((d: any) => (
+                        <div key={d.id} className="flex items-center justify-between px-3 py-1.5 text-[12px]">
+                          <span className="text-slate-700"><b>{d.docType} {d.docNo}</b> · {d.date ? new Date(d.date).toLocaleDateString("en-GB") : ""} · {d.customer || "—"} · £{Number(d.gross || 0).toFixed(2)}</span>
+                          <button onClick={() => toggleUnpaid(d.id, false)} className="text-[11px] text-violet-600 hover:underline shrink-0">mark paid</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* Logs */}

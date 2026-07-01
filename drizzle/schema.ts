@@ -270,6 +270,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   custVatRegistered: integer("custVatRegistered"),
   terms: varchar("terms", { length: 255 }),
   accountsExportedAt: timestamp("accountsExportedAt", { mode: "date" }), // set when exported to the accounts package (Sage CSV); prevents re-export
+  accountsUnpaid: integer("accountsUnpaid"), // 1 = manually flagged as not-yet-paid; invoices are treated as paid on issue date otherwise (GA4 doesn't register receipts). Not touched by GA4 sync.
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
