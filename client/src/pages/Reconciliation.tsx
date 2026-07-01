@@ -135,8 +135,8 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop covers</div><div className="text-lg font-bold text-slate-800">{wsCoverage}%</div><div className="text-[11px] text-slate-500">of the nut; cars fund the rest</div></div>
         </div>
         <div className="overflow-auto max-h-[72vh] rounded-md border">
-        <Table>
-          <TableHeader>
+        <table className="w-full caption-bottom text-sm border-separate border-spacing-0 [&_td]:border-b [&_th]:border-b [&_td]:border-slate-100 [&_th]:border-slate-200">
+          <TableHeader className="sticky top-0 z-20 [&_th]:bg-slate-50">
             <TableRow>
               <TableHead className="sticky left-0 top-0 z-30 bg-slate-50">£</TableHead>
               {months.map((m: string) => <TableHead key={m} className="sticky top-0 z-20 bg-slate-50 text-right">{monthLabel(m)}</TableHead>)}
@@ -183,7 +183,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="VAT reclaimed (input — on expenditure)" vals={vatReclaimedNeg} indent />
             <Row label="VAT net payable to HMRC" vals={vatNet} bold />
           </TableBody>
-        </Table>
+        </table>
         </div>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
@@ -259,8 +259,8 @@ function SuppliersTab({ from, to }: { from: string; to: string }) {
         <CardHeader><CardTitle>Suppliers by spend</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-auto max-h-[70vh] rounded-md border">
-            <Table>
-              <TableHeader>
+            <table className="w-full caption-bottom text-sm border-separate border-spacing-0 [&_td]:border-b [&_th]:border-b [&_td]:border-slate-100 [&_th]:border-slate-200">
+              <TableHeader className="sticky top-0 z-20 [&_th]:bg-slate-50">
                 <TableRow>
                   <TableHead className="sticky left-0 top-0 z-30 bg-slate-50">Supplier</TableHead>
                   <TableHead className="sticky top-0 z-20 bg-slate-50">Category</TableHead>
@@ -282,7 +282,7 @@ function SuppliersTab({ from, to }: { from: string; to: string }) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </table>
           </div>
           <p className="mt-2 text-[11px] text-slate-400">Trend = last 3 months' average vs the prior 3 months (↑ rising = red, ↓ falling = green). Showing top {top.length} of {suppliers.length} suppliers.</p>
         </CardContent>
