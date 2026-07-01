@@ -82,6 +82,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
   const { months, sales, sections, carTrading, vat, categories } = q.data as any;
   const catAmts = (name: string): number[] => (categories || []).find((c: any) => c.name === name)?.amounts || months.map(() => 0);
+  const adamLoan = catAmts("Director — Adam Rutstein");
+  const adamWages = catAmts("Wages — Adam Rutstein");
+  const adamTotal = months.map((_: string, i: number) => adamLoan[i] + adamWages[i]);
 
   const vatDue = vat?.due || months.map(() => 0);
   const vatDueWorkshop = vat?.dueWorkshop || months.map(() => 0);
@@ -163,8 +166,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
             <Row label="Bank takings (cash in)" vals={receipts} indent />
             <Row label="Financing / drawings / contra" vals={financing} indent />
-            <Row label="→ Adam Rutstein (drawings / loan)" vals={catAmts("Director — Adam Rutstein")} indent />
-            <Row label="→ Adam Rutstein (wages)" vals={catAmts("Wages — Adam Rutstein")} indent />
+            <Row label="→ Adam Rutstein (drawings / loan)" vals={adamLoan} indent />
+            <Row label="→ Adam Rutstein (wages)" vals={adamWages} indent />
+            <Row label="→ Adam Rutstein — total drawn" vals={adamTotal} bold />
             <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent />
             <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
