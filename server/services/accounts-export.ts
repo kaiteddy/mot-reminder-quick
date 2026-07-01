@@ -17,12 +17,13 @@
  */
 import { getDb, getAppSetting, saveAppSetting } from "../db";
 import { serviceHistory, customers, payments } from "../../drizzle/schema";
-import { and, eq, inArray, isNull, lte, gte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, gte, sql, desc } from "drizzle-orm";
 
 export type NominalPair = { std: string; acct: string };
 export type AccountsConfig = {
   format: string;
   combineInvoicesPayments: boolean;
+  paymentsFromInvoices: boolean; // true = every issued invoice is a receipt on its issue date (unless flagged unpaid); false = use recorded receipts only
   sales: { simpleFormat: boolean; cashAccounting: boolean; paidInFullOnly: boolean; nonAccountPoolAcct: string };
   expenses: { cashAccounting: boolean; paidInFullOnly: boolean; departmentOverride: string; nonAccountPoolAcct: string };
   vehicle: { partExPoolAll: boolean; partExAcct: string; purchasePoolAll: boolean; purchaseAcct: string };
@@ -36,6 +37,7 @@ export type AccountsConfig = {
 export const DEFAULT_CONFIG: AccountsConfig = {
   format: "Sage Default Format",
   combineInvoicesPayments: false,
+  paymentsFromInvoices: true,
   sales: { simpleFormat: false, cashAccounting: false, paidInFullOnly: false, nonAccountPoolAcct: "" },
   expenses: { cashAccounting: false, paidInFullOnly: false, departmentOverride: "1", nonAccountPoolAcct: "" },
   vehicle: { partExPoolAll: false, partExAcct: "PXACC1", purchasePoolAll: false, purchaseAcct: "VPACC1" },
@@ -217,7 +219,18 @@ export async function generateSalesExport(opts: {
   const payRows: (string | number)[][] = [];
   let payCount = 0;
   const docIds = docs.map((d) => d.id);
-  if (docIds.length) {
+  if (cfg.paymentsFromInvoices) {
+    // The garage doesn't register receipts in GA4 (balance/datePaid stay unpopulated), so an issued
+    // invoice is treated as paid in full on its issue date — unless manually flagged not-yet-paid.
+    for (const d of docs) {
+      if (d.docType === "CR") continue; // credit notes aren't receipts
+      if (Number(d.accountsUnpaid) === 1) continue; // manually flagged as outstanding
+      const amt = num(d.totalGross); if (Math.abs(amt) < 0.005) continue;
+      payRows.push(["SA", accountRef(d, cfg), cfg.bankNominal, String(d.department || "1"), ukDate(d.dateIssued || d.dateCreated), String(d.docNo || ""), `Payment ${d.docNo || ""}`.trim(), money(amt), "T9", "0.00"]);
+      payCount++;
+    }
+  } else if (docIds.length) {
+    // legacy mode: only receipts actually recorded against the invoice
     const pays: any[] = await db.select().from(payments).where(inArray(payments.documentId, docIds));
     const byDoc = new Map<number, any>(docs.map((d) => [d.id, d]));
     for (const p of pays) {
@@ -261,6 +274,38 @@ export async function generateExpensesExport(opts: { toDate: string }): Promise<
     counts: { customers: 0, invoices: 0, invoiceLines: 0, payments: 0 },
     folder: `Expenses ${ukDate(new Date()).replace(/\//g, "-")}`,
   };
+}
+
+// ---- Unpaid-invoice flagging (drives which issued invoices become receipts in the export) ----
+const invSel = {
+  id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType,
+  date: serviceHistory.dateIssued, gross: serviceHistory.totalGross,
+  customer: serviceHistory.customerName, registration: serviceHistory.registration,
+  unpaid: serviceHistory.accountsUnpaid,
+};
+
+/** Invoices currently flagged as not-yet-paid (excluded from the payments export). */
+export async function getUnpaidInvoices() {
+  const db = await getDb(); if (!db) return [];
+  return db.select(invSel).from(serviceHistory)
+    .where(and(inArray(serviceHistory.docType, ["SI", "XS"]), eq(serviceHistory.accountsUnpaid, 1)))
+    .orderBy(desc(serviceHistory.dateIssued));
+}
+
+/** Search invoices by number / customer / reg so the user can flag them unpaid. */
+export async function searchInvoices(term: string) {
+  const db = await getDb(); if (!db) return [];
+  const t = `%${term.trim()}%`;
+  return db.select(invSel).from(serviceHistory)
+    .where(and(inArray(serviceHistory.docType, ["SI", "XS"]),
+      sql`(${serviceHistory.docNo} ILIKE ${t} OR ${serviceHistory.customerName} ILIKE ${t} OR ${serviceHistory.registration} ILIKE ${t})`))
+    .orderBy(desc(serviceHistory.dateIssued)).limit(40);
+}
+
+export async function setInvoiceUnpaid(id: number, unpaid: boolean) {
+  const db = await getDb(); if (!db) throw new Error("no db");
+  await db.update(serviceHistory).set({ accountsUnpaid: unpaid ? 1 : null } as any).where(eq(serviceHistory.id, id));
+  return { ok: true };
 }
 
 /** Mark all sales docs up to a date as already-exported, without generating files. */
