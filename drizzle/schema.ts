@@ -575,6 +575,7 @@ export const carDeals = pgTable("carDeals", {
   status: varchar("status", { length: 12 }).$type<"in_stock" | "sold">().notNull().default("in_stock"),
   salesStockId: integer("salesStockId"),                               // link to forecourt stock row
   saleInvoiceNo: varchar("saleInvoiceNo", { length: 20 }),             // VAT margin-scheme stock-book sales invoice no (dedupe key for book imports)
+  stdRated: integer("stdRated"),                                       // 1 = standard-rated (VAT-qualifying) car: output VAT = full sale/6, not margin/6
   notes: text("notes"),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),

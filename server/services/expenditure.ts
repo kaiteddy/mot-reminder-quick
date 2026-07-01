@@ -98,12 +98,14 @@ export async function getReconciliation(opts: { from: string; to: string }) {
   const vatDueWorkshop = [...vatDue]; // output VAT from GA4 workshop sales; car-margin VAT added below
 
   // Car trading: sold cars matched by sale month (revenue, cost-of-cars-sold, margin).
-  // Margin-scheme VAT = vehicle margin (sale − vehicle purchase price, excl. fees/recon) × 1/6.
+  // VAT base per car: margin-scheme cars = vehicle margin (sale − purchase, excl. fees/recon);
+  // STD (standard-rated / VAT-qualifying) cars = full selling price. Output VAT = base × 1/6.
   const carRows: any = await db.execute(sql`
     SELECT to_char(d."saleDate",'YYYY-MM') m,
       SUM(COALESCE(d."salePrice",0)) revenue,
       SUM(COALESCE(d."purchaseCost", lp.total, 0) + COALESCE(d."reconditioningCost",0)) cost,
-      SUM(GREATEST(COALESCE(d."salePrice",0) - COALESCE(d."purchaseCost",0), 0)) vmargin
+      SUM(CASE WHEN d."stdRated"=1 THEN COALESCE(d."salePrice",0)
+               ELSE GREATEST(COALESCE(d."salePrice",0) - COALESCE(d."purchaseCost",0), 0) END) vmargin
     FROM "carDeals" d
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId" IS NOT NULL GROUP BY "carDealId") lp ON lp."carDealId"=d."id"
     WHERE d."status"='sold' AND d."saleDate" IS NOT NULL
