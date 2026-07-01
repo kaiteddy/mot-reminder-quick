@@ -152,6 +152,43 @@ export async function listTransactions(opts: {
   };
 }
 
+/** Per-supplier monthly spend + trend (money-out), for the Suppliers analytics tab. */
+export async function getSupplierSpend(opts: { from: string; to: string }) {
+  const db = await getDb();
+  if (!db) return { months: [] as string[], suppliers: [] as any[], monthlyTotal: [] as number[] };
+  const months = monthList(opts.from, opts.to);
+  const idx = Object.fromEntries(months.map((m, i) => [m, i]));
+  const rows: any = await db.execute(sql`
+    SELECT COALESCE(NULLIF(t."counterparty",''),'(unknown)') payee, ${RESOLVED} category,
+           to_char(date_trunc('month', t."txnDate"),'YYYY-MM') mo, SUM(abs(t."amount"::numeric)) amt
+    ${JOIN}
+    WHERE t."amount"::numeric < 0 AND t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day')
+      AND COALESCE(c."section",'overheads') NOT IN ('financing','taxes','receipts')
+    GROUP BY 1,2,3`);
+  const map = new Map<string, any>();
+  const monthlyTotal = months.map(() => 0);
+  for (const r of rows.rows || []) {
+    const i = idx[r.mo]; if (i === undefined) continue;
+    const amt = num(r.amt);
+    if (!map.has(r.payee)) map.set(r.payee, { payee: r.payee, monthly: months.map(() => 0), total: 0, catSpend: {} as Record<string, number> });
+    const s = map.get(r.payee);
+    s.monthly[i] += amt; s.total += amt;
+    s.catSpend[r.category] = (s.catSpend[r.category] || 0) + amt;
+    monthlyTotal[i] += amt;
+  }
+  const n = months.length;
+  const suppliers = [...map.values()].map((s) => {
+    s.category = Object.entries(s.catSpend).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "—";
+    delete s.catSpend;
+    const last3 = s.monthly.slice(Math.max(0, n - 3)).reduce((a: number, b: number) => a + b, 0) / Math.min(3, n || 1);
+    const prevSlice = s.monthly.slice(Math.max(0, n - 6), Math.max(0, n - 3));
+    const prev3 = prevSlice.length ? prevSlice.reduce((a: number, b: number) => a + b, 0) / prevSlice.length : 0;
+    s.trendPct = prev3 > 0 ? Math.round(((last3 - prev3) / prev3) * 100) : (last3 > 0 ? 100 : 0);
+    return s;
+  }).sort((a, b) => b.total - a.total);
+  return { months, suppliers, monthlyTotal };
+}
+
 /** Category master list. */
 export async function getCategories() {
   const db = await getDb();

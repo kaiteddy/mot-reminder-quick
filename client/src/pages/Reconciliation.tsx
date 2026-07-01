@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Upload, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
 const monthLabel = (m: string) => {
@@ -59,6 +60,7 @@ export default function Reconciliation() {
         <Tabs defaultValue="summary">
           <TabsList>
             <TabsTrigger value="summary">Summary (P&amp;L)</TabsTrigger>
+            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
             <TabsTrigger value="cars">Car Trading</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="labels">Labels</TabsTrigger>
@@ -66,6 +68,7 @@ export default function Reconciliation() {
           </TabsList>
 
           <TabsContent value="summary"><SummaryTab from={from} to={to} /></TabsContent>
+          <TabsContent value="suppliers"><SuppliersTab from={from} to={to} /></TabsContent>
           <TabsContent value="cars"><CarTradingTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
           <TabsContent value="labels"><LabelsTab /></TabsContent>
@@ -112,11 +115,11 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white" : bold ? "bg-slate-100 font-semibold" : ""}>
-      <TableCell className={`whitespace-nowrap ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
+      <TableCell className={`sticky left-0 z-10 whitespace-nowrap ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"} ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
       {vals.map((v: number, i: number) => (
         <TableCell key={i} className={`text-right tabular-nums ${v < 0 && !hl ? "text-red-600" : ""}`}>{money(v)}</TableCell>
       ))}
-      <TableCell className="text-right font-bold tabular-nums">{money(sumArr(vals))}</TableCell>
+      <TableCell className={`sticky right-0 z-10 text-right font-bold tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"}`}>{money(sumArr(vals))}</TableCell>
     </TableRow>
   );
 
@@ -124,19 +127,20 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
     <div className="space-y-4">
     <Card>
       <CardHeader><CardTitle>Monthly P&amp;L — whole business</CardTitle></CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / month</div><div className="text-lg font-bold text-slate-800">{money(ohMonthly)}</div><div className="text-[11px] text-slate-500">gross profit to cover overheads</div></div>
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / day</div><div className="text-lg font-bold text-slate-800">{money(beDaily)}</div><div className="text-[11px] text-slate-500">gross, over 26 working days</div></div>
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop sales equiv.</div><div className="text-lg font-bold text-slate-800">{money(wsEquiv)}</div><div className="text-[11px] text-slate-500">/mo at 57% margin, if no car sales</div></div>
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop covers</div><div className="text-lg font-bold text-slate-800">{wsCoverage}%</div><div className="text-[11px] text-slate-500">of the nut; cars fund the rest</div></div>
         </div>
+        <div className="overflow-auto max-h-[72vh] rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-white">£</TableHead>
-              {months.map((m: string) => <TableHead key={m} className="text-right">{monthLabel(m)}</TableHead>)}
-              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="sticky left-0 top-0 z-30 bg-slate-50">£</TableHead>
+              {months.map((m: string) => <TableHead key={m} className="sticky top-0 z-20 bg-slate-50 text-right">{monthLabel(m)}</TableHead>)}
+              <TableHead className="sticky right-0 top-0 z-30 bg-slate-50 text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,7 +149,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Workshop gross profit" vals={gross} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <TableRow>
-              <TableCell className="whitespace-nowrap">Car sales</TableCell>
+              <TableCell className="sticky left-0 z-10 bg-white whitespace-nowrap">Car sales</TableCell>
               {carRev.map((v: number, i: number) => (
                 <TableCell key={i} className="text-right tabular-nums">
                   {carIncomplete[i]
@@ -153,7 +157,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
                     : money(v)}
                 </TableCell>
               ))}
-              <TableCell className="text-right font-bold tabular-nums">{money(sumArr(carRev))}</TableCell>
+              <TableCell className="sticky right-0 z-10 bg-white text-right font-bold tabular-nums">{money(sumArr(carRev))}</TableCell>
             </TableRow>
             <Row label="Cost of cars sold" vals={carCostNeg} indent />
             <Row label="Car trading margin" vals={carMargin} bold />
@@ -180,6 +184,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="VAT net payable to HMRC" vals={vatNet} bold />
           </TableBody>
         </Table>
+        </div>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
           <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT.</span>
@@ -222,6 +227,67 @@ function CategoryVatEditor() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Supplier spend analytics — monthly trend chart + per-supplier month-by-month table with rolling trend. */
+function SuppliersTab({ from, to }: { from: string; to: string }) {
+  const q = trpc.expenditure.supplierSpend.useQuery({ from, to });
+  if (q.isLoading) return <Loading />;
+  if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
+  const { months, suppliers, monthlyTotal } = q.data as any;
+  const chartData = months.map((m: string, i: number) => ({ month: monthLabel(m), spend: Math.round(monthlyTotal[i]) }));
+  const top = suppliers.slice(0, 40);
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle>Total supplier spend — monthly</CardTitle></CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={230}>
+            <AreaChart data={chartData} margin={{ left: 4, right: 8, top: 8 }}>
+              <defs><linearGradient id="spend" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7c3aed" stopOpacity={0.35} /><stop offset="100%" stopColor="#7c3aed" stopOpacity={0} /></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} width={46} tickFormatter={(v: number) => `£${Math.round(v / 1000)}k`} />
+              <Tooltip formatter={(v: any) => money(Number(v))} labelStyle={{ fontSize: 12 }} />
+              <Area type="monotone" dataKey="spend" stroke="#7c3aed" strokeWidth={2} fill="url(#spend)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Suppliers by spend</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-auto max-h-[70vh] rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 top-0 z-30 bg-slate-50">Supplier</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-slate-50">Category</TableHead>
+                  {months.map((m: string) => <TableHead key={m} className="sticky top-0 z-20 bg-slate-50 text-right">{monthLabel(m)}</TableHead>)}
+                  <TableHead className="sticky top-0 z-20 bg-slate-50 text-right">Total</TableHead>
+                  <TableHead className="sticky right-0 top-0 z-30 bg-slate-50 text-right">Trend</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {top.map((s: any) => (
+                  <TableRow key={s.payee}>
+                    <TableCell className="sticky left-0 z-10 bg-white whitespace-nowrap font-medium">{s.payee}</TableCell>
+                    <TableCell className="whitespace-nowrap text-[11px] text-slate-500">{s.category}</TableCell>
+                    {s.monthly.map((v: number, i: number) => <TableCell key={i} className="text-right tabular-nums text-slate-600">{v ? money(v) : <span className="text-slate-300">·</span>}</TableCell>)}
+                    <TableCell className="text-right font-semibold tabular-nums">{money(s.total)}</TableCell>
+                    <TableCell className="sticky right-0 z-10 bg-white text-right text-xs">
+                      {s.trendPct > 8 ? <span className="text-red-600">↑ {s.trendPct}%</span> : s.trendPct < -8 ? <span className="text-green-600">↓ {Math.abs(s.trendPct)}%</span> : <span className="text-slate-400">–</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">Trend = last 3 months' average vs the prior 3 months (↑ rising = red, ↓ falling = green). Showing top {top.length} of {suppliers.length} suppliers.</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

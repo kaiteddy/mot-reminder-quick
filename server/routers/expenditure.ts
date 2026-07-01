@@ -32,6 +32,13 @@ export const expenditureRouter = router({
     return getCategories();
   }),
 
+  supplierSpend: publicProcedure
+    .input(z.object({ from: z.string(), to: z.string() }))
+    .query(async ({ input }) => {
+      const { getSupplierSpend } = await import("../services/expenditure");
+      return getSupplierSpend(input);
+    }),
+
   setCategoryVat: publicProcedure
     .input(z.object({ name: z.string(), vatRate: z.number() }))
     .mutation(async ({ input }) => {
