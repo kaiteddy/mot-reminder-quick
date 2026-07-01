@@ -164,6 +164,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Bank takings (cash in)" vals={receipts} indent />
             <Row label="Financing / drawings / contra" vals={financing} indent />
             <Row label="→ Adam Rutstein (drawings / loan)" vals={catAmts("Director — Adam Rutstein")} indent />
+            <Row label="→ Adam Rutstein (wages)" vals={catAmts("Wages — Adam Rutstein")} indent />
             <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent />
             <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
