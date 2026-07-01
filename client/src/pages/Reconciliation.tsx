@@ -90,12 +90,14 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const sec = (k: string): number[] => sections[k] || months.map(() => 0);
   const cogs = sec("cogs"), overheads = sec("overheads"), cartrade = sec("cartrade"),
         taxes = sec("taxes"), receipts = sec("receipts"), financing = sec("financing");
-  const gross = months.map((_: string, i: number) => sales[i] + cogs[i]);
-  const opProfit = months.map((_: string, i: number) => gross[i] + overheads[i]);
+  const gross = months.map((_: string, i: number) => sales[i] + cogs[i]);       // workshop gross profit
   const carRev = carTrading?.revenue || months.map(() => 0);
   const carCostNeg = (carTrading?.cost || months.map(() => 0)).map((x: number) => -x);
   const carMargin = carTrading?.margin || months.map(() => 0);
-  const totalProfit = months.map((_: string, i: number) => opProfit[i] + carMargin[i]);
+  const combinedGross = months.map((_: string, i: number) => gross[i] + carMargin[i]);       // workshop + car gross
+  const netProfit = months.map((_: string, i: number) => combinedGross[i] + overheads[i]);   // shared overheads taken once
+  // months where stock was bought but no car sales digitised yet → the car-sale rows are incomplete, not zero
+  const carIncomplete = months.map((_: string, i: number) => cartrade[i] < -50 && Math.round(carRev[i]) === 0);
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white" : bold ? "bg-slate-100 font-semibold" : ""}>
@@ -110,7 +112,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   return (
     <div className="space-y-4">
     <Card>
-      <CardHeader><CardTitle>Monthly P&amp;L — workshop</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Monthly P&amp;L — whole business</CardTitle></CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -123,15 +125,25 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
           <TableBody>
             <Row label="Workshop sales" vals={sales} />
             <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent />
-            <Row label="Gross profit" vals={gross} bold />
-            <Row label="Overheads" vals={overheads} indent />
-            <Row label="Workshop operating profit" vals={opProfit} bold />
+            <Row label="Workshop gross profit" vals={gross} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
-            <Row label="Car sales" vals={carRev} />
+            <TableRow>
+              <TableCell className="whitespace-nowrap">Car sales</TableCell>
+              {carRev.map((v: number, i: number) => (
+                <TableCell key={i} className="text-right tabular-nums">
+                  {carIncomplete[i]
+                    ? <span className="text-amber-600 font-semibold" title="Stock bought this month but no car sales digitised yet — figure is incomplete, not zero">⚠</span>
+                    : money(v)}
+                </TableCell>
+              ))}
+              <TableCell className="text-right font-bold tabular-nums">{money(sumArr(carRev))}</TableCell>
+            </TableRow>
             <Row label="Cost of cars sold" vals={carCostNeg} indent />
             <Row label="Car trading margin" vals={carMargin} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
-            <Row label="TOTAL BUSINESS PROFIT" vals={totalProfit} hl />
+            <Row label="Combined gross profit (workshop + cars)" vals={combinedGross} bold />
+            <Row label="Overheads — whole business (shared)" vals={overheads} indent />
+            <Row label="NET BUSINESS PROFIT" vals={netProfit} hl />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
             <Row label="Car purchases — cash out on stock" vals={cartrade} indent />
             <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
@@ -148,7 +160,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
         </Table>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          Car trading margin comes from sold cars on the <b className="mx-1">Car Trading</b> tab. "Car purchases — cash out on stock" is what you spent buying stock that month (cash view); "Bank takings" are cash received, shown for cross-check — not added to revenue. Expenditure is shown <b className="mx-1">net of reclaimable VAT</b>; adjust which categories carry VAT below.
+          <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT.</span>
         </p>
       </CardContent>
     </Card>
