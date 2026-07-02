@@ -849,6 +849,7 @@ function EditCell({ v, onSave, type, w, placeholder, align }: any) {
 function CarTradingTab() {
   const utils = trpc.useUtils();
   const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
+  const [carSearch, setCarSearch] = useState("");
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -883,6 +884,10 @@ function CarTradingTab() {
   const ordered: any[] = newCarId && rows.some((r) => r.id === newCarId)
     ? [rows.find((r) => r.id === newCarId), ...rows.filter((r) => r.id !== newCarId)]
     : rows;
+  const cq = carSearch.trim().toLowerCase();
+  const filtered: any[] = cq
+    ? ordered.filter((r) => r.id === newCarId || (r.registration || "").toLowerCase().includes(cq) || (r.description || "").toLowerCase().includes(cq))
+    : ordered;
   const inStock = rows.filter((r) => r.status === "in_stock");
   const sold = rows.filter((r) => r.status === "sold");
   const stockCost = inStock.reduce((s, r) => s + (r.effectiveCost || 0), 0);
@@ -903,6 +908,7 @@ function CarTradingTab() {
       <Card>
         <CardHeader className="flex flex-row items-center gap-2 space-y-0">
           <CardTitle className="mr-auto">Cars</CardTitle>
+          <Input placeholder="Search reg or model…" value={carSearch} onChange={(e) => setCarSearch(e.target.value)} className="h-9 w-[200px]" />
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
         <CardContent>
@@ -919,7 +925,7 @@ function CarTradingTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ordered.map((r) => (
+              {filtered.map((r) => (
                 <TableRow key={r.id} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
                   <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (r.id === newCarId && v) setNewCarId(null); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
@@ -944,7 +950,7 @@ function CarTradingTab() {
             </TableBody>
           </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin.</p>
+          <p className="mt-2 text-xs text-slate-500">{cq && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin.</p>
         </CardContent>
       </Card>
 
