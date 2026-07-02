@@ -57,6 +57,7 @@ import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 import UniversalSearch from "./UniversalSearch";
 import QuickMOTCheck from "./QuickMOTCheck";
+import Ga4SyncButton from "./Ga4SyncButton";
 
 const menuGroups = [
   { section: "Workshop", items: [
@@ -334,6 +335,7 @@ function DashboardLayoutContent({
           </div>
 
           <div className="flex items-center gap-4">
+            <Ga4SyncButton />
             <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
               <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>

@@ -1074,7 +1074,10 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     status: serviceHistory.docStatus,
   };
   const sortCol = SORT[opts.sortKey ?? "date"] ?? SORT.date;
-  const orderBy = opts.sortDir === "asc" ? asc(sortCol) : desc(sortCol);
+  // NULLS LAST: undated / dateless docs (e.g. GA4 estimates synced without a date) must sink to
+  // the bottom, not pin to the top. Postgres DESC defaults to NULLS FIRST, which floated docs
+  // with both dateIssued and dateCreated empty (e.g. estimates 5318/5334) above every real job.
+  const orderBy = sql`${sortCol} ${opts.sortDir === "asc" ? sql`ASC` : sql`DESC`} NULLS LAST`;
   return db.select({
     id: serviceHistory.id,
     docType: serviceHistory.docType,
@@ -1092,6 +1095,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     vehicleId: serviceHistory.vehicleId,
     make: vehicles.make,
     model: vehicles.model,
+    description: serviceHistory.description, // job-sheet work notes → at-a-glance summary/badges
   })
     .from(serviceHistory)
     .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
@@ -2970,6 +2974,17 @@ export async function getAppSetting(keyName: string) {
   if (!db) return null;
   const result = await db.select().from(appSettings).where(eq(appSettings.keyName, keyName)).limit(1);
   return result[0]?.value || null;
+}
+
+export async function setAppSetting(keyName: string, value: any) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(appSettings).where(eq(appSettings.keyName, keyName)).limit(1);
+  if (existing.length) {
+    await db.update(appSettings).set({ value, updatedAt: new Date() }).where(eq(appSettings.keyName, keyName));
+  } else {
+    await db.insert(appSettings).values({ keyName, value });
+  }
 }
 
 export async function saveAppSetting(keyName: string, value: any) {

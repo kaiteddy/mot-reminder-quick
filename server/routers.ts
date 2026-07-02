@@ -22,6 +22,34 @@ export const appRouter = router({
   omnipart: omnipartRouter,
   accountsExport: accountsExportRouter,
   expenditure: expenditureRouter,
+  ga4: router({
+    // freshness + last-run status for the "Sync GA4" button
+    syncStatus: publicProcedure.query(async () => {
+      const { getDb, getAppSetting } = await import("./db");
+      const s: any = (await getAppSetting("ga4_sync")) || {};
+      const db = await getDb();
+      let newestDoc: string | null = null, lastInsertSecs: number | null = null, total = 0;
+      if (db) {
+        const r: any = await db.execute(sql`SELECT COUNT(*)::int total,
+          to_char(MAX(COALESCE("dateIssued","dateCreated")),'YYYY-MM-DD') newest,
+          EXTRACT(EPOCH FROM (now() - MAX("createdAt")))::bigint secs FROM "serviceHistory"`);
+        const row: any = (r.rows || [])[0] || {};
+        total = Number(row.total) || 0; newestDoc = row.newest;
+        lastInsertSecs = row.secs != null ? Number(row.secs) : null;
+      }
+      return {
+        requestedAt: s.requestedAt ?? null, startedAt: s.startedAt ?? null, finishedAt: s.finishedAt ?? null,
+        status: s.status ?? null, rc: s.rc ?? null, added: s.added ?? null, newestDoc, lastInsertSecs, total,
+      };
+    }),
+    // drop a request in the DB; the local watcher (launchd) picks it up and runs ga4-autosync.sh
+    requestSync: publicProcedure.mutation(async () => {
+      const { getAppSetting, setAppSetting } = await import("./db");
+      const cur: any = (await getAppSetting("ga4_sync")) || {};
+      await setAppSetting("ga4_sync", { ...cur, requestedAt: new Date().toISOString(), status: "requested" });
+      return { ok: true };
+    }),
+  }),
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
