@@ -1059,7 +1059,10 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   // Best available customer name: the linked customer record, else the name stored ON the doc
   // (typed walk-ins have no customerId link but do have a denormalised name) — so the list never
   // shows "—" for a job that clearly has a customer.
-  const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
+  // Prefer the DOCUMENT's own customer snapshot (what was actually invoiced) over the linked
+  // customer record — the link can be wrong when two customers share a phone (duplicate-phone
+  // hazard), which showed e.g. "Mrs Paris" on Ruth Ehreich's invoice. Falls back to the link.
+  const custNameExpr = sql<string>`COALESCE(NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''), NULLIF(${customers.name}, ''))`;
   // sortable columns (numeric casts so doc numbers/money sort by value, not as text)
   const SORT: Record<string, any> = {
     docNo: sql`(NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::bigint`,
@@ -1172,7 +1175,10 @@ export async function getSalesListing(opts: { from: string; to: string; basedOn?
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
   const from = new Date(opts.from + "T00:00:00");
   const to = new Date(opts.to + "T23:59:59.999");
-  const custNameExpr = sql<string>`COALESCE(NULLIF(${customers.name}, ''), NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''))`;
+  // Prefer the DOCUMENT's own customer snapshot (what was actually invoiced) over the linked
+  // customer record — the link can be wrong when two customers share a phone (duplicate-phone
+  // hazard), which showed e.g. "Mrs Paris" on Ruth Ehreich's invoice. Falls back to the link.
+  const custNameExpr = sql<string>`COALESCE(NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''), NULLIF(${customers.name}, ''))`;
   // GA4's "Sales Issued" report counts invoices (SI), excess/counter-sales (XS) and credit notes (CR).
   const conds: any[] = [gte(dateCol, from), lte(dateCol, to), inArray(serviceHistory.docType, ["SI", "XS", "CR"])];
   if (opts.department) conds.push(eq(serviceHistory.department, opts.department));
@@ -2595,7 +2601,10 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // back to the linked customer. Prevents "Unknown Client" on a sheet that clearly has a customer.
   const d2: any = doc;
   const docName = [d2.custTitle, d2.custForename, d2.custSurname].filter(Boolean).join(" ").trim();
-  const docAddress = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty, d2.custPostcode].filter(Boolean).join(", ");
+  // Street lines WITHOUT the postcode — otherwise a doc that only has a postcode makes docStreet
+  // truthy and blocks the fallback to the linked customer's full address. Postcode appended below.
+  const docStreet = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty].filter(Boolean).join(", ");
+  const docPostcode = String(d2.custPostcode || customer?.postcode || "").trim();
   // Collect EVERY number we hold for this customer — the doc's mobile/tel, the linked
   // customer's primary phone, and any "Other numbers" (altContacts) — so the printed sheet
   // shows all of them. Dedupe on the digits (treating +44… and 0… as the same UK number).
@@ -2622,7 +2631,7 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
 
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
-    address_lines: (docAddress || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean),
+    address_lines: [...(docStreet || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean), ...(docPostcode ? [docPostcode] : [])],
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     phones,
     billTo,
