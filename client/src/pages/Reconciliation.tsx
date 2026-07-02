@@ -115,7 +115,8 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const ohMonthly = Math.abs(sumArr(overheads)) / nMonths;
   const wsGrossMonthly = sumArr(gross) / nMonths;
   const beDaily = ohMonthly / 26;
-  const wsEquiv = ohMonthly / 0.57;
+  const wsMargin = sumArr(sales) > 0 ? sumArr(gross) / sumArr(sales) : 0.57; // actual workshop gross margin
+  const wsEquiv = wsMargin > 0 ? ohMonthly / wsMargin : 0;
   const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
@@ -136,7 +137,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / month</div><div className="text-lg font-bold text-slate-800">{money(ohMonthly)}</div><div className="text-[11px] text-slate-500">gross profit to cover overheads</div></div>
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / day</div><div className="text-lg font-bold text-slate-800">{money(beDaily)}</div><div className="text-[11px] text-slate-500">gross, over 26 working days</div></div>
-          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop sales equiv.</div><div className="text-lg font-bold text-slate-800">{money(wsEquiv)}</div><div className="text-[11px] text-slate-500">/mo at 57% margin, if no car sales</div></div>
+          <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop sales equiv.</div><div className="text-lg font-bold text-slate-800">{money(wsEquiv)}</div><div className="text-[11px] text-slate-500">/mo at {Math.round(wsMargin * 100)}% margin, if no car sales</div></div>
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Workshop covers</div><div className="text-lg font-bold text-slate-800">{wsCoverage}%</div><div className="text-[11px] text-slate-500">of the nut; cars fund the rest</div></div>
         </div>
         <div className="overflow-auto max-h-[72vh] rounded-md border">
@@ -313,7 +314,8 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
   const ohMonthly = Math.abs(sumArr(overheads)) / nMonths;
   const wsGrossMonthly = sumArr(gross) / nMonths;
   const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
-  const beDaily = ohMonthly / 26, wsEquiv = ohMonthly / 0.57;
+  const wsMargin = sumArr(sales) > 0 ? sumArr(gross) / sumArr(sales) : 0.57;
+  const beDaily = ohMonthly / 26, wsEquiv = wsMargin > 0 ? ohMonthly / wsMargin : 0;
 
   const hdr = ["Line item", ...months.map(monthLabel), "Total"];
   const headRow = "| " + hdr.join(" | ") + " |";
@@ -337,7 +339,7 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
   o.push("## Headline");
   o.push(`- **Break-even overhead nut:** ${fmt(ohMonthly)}/month · ${fmt(beDaily)}/day (26 working days).`);
   o.push(`- **Workshop gross covers ${wsCoverage}%** of the nut; car trading funds the rest.`);
-  o.push(`- **Workshop-only break-even:** ${fmt(wsEquiv)}/month of sales at ~57% gross margin, if there were no car sales.`);
+  o.push(`- **Workshop-only break-even:** ${fmt(wsEquiv)}/month of sales at ~${Math.round(wsMargin * 100)}% gross margin, if there were no car sales.`);
   o.push(`- **Period totals:** workshop sales ${fmt(sumArr(sales))} · workshop gross ${fmt(sumArr(gross))} · car margin ${fmt(sumArr(carMargin))} · combined gross ${fmt(sumArr(combined))} · overheads ${fmt(sumArr(overheads))} · **net business profit ${fmt(sumArr(net))}**.`);
   o.push(`- **VAT (period):** output due ${fmt(sumArr(vDue))} (workshop ${fmt(sumArr(vWs))} + car margins ${fmt(sumArr(vCar))}) · input reclaimed ${fmt(-sumArr(vRec))} · **net payable ${fmt(sumArr(vNet))}**.`);
   o.push("");
@@ -416,7 +418,7 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
   o.push("- Director drawings split by memo: 'LOAN FT' = loan, 'BBP' = wages, to avoid double-counting.");
   o.push("");
   o.push("## Suggested questions for the reviewer");
-  o.push("1. Are the workshop gross margin (~57%) and monthly break-even reasonable for a specialist garage this size?");
+  o.push(`1. Are the workshop gross margin (~${Math.round(wsMargin * 100)}%) and monthly break-even reasonable for a specialist garage this size?`);
   o.push("2. Any categorisation that looks wrong, or an overhead that should be a direct cost (or vice-versa)?");
   o.push("3. Is the VAT treatment sound (margin scheme ÷6, reverse-charge SaaS, 0% rent/insurance)? Any exposure?");
   o.push("4. Cash flow / drawings: are the director extractions sustainable given net profit?");
