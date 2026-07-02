@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -932,20 +932,31 @@ function CarTradingTab() {
     } catch (e: any) { toast.error("Lookup failed: " + (e?.message || "unknown"), { id: t }); }
   };
 
-  if (deals.isLoading) return <Loading />;
   const rows: any[] = deals.data || [];
+  const cq = carSearch.trim().toLowerCase();
+  const filterActive = needsData || statusFilter !== "all" || cq !== "";
+  // Freeze WHICH rows are shown while a filter is active, recomputing only when the filter itself
+  // changes (a button or the search box) — NOT when a row's data changes. So filling in a row won't
+  // drop it out of view and make you relocate it; the search box still re-filters live as you type.
+  const frozenIds = useMemo(() => {
+    if (!filterActive) return null;
+    const s = new Set<number>();
+    for (const r of rows) {
+      if (statusFilter !== "all" && r.status !== statusFilter) continue;
+      if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
+      if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
+      s.add(r.id);
+    }
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, needsData, cq]);
+
+  if (deals.isLoading) return <Loading />;
   // pin the just-added row to the top so it doesn't re-order while you're filling it in
   const ordered: any[] = newCarId && rows.some((r) => r.id === newCarId)
     ? [rows.find((r) => r.id === newCarId), ...rows.filter((r) => r.id !== newCarId)]
     : rows;
-  const cq = carSearch.trim().toLowerCase();
-  const filtered: any[] = ordered.filter((r) => {
-    if (r.id === newCarId) return true; // always show the just-added row
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (needsData && r.purchaseCost != null && r.purchaseDate != null) return false; // has both → not "needs data"
-    if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) return false;
-    return true;
-  });
+  const filtered: any[] = ordered.filter((r) => r.id === newCarId || frozenIds === null || frozenIds.has(r.id));
   const inStock = rows.filter((r) => r.status === "in_stock");
   const sold = rows.filter((r) => r.status === "sold");
   const needsCount = rows.filter((r) => r.purchaseCost == null || r.purchaseDate == null).length;
@@ -1010,7 +1021,11 @@ function CarTradingTab() {
                   <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.salePrice} type="money" align="right" w="110px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
-                  <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">
+                    {r.status === "sold" && r.purchaseCost == null
+                      ? <span className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] text-white" title="Sold with no purchase price — enter Vehicle £ to get a real margin">⚠ add price</span>
+                      : <span className={r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}>{r.margin != null ? money(r.margin) : "—"}</span>}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {r.id === newCarId && <Button size="icon" variant="ghost" title="Done — save this car & let it sort into the list" className="text-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNewCarId(null); toast.success("Saved into the list"); }}><Check className="h-4 w-4" /></Button>}
                     <Button size="icon" variant="ghost" title="Look up make & model from the reg (DVLA)" disabled={!r.registration || lookup.isPending} onClick={() => fillFromReg(r.id, r.registration)}><Search className="h-4 w-4 text-slate-400" /></Button>
@@ -1021,7 +1036,7 @@ function CarTradingTab() {
             </TableBody>
           </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">{soldNoPrice > 0 && <span className="font-semibold text-red-600">⚠ {soldNoPrice} sold car{soldNoPrice > 1 ? "s are" : " is"} missing a purchase price — their margin is overstated; click <b>Needs data</b> to fix. </span>}{(cq || statusFilter !== "all" || needsData) && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
+          <p className="mt-2 text-xs text-slate-500">{soldNoPrice > 0 && <span className="font-semibold text-red-600">⚠ {soldNoPrice} sold car{soldNoPrice > 1 ? "s are" : " is"} missing a purchase price — their margin is overstated; click <b>Needs data</b> to fix. </span>}{filterActive && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars — rows stay put while you edit; click a filter again to refresh the list. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
         </CardContent>
       </Card>
 
