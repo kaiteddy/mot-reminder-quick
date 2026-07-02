@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
@@ -832,7 +832,7 @@ function Stat({ label, value, sub, accent }: any) {
 
 /** Itemised on-cost editor: buyer/auction fee + assured + delivery + other, summed into the on-cost total
  *  (reconditioningCost). Kept separate from the vehicle price so the margin is unaffected. */
-function FeeCell({ car, onSave }: { car: any; onSave: (patch: any) => void }) {
+function FeeCell({ car, onSave, disabled }: { car: any; onSave: (patch: any) => void; disabled?: boolean }) {
   const bd0 = () => {
     const b = car.feeBreakdown || {};
     // legacy: a plain reconditioningCost with no breakdown → seed "other" so the sum matches
@@ -852,7 +852,7 @@ function FeeCell({ car, onSave }: { car: any; onSave: (patch: any) => void }) {
   return (
     <Popover onOpenChange={(o) => { if (!o) commit(); }}>
       <PopoverTrigger asChild>
-        <button type="button" className="h-8 w-[105px] rounded-md border px-2 text-right text-sm tabular-nums hover:bg-slate-50">
+        <button type="button" disabled={disabled} className="h-8 w-[105px] rounded-md border px-2 text-right text-sm tabular-nums hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none">
           {car.reconditioningCost != null ? money(car.reconditioningCost) : <span className="text-slate-400">fees…</span>}
         </button>
       </PopoverTrigger>
@@ -871,7 +871,7 @@ function FeeCell({ car, onSave }: { car: any; onSave: (patch: any) => void }) {
   );
 }
 
-function EditCell({ v, onSave, type, w, placeholder, align }: any) {
+function EditCell({ v, onSave, type, w, placeholder, align, disabled }: any) {
   const [val, setVal] = useState(v ?? "");
   const [focused, setFocused] = useState(false);
   useEffect(() => { setVal(v ?? ""); }, [v]);
@@ -889,7 +889,7 @@ function EditCell({ v, onSave, type, w, placeholder, align }: any) {
   const formatted = isMoney && !focused && clean(val) !== "" && isFinite(Number(clean(val)));
   const display = formatted ? "£" + Number(clean(val)).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (val ?? "");
   return (
-    <Input type={isMoney ? "text" : type === "number" ? "number" : type || "text"} inputMode={numeric ? "decimal" : undefined}
+    <Input type={isMoney ? "text" : type === "number" ? "number" : type || "text"} inputMode={numeric ? "decimal" : undefined} disabled={disabled}
       value={display} placeholder={isMoney && placeholder ? "£" + placeholder : placeholder}
       onChange={(e) => setVal(isMoney ? clean(e.target.value) : e.target.value)}
       onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
@@ -904,6 +904,7 @@ function CarTradingTab() {
   const [carSearch, setCarSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold">("all");
   const [needsData, setNeedsData] = useState(false);
+  const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -920,6 +921,10 @@ function CarTradingTab() {
   const link = trpc.expenditure.linkPurchase.useMutation({ onSuccess: inval });
   const lookup = trpc.expenditure.lookupReg.useMutation();
   const save = (id: number, patch: any) => upsert.mutate({ id, ...patch });
+  // a "complete" car (purchase + sale price + both dates) is locked read-only until explicitly unlocked
+  const isComplete = (r: any) => r.purchaseCost != null && r.salePrice != null && r.purchaseDate != null && r.saleDate != null;
+  const isLocked = (r: any) => isComplete(r) && !unlockedIds.has(r.id);
+  const toggleLock = (id: number) => setUnlockedIds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // DVLA/UKVD lookup: pull make+model+year from the reg and fill the description.
   const fillFromReg = async (id: number, reg: string) => {
     const r = reg?.trim();
@@ -1005,34 +1010,38 @@ function CarTradingTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((r) => (
-                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : undefined} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
-                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
-                  <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
+              {filtered.map((r) => {
+                const locked = isLocked(r);
+                return (
+                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : undefined} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100" : locked ? "bg-slate-50 hover:bg-slate-50" : r.status === "sold" ? "bg-green-50/40" : ""}>
+                  <TableCell><EditCell v={r.registration} disabled={locked} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
+                  <TableCell><EditCell v={r.description} disabled={locked} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
-                    <Select value={r.status} onValueChange={(v) => save(r.id, { status: v })}>
+                    <Select value={r.status} disabled={locked} onValueChange={(v) => save(r.id, { status: v })}>
                       <SelectTrigger className="h-8 w-[108px]"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell><EditCell v={r.purchaseDate} type="date" w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
-                  <TableCell className="text-right"><FeeCell car={r} onSave={(patch: any) => save(r.id, patch)} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.salePrice} type="money" align="right" w="110px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
-                  <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
+                  <TableCell><EditCell v={r.purchaseDate} type="date" disabled={locked} w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" disabled={locked} align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
+                  <TableCell className="text-right"><FeeCell car={r} disabled={locked} onSave={(patch: any) => save(r.id, patch)} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" disabled={locked} align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.salePrice} type="money" disabled={locked} align="right" w="110px" onSave={(v: any) => save(r.id, v != null && r.saleDate ? { salePrice: v, status: "sold" } : { salePrice: v })} /></TableCell>
+                  <TableCell><EditCell v={r.saleDate} type="date" disabled={locked} w="140px" onSave={(v: any) => save(r.id, v && r.salePrice != null ? { saleDate: v, status: "sold" } : { saleDate: v })} /></TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">
                     {r.status === "sold" && r.purchaseCost == null
                       ? <span className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] text-white" title="Sold with no purchase price — enter Vehicle £ to get a real margin">⚠ add price</span>
                       : <span className={r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}>{r.margin != null ? money(r.margin) : "—"}</span>}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
+                    {isComplete(r) && <Button size="icon" variant="ghost" title={locked ? "Unlock to edit this completed car" : "Lock this car"} onClick={() => toggleLock(r.id)}>{locked ? <Lock className="h-4 w-4 text-slate-400" /> : <Unlock className="h-4 w-4 text-amber-600" />}</Button>}
                     {r.id === newCarId && <Button size="icon" variant="ghost" title="Done — save this car & let it sort into the list" className="text-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNewCarId(null); toast.success("Saved into the list"); }}><Check className="h-4 w-4" /></Button>}
-                    <Button size="icon" variant="ghost" title="Look up make & model from the reg (DVLA)" disabled={!r.registration || lookup.isPending} onClick={() => fillFromReg(r.id, r.registration)}><Search className="h-4 w-4 text-slate-400" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button>
+                    <Button size="icon" variant="ghost" title="Look up make & model from the reg (DVLA)" disabled={locked || !r.registration || lookup.isPending} onClick={() => fillFromReg(r.id, r.registration)}><Search className="h-4 w-4 text-slate-400" /></Button>
+                    <Button size="icon" variant="ghost" disabled={locked} onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </table>
           </div>
