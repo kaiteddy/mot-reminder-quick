@@ -120,7 +120,12 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const wsEquiv = wsMargin > 0 ? ohMonthly / wsMargin : 0;
   const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
 
-  const Row = ({ label, vals, bold, hl, indent }: any) => (
+  // Colour the MoM %: green when the change HELPS profit, red when it HURTS. Costs are stored as
+  // negatives, so a more-positive change (more income OR less cost) is always "good". Drawings/VAT
+  // rows are neutral (grey). `cost` rows flip the arrow so it reflects the line's own magnitude.
+  const pctClass = (p: number, neutral: boolean, dark: boolean) =>
+    neutral ? "text-slate-400" : dark ? (p > 0 ? "text-emerald-400" : "text-rose-400") : (p > 0 ? "text-emerald-600" : "text-rose-600");
+  const Row = ({ label, vals, bold, hl, indent, cost, neutral }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white hover:bg-slate-900" : bold ? "bg-slate-100 font-semibold hover:bg-slate-100" : ""}>
       <TableCell className={`sticky left-0 z-10 whitespace-nowrap ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"} ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
       {vals.map((v: number, i: number) => {
@@ -130,7 +135,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
         return (
           <TableCell key={i} className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""}`}>
             {money(v)}
-            {showP && <span className={`ml-1 text-[9px] font-normal ${hl ? "text-slate-400" : "text-slate-400"}`}>{p! > 0 ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}
+            {showP && <span className={`ml-1 text-[9px] font-normal ${pctClass(p!, !!neutral, !!hl)}`}>{(cost ? p! < 0 : p! > 0) ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}
           </TableCell>
         );
       })}
@@ -165,7 +170,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
           </TableHeader>
           <TableBody>
             <Row label="Workshop sales" vals={sales} />
-            <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent />
+            <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent cost />
             <Row label="Workshop gross profit" vals={gross} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <TableRow>
@@ -178,41 +183,41 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
                   <TableCell key={i} className="text-right tabular-nums">
                     {carIncomplete[i]
                       ? <span className="text-amber-600 font-semibold" title="Stock bought this month but no car sales digitised yet — figure is incomplete, not zero">⚠</span>
-                      : <>{money(v)}{showP && <span className="ml-1 text-[9px] font-normal text-slate-400">{p! > 0 ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}</>}
+                      : <>{money(v)}{showP && <span className={`ml-1 text-[9px] font-normal ${pctClass(p!, false, false)}`}>{p! > 0 ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}</>}
                   </TableCell>
                 );
               })}
               <TableCell className="sticky right-0 z-10 bg-white text-right font-bold tabular-nums">{money(sumArr(carRev))}</TableCell>
             </TableRow>
-            <Row label="Cost of cars sold" vals={carCostNeg} indent />
+            <Row label="Cost of cars sold" vals={carCostNeg} indent cost />
             <Row label="Car trading margin" vals={carMargin} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <Row label="Combined gross profit (workshop + cars)" vals={combinedGross} bold />
-            <Row label="Overheads — whole business (shared)" vals={overheads} indent />
+            <Row label="Overheads — whole business (shared)" vals={overheads} indent cost />
             <Row label="NET BUSINESS PROFIT" vals={netProfit} hl />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
-            <Row label="Car purchases — cash out on stock" vals={cartrade} indent />
-            <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent />
+            <Row label="Car purchases — cash out on stock" vals={cartrade} indent cost />
+            <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent cost />
             <Row label="Bank takings (cash in)" vals={receipts} indent />
-            <Row label="Financing / drawings / contra" vals={financing} indent />
-            <Row label="→ Adam Rutstein (drawings / loan)" vals={adamLoan} indent />
-            <Row label="→ Adam Rutstein (wages)" vals={adamWages} indent />
-            <Row label="→ Adam Rutstein — total drawn" vals={adamTotal} bold />
-            <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent />
-            <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent />
+            <Row label="Financing / drawings / contra" vals={financing} indent neutral />
+            <Row label="→ Adam Rutstein (drawings / loan)" vals={adamLoan} indent neutral />
+            <Row label="→ Adam Rutstein (wages)" vals={adamWages} indent neutral />
+            <Row label="→ Adam Rutstein — total drawn" vals={adamTotal} bold neutral />
+            <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent neutral />
+            <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent neutral />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
             <TableRow className="bg-violet-50"><TableCell colSpan={months.length + 2} className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">VAT — Barclays expenditure is VAT-inclusive</TableCell></TableRow>
-            <Row label="VAT due — workshop (output)" vals={vatDueWorkshop} indent />
-            <Row label="VAT due — car margins (÷6)" vals={vatDueCars} indent />
-            <Row label="VAT due (output — total)" vals={vatDue} />
-            <Row label="VAT reclaimed (input — on expenditure)" vals={vatReclaimedNeg} indent />
-            <Row label="VAT net payable to HMRC" vals={vatNet} bold />
+            <Row label="VAT due — workshop (output)" vals={vatDueWorkshop} indent neutral />
+            <Row label="VAT due — car margins (÷6)" vals={vatDueCars} indent neutral />
+            <Row label="VAT due (output — total)" vals={vatDue} neutral />
+            <Row label="VAT reclaimed (input — on expenditure)" vals={vatReclaimedNeg} indent neutral />
+            <Row label="VAT net payable to HMRC" vals={vatNet} bold neutral />
           </TableBody>
         </table>
         </div>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT. The small <span className="text-slate-400">↑/↓ %</span> next to each figure is the change from the previous month (true year-on-year needs a full prior year, which the data doesn&apos;t reach back to yet).</span>
+          <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT. The small ↑/↓ % next to each figure is the change from the previous month, coloured by effect on profit — <span className="font-semibold text-emerald-600">green helps</span> (more income or lower cost), <span className="font-semibold text-rose-600">red hurts</span>; drawings &amp; VAT stay grey. (True year-on-year needs a full prior year, which the data doesn&apos;t reach back to yet.)</span>
         </p>
       </CardContent>
     </Card>
