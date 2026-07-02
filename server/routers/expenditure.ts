@@ -115,6 +115,7 @@ export const expenditureRouter = router({
       purchaseCost: z.number().nullish(), purchaseDate: z.string().nullish(),
       salePrice: z.number().nullish(), saleDate: z.string().nullish(),
       askingPrice: z.number().nullish(), reconditioningCost: z.number().nullish(),
+      onCostVat: z.number().nullish(),
       status: z.enum(["in_stock", "sold"]).optional(), notes: z.string().nullish(),
     }))
     .mutation(async ({ input }) => {

@@ -120,6 +120,12 @@ export async function getReconciliation(opts: { from: string; to: string }) {
     vatDueCars[i] = num(r.vmargin) / 6;   // margin-scheme output VAT (1/6 of the vehicle margin)
     vatDue[i] += vatDueCars[i];           // total output VAT = workshop + car margins
   }
+  // Reclaimable input VAT on vehicle on-costs (auction/admin fees, delivery) — the vehicle itself
+  // carries no reclaimable VAT under the margin scheme, but the fees usually do. Slot by purchase month.
+  const onCostRows: any = await db.execute(sql`
+    SELECT to_char(COALESCE(d."purchaseDate", d."saleDate"),'YYYY-MM') m, SUM(COALESCE(d."onCostVat",0)) v
+    FROM "carDeals" d WHERE COALESCE(d."onCostVat",0) <> 0 GROUP BY 1`);
+  for (const r of onCostRows.rows || []) { const i = idx[r.m]; if (i !== undefined) vatReclaimed[i] += num(r.v); }
   const vatNet = months.map((_, i) => vatDue[i] - vatReclaimed[i]); // net VAT payable to HMRC
   return { months, sales, sections, categories, carTrading, vat: { due: vatDue, dueWorkshop: vatDueWorkshop, dueCars: vatDueCars, reclaimed: vatReclaimed, net: vatNet } };
 }
@@ -524,7 +530,7 @@ export async function getCarDeals() {
     SELECT d."id", d."registration", d."description", d."purchaseCost",
            to_char(d."purchaseDate",'YYYY-MM-DD') "purchaseDate", d."salePrice",
            to_char(d."saleDate",'YYYY-MM-DD') "saleDate", d."askingPrice",
-           d."reconditioningCost", d."status", d."notes",
+           d."reconditioningCost", d."onCostVat", d."status", d."notes",
            COALESCE(p.linked,0) "linkedPurchaseTotal", COALESCE(p.cnt,0) "linkedCount"
     FROM "carDeals" d
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) linked, COUNT(*) cnt
@@ -542,6 +548,7 @@ export async function getCarDeals() {
       purchaseDate: r.purchaseDate, salePrice: sale, saleDate: r.saleDate,
       askingPrice: r.askingPrice != null ? num(r.askingPrice) : null,
       reconditioningCost: r.reconditioningCost != null ? recond : null,
+      onCostVat: r.onCostVat != null ? num(r.onCostVat) : null,
       status: r.status, notes: r.notes,
       linkedPurchaseTotal: num(r.linkedPurchaseTotal), linkedCount: num(r.linkedCount),
       effectiveCost,
@@ -563,6 +570,7 @@ function dealFields(input: any) {
   if ("saleDate" in input) f.saleDate = toDate(input.saleDate);
   if ("askingPrice" in input) f.askingPrice = numOrNull(input.askingPrice);
   if ("reconditioningCost" in input) f.reconditioningCost = numOrNull(input.reconditioningCost);
+  if ("onCostVat" in input) f.onCostVat = numOrNull(input.onCostVat);
   if ("status" in input) f.status = input.status;
   if ("notes" in input) f.notes = input.notes || null;
   return f;
@@ -605,7 +613,10 @@ export async function getVehiclePurchases() {
   return (res.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
 }
 
-/** Link (or unlink with null) a purchase transaction to a car deal; auto-fills cost/date if unset. */
+/** Link (or unlink with null) a purchase transaction to a car deal; auto-fills the purchase DATE if
+ *  unset. Deliberately does NOT auto-fill purchaseCost: a linked payment is the TOTAL invoice
+ *  (vehicle + fees + delivery), whereas purchaseCost must be the vehicle-only price that drives the
+ *  margin. The linked total is shown as a greyed hint so the user can split it (vehicle vs on-costs). */
 export async function linkPurchase(input: { txnId: number; carDealId: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -613,11 +624,9 @@ export async function linkPurchase(input: { txnId: number; carDealId: number | n
   if (input.carDealId) {
     await db.execute(sql`
       UPDATE "carDeals" d SET
-        "purchaseCost"=COALESCE(d."purchaseCost", x.total),
         "purchaseDate"=COALESCE(d."purchaseDate", x.first),
         "updatedAt"=now()
-      FROM (SELECT SUM(ABS("amount")) total, MIN("txnDate") first
-            FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
+      FROM (SELECT MIN("txnDate") first FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
       WHERE d."id"=${input.carDealId}`);
   }
   return { ok: true };

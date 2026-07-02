@@ -871,7 +871,9 @@ function CarTradingTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
-                <TableHead className="text-right">Purchase £</TableHead><TableHead className="text-right">Recond £</TableHead>
+                <TableHead className="text-right" title="Vehicle price only — the VAT margin is based on this">Vehicle £</TableHead>
+                <TableHead className="text-right" title="Fees, delivery & prep — cost of sales, but NOT part of the margin">Fees &amp; delivery £</TableHead>
+                <TableHead className="text-right" title="Reclaimable input VAT on the fees/delivery (the vehicle itself carries none under the margin scheme)">Fee VAT £</TableHead>
                 <TableHead className="text-right">Sale £</TableHead><TableHead>Sale date</TableHead>
                 <TableHead className="text-right">Margin</TableHead><TableHead></TableHead>
               </TableRow>
@@ -889,6 +891,7 @@ function CarTradingTab() {
                   </TableCell>
                   <TableCell className="text-right"><EditCell v={r.purchaseCost} type="number" align="right" w="100px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="number" align="right" w="90px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.onCostVat} type="number" align="right" w="80px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.salePrice} type="number" align="right" w="100px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
                   <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
@@ -900,7 +903,7 @@ function CarTradingTab() {
               ))}
             </TableBody>
           </Table>
-          <p className="mt-2 text-xs text-slate-500">Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). Set a car to <b>Sold</b> and fill in the sale price + date to book the margin. A greyed "Purchase £" hint = the total of associated bank purchases (below).</p>
+          <p className="mt-2 text-xs text-slate-500">Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin.</p>
         </CardContent>
       </Card>
 
