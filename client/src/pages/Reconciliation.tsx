@@ -527,6 +527,17 @@ function OverheadsTab({ from, to }: { from: string; to: string }) {
 /** Supplier spend analytics — monthly trend chart + per-supplier month-by-month table with rolling trend. */
 function SuppliersTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.supplierSpend.useQuery({ from, to });
+  const cats = trpc.expenditure.categories.useQuery();
+  const utils = trpc.useUtils();
+  const reclassify = trpc.expenditure.reclassifyPayee.useMutation({
+    onSuccess: (res: any, vars: any) => {
+      utils.expenditure.supplierSpend.invalidate();
+      utils.expenditure.reconciliation.invalidate();
+      utils.expenditure.expenditureBreakdown.invalidate();
+      toast.success(`${vars.payee} → ${vars.category}${res?.count ? ` (${res.count} txns)` : ""}`);
+    },
+    onError: (e) => toast.error("Reclassify failed: " + e.message),
+  });
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
   const { months, suppliers, monthlyTotal } = q.data as any;
@@ -567,7 +578,14 @@ function SuppliersTab({ from, to }: { from: string; to: string }) {
                 {top.map((s: any) => (
                   <TableRow key={s.payee}>
                     <TableCell className="sticky left-0 z-10 bg-white whitespace-nowrap font-medium">{s.payee}</TableCell>
-                    <TableCell className="whitespace-nowrap text-[11px] text-slate-500">{s.category}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Select value={s.category} onValueChange={(v) => reclassify.mutate({ payee: s.payee, category: v })}>
+                        <SelectTrigger className="h-7 w-[220px] text-[11px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(cats.data || []).map((c: any) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
                     {s.monthly.map((v: number, i: number) => <TableCell key={i} className="text-right tabular-nums text-slate-600">{v ? money(v) : <span className="text-slate-300">·</span>}</TableCell>)}
                     <TableCell className="text-right font-semibold tabular-nums">{money(s.total)}</TableCell>
                     <TableCell className="sticky right-0 z-10 bg-white text-right text-xs">
@@ -578,7 +596,7 @@ function SuppliersTab({ from, to }: { from: string; to: string }) {
               </TableBody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">Trend = last 3 months' average vs the prior 3 months (↑ rising = red, ↓ falling = green). Showing top {top.length} of {suppliers.length} suppliers.</p>
+          <p className="mt-2 text-[11px] text-slate-400">Change a supplier's <b>Category</b> to reclassify <i>all</i> of its transactions at once (e.g. a private car purchase → "Cost of sales — vehicle stock"). Trend = last 3 months' average vs the prior 3 months (↑ rising = red, ↓ falling = green). Showing top {top.length} of {suppliers.length} suppliers.</p>
         </CardContent>
       </Card>
     </div>

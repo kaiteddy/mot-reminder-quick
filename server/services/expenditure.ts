@@ -302,6 +302,25 @@ export async function upsertLabel(input: { source: "bank" | "card"; counterparty
   return { ok: true };
 }
 
+/** Reclassify an entire supplier (payee) from the Suppliers view: set the counterparty label for
+ *  every (source, counterpartyKey) under that payee, and clear any per-row overrides so the whole
+ *  supplier moves to the chosen category (past + future transactions). */
+export async function reclassifyPayee(input: { payee: string; category: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.execute(sql`
+    INSERT INTO "transactionLabels" ("source","counterpartyKey","category","updatedAt")
+    SELECT DISTINCT t."source", t."counterpartyKey", ${input.category}, now()
+    FROM "bankTransactions" t
+    WHERE t."counterparty"=${input.payee} AND t."counterpartyKey" IS NOT NULL
+    ON CONFLICT ("source","counterpartyKey") DO UPDATE SET "category"=EXCLUDED."category", "updatedAt"=now()`);
+  const res: any = await db.execute(sql`
+    UPDATE "bankTransactions" SET "categoryOverride"=NULL
+    WHERE "counterparty"=${input.payee} AND "categoryOverride" IS NOT NULL`);
+  const affected: any = await db.execute(sql`SELECT COUNT(*) n FROM "bankTransactions" WHERE "counterparty"=${input.payee}`);
+  return { ok: true, count: num(((affected as any).rows || affected)[0]?.n) };
+}
+
 /** Per-row override (or clear with null). */
 export async function setOverride(input: { id: number; category: string | null }) {
   const db = await getDb();

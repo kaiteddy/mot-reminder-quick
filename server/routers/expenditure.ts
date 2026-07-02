@@ -53,6 +53,13 @@ export const expenditureRouter = router({
       return lookupReg(input);
     }),
 
+  reclassifyPayee: publicProcedure
+    .input(z.object({ payee: z.string(), category: z.string() }))
+    .mutation(async ({ input }) => {
+      const { reclassifyPayee } = await import("../services/expenditure");
+      return reclassifyPayee(input);
+    }),
+
   setCategoryVat: publicProcedure
     .input(z.object({ name: z.string(), vatRate: z.number() }))
     .mutation(async ({ input }) => {
