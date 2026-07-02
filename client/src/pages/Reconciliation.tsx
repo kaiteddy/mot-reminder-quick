@@ -704,6 +704,10 @@ function CarTradingTab() {
   const deals = trpc.expenditure.carDeals.useQuery();
   const purchases = trpc.expenditure.vehiclePurchases.useQuery();
   const upsert = trpc.expenditure.upsertCarDeal.useMutation({ onSuccess: inval });
+  const addCar = trpc.expenditure.upsertCarDeal.useMutation({
+    onSuccess: () => { inval(); toast.success("Car added — it's the first row; fill in its reg & details"); },
+    onError: (e) => toast.error("Could not add car: " + e.message),
+  });
   const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
   const link = trpc.expenditure.linkPurchase.useMutation({ onSuccess: inval });
   const save = (id: number, patch: any) => upsert.mutate({ id, ...patch });
@@ -730,7 +734,7 @@ function CarTradingTab() {
       <Card>
         <CardHeader className="flex flex-row items-center gap-2 space-y-0">
           <CardTitle className="mr-auto">Cars</CardTitle>
-          <Button size="sm" onClick={() => upsert.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />Add car</Button>
+          <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>

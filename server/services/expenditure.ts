@@ -457,7 +457,7 @@ export async function getCarDeals() {
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) linked, COUNT(*) cnt
                FROM "bankTransactions" WHERE "carDealId" IS NOT NULL GROUP BY "carDealId") p
       ON p."carDealId"=d."id"
-    ORDER BY (d."status"='sold'), d."registration" NULLS LAST`);
+    ORDER BY (d."status"='sold'), d."createdAt" DESC`);
   return (res.rows || []).map((r: any) => {
     const purchase = r.purchaseCost != null ? num(r.purchaseCost) : num(r.linkedPurchaseTotal);
     const recond = num(r.reconditioningCost);
