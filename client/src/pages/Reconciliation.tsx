@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
@@ -971,6 +971,23 @@ function CarTradingTab() {
   const soldMargin = sold.reduce((s, r) => s + (r.margin || 0), 0);
   const purch: any[] = purchases.data || [];
   const toLink = purch.filter((p) => !p.carDealId).length;
+  // export the currently-filtered cars to CSV (use the Needs-data filter to get the incomplete list)
+  const exportCsv = () => {
+    const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "Missing", "Linked payment total"];
+    const esc = (v: any) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [cols.join(",")];
+    for (const r of filtered) {
+      const missing = [r.purchaseCost == null ? "price" : null, r.purchaseDate == null ? "date" : null].filter(Boolean).join("+");
+      lines.push([r.registration, r.description, r.status, r.purchaseCost, r.purchaseDate, r.reconditioningCost, r.onCostVat, r.salePrice, r.saleDate, r.margin, missing, r.linkedPurchaseTotal || ""].map(esc).join(","));
+    }
+    const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `car-stock-${filterActive ? "filtered" : "all"}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.success(`Exported ${filtered.length} car${filtered.length === 1 ? "" : "s"} to CSV`);
+  };
 
   return (
     <div className="space-y-4">
@@ -982,7 +999,7 @@ function CarTradingTab() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-2 space-y-0">
           <CardTitle>Cars</CardTitle>
           <Input placeholder="Search reg or model…" value={carSearch} onChange={(e) => setCarSearch(e.target.value)} className="h-9 w-[190px]" />
           <div className="mr-auto flex gap-1">
@@ -993,6 +1010,7 @@ function CarTradingTab() {
               <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
             </Button>
           </div>
+          <Button variant="outline" size="sm" className="h-9" onClick={exportCsv} title="Download the listed cars as CSV (filter to Needs data first for the incomplete list)"><Download className="mr-1 h-4 w-4" />Export</Button>
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
         <CardContent>
