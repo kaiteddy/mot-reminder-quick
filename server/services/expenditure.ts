@@ -530,7 +530,7 @@ export async function getCarDeals() {
     SELECT d."id", d."registration", d."description", d."purchaseCost",
            to_char(d."purchaseDate",'YYYY-MM-DD') "purchaseDate", d."salePrice",
            to_char(d."saleDate",'YYYY-MM-DD') "saleDate", d."askingPrice",
-           d."reconditioningCost", d."onCostVat", d."status", d."notes",
+           d."reconditioningCost", d."onCostVat", d."feeBreakdown", d."status", d."notes",
            COALESCE(p.linked,0) "linkedPurchaseTotal", COALESCE(p.cnt,0) "linkedCount"
     FROM "carDeals" d
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) linked, COUNT(*) cnt
@@ -549,6 +549,7 @@ export async function getCarDeals() {
       askingPrice: r.askingPrice != null ? num(r.askingPrice) : null,
       reconditioningCost: r.reconditioningCost != null ? recond : null,
       onCostVat: r.onCostVat != null ? num(r.onCostVat) : null,
+      feeBreakdown: r.feeBreakdown ?? null,
       status: r.status, notes: r.notes,
       linkedPurchaseTotal: num(r.linkedPurchaseTotal), linkedCount: num(r.linkedCount),
       effectiveCost,
@@ -571,6 +572,7 @@ function dealFields(input: any) {
   if ("askingPrice" in input) f.askingPrice = numOrNull(input.askingPrice);
   if ("reconditioningCost" in input) f.reconditioningCost = numOrNull(input.reconditioningCost);
   if ("onCostVat" in input) f.onCostVat = numOrNull(input.onCostVat);
+  if ("feeBreakdown" in input) f.feeBreakdown = input.feeBreakdown ?? null;
   if ("status" in input) f.status = input.status;
   if ("notes" in input) f.notes = input.notes || null;
   return f;

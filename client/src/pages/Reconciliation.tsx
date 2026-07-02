@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
@@ -829,6 +830,47 @@ function Stat({ label, value, sub, accent }: any) {
   );
 }
 
+/** Itemised on-cost editor: buyer/auction fee + assured + delivery + other, summed into the on-cost total
+ *  (reconditioningCost). Kept separate from the vehicle price so the margin is unaffected. */
+function FeeCell({ car, onSave }: { car: any; onSave: (patch: any) => void }) {
+  const bd0 = () => {
+    const b = car.feeBreakdown || {};
+    // legacy: a plain reconditioningCost with no breakdown → seed "other" so the sum matches
+    if (!b || Object.keys(b).length === 0) return { buyerFee: "", assured: "", delivery: "", other: car.reconditioningCost != null ? String(car.reconditioningCost) : "" };
+    return { buyerFee: b.buyerFee ?? "", assured: b.assured ?? "", delivery: b.delivery ?? "", other: b.other ?? "" };
+  };
+  const [f, setF] = useState<any>(bd0);
+  useEffect(() => { setF(bd0()); }, [car.id, car.feeBreakdown, car.reconditioningCost]);
+  const n = (x: any) => { const v = parseFloat(String(x ?? "").replace(/[^0-9.-]/g, "")); return isFinite(v) ? v : 0; };
+  const total = n(f.buyerFee) + n(f.assured) + n(f.delivery) + n(f.other);
+  const set = (k: string) => (e: any) => setF((p: any) => ({ ...p, [k]: e.target.value.replace(/[^0-9.-]/g, "") }));
+  const commit = () => onSave({
+    reconditioningCost: total || null,
+    feeBreakdown: { buyerFee: n(f.buyerFee) || null, assured: n(f.assured) || null, delivery: n(f.delivery) || null, other: n(f.other) || null },
+  });
+  const fields: [string, string][] = [["buyerFee", "Buyer / auction fee"], ["assured", "Assured fee"], ["delivery", "Delivery"], ["other", "Other"]];
+  return (
+    <Popover onOpenChange={(o) => { if (!o) commit(); }}>
+      <PopoverTrigger asChild>
+        <button type="button" className="h-8 w-[105px] rounded-md border px-2 text-right text-sm tabular-nums hover:bg-slate-50">
+          {car.reconditioningCost != null ? money(car.reconditioningCost) : <span className="text-slate-400">fees…</span>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 space-y-2">
+        <div className="text-xs font-medium text-slate-600">Purchase on-costs (excl. car price)</div>
+        {fields.map(([k, lbl]) => (
+          <div key={k} className="flex items-center justify-between gap-2">
+            <label className="text-xs text-slate-500">{lbl}</label>
+            <Input type="text" inputMode="decimal" value={f[k]} onChange={set(k)} className="h-7 w-24 text-right" placeholder="£0.00" />
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold"><span>Fees &amp; delivery</span><span className="tabular-nums">{money(total)}</span></div>
+        <p className="text-[10px] text-slate-400">Cost of sales, excluded from the margin. Put reclaimable VAT in the Fee VAT column.</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function EditCell({ v, onSave, type, w, placeholder, align }: any) {
   const [val, setVal] = useState(v ?? "");
   const [focused, setFocused] = useState(false);
@@ -964,7 +1006,7 @@ function CarTradingTab() {
                   </TableCell>
                   <TableCell><EditCell v={r.purchaseDate} type="date" w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="money" align="right" w="105px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
+                  <TableCell className="text-right"><FeeCell car={r} onSave={(patch: any) => save(r.id, patch)} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.salePrice} type="money" align="right" w="110px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>

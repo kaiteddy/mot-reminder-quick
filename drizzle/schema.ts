@@ -574,6 +574,7 @@ export const carDeals = pgTable("carDeals", {
   askingPrice: numeric("askingPrice", { precision: 12, scale: 2 }),     // forecourt reference price
   reconditioningCost: numeric("reconditioningCost", { precision: 12, scale: 2 }), // fees + delivery + prep on-costs (cost of sales, but NOT part of the VAT margin)
   onCostVat: numeric("onCostVat", { precision: 12, scale: 2 }),                    // reclaimable input VAT on the on-costs (fees/delivery often carry VAT; the vehicle itself doesn't under the margin scheme)
+  feeBreakdown: jsonb("feeBreakdown"),                                             // itemised on-costs { buyerFee, assured, delivery, other } — sums into reconditioningCost (for the record; margin unaffected)
   status: varchar("status", { length: 12 }).$type<"in_stock" | "sold">().notNull().default("in_stock"),
   salesStockId: integer("salesStockId"),                               // link to forecourt stock row
   saleInvoiceNo: varchar("saleInvoiceNo", { length: 20 }),             // VAT margin-scheme stock-book sales invoice no (dedupe key for book imports)
