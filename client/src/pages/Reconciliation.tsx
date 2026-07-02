@@ -831,16 +831,26 @@ function Stat({ label, value, sub, accent }: any) {
 
 function EditCell({ v, onSave, type, w, placeholder, align }: any) {
   const [val, setVal] = useState(v ?? "");
+  const [focused, setFocused] = useState(false);
   useEffect(() => { setVal(v ?? ""); }, [v]);
+  const isMoney = type === "money";
+  const numeric = type === "number" || isMoney;
+  const clean = (s: any) => String(s ?? "").replace(/[^0-9.-]/g, "");
   const commit = () => {
-    if (type === "number") {
-      const nv = val === "" ? null : Number(val);
+    if (numeric) {
+      const raw = clean(val);
+      const nv = raw === "" ? null : Number(raw);
       if (nv !== (v ?? null)) onSave(nv);
     } else if ((val || "") !== (v || "")) onSave(val || null);
   };
+  // money: show accounting £ format when not editing; raw number while focused for easy editing
+  const formatted = isMoney && !focused && clean(val) !== "" && isFinite(Number(clean(val)));
+  const display = formatted ? "£" + Number(clean(val)).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (val ?? "");
   return (
-    <Input type={type === "number" ? "number" : type || "text"} value={val} placeholder={placeholder}
-      onChange={(e) => setVal(e.target.value)} onBlur={commit}
+    <Input type={isMoney ? "text" : type === "number" ? "number" : type || "text"} inputMode={numeric ? "decimal" : undefined}
+      value={display} placeholder={isMoney && placeholder ? "£" + placeholder : placeholder}
+      onChange={(e) => setVal(isMoney ? clean(e.target.value) : e.target.value)}
+      onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
       className={`h-8 ${align === "right" ? "text-right" : ""}`} style={{ width: w || "120px" }} />
   );
@@ -935,10 +945,10 @@ function CarTradingTab() {
                       <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell className="text-right"><EditCell v={r.purchaseCost} type="number" align="right" w="100px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="number" align="right" w="90px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.onCostVat} type="number" align="right" w="80px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
-                  <TableCell className="text-right"><EditCell v={r.salePrice} type="number" align="right" w="100px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="money" align="right" w="105px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
+                  <TableCell className="text-right"><EditCell v={r.salePrice} type="money" align="right" w="110px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
                   <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
                   <TableCell className="whitespace-nowrap">
