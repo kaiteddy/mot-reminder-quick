@@ -120,10 +120,10 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const wsCoverage = ohMonthly > 0 ? Math.round((wsGrossMonthly / ohMonthly) * 100) : 0;
 
   const Row = ({ label, vals, bold, hl, indent }: any) => (
-    <TableRow className={hl ? "bg-slate-900 text-white" : bold ? "bg-slate-100 font-semibold" : ""}>
+    <TableRow className={hl ? "bg-slate-900 text-white hover:bg-slate-900" : bold ? "bg-slate-100 font-semibold hover:bg-slate-100" : ""}>
       <TableCell className={`sticky left-0 z-10 whitespace-nowrap ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"} ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
       {vals.map((v: number, i: number) => (
-        <TableCell key={i} className={`text-right tabular-nums ${v < 0 && !hl ? "text-red-600" : ""}`}>{money(v)}</TableCell>
+        <TableCell key={i} className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""}`}>{money(v)}</TableCell>
       ))}
       <TableCell className={`sticky right-0 z-10 text-right font-bold tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"}`}>{money(sumArr(vals))}</TableCell>
     </TableRow>
