@@ -848,6 +848,7 @@ function EditCell({ v, onSave, type, w, placeholder, align }: any) {
 
 function CarTradingTab() {
   const utils = trpc.useUtils();
+  const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -857,7 +858,7 @@ function CarTradingTab() {
   const purchases = trpc.expenditure.vehiclePurchases.useQuery();
   const upsert = trpc.expenditure.upsertCarDeal.useMutation({ onSuccess: inval });
   const addCar = trpc.expenditure.upsertCarDeal.useMutation({
-    onSuccess: () => { inval(); toast.success("Car added — it's the first row; fill in its reg & details"); },
+    onSuccess: (res: any) => { inval(); setNewCarId(res?.id ?? null); toast.success("Car added — highlighted at the top; fill in its reg & details"); },
     onError: (e) => toast.error("Could not add car: " + e.message),
   });
   const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
@@ -878,6 +879,10 @@ function CarTradingTab() {
 
   if (deals.isLoading) return <Loading />;
   const rows: any[] = deals.data || [];
+  // pin the just-added row to the top so it doesn't re-order while you're filling it in
+  const ordered: any[] = newCarId && rows.some((r) => r.id === newCarId)
+    ? [rows.find((r) => r.id === newCarId), ...rows.filter((r) => r.id !== newCarId)]
+    : rows;
   const inStock = rows.filter((r) => r.status === "in_stock");
   const sold = rows.filter((r) => r.status === "sold");
   const stockCost = inStock.reduce((s, r) => s + (r.effectiveCost || 0), 0);
@@ -900,9 +905,10 @@ function CarTradingTab() {
           <CardTitle className="mr-auto">Cars</CardTitle>
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
+        <CardContent>
+          <div className="overflow-auto max-h-[70vh] rounded-md border">
+          <table className="w-full caption-bottom text-sm border-separate border-spacing-0 [&_td]:border-b [&_th]:border-b [&_td]:border-slate-100 [&_th]:border-slate-200">
+            <TableHeader className="sticky top-0 z-20 [&_th]:bg-slate-50">
               <TableRow>
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
                 <TableHead className="text-right" title="Vehicle price only — the VAT margin is based on this">Vehicle £</TableHead>
@@ -913,9 +919,9 @@ function CarTradingTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id} className={r.status === "sold" ? "bg-green-50/40" : ""}>
-                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
+              {ordered.map((r) => (
+                <TableRow key={r.id} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
+                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (r.id === newCarId && v) setNewCarId(null); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
                     <Select value={r.status} onValueChange={(v) => save(r.id, { status: v })}>
@@ -936,7 +942,8 @@ function CarTradingTab() {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+          </table>
+          </div>
           <p className="mt-2 text-xs text-slate-500">Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin.</p>
         </CardContent>
       </Card>
