@@ -94,6 +94,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const adamLoan = catAmts("Director — Adam Rutstein");
   const adamWages = catAmts("Wages — Adam Rutstein");
   const adamTotal = months.map((_: string, i: number) => adamLoan[i] + adamWages[i]);
+  const hillelLoan = catAmts("Director — Hillel Rutstein");
+  const hillelBupa = catAmts("Director — Hillel Rutstein (BUPA)");
+  const hillelTotal = months.map((_: string, i: number) => hillelLoan[i] + hillelBupa[i]);
 
   const vatDue = vat?.due || months.map(() => 0);
   const vatDueWorkshop = vat?.dueWorkshop || months.map(() => 0);
@@ -203,7 +206,9 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="→ Adam Rutstein (drawings / loan)" vals={adamLoan} indent neutral />
             <Row label="→ Adam Rutstein (wages)" vals={adamWages} indent neutral />
             <Row label="→ Adam Rutstein — total drawn" vals={adamTotal} bold neutral />
-            <Row label="→ Hillel Rutstein (drawings / loan)" vals={catAmts("Director — Hillel Rutstein")} indent neutral />
+            <Row label="→ Hillel Rutstein (drawings / loan)" vals={hillelLoan} indent neutral />
+            <Row label="→ Hillel Rutstein (BUPA)" vals={hillelBupa} indent neutral />
+            <Row label="→ Hillel Rutstein — total drawn" vals={hillelTotal} bold neutral />
             <Row label="→ Douglas Brittain (rent)" vals={catAmts("Rent — Douglas Brittain")} indent neutral />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
             <TableRow className="bg-violet-50"><TableCell colSpan={months.length + 2} className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">VAT — Barclays expenditure is VAT-inclusive</TableCell></TableRow>
@@ -329,7 +334,8 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
   const net = months.map((_: any, i: number) => combined[i] + (overheads[i] || 0));
   const adamLoan = cat("Director — Adam Rutstein"), adamWage = cat("Wages — Adam Rutstein");
   const adamTot = months.map((_: any, i: number) => (adamLoan[i] || 0) + (adamWage[i] || 0));
-  const hillel = cat("Director — Hillel Rutstein"), brittain = cat("Rent — Douglas Brittain");
+  const hillel = cat("Director — Hillel Rutstein"), hillelBupa = cat("Director — Hillel Rutstein (BUPA)"), brittain = cat("Rent — Douglas Brittain");
+  const hillelTot = months.map((_: any, i: number) => (hillel[i] || 0) + (hillelBupa[i] || 0));
   const vDue = vat?.due || zeros(), vWs = vat?.dueWorkshop || zeros(), vCar = vat?.dueCars || zeros();
   const vRec = (vat?.reclaimed || zeros()).map((x: number) => -x), vNet = vat?.net || zeros();
   const carInc = months.map((_: any, i: number) => (cartrade[i] || 0) < -50 && Math.round(carRev[i] || 0) === 0);
@@ -392,6 +398,8 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
     rowFor("→ Adam Rutstein (wages)", adamWage),
     rowFor("→ Adam Rutstein — total drawn", adamTot),
     rowFor("→ Hillel Rutstein (drawings / loan)", hillel),
+    rowFor("→ Hillel Rutstein (BUPA)", hillelBupa),
+    rowFor("→ Hillel Rutstein — total drawn", hillelTot),
     rowFor("→ Douglas Brittain (rent, landlord)", brittain),
   ]));
   o.push("");
