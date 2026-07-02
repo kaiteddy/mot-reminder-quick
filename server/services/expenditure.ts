@@ -154,24 +154,25 @@ export async function listTransactions(opts: {
   };
 }
 
-/** Look up make/model/year for a registration via DVLA VES (+ UKVD for the model, which DVLA VES omits).
- *  Read-only: does NOT persist to the workshop `vehicles` table — this is for car-trading stock. */
+/** Look up make/model/year for a registration using only FREE government APIs:
+ *  DVSA MOT history (make + model + colour) and DVLA VES (year of manufacture + fallbacks).
+ *  No paid UKVD. Read-only: does NOT persist to the workshop `vehicles` table (car-trading stock). */
 export async function lookupReg(input: { registration: string }) {
   const reg = String(input.registration || "").toUpperCase().replace(/\s+/g, "");
   if (!reg) return { ok: false, message: "No registration", reg: "" };
   let make = "", model = "", colour = "", year: number | undefined;
+  // DVSA MOT history (free) — the only free source that returns the model
+  try {
+    const { getMOTHistory } = await import("../motApi");
+    const m = await getMOTHistory(reg);
+    if (m) { make = m.make || ""; model = m.model || ""; colour = m.primaryColour || ""; }
+  } catch { /* graceful */ }
+  // DVLA VES (free) — year of manufacture, and make/colour if MOT history had none (e.g. cars <3yrs, no MOT yet)
   try {
     const { getVehicleDetails } = await import("../dvlaApi");
     const d = await getVehicleDetails(reg);
-    if (d) { make = d.make || ""; model = d.model || ""; colour = d.colour || ""; year = d.yearOfManufacture; }
+    if (d) { year = d.yearOfManufacture; if (!make) make = d.make || ""; if (!colour) colour = d.colour || ""; }
   } catch { /* graceful */ }
-  if (!model) {
-    try {
-      const { fetchUKVDData } = await import("../ukvd");
-      const u = await fetchUKVDData(reg);
-      if (u) { model = u.model || model; if (!make) make = u.make || ""; if (!colour) colour = (u as any).colour || ""; }
-    } catch { /* graceful */ }
-  }
   const tc = (s: string) => (s ? s.replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1).toLowerCase()) : s);
   const description = [year ? String(year) : "", tc(make), tc(model)].filter(Boolean).join(" ").trim();
   return { ok: !!(make || model), reg, make: tc(make), model: tc(model), year: year ?? null, colour: tc(colour), description };
