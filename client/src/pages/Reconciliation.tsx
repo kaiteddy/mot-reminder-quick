@@ -936,6 +936,7 @@ function CarTradingTab() {
             <TableHeader className="sticky top-0 z-20 [&_th]:bg-slate-50">
               <TableRow>
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
+                <TableHead>Purchase date</TableHead>
                 <TableHead className="text-right" title="Vehicle price only — the VAT margin is based on this">Vehicle £</TableHead>
                 <TableHead className="text-right" title="Fees, delivery & prep — cost of sales, but NOT part of the margin">Fees &amp; delivery £</TableHead>
                 <TableHead className="text-right" title="Reclaimable input VAT on the fees/delivery (the vehicle itself carries none under the margin scheme)">Fee VAT £</TableHead>
@@ -954,6 +955,7 @@ function CarTradingTab() {
                       <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
                     </Select>
                   </TableCell>
+                  <TableCell><EditCell v={r.purchaseDate} type="date" w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.reconditioningCost} type="money" align="right" w="105px" onSave={(v: any) => save(r.id, { reconditioningCost: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
