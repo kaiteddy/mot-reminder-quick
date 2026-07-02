@@ -86,6 +86,7 @@ export default function Reconciliation() {
 
 function SummaryTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.reconciliation.useQuery({ from, to });
+  const [showPct, setShowPct] = useState(true);
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
   const { months, sales, sections, carTrading, vat, categories } = q.data as any;
@@ -122,9 +123,17 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   const Row = ({ label, vals, bold, hl, indent }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white hover:bg-slate-900" : bold ? "bg-slate-100 font-semibold hover:bg-slate-100" : ""}>
       <TableCell className={`sticky left-0 z-10 whitespace-nowrap ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"} ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
-      {vals.map((v: number, i: number) => (
-        <TableCell key={i} className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""}`}>{money(v)}</TableCell>
-      ))}
+      {vals.map((v: number, i: number) => {
+        const prev = i > 0 ? vals[i - 1] : null;
+        const p = showPct && prev != null && prev !== 0 ? ((v - prev) / Math.abs(prev)) * 100 : null;
+        const showP = p != null && isFinite(p) && Math.abs(p) >= 0.5;
+        return (
+          <TableCell key={i} className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""}`}>
+            {money(v)}
+            {showP && <span className={`ml-1 text-[9px] font-normal ${hl ? "text-slate-400" : "text-slate-400"}`}>{p! > 0 ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}
+          </TableCell>
+        );
+      })}
       <TableCell className={`sticky right-0 z-10 text-right font-bold tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"}`}>{money(sumArr(vals))}</TableCell>
     </TableRow>
   );
@@ -132,7 +141,12 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   return (
     <div className="space-y-4">
     <Card>
-      <CardHeader><CardTitle>Monthly P&amp;L — whole business</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle>Monthly P&amp;L — whole business</CardTitle>
+        <Button variant={showPct ? "default" : "outline"} size="sm" className="h-7 shrink-0 text-xs" onClick={() => setShowPct((v) => !v)}>
+          {showPct ? "Hide" : "Show"} month-on-month %
+        </Button>
+      </CardHeader>
       <CardContent>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border bg-slate-50 p-3"><div className="text-[11px] uppercase tracking-wide text-slate-400">Break-even / month</div><div className="text-lg font-bold text-slate-800">{money(ohMonthly)}</div><div className="text-[11px] text-slate-500">gross profit to cover overheads</div></div>
@@ -156,13 +170,18 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <TableRow>
               <TableCell className="sticky left-0 z-10 bg-white whitespace-nowrap">Car sales</TableCell>
-              {carRev.map((v: number, i: number) => (
-                <TableCell key={i} className="text-right tabular-nums">
-                  {carIncomplete[i]
-                    ? <span className="text-amber-600 font-semibold" title="Stock bought this month but no car sales digitised yet — figure is incomplete, not zero">⚠</span>
-                    : money(v)}
-                </TableCell>
-              ))}
+              {carRev.map((v: number, i: number) => {
+                const prev = i > 0 ? carRev[i - 1] : null;
+                const p = showPct && !carIncomplete[i] && (i === 0 || !carIncomplete[i - 1]) && prev != null && prev !== 0 ? ((v - prev) / Math.abs(prev)) * 100 : null;
+                const showP = p != null && isFinite(p) && Math.abs(p) >= 0.5;
+                return (
+                  <TableCell key={i} className="text-right tabular-nums">
+                    {carIncomplete[i]
+                      ? <span className="text-amber-600 font-semibold" title="Stock bought this month but no car sales digitised yet — figure is incomplete, not zero">⚠</span>
+                      : <>{money(v)}{showP && <span className="ml-1 text-[9px] font-normal text-slate-400">{p! > 0 ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}</>}
+                  </TableCell>
+                );
+              })}
               <TableCell className="sticky right-0 z-10 bg-white text-right font-bold tabular-nums">{money(sumArr(carRev))}</TableCell>
             </TableRow>
             <Row label="Cost of cars sold" vals={carCostNeg} indent />
@@ -193,7 +212,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
         </div>
         <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-          <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT.</span>
+          <span><b>Overheads are a shared, whole-business cost</b> (wages, rent, advertising, insurance) — taken off <i>combined</i> gross, not charged to the workshop alone. A <span className="text-amber-600 font-semibold">⚠</span> in Car sales means stock was bought that month but the disposals aren&apos;t digitised yet, so that month&apos;s car margin &amp; profit are <b>understated, not zero</b>. Car margin comes from the <b>Car Trading</b> tab; "Bank takings" are cash received (cross-check only, not added to revenue). Expenditure is net of reclaimable VAT. The small <span className="text-slate-400">↑/↓ %</span> next to each figure is the change from the previous month (true year-on-year needs a full prior year, which the data doesn&apos;t reach back to yet).</span>
         </p>
       </CardContent>
     </Card>
