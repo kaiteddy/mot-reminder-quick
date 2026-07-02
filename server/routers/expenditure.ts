@@ -39,6 +39,20 @@ export const expenditureRouter = router({
       return getSupplierSpend(input);
     }),
 
+  expenditureBreakdown: publicProcedure
+    .input(z.object({ from: z.string(), to: z.string(), section: z.string(), month: z.string().optional() }))
+    .query(async ({ input }) => {
+      const { getExpenditureBreakdown } = await import("../services/expenditure");
+      return getExpenditureBreakdown(input);
+    }),
+
+  lookupReg: publicProcedure
+    .input(z.object({ registration: z.string() }))
+    .mutation(async ({ input }) => {
+      const { lookupReg } = await import("../services/expenditure");
+      return lookupReg(input);
+    }),
+
   setCategoryVat: publicProcedure
     .input(z.object({ name: z.string(), vatRate: z.number() }))
     .mutation(async ({ input }) => {

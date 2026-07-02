@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
@@ -62,6 +62,7 @@ export default function Reconciliation() {
           <TabsList>
             <TabsTrigger value="summary">Summary (P&amp;L)</TabsTrigger>
             <TabsTrigger value="export">Export for AI</TabsTrigger>
+            <TabsTrigger value="overheads">Overheads</TabsTrigger>
             <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
             <TabsTrigger value="cars">Car Trading</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
@@ -71,6 +72,7 @@ export default function Reconciliation() {
 
           <TabsContent value="summary"><SummaryTab from={from} to={to} /></TabsContent>
           <TabsContent value="export"><ExportTab from={from} to={to} /></TabsContent>
+          <TabsContent value="overheads"><OverheadsTab from={from} to={to} /></TabsContent>
           <TabsContent value="suppliers"><SuppliersTab from={from} to={to} /></TabsContent>
           <TabsContent value="cars"><CarTradingTab /></TabsContent>
           <TabsContent value="transactions"><TransactionsTab /></TabsContent>
@@ -424,6 +426,104 @@ function buildExportMarkdown(recon: any, supp: any, cars: any[], from: string, t
   return o.join("\n");
 }
 
+/** Review each month's overheads line-by-line and reclassify any transaction to the correct category. */
+function OverheadsTab({ from, to }: { from: string; to: string }) {
+  const [month, setMonth] = useState<string>("");
+  const cats = trpc.expenditure.categories.useQuery();
+  const utils = trpc.useUtils();
+  // first load with no month → get the month list + per-month totals for the chips
+  const probe = trpc.expenditure.expenditureBreakdown.useQuery({ from, to, section: "overheads" });
+  const months: string[] = (probe.data as any)?.months || [];
+  const monthlyTotals: number[] = (probe.data as any)?.monthlyTotals || [];
+  // default to the latest month that actually has spend
+  const lastWithSpend = [...months].reverse().find((_m, i) => monthlyTotals[months.length - 1 - i]);
+  const sel = month || lastWithSpend || months[months.length - 1] || "";
+  const detail = trpc.expenditure.expenditureBreakdown.useQuery({ from, to, section: "overheads", month: sel }, { enabled: !!sel });
+  const setOverride = trpc.expenditure.setOverride.useMutation({
+    onSuccess: () => {
+      utils.expenditure.expenditureBreakdown.invalidate();
+      utils.expenditure.reconciliation.invalidate();
+      utils.expenditure.supplierSpend.invalidate();
+    },
+  });
+
+  if (probe.isLoading) return <Loading />;
+  const d: any = detail.data;
+  const txns: any[] = d?.transactions || [];
+  const catRows: any[] = d?.categories || [];
+  const monthTotal = catRows.reduce((s, c) => s + (c.amount || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle>Overheads by month — review &amp; reclassify</CardTitle></CardHeader>
+        <CardContent>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {months.map((m, i) => (
+              <button key={m} onClick={() => setMonth(m)}
+                className={`rounded-md border px-3 py-1.5 text-left transition-colors ${m === sel ? "border-slate-900 bg-slate-900 text-white" : "bg-white hover:bg-slate-50"}`}>
+                <div className="text-sm font-medium leading-tight">{monthLabel(m)}</div>
+                <div className={`text-[11px] tabular-nums ${m === sel ? "text-slate-300" : "text-slate-500"}`}>{money(monthlyTotals[i] || 0)}</div>
+              </button>
+            ))}
+          </div>
+
+          {detail.isLoading ? <Loading /> : !sel ? <p className="p-4 text-slate-500">No data.</p> : (
+            <>
+              <div className="mb-4">
+                <div className="mb-2 flex items-baseline justify-between">
+                  <h3 className="text-sm font-semibold text-slate-700">{monthLabel(sel)} — where it went</h3>
+                  <span className="text-sm font-bold tabular-nums text-red-600">{money(monthTotal)}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {catRows.map((c) => (
+                    <span key={c.name} className="rounded-md bg-slate-100 px-2 py-1 text-xs">
+                      {c.name} · <b className="tabular-nums">{money(c.amount)}</b> <span className="text-slate-400">×{c.count}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead><TableHead>Payee / memo</TableHead>
+                      <TableHead className="text-right">Amount</TableHead><TableHead>Category — reclassify</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {txns.map((r) => (
+                      <TableRow key={r.id} className={r.category === "OTHER / to label" ? "bg-orange-50" : ""}>
+                        <TableCell className="whitespace-nowrap text-slate-500">{r.date}</TableCell>
+                        <TableCell className="max-w-[340px]">
+                          <div className="truncate font-medium" title={r.counterparty}>{r.counterparty}</div>
+                          {r.memo && <div className="truncate text-[11px] text-slate-400" title={r.memo}>{r.memo}</div>}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-red-600">{money(r.amount)}</TableCell>
+                        <TableCell>
+                          <Select value={r.category} onValueChange={(v) => setOverride.mutate({ id: r.id, category: v })}>
+                            <SelectTrigger className="h-8 w-[250px]"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {(cats.data || []).map((c: any) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {!txns.length && <p className="p-4 text-sm text-slate-500">No overhead transactions in {monthLabel(sel)}.</p>}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Amounts are gross (VAT-inclusive) — actual cash out. Reclassifying moves a transaction to another category and instantly updates the P&amp;L; pick a non-overhead category to move it out of overheads entirely.</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 /** Supplier spend analytics — monthly trend chart + per-supplier month-by-month table with rolling trend. */
 function SuppliersTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.supplierSpend.useQuery({ from, to });
@@ -710,7 +810,19 @@ function CarTradingTab() {
   });
   const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
   const link = trpc.expenditure.linkPurchase.useMutation({ onSuccess: inval });
+  const lookup = trpc.expenditure.lookupReg.useMutation();
   const save = (id: number, patch: any) => upsert.mutate({ id, ...patch });
+  // DVLA/UKVD lookup: pull make+model+year from the reg and fill the description.
+  const fillFromReg = async (id: number, reg: string) => {
+    const r = reg?.trim();
+    if (!r) return;
+    const t = toast.loading(`Looking up ${r.toUpperCase()}…`);
+    try {
+      const res: any = await lookup.mutateAsync({ registration: r });
+      if (res?.description) { save(id, { description: res.description }); toast.success(`${res.reg}: ${res.description}`, { id: t }); }
+      else toast.error(`No DVLA match for ${r.toUpperCase()}`, { id: t });
+    } catch (e: any) { toast.error("Lookup failed: " + (e?.message || "unknown"), { id: t }); }
+  };
 
   if (deals.isLoading) return <Loading />;
   const rows: any[] = deals.data || [];
@@ -749,7 +861,7 @@ function CarTradingTab() {
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.id} className={r.status === "sold" ? "bg-green-50/40" : ""}>
-                  <TableCell><EditCell v={r.registration} onSave={(v: any) => save(r.id, { registration: v })} w="90px" /></TableCell>
+                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
                     <Select value={r.status} onValueChange={(v) => save(r.id, { status: v })}>
@@ -762,12 +874,15 @@ function CarTradingTab() {
                   <TableCell className="text-right"><EditCell v={r.salePrice} type="number" align="right" w="100px" onSave={(v: any) => save(r.id, { salePrice: v })} /></TableCell>
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
                   <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
-                  <TableCell><Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button></TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <Button size="icon" variant="ghost" title="Look up make & model from the reg (DVLA)" disabled={!r.registration || lookup.isPending} onClick={() => fillFromReg(r.id, r.registration)}><Search className="h-4 w-4 text-slate-400" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          <p className="mt-2 text-xs text-slate-500">Set a car to <b>Sold</b> and fill in the sale price + date to book the margin. A greyed "Purchase £" hint = the total of associated bank purchases (below).</p>
+          <p className="mt-2 text-xs text-slate-500">Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). Set a car to <b>Sold</b> and fill in the sale price + date to book the margin. A greyed "Purchase £" hint = the total of associated bank purchases (below).</p>
         </CardContent>
       </Card>
 

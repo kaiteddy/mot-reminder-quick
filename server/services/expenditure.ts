@@ -154,6 +154,59 @@ export async function listTransactions(opts: {
   };
 }
 
+/** Look up make/model/year for a registration via DVLA VES (+ UKVD for the model, which DVLA VES omits).
+ *  Read-only: does NOT persist to the workshop `vehicles` table — this is for car-trading stock. */
+export async function lookupReg(input: { registration: string }) {
+  const reg = String(input.registration || "").toUpperCase().replace(/\s+/g, "");
+  if (!reg) return { ok: false, message: "No registration", reg: "" };
+  let make = "", model = "", colour = "", year: number | undefined;
+  try {
+    const { getVehicleDetails } = await import("../dvlaApi");
+    const d = await getVehicleDetails(reg);
+    if (d) { make = d.make || ""; model = d.model || ""; colour = d.colour || ""; year = d.yearOfManufacture; }
+  } catch { /* graceful */ }
+  if (!model) {
+    try {
+      const { fetchUKVDData } = await import("../ukvd");
+      const u = await fetchUKVDData(reg);
+      if (u) { model = u.model || model; if (!make) make = u.make || ""; if (!colour) colour = (u as any).colour || ""; }
+    } catch { /* graceful */ }
+  }
+  const tc = (s: string) => (s ? s.replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1).toLowerCase()) : s);
+  const description = [year ? String(year) : "", tc(make), tc(model)].filter(Boolean).join(" ").trim();
+  return { ok: !!(make || model), reg, make: tc(make), model: tc(model), year: year ?? null, colour: tc(colour), description };
+}
+
+/** Drill-down for one P&L section: per-month gross totals (for month chips) + a chosen month's
+ *  category subtotals and individual transactions (for review + reclassification). */
+export async function getExpenditureBreakdown(opts: { from: string; to: string; section: string; month?: string }) {
+  const months = monthList(opts.from, opts.to);
+  const db = await getDb();
+  if (!db) return { months, monthlyTotals: months.map(() => 0), categories: [], transactions: [] };
+  const secCond = sql`COALESCE(c."section",'overheads')=${opts.section}`;
+  const mt: any = await db.execute(sql`
+    SELECT to_char(t."txnDate",'YYYY-MM') mo, SUM(t."amount"::numeric) amt
+    ${JOIN} WHERE ${secCond} AND t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day')
+    GROUP BY 1`);
+  const idx = Object.fromEntries(months.map((m, i) => [m, i]));
+  const monthlyTotals = months.map(() => 0);
+  for (const r of mt.rows || []) { const i = idx[r.mo]; if (i !== undefined) monthlyTotals[i] = num(r.amt); }
+  let categories: any[] = [], transactions: any[] = [];
+  if (opts.month) {
+    const monCond = sql`to_char(t."txnDate",'YYYY-MM')=${opts.month}`;
+    const cats: any = await db.execute(sql`
+      SELECT ${RESOLVED} category, COUNT(*) n, SUM(t."amount"::numeric) amt
+      ${JOIN} WHERE ${monCond} AND ${secCond} GROUP BY 1 ORDER BY SUM(t."amount"::numeric) ASC`);
+    const txns: any = await db.execute(sql`
+      SELECT t."id", t."source", to_char(t."txnDate",'YYYY-MM-DD') date, t."amount",
+             t."counterparty", t."memo", ${RESOLVED} category
+      ${JOIN} WHERE ${monCond} AND ${secCond} ORDER BY t."amount"::numeric ASC, t."id" DESC`);
+    categories = (cats.rows || []).map((r: any) => ({ name: r.category, count: num(r.n), amount: num(r.amt) }));
+    transactions = (txns.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
+  }
+  return { months, monthlyTotals, categories, transactions };
+}
+
 /** Per-supplier monthly spend + trend (money-out), for the Suppliers analytics tab. */
 export async function getSupplierSpend(opts: { from: string; to: string }) {
   const db = await getDb();
