@@ -861,6 +861,7 @@ function CarTradingTab() {
   const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
   const [carSearch, setCarSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold">("all");
+  const [needsData, setNeedsData] = useState(false);
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -899,11 +900,14 @@ function CarTradingTab() {
   const filtered: any[] = ordered.filter((r) => {
     if (r.id === newCarId) return true; // always show the just-added row
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    if (needsData && r.purchaseCost != null && r.purchaseDate != null) return false; // has both → not "needs data"
     if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) return false;
     return true;
   });
   const inStock = rows.filter((r) => r.status === "in_stock");
   const sold = rows.filter((r) => r.status === "sold");
+  const needsCount = rows.filter((r) => r.purchaseCost == null || r.purchaseDate == null).length;
+  const soldNoPrice = sold.filter((r) => r.purchaseCost == null).length; // these overstate the margin
   const stockCost = inStock.reduce((s, r) => s + (r.effectiveCost || 0), 0);
   const soldRevenue = sold.reduce((s, r) => s + (r.salePrice || 0), 0);
   const soldMargin = sold.reduce((s, r) => s + (r.margin || 0), 0);
@@ -927,6 +931,9 @@ function CarTradingTab() {
             {([["all", "All", rows.length], ["in_stock", "In stock", inStock.length], ["sold", "Sold", sold.length]] as const).map(([k, lbl, n]) => (
               <Button key={k} type="button" variant={statusFilter === k ? "default" : "outline"} size="sm" className="h-9" onClick={() => setStatusFilter(k as any)}>{lbl} <span className="ml-1 opacity-60">{n}</span></Button>
             ))}
+            <Button type="button" variant={needsData ? "default" : "outline"} size="sm" className={`h-9 ${needsData ? "" : "text-amber-700"}`} title="Cars missing a purchase price or purchase date (sold ones overstate the margin)" onClick={() => setNeedsData((v) => !v)}>
+              <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
+            </Button>
           </div>
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
@@ -946,7 +953,7 @@ function CarTradingTab() {
             </TableHeader>
             <TableBody>
               {filtered.map((r) => (
-                <TableRow key={r.id} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
+                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : undefined} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
                   <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
@@ -972,7 +979,7 @@ function CarTradingTab() {
             </TableBody>
           </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">{(cq || statusFilter !== "all") && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
+          <p className="mt-2 text-xs text-slate-500">{soldNoPrice > 0 && <span className="font-semibold text-red-600">⚠ {soldNoPrice} sold car{soldNoPrice > 1 ? "s are" : " is"} missing a purchase price — their margin is overstated; click <b>Needs data</b> to fix. </span>}{(cq || statusFilter !== "all" || needsData) && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
         </CardContent>
       </Card>
 
