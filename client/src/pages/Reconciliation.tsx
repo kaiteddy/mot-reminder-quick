@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
@@ -859,7 +859,7 @@ function CarTradingTab() {
   const purchases = trpc.expenditure.vehiclePurchases.useQuery();
   const upsert = trpc.expenditure.upsertCarDeal.useMutation({ onSuccess: inval });
   const addCar = trpc.expenditure.upsertCarDeal.useMutation({
-    onSuccess: (res: any) => { inval(); setNewCarId(res?.id ?? null); toast.success("Car added — highlighted at the top; fill in its reg & details"); },
+    onSuccess: (res: any) => { inval(); setNewCarId(res?.id ?? null); toast.success("Car added — fill it in, then click the green ✓ to save it into the list"); },
     onError: (e) => toast.error("Could not add car: " + e.message),
   });
   const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
@@ -907,8 +907,8 @@ function CarTradingTab() {
 
       <Card>
         <CardHeader className="flex flex-row items-center gap-2 space-y-0">
-          <CardTitle className="mr-auto">Cars</CardTitle>
-          <Input placeholder="Search reg or model…" value={carSearch} onChange={(e) => setCarSearch(e.target.value)} className="h-9 w-[200px]" />
+          <CardTitle>Cars</CardTitle>
+          <Input placeholder="Search reg or model…" value={carSearch} onChange={(e) => setCarSearch(e.target.value)} className="mr-auto h-9 w-[220px]" />
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
         <CardContent>
@@ -927,7 +927,7 @@ function CarTradingTab() {
             <TableBody>
               {filtered.map((r) => (
                 <TableRow key={r.id} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" ? "bg-green-50/40" : ""}>
-                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (r.id === newCarId && v) setNewCarId(null); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
+                  <TableCell><EditCell v={r.registration} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
                     <Select value={r.status} onValueChange={(v) => save(r.id, { status: v })}>
@@ -942,6 +942,7 @@ function CarTradingTab() {
                   <TableCell><EditCell v={r.saleDate} type="date" w="140px" onSave={(v: any) => save(r.id, { saleDate: v })} /></TableCell>
                   <TableCell className={`text-right font-semibold tabular-nums ${r.margin > 0 ? "text-green-700" : r.margin < 0 ? "text-red-600" : "text-slate-400"}`}>{r.margin != null ? money(r.margin) : "—"}</TableCell>
                   <TableCell className="whitespace-nowrap">
+                    {r.id === newCarId && <Button size="icon" variant="ghost" title="Done — save this car & let it sort into the list" className="text-green-600 hover:bg-green-100 hover:text-green-700" onClick={() => { setNewCarId(null); toast.success("Saved into the list"); }}><Check className="h-4 w-4" /></Button>}
                     <Button size="icon" variant="ghost" title="Look up make & model from the reg (DVLA)" disabled={!r.registration || lookup.isPending} onClick={() => fillFromReg(r.id, r.registration)}><Search className="h-4 w-4 text-slate-400" /></Button>
                     <Button size="icon" variant="ghost" onClick={() => { if (confirm("Delete this car?")) del.mutate({ id: r.id }); }}><Trash2 className="h-4 w-4 text-slate-400" /></Button>
                   </TableCell>
@@ -950,7 +951,7 @@ function CarTradingTab() {
             </TableBody>
           </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">{cq && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin.</p>
+          <p className="mt-2 text-xs text-slate-500">{cq && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
         </CardContent>
       </Card>
 
