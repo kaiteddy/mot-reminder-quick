@@ -546,6 +546,7 @@ export const bankTransactions = pgTable("bankTransactions", {
   categoryOverride: varchar("categoryOverride", { length: 80 }), // per-row manual override
   vatRateOverride: numeric("vatRateOverride", { precision: 5, scale: 2 }), // per-txn VAT rate; overrides the category default when the merchant differs (e.g. non-VAT-registered)
   carDealId: integer("carDealId"), // links a vehicle-stock purchase to a car deal (carDeals.id)
+  effectiveMonth: varchar("effectiveMonth", { length: 7 }), // YYYY-MM override for P&L bucketing — book a pay-date-drifted payment in the month it belongs to, not the day it cleared
   dedupeKey: varchar("dedupeKey", { length: 64 }).notNull().unique(), // hash(source|date|amount|memo) to block re-import dupes
   importBatch: varchar("importBatch", { length: 40 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
@@ -580,6 +581,7 @@ export const carDeals = pgTable("carDeals", {
   saleInvoiceNo: varchar("saleInvoiceNo", { length: 20 }),             // VAT margin-scheme stock-book sales invoice no (dedupe key for book imports)
   stdRated: integer("stdRated"),                                       // 1 = standard-rated (VAT-qualifying) car: output VAT = full sale/6, not margin/6
   notes: text("notes"),
+  source: varchar("source", { length: 60 }),   // where the car came from: BCA/Manheim/Customer/Eastbourne/Aston Barclay or free text
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({

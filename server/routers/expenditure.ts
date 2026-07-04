@@ -95,6 +95,13 @@ export const expenditureRouter = router({
       return setOverride(input);
     }),
 
+  setTxnMonth: publicProcedure
+    .input(z.object({ ids: z.array(z.number()), month: z.string().nullable() }))
+    .mutation(async ({ input }) => {
+      const { setTxnMonth } = await import("../services/expenditure");
+      return setTxnMonth(input);
+    }),
+
   import: publicProcedure
     .input(z.object({ source, csvText: z.string() }))
     .mutation(async ({ input }) => {
@@ -118,6 +125,7 @@ export const expenditureRouter = router({
       onCostVat: z.number().nullish(),
       feeBreakdown: z.object({ buyerFee: z.number().nullish(), assured: z.number().nullish(), delivery: z.number().nullish(), other: z.number().nullish() }).nullish(),
       status: z.enum(["in_stock", "sold"]).optional(), notes: z.string().nullish(),
+      source: z.string().nullish(),
     }))
     .mutation(async ({ input }) => {
       const { upsertCarDeal } = await import("../services/expenditure");
@@ -141,5 +149,11 @@ export const expenditureRouter = router({
     .mutation(async ({ input }) => {
       const { linkPurchase } = await import("../services/expenditure");
       return linkPurchase(input);
+    }),
+  bookDelivery: publicProcedure
+    .input(z.object({ txnId: z.number(), carDealId: z.number(), amount: z.number() }))
+    .mutation(async ({ input }) => {
+      const { bookDelivery } = await import("../services/expenditure");
+      return bookDelivery(input);
     }),
 });

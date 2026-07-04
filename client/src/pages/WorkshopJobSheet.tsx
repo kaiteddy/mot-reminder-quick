@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck, Printer, Receipt, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { round2 } from "@/lib/utils";
 import { toast } from "sonner";
 
 type Line = { id: number; kind: "Labour" | "Part"; description: string; price: string; qty: string };
@@ -151,7 +152,7 @@ export default function WorkshopJobSheet() {
       lineItems: [
         ...lines
           .filter((l) => l.description.trim() || parseFloat(l.price))
-          .map((l) => { const net = lineTotal(l); return { itemType: l.kind, description: l.description, quantity: Number(l.qty) || 1, unitPrice: parseFloat(l.price) || 0, vatRate: 20, subNet: net, taxAmount: net * 0.2 }; }),
+          .map((l) => { const net = round2(lineTotal(l)); return { itemType: l.kind, description: l.description, quantity: Number(l.qty) || 1, unitPrice: parseFloat(l.price) || 0, vatRate: 20, subNet: net, taxAmount: round2(net * 0.2) }; }),
         ...(motNet > 0 ? [{ itemType: "MOT", description: "MOT Test", quantity: 1, unitPrice: motNet, vatRate: 0, subNet: motNet, taxAmount: 0 }] : []),
       ],
     } as any);

@@ -1787,13 +1787,42 @@ export async function liveVehicleTech(registration: string) {
   return out;
 }
 
-/** Next sequential document number for a given GA4 doc type. */
+/**
+ * Next document number for a given doc type — always allocated AHEAD of GA4.
+ *
+ * GA4 mints its own numbers and the sync is one-way (GA4 -> web), so at the moment we allocate,
+ * GA4 may already hold invoices we haven't pulled yet. If we simply used max(known)+1 we'd hand out
+ * a number GA4 has quietly used for a different job, and the two collide once it syncs in (this is
+ * exactly how web SI 90684-90687 clashed with GA4). To prevent that we reserve numbers from a
+ * monotonic high-water that sits `clearance` above the highest number we can see, and leap clear
+ * again whenever GA4 surges past our reserve. GA4 stays the invoicing authority: once a web doc is
+ * keyed into GA4 it reconciles by reg+total and GA4's number is the real one (see cross-check.sh
+ * section 3, the "web ahead of GA4" worklist). `docNoClearance` is tunable via appSettings (0 = the
+ * old contiguous max+1 behaviour).
+ */
 export async function getNextDocNo(docType: string) {
   const db = await getDb();
   if (!db) return "1";
   const r = await db.select({ m: sql<number>`MAX((NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::bigint)` })
     .from(serviceHistory).where(eq(serviceHistory.docType, docType));
-  return String((Number(r[0]?.m) || 0) + 1);
+  const dbMax = Number(r[0]?.m) || 0;
+  const clearance = Number(await getAppSetting("docNoClearance")) || 20;
+  const key = `docNoNext:${docType}`;
+  const reserved = Number(await getAppSetting(key)) || 0;
+  // still ahead of GA4 -> take our next reserved slot; GA4 caught up (or first run) -> leap clear
+  const next = reserved > dbMax ? reserved : dbMax + clearance + 1;
+  await setAppSetting(key, next + 1);
+  return String(next);
+}
+
+/**
+ * Round money to 2dp with decimal round-half-up — matches GA4's VAT/total rounding.
+ * `.toFixed(2)` / `Math.round(n*100)/100` round a half-penny DOWN when the float sits just
+ * under the boundary (e.g. 7 × 5.975 = 41.82499… → 41.82 not 41.83), under-charging VAT a
+ * penny and drifting totals off GA4. The +1e-6 pence-space nudge absorbs that; sign-aware.
+ */
+function round2(n: number): number {
+  return (n < 0 ? -1 : 1) * Math.round(Math.abs(n) * 100 + 1e-6) / 100;
 }
 
 /** Search customers by name / phone / email / postcode (for the job-sheet picker). */
@@ -2236,9 +2265,9 @@ export async function saveDocument(input: SaveDocInput) {
   const tax = (pred: (i: any) => boolean) => items.filter(pred).reduce((a, i) => a + (Number(i.taxAmount) || 0), 0);
   const subPartsNet = net((i) => i.itemType === "Part"), subPartsTax = tax((i) => i.itemType === "Part");
   const subLabourNet = net((i) => i.itemType === "Labour"), subLabourTax = tax((i) => i.itemType === "Labour");
-  const totalNet = items.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
-  const totalTax = items.reduce((a, i) => a + (Number(i.taxAmount) || 0), 0);
-  const totalGross = +(totalNet + totalTax).toFixed(2);
+  const totalNet = round2(items.reduce((a, i) => a + (Number(i.subNet) || 0), 0));
+  const totalTax = round2(items.reduce((a, i) => a + (Number(i.taxAmount) || 0), 0));
+  const totalGross = round2(totalNet + totalTax);
 
   // 3) document fields
   const docFields: any = undef({
@@ -2426,10 +2455,10 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   const xsCompany = detectInsurer(main.company) ? null : main.company;
 
   const discount = Math.max(0, Number(input.discount) || 0);
-  const net = +(Math.max(0, Number(input.excessNet) || 0) - discount).toFixed(2);
+  const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
   const vatRate = input.vatRegistered ? 20 : 0;
-  const tax = +(net * vatRate / 100).toFixed(2);
-  const gross = +(net + tax).toFixed(2);
+  const tax = round2(net * vatRate / 100);
+  const gross = round2(net + tax);
 
   // 1) create the excess invoice (XS) for the customer
   const docNo = await getNextDocNo("XS");
@@ -2476,10 +2505,10 @@ export async function updateExcessInvoice(input: { docId: number; excessNet: num
   const xs = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.docId)).limit(1))[0];
   if (!xs) throw new Error("Excess invoice not found");
   const discount = Math.max(0, Number(input.discount) || 0);
-  const net = +(Math.max(0, Number(input.excessNet) || 0) - discount).toFixed(2);
+  const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
   const vatRate = input.vatRegistered ? 20 : 0;
-  const tax = +(net * vatRate / 100).toFixed(2);
-  const gross = +(net + tax).toFixed(2);
+  const tax = round2(net * vatRate / 100);
+  const gross = round2(net + tax);
 
   await db.update(serviceHistory).set({
     excessDiscount: String(discount.toFixed(2)), custVatRegistered: input.vatRegistered ? 1 : 0,

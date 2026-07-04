@@ -10,10 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download, ChevronsUpDown } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
+const shiftMonth = (m: string, delta: number) => { let [y, mo] = m.split("-").map(Number); mo += delta; while (mo < 1) { mo += 12; y--; } while (mo > 12) { mo -= 12; y++; } return `${y}-${String(mo).padStart(2, "0")}`; };
 const monthLabel = (m: string) => {
   const [y, mo] = m.split("-");
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
@@ -88,6 +90,7 @@ export default function Reconciliation() {
 function SummaryTab({ from, to }: { from: string; to: string }) {
   const q = trpc.expenditure.reconciliation.useQuery({ from, to });
   const [showPct, setShowPct] = useState(true);
+  const [drill, setDrill] = useState<{ section: string; month: string; prevMonth: string | null; label: string } | null>(null);
   if (q.isLoading) return <Loading />;
   if (!q.data) return <p className="p-4 text-slate-500">No data.</p>;
   const { months, sales, sections, carTrading, vat, categories } = q.data as any;
@@ -129,15 +132,19 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
   // rows are neutral (grey). `cost` rows flip the arrow so it reflects the line's own magnitude.
   const pctClass = (p: number, neutral: boolean, dark: boolean) =>
     neutral ? "text-slate-400" : dark ? (p > 0 ? "text-emerald-400" : "text-rose-400") : (p > 0 ? "text-emerald-600" : "text-rose-600");
-  const Row = ({ label, vals, bold, hl, indent, cost, neutral }: any) => (
+  const Row = ({ label, vals, bold, hl, indent, cost, neutral, section }: any) => (
     <TableRow className={hl ? "bg-slate-900 text-white hover:bg-slate-900" : bold ? "bg-slate-100 font-semibold hover:bg-slate-100" : ""}>
       <TableCell className={`sticky left-0 z-10 whitespace-nowrap ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : "bg-white"} ${indent ? "pl-6 text-slate-500" : ""}`}>{label}</TableCell>
       {vals.map((v: number, i: number) => {
         const prev = i > 0 ? vals[i - 1] : null;
         const p = showPct && prev != null && prev !== 0 ? ((v - prev) / Math.abs(prev)) * 100 : null;
         const showP = p != null && isFinite(p) && Math.abs(p) >= 0.5;
+        const drillable = !!section && Math.round(v) !== 0;
         return (
-          <TableCell key={i} className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""}`}>
+          <TableCell key={i}
+            onClick={drillable ? () => setDrill({ section, month: months[i], prevMonth: i > 0 ? months[i - 1] : null, label }) : undefined}
+            title={drillable ? `Click to see what's in ${label} for ${monthLabel(months[i])}` : undefined}
+            className={`text-right tabular-nums ${hl ? "bg-slate-900" : bold ? "bg-slate-100" : ""} ${v < 0 && !hl ? "text-red-600" : ""} ${drillable ? "cursor-pointer hover:bg-blue-50 hover:ring-1 hover:ring-inset hover:ring-blue-300" : ""}`}>
             {money(v)}
             {showP && <span className={`ml-1 text-[9px] font-normal ${pctClass(p!, !!neutral, !!hl)}`}>{(cost ? p! < 0 : p! > 0) ? "↑" : "↓"}{Math.abs(Math.round(p!)) > 999 ? "999+" : Math.abs(Math.round(p!))}%</span>}
           </TableCell>
@@ -174,7 +181,7 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
           </TableHeader>
           <TableBody>
             <Row label="Workshop sales" vals={sales} />
-            <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent cost />
+            <Row label="Cost of sales (parts &amp; sublet)" vals={cogs} indent cost section="cogs" />
             <Row label="Workshop gross profit" vals={gross} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <TableRow>
@@ -197,13 +204,13 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
             <Row label="Car trading margin" vals={carMargin} bold />
             <TableRow><TableCell colSpan={months.length + 2} className="h-3 p-0" /></TableRow>
             <Row label="Combined gross profit (workshop + cars)" vals={combinedGross} bold />
-            <Row label="Overheads — whole business (shared)" vals={overheads} indent cost />
+            <Row label="Overheads — whole business (shared)" vals={overheads} indent cost section="overheads" />
             <Row label="NET BUSINESS PROFIT" vals={netProfit} hl />
             <TableRow><TableCell colSpan={months.length + 2} className="h-4 p-0" /></TableRow>
-            <Row label="Car purchases — cash out on stock" vals={cartrade} indent cost />
-            <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent cost />
-            <Row label="Bank takings (cash in)" vals={receipts} indent />
-            <Row label="Financing / drawings / contra" vals={financing} indent neutral />
+            <Row label="Car purchases — cash out on stock" vals={cartrade} indent cost section="cartrade" />
+            <Row label="Taxes (VAT / Corp Tax)" vals={taxes} indent cost section="taxes" />
+            <Row label="Bank takings (cash in)" vals={receipts} indent section="receipts" />
+            <Row label="Financing / drawings / contra" vals={financing} indent neutral section="financing" />
             <Row label="→ Adam Rutstein (drawings / loan)" vals={adamLoan} indent neutral />
             <Row label="→ Adam Rutstein (wages)" vals={adamWages} indent neutral />
             <Row label="→ Adam Rutstein — total drawn" vals={adamTotal} bold neutral />
@@ -228,7 +235,89 @@ function SummaryTab({ from, to }: { from: string; to: string }) {
       </CardContent>
     </Card>
     <CategoryVatEditor />
+    {drill && <DrillDialog from={from} to={to} section={drill.section} month={drill.month} prevMonth={drill.prevMonth} label={drill.label} onClose={() => setDrill(null)} />}
     </div>
+  );
+}
+
+// Drill-down shown when a P&L expenditure figure is clicked: the categories + transactions behind it,
+// with each category's change from the previous month (biggest movers first) to explain a swing.
+function DrillDialog({ from, to, section, month, prevMonth, label, onClose }: { from: string; to: string; section: string; month: string; prevMonth: string | null; label: string; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const moveTxn = trpc.expenditure.setTxnMonth.useMutation({ onSuccess: () => { utils.expenditure.reconciliation.invalidate(); utils.expenditure.expenditureBreakdown.invalidate(); } });
+  const cur = trpc.expenditure.expenditureBreakdown.useQuery({ from, to, section, month });
+  const prev = trpc.expenditure.expenditureBreakdown.useQuery({ from, to, section, month: prevMonth || "0000-00" }, { enabled: !!prevMonth });
+  const curCats: any[] = (cur.data as any)?.categories || [];
+  const prevCats: any[] = (prev.data as any)?.categories || [];
+  const txns: any[] = (cur.data as any)?.transactions || [];
+  // group by date + category so a whole payroll batch moves together
+  const txnGroups: any[] = Object.values(txns.reduce((acc: any, t: any) => {
+    const key = t.date + "|" + t.category;
+    if (!acc[key]) acc[key] = { key, date: t.date, category: t.category, ids: [], total: 0, payees: [], moved: false };
+    acc[key].ids.push(t.id); acc[key].total += t.amount; acc[key].moved = acc[key].moved || !!t.effectiveMonth;
+    if (!acc[key].payees.includes(t.counterparty)) acc[key].payees.push(t.counterparty);
+    return acc;
+  }, {}));
+  const names = Array.from(new Set([...curCats, ...prevCats].map((c) => c.name)));
+  const catRows = names.map((name) => {
+    const c = curCats.find((x) => x.name === name)?.amount || 0;
+    const p = prevCats.find((x) => x.name === name)?.amount || 0;
+    return { name, cur: c, prev: p, delta: c - p };
+  }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const curTotal = curCats.reduce((s, c) => s + c.amount, 0);
+  const prevTotal = prevCats.reduce((s, c) => s + c.amount, 0);
+  const totalDelta = curTotal - prevTotal;
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle>{label} — {monthLabel(month)}</DialogTitle></DialogHeader>
+        <div className="text-sm">
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-xl font-bold">{money(curTotal)}</span>
+            {prevMonth && <span className="text-slate-500">vs {monthLabel(prevMonth)} <b>{money(prevTotal)}</b> · change <span className={`font-semibold ${totalDelta < -0.5 ? "text-rose-600" : totalDelta > 0.5 ? "text-emerald-600" : ""}`}>{money(totalDelta)}</span></span>}
+          </div>
+          {cur.isLoading ? <Loading /> : (
+            <>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">By category{prevMonth ? " — biggest movers first" : ""}</div>
+              <table className="mb-4 w-full">
+                <thead><tr className="border-b text-[11px] text-slate-500"><th className="py-1 text-left font-medium">Category</th>{prevMonth && <th className="px-2 text-right font-medium">{monthLabel(prevMonth)}</th>}<th className="px-2 text-right font-medium">{monthLabel(month)}</th>{prevMonth && <th className="pl-2 text-right font-medium">change</th>}</tr></thead>
+                <tbody>
+                  {catRows.map((r) => (
+                    <tr key={r.name} className="border-b border-slate-100">
+                      <td className="py-1 pr-2">{r.name}</td>
+                      {prevMonth && <td className="px-2 text-right tabular-nums text-slate-400">{r.prev ? money(r.prev) : "—"}</td>}
+                      <td className="px-2 text-right tabular-nums">{r.cur ? money(r.cur) : "—"}</td>
+                      {prevMonth && <td className={`pl-2 text-right tabular-nums font-medium ${r.delta < -0.5 ? "text-rose-600" : r.delta > 0.5 ? "text-emerald-600" : "text-slate-300"}`}>{Math.abs(r.delta) < 0.5 ? "—" : money(r.delta)}</td>}
+                    </tr>
+                  ))}
+                  {catRows.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-slate-400">Nothing recorded.</td></tr>}
+                </tbody>
+              </table>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Transactions in {monthLabel(month)} ({txns.length}) · use ◄ ► to book a payment in the month it belongs to</div>
+              <table className="w-full text-xs">
+                <tbody>
+                  {txnGroups.map((g) => (
+                    <tr key={g.key} className={`border-b border-slate-100 ${g.moved ? "bg-amber-50" : ""}`}>
+                      <td className="whitespace-nowrap py-1 pr-2 text-slate-400">{g.date}{g.moved && <span title="Booked into this month manually" className="ml-1 text-amber-600">•</span>}</td>
+                      <td className="py-1 pr-2" title={g.payees.join(", ")}>{g.ids.length > 1 ? `${g.ids.length} payments` : g.payees[0]}</td>
+                      <td className="py-1 pr-2 text-slate-400">{g.category}</td>
+                      <td className="py-1 text-right tabular-nums text-red-600">{money(g.total)}</td>
+                      <td className="whitespace-nowrap py-1 pl-2 text-right">
+                        <button type="button" title={`Book in ${monthLabel(shiftMonth(month, -1))}`} disabled={moveTxn.isPending} className="rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700" onClick={() => moveTxn.mutate({ ids: g.ids, month: shiftMonth(month, -1) })}>◄</button>
+                        <button type="button" title={`Book in ${monthLabel(shiftMonth(month, 1))}`} disabled={moveTxn.isPending} className="rounded px-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700" onClick={() => moveTxn.mutate({ ids: g.ids, month: shiftMonth(month, 1) })}>►</button>
+                        {g.moved && <button type="button" title="Reset to the bank date" disabled={moveTxn.isPending} className="rounded px-1 text-amber-600 hover:bg-amber-100" onClick={() => moveTxn.mutate({ ids: g.ids, month: null })}>↺</button>}
+                      </td>
+                    </tr>
+                  ))}
+                  {txnGroups.length === 0 && <tr><td colSpan={5} className="py-3 text-center text-slate-400">No transactions.</td></tr>}
+                </tbody>
+              </table>
+              <p className="mt-2 text-[10px] text-slate-400">◄ ► move a payment (or a whole same-day batch) into the month it belongs to — the P&amp;L updates instantly. Category totals are net of reclaimable VAT; transactions show the amount paid.</p>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -898,6 +987,44 @@ function EditCell({ v, onSave, type, w, placeholder, align, disabled }: any) {
   );
 }
 
+// Where a car came from — a dropdown of the usual sources, plus "Other…" to type anything.
+const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay"];
+function SourceCell({ v, disabled, onSave }: { v: any; disabled?: boolean; onSave: (v: string | null) => void }) {
+  const isPreset = !!v && CAR_SOURCES.includes(v);
+  const [other, setOther] = useState<boolean>(!!v && !isPreset);
+  const [text, setText] = useState<string>(!isPreset ? (v ?? "") : "");
+  useEffect(() => {
+    const p = !!v && CAR_SOURCES.includes(v);
+    setOther(!!v && !p);
+    setText(!p ? (v ?? "") : "");
+  }, [v]);
+  if (other) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input autoFocus value={text} disabled={disabled} placeholder="type source…"
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => { const t = text.trim(); if ((t || null) !== (v || null)) onSave(t || null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          className="h-8" style={{ width: "120px" }} />
+        <button type="button" title="Back to the list" disabled={disabled}
+          className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
+          onClick={() => { setOther(false); if (v) onSave(null); }}>↩</button>
+      </div>
+    );
+  }
+  return (
+    <Select value={isPreset ? v : ""} disabled={disabled}
+      onValueChange={(val) => { if (val === "__other__") { setOther(true); setText(""); } else if (val === "__none__") { onSave(null); } else { onSave(val); } }}>
+      <SelectTrigger className="h-8 w-[132px]"><SelectValue placeholder="—" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">—</SelectItem>
+        {CAR_SOURCES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+        <SelectItem value="__other__">Other…</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 function CarTradingTab() {
   const utils = trpc.useUtils();
   const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
@@ -905,6 +1032,7 @@ function CarTradingTab() {
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold">("all");
   const [needsData, setNeedsData] = useState(false);
   const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
+  const [splitFor, setSplitFor] = useState<{ carId: number; total: number; payee: string } | null>(null); // auction fee-split prompt
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -919,6 +1047,16 @@ function CarTradingTab() {
   });
   const del = trpc.expenditure.deleteCarDeal.useMutation({ onSuccess: inval });
   const link = trpc.expenditure.linkPurchase.useMutation({ onSuccess: inval });
+  // "Not a car purchase" — re-file a mis-categorised payment out of vehicle stock (into 'to label'),
+  // which drops it off this list AND out of the Car-purchases P&L line. Never deletes the bank row.
+  const notCar = trpc.expenditure.setOverride.useMutation({
+    onSuccess: () => { inval(); toast.success("Removed from car purchases — filed under ‘to label’ to re-categorise"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deliv = trpc.expenditure.bookDelivery.useMutation({
+    onSuccess: () => { inval(); toast.success("Booked as delivery — added to the car's delivery cost"); },
+    onError: (e) => toast.error(e.message),
+  });
   const lookup = trpc.expenditure.lookupReg.useMutation();
   const save = (id: number, patch: any) => upsert.mutate({ id, ...patch });
   // a "complete" car (purchase + sale price + both dates) is locked read-only until explicitly unlocked
@@ -973,12 +1111,12 @@ function CarTradingTab() {
   const toLink = purch.filter((p) => !p.carDealId).length;
   // export the currently-filtered cars to CSV (use the Needs-data filter to get the incomplete list)
   const exportCsv = () => {
-    const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "Missing", "Linked payment total"];
+    const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Source", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "Missing", "Linked payment total"];
     const esc = (v: any) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [cols.join(",")];
     for (const r of filtered) {
       const missing = [r.purchaseCost == null ? "price" : null, r.purchaseDate == null ? "date" : null].filter(Boolean).join("+");
-      lines.push([r.registration, r.description, r.status, r.purchaseCost, r.purchaseDate, r.reconditioningCost, r.onCostVat, r.salePrice, r.saleDate, r.margin, missing, r.linkedPurchaseTotal || ""].map(esc).join(","));
+      lines.push([r.registration, r.description, r.status, r.purchaseCost, r.purchaseDate, r.source, r.reconditioningCost, r.onCostVat, r.salePrice, r.saleDate, r.margin, missing, r.linkedPurchaseTotal || ""].map(esc).join(","));
     }
     const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -1020,6 +1158,7 @@ function CarTradingTab() {
               <TableRow>
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
                 <TableHead>Purchase date</TableHead>
+                <TableHead title="Where the car came from — pick a common source or type any other">Source</TableHead>
                 <TableHead className="text-right" title="Vehicle price only — the VAT margin is based on this">Vehicle £</TableHead>
                 <TableHead className="text-right" title="Fees, delivery & prep — cost of sales, but NOT part of the margin">Fees &amp; delivery £</TableHead>
                 <TableHead className="text-right" title="Reclaimable input VAT on the fees/delivery (the vehicle itself carries none under the margin scheme)">Fee VAT £</TableHead>
@@ -1041,6 +1180,7 @@ function CarTradingTab() {
                     </Select>
                   </TableCell>
                   <TableCell><EditCell v={r.purchaseDate} type="date" disabled={locked} w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
+                  <TableCell><SourceCell v={r.source} disabled={locked} onSave={(v: any) => save(r.id, { source: v })} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.purchaseCost} type="money" disabled={locked} align="right" w="110px" placeholder={r.linkedPurchaseTotal ? String(Math.round(r.linkedPurchaseTotal)) : ""} onSave={(v: any) => save(r.id, { purchaseCost: v })} /></TableCell>
                   <TableCell className="text-right"><FeeCell car={r} disabled={locked} onSave={(patch: any) => save(r.id, patch)} /></TableCell>
                   <TableCell className="text-right"><EditCell v={r.onCostVat} type="money" disabled={locked} align="right" w="95px" onSave={(v: any) => save(r.id, { onCostVat: v })} /></TableCell>
@@ -1063,7 +1203,7 @@ function CarTradingTab() {
             </TableBody>
           </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">{soldNoPrice > 0 && <span className="font-semibold text-red-600">⚠ {soldNoPrice} sold car{soldNoPrice > 1 ? "s are" : " is"} missing a purchase price — their margin is overstated; click <b>Needs data</b> to fix. </span>}{filterActive && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars — rows stay put while you edit; click a filter again to refresh the list. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On a purchase invoice, put the <b>vehicle price</b> in <b>Vehicle £</b> (this alone drives the margin) and the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> with any reclaimable VAT in <b>Fee VAT £</b> — e.g. £5,000 vehicle, £650 fees, £108 VAT. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. The greyed <b>Vehicle £</b> hint = the total of linked bank purchases (split it into vehicle vs fees). Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
+          <p className="mt-2 text-xs text-slate-500">{soldNoPrice > 0 && <span className="font-semibold text-red-600">⚠ {soldNoPrice} sold car{soldNoPrice > 1 ? "s are" : " is"} missing a purchase price — their margin is overstated; click <b>Needs data</b> to fix. </span>}{filterActive && <span className="font-medium text-slate-600">Showing {filtered.length} of {rows.length} cars — rows stay put while you edit; click a filter again to refresh the list. </span>}Type a <b>reg</b> and the make &amp; model auto-fill from DVLA (or click the <Search className="inline h-3 w-3" /> to look up any row). On an auction / linked purchase, enter the <b>fees + delivery</b> in <b>Fees &amp; delivery £</b> and the reclaimable VAT in <b>Fee VAT £</b> — the <b>Vehicle £</b> is then worked out for you (linked payment − fees − VAT), because an auction payment is the whole invoice. No payment linked? Type <b>Vehicle £</b> in directly. Margin = sale − vehicle price; fees are cost of sales but not part of the margin. Set a car to <b>Sold</b> with the sale price + date to book the margin. A newly-added car stays pinned &amp; highlighted at the top until you click the green ✓ to save it into the list.</p>
         </CardContent>
       </Card>
 
@@ -1073,7 +1213,7 @@ function CarTradingTab() {
           {purchases.isLoading ? <Loading /> : (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Date</TableHead><TableHead>Payee</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Associated car</TableHead></TableRow>
+                <TableRow><TableHead>Date</TableHead><TableHead>Payee</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Associated car</TableHead><TableHead></TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {purch.map((p) => (
@@ -1082,13 +1222,18 @@ function CarTradingTab() {
                     <TableCell>{p.counterparty}</TableCell>
                     <TableCell className="text-right tabular-nums text-red-600">{money(p.amount)}</TableCell>
                     <TableCell>
-                      <Select value={p.carDealId ? String(p.carDealId) : "none"} onValueChange={(v) => link.mutate({ txnId: p.id, carDealId: v === "none" ? null : Number(v) })}>
-                        <SelectTrigger className="h-8 w-[260px]"><SelectValue placeholder="— unassigned —" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— unassigned —</SelectItem>
-                          {rows.map((d) => <SelectItem key={d.id} value={String(d.id)}>{(d.registration || "(no reg)") + " · " + (d.description || "")}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <CarPicker cars={rows} value={p.carDealId ?? null} allowDelivery={Math.abs(Number(p.amount) || 0) < 1000}
+                        onChange={(id, mode) => {
+                          if (mode === "delivery" && id) deliv.mutate({ txnId: p.id, carDealId: id, amount: Math.abs(Number(p.amount) || 0) });
+                          else link.mutate({ txnId: p.id, carDealId: id }, { onSuccess: () => { if (id && isAuctionPayee(p.counterparty)) setSplitFor({ carId: id, total: Math.abs(Number(p.amount) || 0), payee: p.counterparty }); } });
+                        }} />
+                    </TableCell>
+                    <TableCell>
+                      {!p.carDealId && (
+                        <button type="button" title="This isn't a car purchase — remove it from this list (re-files it under ‘to label’ to categorise properly; does NOT delete the bank transaction)"
+                          onClick={() => { if (confirm(`Remove the ${money(Math.abs(p.amount))} payment to “${p.counterparty}” from car purchases?\n\nIt moves to ‘to label’ so you can categorise it properly — it does NOT delete the bank transaction.`)) notCar.mutate({ id: p.id, category: "OTHER / to label" }); }}
+                          className="whitespace-nowrap text-xs text-slate-400 hover:text-red-600">Not a car ✕</button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1097,7 +1242,94 @@ function CarTradingTab() {
           )}
         </CardContent>
       </Card>
+      {splitFor && (
+        <SplitFeesDialog car={rows.find((c) => c.id === splitFor.carId)} total={splitFor.total} payee={splitFor.payee}
+          onSkip={() => setSplitFor(null)}
+          onSave={(fees, vat) => { save(splitFor.carId, { reconditioningCost: fees, onCostVat: vat }); setSplitFor(null); toast.success("Fees split — the car price is worked out"); }} />
+      )}
     </div>
+  );
+}
+
+// Recognised auction payees — when a purchase from one is linked, prompt to split its fees.
+const isAuctionPayee = (p: string) => /british ?car ?auction|\bbca\b|manheim|aston ?barclay|eastbourne/i.test(p || "");
+
+// Prompt shown when an auction purchase is associated: enter fees + VAT, the car price is the rest.
+function SplitFeesDialog({ car, total, payee, onSkip, onSave }: { car: any; total: number; payee: string; onSkip: () => void; onSave: (fees: number | null, vat: number | null) => void }) {
+  const clean = (s: string) => s.replace(/[^0-9.]/g, "");
+  const [fees, setFees] = useState<string>(car?.reconditioningCost != null ? String(car.reconditioningCost) : "");
+  const [vat, setVat] = useState<string>(car?.onCostVat != null ? String(car.onCostVat) : "");
+  const f = parseFloat(fees) || 0, v = parseFloat(vat) || 0;
+  const vehicle = Math.max(0, Math.round((total - f - v) * 100) / 100);
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onSkip(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Auction purchase — split the fees</DialogTitle></DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p className="text-slate-600">Paid <b>{money(total)}</b> to {payee} for <b>{car?.registration || "this car"}</b>. Enter the fees &amp; VAT from the invoice — the car price is whatever's left.</p>
+          <div className="flex items-center justify-between gap-2"><label className="text-slate-600">Fees &amp; delivery £</label><Input inputMode="decimal" autoFocus value={fees} onChange={(e) => setFees(clean(e.target.value))} className="h-8 w-32 text-right" placeholder="£0.00" /></div>
+          <div className="flex items-center justify-between gap-2"><label className="text-slate-600">Fee VAT £ (reclaimable)</label><Input inputMode="decimal" value={vat} onChange={(e) => setVat(clean(e.target.value))} className="h-8 w-32 text-right" placeholder="£0.00" /></div>
+          <div className="flex items-center justify-between border-t pt-2 text-base font-semibold"><span>Vehicle £ (worked out)</span><span className="tabular-nums">{money(vehicle)}</span></div>
+          <p className="text-[11px] text-slate-400">Car price = payment − fees − VAT — this is what drives the margin &amp; margin-scheme VAT.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onSkip}>Skip</Button>
+          <Button onClick={() => onSave(f || null, v || null)}>Save split</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Searchable car picker for associating a stock purchase — type a reg or model to filter (sold + in-stock).
+function CarPicker({ cars, value, onChange, allowDelivery }: { cars: any[]; value: number | null; onChange: (id: number | null, mode?: "purchase" | "delivery") => void; allowDelivery?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [mode, setMode] = useState<"purchase" | "delivery">("purchase");
+  const current = value != null ? cars.find((c) => c.id === value) : null;
+  const label = current ? `${current.registration || "(no reg)"} · ${current.description || ""}` : "— unassigned —";
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? cars.filter((d) => `${d.registration || ""} ${d.description || ""} ${d.status === "sold" ? "sold" : "in stock"}`.toLowerCase().includes(needle))
+    : cars;
+  const deliv = !!allowDelivery && mode === "delivery";
+  const pick = (id: number | null) => { onChange(id, deliv ? "delivery" : "purchase"); setOpen(false); setQ(""); setMode("purchase"); };
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setQ(""); setMode("purchase"); } }}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className={`h-8 w-[260px] justify-between font-normal ${current ? "" : "text-slate-400"}`}>
+          <span className="truncate">{label}</span>
+          <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        {allowDelivery && (
+          <div className="flex items-center gap-1 border-b p-2 text-xs">
+            <span className="text-slate-500">This payment is:</span>
+            <button type="button" onClick={() => setMode("purchase")} className={`rounded px-2 py-0.5 ${mode === "purchase" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}>Purchase</button>
+            <button type="button" onClick={() => setMode("delivery")} className={`rounded px-2 py-0.5 ${mode === "delivery" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}>🚚 Delivery</button>
+          </div>
+        )}
+        <div className="border-b p-2">
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={deliv ? "Delivery for which car?" : "Search reg or model…"} className="h-8" />
+        </div>
+        <div className="max-h-[280px] overflow-y-auto p-1">
+          {!deliv && (
+            <button type="button" onClick={() => pick(null)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-slate-500 hover:bg-accent">
+              <Check className={`h-4 w-4 shrink-0 ${current ? "opacity-0" : "opacity-100"}`} /> — unassigned —
+            </button>
+          )}
+          {shown.length === 0 && <div className="px-2 py-4 text-center text-sm text-slate-400">No matching car.</div>}
+          {shown.map((d) => (
+            <button type="button" key={d.id} onClick={() => pick(d.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent">
+              {deliv ? <span className="w-4 shrink-0 text-center">🚚</span> : <Check className={`h-4 w-4 shrink-0 ${value === d.id ? "opacity-100" : "opacity-0"}`} />}
+              <span className="flex-1 truncate">{(d.registration || "(no reg)") + " · " + (d.description || "")}</span>
+              <span className={`shrink-0 rounded px-1 text-[10px] ${d.status === "sold" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>{d.status === "sold" ? "sold" : "stock"}</span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

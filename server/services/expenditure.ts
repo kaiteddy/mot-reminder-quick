@@ -19,6 +19,9 @@ const JOIN = sql`
   LEFT JOIN "transactionLabels" l ON l."source"=t."source" AND l."counterpartyKey"=t."counterpartyKey"
   LEFT JOIN "expenditureCategories" c ON c."name"=COALESCE(t."categoryOverride", l."category", ${OTHER})`;
 
+// Month a transaction counts in for the P&L — the manual override if set (pay-date drift), else its bank date.
+const EMONTH = sql`COALESCE(t."effectiveMonth", to_char(t."txnDate",'YYYY-MM'))`;
+
 function monthList(from: string, to: string): string[] {
   // timezone-safe: work directly on the YYYY-MM parts (avoid Date/UTC drift)
   const out: string[] = [];
@@ -62,7 +65,7 @@ export async function getReconciliation(opts: { from: string; to: string }) {
 
   // Expenditure by month x category (with section) — amounts are NET of reclaimable VAT
   const expRows: any = await db.execute(sql`
-    SELECT to_char(date_trunc('month',t."txnDate"),'YYYY-MM') m,
+    SELECT ${EMONTH} m,
            ${RESOLVED} category, COALESCE(c."section",'overheads') section,
            COALESCE(c."sortOrder",999) "sortOrder", COALESCE(c."isContra",0) "isContra",
            SUM(${NET}) amt
@@ -89,7 +92,7 @@ export async function getReconciliation(opts: { from: string; to: string }) {
 
   // Input VAT reclaimed on expenditure (money-out only) by month
   const vatRows: any = await db.execute(sql`
-    SELECT to_char(date_trunc('month',t."txnDate"),'YYYY-MM') m, SUM(t."amount"::numeric - ${NET}) vatp
+    SELECT ${EMONTH} m, SUM(t."amount"::numeric - ${NET}) vatp
     ${JOIN}
     WHERE t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day') AND t."amount"::numeric < 0
     GROUP BY 1`);
@@ -190,9 +193,12 @@ export async function getExpenditureBreakdown(opts: { from: string; to: string; 
   const months = monthList(opts.from, opts.to);
   const db = await getDb();
   if (!db) return { months, monthlyTotals: months.map(() => 0), categories: [], transactions: [] };
+  // NET (ex reclaimable VAT), so the drill-down totals match the P&L line, which is also net.
+  const ER = sql`COALESCE(t."vatRateOverride", c."vatRate", 20)`;
+  const NET = sql`(t."amount"::numeric * 100.0 / (100 + ${ER}))`;
   const secCond = sql`COALESCE(c."section",'overheads')=${opts.section}`;
   const mt: any = await db.execute(sql`
-    SELECT to_char(t."txnDate",'YYYY-MM') mo, SUM(t."amount"::numeric) amt
+    SELECT ${EMONTH} mo, SUM(${NET}) amt
     ${JOIN} WHERE ${secCond} AND t."txnDate" >= ${opts.from}::date AND t."txnDate" < (${opts.to}::date + INTERVAL '1 day')
     GROUP BY 1`);
   const idx = Object.fromEntries(months.map((m, i) => [m, i]));
@@ -200,13 +206,13 @@ export async function getExpenditureBreakdown(opts: { from: string; to: string; 
   for (const r of mt.rows || []) { const i = idx[r.mo]; if (i !== undefined) monthlyTotals[i] = num(r.amt); }
   let categories: any[] = [], transactions: any[] = [];
   if (opts.month) {
-    const monCond = sql`to_char(t."txnDate",'YYYY-MM')=${opts.month}`;
+    const monCond = sql`${EMONTH}=${opts.month}`;
     const cats: any = await db.execute(sql`
-      SELECT ${RESOLVED} category, COUNT(*) n, SUM(t."amount"::numeric) amt
-      ${JOIN} WHERE ${monCond} AND ${secCond} GROUP BY 1 ORDER BY SUM(t."amount"::numeric) ASC`);
+      SELECT ${RESOLVED} category, COUNT(*) n, SUM(${NET}) amt
+      ${JOIN} WHERE ${monCond} AND ${secCond} GROUP BY 1 ORDER BY SUM(${NET}) ASC`);
     const txns: any = await db.execute(sql`
       SELECT t."id", t."source", to_char(t."txnDate",'YYYY-MM-DD') date, t."amount",
-             t."counterparty", t."memo", ${RESOLVED} category
+             t."counterparty", t."memo", t."effectiveMonth", ${RESOLVED} category
       ${JOIN} WHERE ${monCond} AND ${secCond} ORDER BY t."amount"::numeric ASC, t."id" DESC`);
     categories = (cats.rows || []).map((r: any) => ({ name: r.category, count: num(r.n), amount: num(r.amt) }));
     transactions = (txns.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
@@ -332,6 +338,17 @@ export async function setOverride(input: { id: number; category: string | null }
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.execute(sql`UPDATE "bankTransactions" SET "categoryOverride"=${input.category} WHERE "id"=${input.id}`);
+  return { ok: true };
+}
+
+/** Book transaction(s) into a specific P&L month (YYYY-MM), or null to reset to the bank date. Fixes
+ *  pay-date drift (e.g. a payroll paid on the 1st that belongs to the previous month). */
+export async function setTxnMonth(input: { ids: number[]; month: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const ids = (input.ids || []).map(Number).filter((n) => Number.isFinite(n));
+  if (!ids.length) return { ok: true };
+  await db.execute(sql`UPDATE "bankTransactions" SET "effectiveMonth"=${input.month} WHERE "id" IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`);
   return { ok: true };
 }
 
@@ -530,7 +547,7 @@ export async function getCarDeals() {
     SELECT d."id", d."registration", d."description", d."purchaseCost",
            to_char(d."purchaseDate",'YYYY-MM-DD') "purchaseDate", d."salePrice",
            to_char(d."saleDate",'YYYY-MM-DD') "saleDate", d."askingPrice",
-           d."reconditioningCost", d."onCostVat", d."feeBreakdown", d."status", d."notes",
+           d."reconditioningCost", d."onCostVat", d."feeBreakdown", d."status", d."notes", d."source",
            COALESCE(p.linked,0) "linkedPurchaseTotal", COALESCE(p.cnt,0) "linkedCount"
     FROM "carDeals" d
     LEFT JOIN (SELECT "carDealId", SUM(ABS("amount")) linked, COUNT(*) cnt
@@ -550,7 +567,7 @@ export async function getCarDeals() {
       reconditioningCost: r.reconditioningCost != null ? recond : null,
       onCostVat: r.onCostVat != null ? num(r.onCostVat) : null,
       feeBreakdown: r.feeBreakdown ?? null,
-      status: r.status, notes: r.notes,
+      status: r.status, notes: r.notes, source: r.source,
       linkedPurchaseTotal: num(r.linkedPurchaseTotal), linkedCount: num(r.linkedCount),
       effectiveCost,
       margin: r.status === "sold" && sale != null ? sale - effectiveCost : null,
@@ -575,6 +592,7 @@ function dealFields(input: any) {
   if ("feeBreakdown" in input) f.feeBreakdown = input.feeBreakdown ?? null;
   if ("status" in input) f.status = input.status;
   if ("notes" in input) f.notes = input.notes || null;
+  if ("source" in input) f.source = input.source || null;
   return f;
 }
 
@@ -586,6 +604,18 @@ export async function upsertCarDeal(input: any) {
   if (input.id) {
     f.updatedAt = new Date();
     await db.update(carDeals).set(f).where(eq(carDeals.id, input.id));
+    // Auction split: when fees/VAT are entered (but NOT the vehicle price itself), derive the
+    // vehicle price from the linked payment total — vehicle = total − fees − VAT. Auction bank
+    // payments are the whole invoice; this backs out the car price so the margin/VAT is right.
+    // Skipped if no payment is linked, and a direct Vehicle £ edit (purchaseCost in input) wins.
+    if ((("reconditioningCost" in input) || ("onCostVat" in input)) && !("purchaseCost" in input)) {
+      await db.execute(sql`
+        UPDATE "carDeals" d
+        SET "purchaseCost" = GREATEST(lp.total - COALESCE(d."reconditioningCost",0) - COALESCE(d."onCostVat",0), 0),
+            "updatedAt" = now()
+        FROM (SELECT SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId"=${input.id}) lp
+        WHERE d."id"=${input.id} AND COALESCE(lp.total,0) > 0`);
+    }
     return { id: input.id };
   }
   const [row]: any = await db.insert(carDeals).values(f).returning({ id: carDeals.id });
@@ -615,10 +645,11 @@ export async function getVehiclePurchases() {
   return (res.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
 }
 
-/** Link (or unlink with null) a purchase transaction to a car deal; auto-fills the purchase DATE if
- *  unset. Deliberately does NOT auto-fill purchaseCost: a linked payment is the TOTAL invoice
- *  (vehicle + fees + delivery), whereas purchaseCost must be the vehicle-only price that drives the
- *  margin. The linked total is shown as a greyed hint so the user can split it (vehicle vs on-costs). */
+/** Link (or unlink with null) a purchase transaction to a car deal; auto-fills the purchase DATE and,
+ *  when the payee is a recognised auction, the SOURCE (BCA/Manheim/Aston Barclay/Eastbourne) — only if
+ *  those are still blank, so a manual entry is never overwritten. Deliberately does NOT auto-fill
+ *  purchaseCost: a linked payment is the TOTAL invoice (vehicle + fees + delivery), whereas purchaseCost
+ *  must be the vehicle-only price that drives the margin (shown as a greyed hint so the user can split it). */
 export async function linkPurchase(input: { txnId: number; carDealId: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -627,9 +658,36 @@ export async function linkPurchase(input: { txnId: number; carDealId: number | n
     await db.execute(sql`
       UPDATE "carDeals" d SET
         "purchaseDate"=COALESCE(d."purchaseDate", x.first),
+        "source"=COALESCE(d."source", x.src),
         "updatedAt"=now()
-      FROM (SELECT MIN("txnDate") first FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
+      FROM (SELECT MIN("txnDate") first,
+              MAX(CASE
+                WHEN "counterparty" ~* 'british ?car ?auction|(^|[^a-z])bca([^a-z]|$)' THEN 'BCA'
+                WHEN "counterparty" ~* 'manheim' THEN 'Manheim'
+                WHEN "counterparty" ~* 'aston ?barclay' THEN 'Aston Barclay'
+                WHEN "counterparty" ~* 'eastbourne' THEN 'Eastbourne'
+              END) src
+            FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
       WHERE d."id"=${input.carDealId}`);
   }
+  return { ok: true };
+}
+
+/** Book a (usually small, separately-paid) payment as DELIVERY for a car — links it and adds the amount
+ *  to that car's delivery on-cost, instead of treating it as the vehicle purchase price. */
+export async function bookDelivery(input: { txnId: number; carDealId: number; amount: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const car: any = (await db.select().from(carDeals).where(eq(carDeals.id, input.carDealId)).limit(1))[0];
+  if (!car) throw new Error("Car not found");
+  const bd: any = { ...(car.feeBreakdown || {}) };
+  // preserve a legacy plain reconditioningCost (no breakdown) as "other" before adding delivery
+  if ((!car.feeBreakdown || Object.keys(car.feeBreakdown).length === 0) && car.reconditioningCost != null) {
+    bd.other = Number(car.reconditioningCost) || 0;
+  }
+  bd.delivery = (Number(bd.delivery) || 0) + (Number(input.amount) || 0);
+  const recond = ["buyerFee", "assured", "delivery", "other"].reduce((s, k) => s + (Number(bd[k]) || 0), 0);
+  await db.execute(sql`UPDATE "bankTransactions" SET "carDealId"=${input.carDealId} WHERE "id"=${input.txnId}`);
+  await db.update(carDeals).set({ feeBreakdown: bd, reconditioningCost: String(recond.toFixed(2)), updatedAt: new Date() }).where(eq(carDeals.id, input.carDealId));
   return { ok: true };
 }

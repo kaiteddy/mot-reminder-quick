@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
+import { round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -98,11 +99,11 @@ const nextItemKey = () => `ik${++_itemKeyCounter}`;
 
 function recalc(i: Item): Item {
   const q = num(i.quantity) ?? 0, u = num(i.unitPrice) ?? 0, r = num(i.vatRate) ?? 0;
-  const base = +(q * u).toFixed(2);
+  const base = round2(q * u);
   const dv = num(i.discount) ?? 0;
-  const disc = dv > 0 ? (i.discountType === "amt" ? Math.min(dv, base) : +(base * dv / 100).toFixed(2)) : 0; // default %; only explicit 'amt' is £
-  const net = +Math.max(0, base - disc).toFixed(2);
-  return { ...i, subNet: net, taxAmount: +(net * r / 100).toFixed(2) };
+  const disc = dv > 0 ? (i.discountType === "amt" ? Math.min(dv, base) : round2(base * dv / 100)) : 0; // default %; only explicit 'amt' is £
+  const net = round2(Math.max(0, base - disc));
+  return { ...i, subNet: net, taxAmount: round2(net * r / 100) };
 }
 
 // A per-line discount is always a percentage (e.g. "10" or "10%" → 10% off the line).
@@ -496,11 +497,11 @@ export default function DocumentDetails() {
     const labourNet = itemNet("Labour"), partsNet = itemNet("Part"), otherNet = itemNet("Other"), excessLineNet = itemNet("Excess");
     // Extras entered as single amounts on the form
     const mot = num(form.motAmount) || 0, sundries = num(form.sundriesAmount) || 0, lubricants = num(form.lubricantsAmount) || 0, paint = num(form.paintAmount) || 0;
-    const subTotal = +(labourNet + partsNet + otherNet + excessLineNet + sundries + lubricants + paint).toFixed(2);
-    const vat = +(itemTax("Labour") + itemTax("Part") + itemTax("Other") + itemTax("Excess") + (sundries + lubricants + paint) * 0.2).toFixed(2);
-    const motGross = +mot.toFixed(2); // MOT fee is outside the scope of VAT
-    const gross = +(subTotal + vat + motGross).toFixed(2);
-    const discountTotal = +items.reduce((a, i) => a + lineDiscountAmt(i), 0).toFixed(2); // already netted off subTotal — informational
+    const subTotal = round2(labourNet + partsNet + otherNet + excessLineNet + sundries + lubricants + paint);
+    const vat = round2(itemTax("Labour") + itemTax("Part") + itemTax("Other") + itemTax("Excess") + round2((sundries + lubricants + paint) * 0.2));
+    const motGross = round2(mot); // MOT fee is outside the scope of VAT
+    const gross = round2(subTotal + vat + motGross);
+    const discountTotal = round2(items.reduce((a, i) => a + lineDiscountAmt(i), 0)); // already netted off subTotal — informational
     return {
       subTotal, vat, motGross, gross, net: subTotal, tax: vat, discountTotal,
       labourNet, partsNet, sundriesNet: sundries, paintNet: paint, lubricantNet: lubricants,
@@ -1331,9 +1332,9 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
   const [vatReg, setVatReg] = useState(false);
   const [excess, setExcess] = useState("");
   const [discount, setDiscount] = useState("");
-  const net = Math.max(0, (num(excess) || 0) - (num(discount) || 0));
-  const vat = vatReg ? +(net * 0.2).toFixed(2) : 0;
-  const gross = +(net + vat).toFixed(2);
+  const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
+  const vat = vatReg ? round2(net * 0.2) : 0;
+  const gross = round2(net + vat);
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -1382,9 +1383,9 @@ function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
   const [vatReg, setVatReg] = useState(!!doc?.custVatRegistered);
   const [excess, setExcess] = useState(String((((Number(doc?.excessNet) || 0) + (Number(doc?.excessDiscount) || 0))).toFixed(2)));
   const [discount, setDiscount] = useState(String((Number(doc?.excessDiscount) || 0).toFixed(2)));
-  const net = Math.max(0, (num(excess) || 0) - (num(discount) || 0));
-  const vat = vatReg ? +(net * 0.2).toFixed(2) : 0;
-  const gross = +(net + vat).toFixed(2);
+  const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
+  const vat = vatReg ? round2(net * 0.2) : 0;
+  const gross = round2(net + vat);
   async function apply() {
     try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg }); onSaved(); toast.success("Excess updated"); }
     catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
