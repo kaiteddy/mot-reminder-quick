@@ -107,7 +107,7 @@ if (mergedToPrimary.size) console.log(`(respecting ${mergedToPrimary.size} inten
 const customers = load("Customers.csv");
 await syncTable({
   name: "Customers", table: "customers", rows: customers,
-  cols: ["name", "phone", "email", "postcode", "address", "altContacts"],
+  cols: ["name", "phone", "email", "postcode", "address", "altContacts", "accountNumber"],
   map: (r) => {
     const ext = norm(r._ID);
     if (mergedToPrimary.has(ext)) return null; // deliberately merged away — don't recreate it
@@ -121,12 +121,35 @@ await syncTable({
       phone: cap(phone, 50), email: cap(getCustomerEmail(r as any), 320),
       postcode: cap(norm(r.addressPostCode), 20) || null, address: cap(buildAddress(r as any), 500) || null,
       altContacts: altContacts.length ? JSON.stringify(altContacts) : null,
+      accountNumber: cap(norm(r.AccountNumber), 50) || null, // GA4 account no — identity key
     };
   },
   // Existing customer records came from a different source and disagree with today's export
   // (names/addresses), so never overwrite them — only add genuinely-new GA4 customers.
   insertOnly: true,
 });
+
+// accountNumber is GA4-authoritative and (unlike names/addresses) currently absent on existing
+// rows, so the insert-only pass above can't backfill it. Refresh it every sync by GA4 GUID,
+// filling/correcting ONLY this column — never disturbing the protected name/address fields.
+// This doubles as the one-off backfill: the first GO run populates every existing GA4 customer.
+if (GO) {
+  const acctPairs = customers
+    .map((r: any) => [norm(r._ID), cap(norm(r.AccountNumber), 50) || null] as const)
+    .filter(([ext, acct]) => ext && acct && !ext.startsWith("WEB-"));
+  let acctFixed = 0;
+  for (let i = 0; i < acctPairs.length; i += 500) {
+    const slice = acctPairs.slice(i, i + 500);
+    const params: any[] = [];
+    const vals = slice.map(([ext, acct]) => { params.push(ext, acct); return `($${params.length - 1},$${params.length})`; }).join(",");
+    const res = await c.query(
+      `UPDATE customers AS c SET "accountNumber" = v.acct
+         FROM (VALUES ${vals}) AS v(ext, acct)
+        WHERE c."externalId" = v.ext AND c."accountNumber" IS DISTINCT FROM v.acct`, params);
+    acctFixed += res.rowCount ?? 0;
+  }
+  console.log(`Customer account numbers: ${acctFixed} set/updated`);
+}
 
 // rebuild externalId -> id for linking; merged-away ids resolve to their surviving primary
 const custMap = new Map<string, number>();

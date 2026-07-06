@@ -38,6 +38,7 @@ export const customers = pgTable("customers", {
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 100 }),
   externalId: varchar("externalId", { length: 255 }).unique(), // GA4 _ID
+  accountNumber: varchar("accountNumber", { length: 50 }), // GA4 AccountNumber (ROS013, SHA019…) — identity key
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
@@ -50,6 +51,7 @@ export const customers = pgTable("customers", {
 }, (table) => ({
   phoneIdx: index("customers_phone_idx").on(table.phone),
   emailIdx: index("customers_email_idx").on(table.email),
+  accountNumberIdx: index("customers_account_number_idx").on(table.accountNumber),
 }));
 
 export type Customer = typeof customers.$inferSelect;
