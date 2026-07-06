@@ -1983,7 +1983,7 @@ export async function getDuplicateGroups() {
   const db = await getDb();
   if (!db) return [];
   await db.execute(sql`CREATE TABLE IF NOT EXISTS duplicateDismissals (phone VARCHAR(20) PRIMARY KEY, dismissedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-  const custs = await db.select({ id: customers.id, name: customers.name, phone: customers.phone }).from(customers);
+  const custs = await db.select({ id: customers.id, name: customers.name, phone: customers.phone, accountNumber: customers.accountNumber }).from(customers);
   const byPhone = new Map<string, any[]>();
   for (const cu of custs) { const p = normPhoneKey(cu.phone); if (!p) continue; if (!byPhone.has(p)) byPhone.set(p, []); byPhone.get(p)!.push(cu); }
   const groups = Array.from(byPhone.entries()).filter(([, g]: [string, any[]]) => g.length >= 2);
@@ -1995,7 +1995,7 @@ export async function getDuplicateGroups() {
     for (const r of await db.select({ id: vehicles.customerId, n: sql<number>`COUNT(*)` }).from(vehicles).where(inArray(vehicles.customerId, ids)).groupBy(vehicles.customerId)) vehCnt.set(r.id as number, Number(r.n));
   }
   const out = groups.filter(([p]: [string, any[]]) => !dismissed.has(p)).map(([phone, g]: [string, any[]]) => {
-    const members: any[] = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
+    const members: any[] = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", acct: x.accountNumber || null, docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
       .sort((a: any, b: any) => b.docs - a.docs || a.id - b.id);
     // cluster records that look like the same person (fuzzy surname) so we can pre-tick the likely match
     const clusters: any[] = [];
@@ -2003,7 +2003,10 @@ export async function getDuplicateGroups() {
     clusters.forEach((c: any, i: number) => c.members.forEach((m: any) => (m.cluster = i)));
     const multi = clusters.filter((c: any) => c.members.length >= 2)
       .sort((a: any, b: any) => b.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) - a.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0));
-    const suggestedIds: number[] = multi[0] ? multi[0].members.map((m: any) => m.id) : [];
+    // Don't pre-tick a suggested merge whose members span DIFFERENT GA4 account numbers — those
+    // are distinct accounts (e.g. ROS013 vs SHA019), not the same person, however close the names.
+    const acctsOf = (ms: any[]) => Array.from(new Set(ms.map((m: any) => String(m.acct || "").trim().toUpperCase()).filter(Boolean)));
+    const suggestedIds: number[] = (multi[0] && acctsOf(multi[0].members).length <= 1) ? multi[0].members.map((m: any) => m.id) : [];
     return { phone, members, suggestedIds, activity: members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) };
   }).sort((a: any, b: any) => (b.suggestedIds.length ? 1 : 0) - (a.suggestedIds.length ? 1 : 0) || b.activity - a.activity);
   return out;
@@ -2020,6 +2023,12 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   const primary: any = recs.find((r) => r.id === primaryId);
   const secs = secondaryIds.map((id) => recs.find((r) => r.id === id)).filter(Boolean) as any[];
   if (!primary || !secs.length) throw new Error("customer(s) not found");
+  // Account-number guard (Layer B): records with DIFFERENT non-empty GA4 account numbers are
+  // genuinely different accounts and must never be fused, even on a shared phone — this is the
+  // exact Shah/Rosenfelder-class mis-merge (ROS013 ≠ SHA019) that motivated the safeguard.
+  const distinctAccts = Array.from(new Set([primary, ...secs].map((r: any) => String(r.accountNumber || "").trim().toUpperCase()).filter(Boolean)));
+  if (distinctAccts.length > 1)
+    throw new Error(`Won't merge across different GA4 account numbers (${distinctAccts.join(" ≠ ")}). These are distinct accounts — use "Not duplicates" if they really are separate.`);
   let moved = 0;
   for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }
   const parse = (x: any) => { try { return typeof x === "string" ? JSON.parse(x) : (x || []); } catch { return []; } };

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Users, GitMerge, Loader2, Phone, CheckCircle2, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 
-type Member = { id: number; name: string; docs: number; vehicles: number; cluster: number };
+type Member = { id: number; name: string; acct?: string | null; docs: number; vehicles: number; cluster: number };
 type Group = { phone: string; members: Member[]; suggestedIds: number[]; activity: number };
 
 // One shared-phone group. Tick the records that are the SAME person (likely matches pre-ticked),
@@ -17,7 +17,11 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
   const toggle = (id: number) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const checkedMembers = group.members.filter((m) => checked.has(m.id)); // server-sorted by history desc
   const keep = checkedMembers[0];
-  const canMerge = checked.size >= 2 && !!keep;
+  // Mirror the server guard: ticked records with DIFFERENT GA4 account numbers are distinct
+  // accounts and must not be merged (the server rejects it too — this just blocks it earlier).
+  const checkedAccts = Array.from(new Set(checkedMembers.map((m) => String(m.acct || "").trim().toUpperCase()).filter(Boolean)));
+  const acctConflict = checkedAccts.length > 1;
+  const canMerge = checked.size >= 2 && !!keep && !acctConflict;
   const hasSug = group.suggestedIds.length >= 2;
   const [confirming, setConfirming] = useState(false);
   useEffect(() => { if (!confirming) return; const t = setTimeout(() => setConfirming(false), 6000); return () => clearTimeout(t); }, [confirming]);
@@ -38,6 +42,7 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
               <label key={m.id} className={`flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer border ${on ? "bg-green-50 border-green-200" : "border-transparent hover:bg-slate-50"}`}>
                 <input type="checkbox" checked={on} onChange={() => toggle(m.id)} className="accent-green-600 w-4 h-4 shrink-0" />
                 <span className="font-medium text-sm truncate">{m.name}</span>
+                {m.acct && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0" title="GA4 account number">{m.acct}</span>}
                 <span className="text-[11px] text-muted-foreground whitespace-nowrap">#{m.id} · {m.docs} job{m.docs === 1 ? "" : "s"} · {m.vehicles} vehicle{m.vehicles === 1 ? "" : "s"}</span>
                 {isKeep && <Badge variant="secondary" className="ml-auto text-[10px] bg-green-600 text-white shrink-0">★ keep this one</Badge>}
               </label>
@@ -59,6 +64,7 @@ function DupGroup({ group, onMerge, onDismiss, busy }: { group: Group; onMerge: 
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>
             </>
           )}
+          {!confirming && acctConflict && <span className="text-[11px] text-red-600 font-medium">Different GA4 accounts ({checkedAccts.join(" ≠ ")}) — these are separate customers, can't merge</span>}
           {!confirming && canMerge && <span className="text-[11px] text-muted-foreground">keeps <b className="text-slate-700">{keep!.name}</b> · others moved across</span>}
           {!confirming && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDismiss(group.phone)} className="ml-auto text-muted-foreground">Not duplicates — hide</Button>}
         </div>
