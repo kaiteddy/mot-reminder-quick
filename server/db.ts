@@ -7,7 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs, payments, addressLookups, salesStock,
+  descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -2399,7 +2399,52 @@ export async function deletePayment(id: number) {
   return { ok: true };
 }
 
-/** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance). */
+// ---------------------------------------------------------------------------
+// GA4 number pool — hand a real GA4 invoice number to a printing doc INSTANTLY.
+// Numbers are reserved ahead of demand (each backed by a pre-created blank GA4 draft);
+// the Mac worker fills+issues the reserved draft in the background. See create-invoice.md.
+// ---------------------------------------------------------------------------
+
+/** Atomically claim the lowest available reserved GA4 number for this document.
+ *  FOR UPDATE SKIP LOCKED makes concurrent issues safe (no two grab the same number).
+ *  Returns the number, or null if the pool is empty (caller should alert + backfill). */
+export async function popGa4Number(documentId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const res: any = await db.execute(sql`
+    UPDATE "ga4NumberPool" SET status='claimed', "claimedByDocId"=${documentId}, "claimedAt"=now(), "updatedAt"=now()
+    WHERE id = (
+      SELECT id FROM "ga4NumberPool" WHERE status='available'
+      ORDER BY ("ga4Number")::bigint ASC
+      LIMIT 1 FOR UPDATE SKIP LOCKED
+    )
+    RETURNING "ga4Number"`);
+  return (res.rows?.[0]?.ga4Number as string | undefined) ?? null;
+}
+
+/** Add reserved numbers to the pool (called by the worker/seeder after pre-creating blank GA4
+ *  drafts). Idempotent on ga4Number (ON CONFLICT DO NOTHING). */
+export async function addPoolNumbers(entries: Array<{ ga4Number: string; ga4DraftExternalId?: string }>) {
+  const db = await getDb();
+  if (!db || !entries.length) return { added: 0 };
+  const rows = entries.map((e) => ({ ga4Number: String(e.ga4Number), ga4DraftExternalId: e.ga4DraftExternalId ?? null }));
+  const r: any = await db.insert(ga4NumberPool).values(rows as any).onConflictDoNothing().returning({ id: ga4NumberPool.id });
+  return { added: Array.isArray(r) ? r.length : 0 };
+}
+
+/** Pool health: counts by status + how many are ready to hand out (for depth monitoring/replenish). */
+export async function getPoolStatus() {
+  const db = await getDb();
+  if (!db) return { available: 0, claimed: 0, filled: 0, failed: 0, dead: 0 };
+  const rows = await db.select({ status: ga4NumberPool.status, n: sql<number>`COUNT(*)` }).from(ga4NumberPool).groupBy(ga4NumberPool.status);
+  const out: Record<string, number> = { available: 0, claimed: 0, filled: 0, failed: 0, dead: 0 };
+  for (const r of rows) out[r.status as string] = Number(r.n);
+  return out as { available: number; claimed: number; filled: number; failed: number; dead: number };
+}
+
+/** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance).
+ *  On issuing an invoice we also POP a reserved GA4 number so the printed document carries the
+ *  real GA4 number instantly; the claimed pool row becomes the worker's fill queue. */
 export async function issueDocument(documentId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -2409,8 +2454,16 @@ export async function issueDocument(documentId: number) {
   if (!doc.dateIssued) set.dateIssued = new Date();
   const { balance, receipts } = await recomputeDocBalance(documentId);
   set.docStatus = balance <= 0 && (receipts > 0 || Number(doc.totalGross) === 0) ? "Paid" : "Issued";
+  // Instant GA4 number for the printed doc. Only for invoice-type docs (SI/XS), only once,
+  // and only for web-created records (GA4-imported docs already have their real number).
+  if (!doc.ga4Number && (doc.docType === "SI" || doc.docType === "XS") && String(doc.externalId || "").startsWith("WEB-")) {
+    const n = await popGa4Number(documentId);
+    if (n) set.ga4Number = n;
+    // Pool empty → leave ga4Number null; getPoolStatus()/monitor should alert and the worker
+    // backfills. The doc is still issued; its number just gets stamped when the pool refills.
+  }
   await db.update(serviceHistory).set(set).where(eq(serviceHistory.id, documentId));
-  return { id: documentId, status: set.docStatus };
+  return { id: documentId, status: set.docStatus, ga4Number: set.ga4Number ?? doc.ga4Number ?? null };
 }
 
 // ---------------------------------------------------------------------------
