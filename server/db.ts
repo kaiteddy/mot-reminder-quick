@@ -7,7 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs, payments, addressLookups, salesStock,
+  descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -2012,7 +2012,7 @@ export async function getDuplicateGroups() {
   const db = await getDb();
   if (!db) return [];
   await db.execute(sql`CREATE TABLE IF NOT EXISTS duplicateDismissals (phone VARCHAR(20) PRIMARY KEY, dismissedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-  const custs = await db.select({ id: customers.id, name: customers.name, phone: customers.phone }).from(customers);
+  const custs = await db.select({ id: customers.id, name: customers.name, phone: customers.phone, accountNumber: customers.accountNumber }).from(customers);
   const byPhone = new Map<string, any[]>();
   for (const cu of custs) { const p = normPhoneKey(cu.phone); if (!p) continue; if (!byPhone.has(p)) byPhone.set(p, []); byPhone.get(p)!.push(cu); }
   const groups = Array.from(byPhone.entries()).filter(([, g]: [string, any[]]) => g.length >= 2);
@@ -2024,7 +2024,7 @@ export async function getDuplicateGroups() {
     for (const r of await db.select({ id: vehicles.customerId, n: sql<number>`COUNT(*)` }).from(vehicles).where(inArray(vehicles.customerId, ids)).groupBy(vehicles.customerId)) vehCnt.set(r.id as number, Number(r.n));
   }
   const out = groups.filter(([p]: [string, any[]]) => !dismissed.has(p)).map(([phone, g]: [string, any[]]) => {
-    const members: any[] = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
+    const members: any[] = g.map((x: any) => ({ id: x.id, name: x.name || "(no name)", acct: x.accountNumber || null, docs: docCnt.get(x.id) || 0, vehicles: vehCnt.get(x.id) || 0 }))
       .sort((a: any, b: any) => b.docs - a.docs || a.id - b.id);
     // cluster records that look like the same person (fuzzy surname) so we can pre-tick the likely match
     const clusters: any[] = [];
@@ -2032,7 +2032,10 @@ export async function getDuplicateGroups() {
     clusters.forEach((c: any, i: number) => c.members.forEach((m: any) => (m.cluster = i)));
     const multi = clusters.filter((c: any) => c.members.length >= 2)
       .sort((a: any, b: any) => b.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) - a.members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0));
-    const suggestedIds: number[] = multi[0] ? multi[0].members.map((m: any) => m.id) : [];
+    // Don't pre-tick a suggested merge whose members span DIFFERENT GA4 account numbers — those
+    // are distinct accounts (e.g. ROS013 vs SHA019), not the same person, however close the names.
+    const acctsOf = (ms: any[]) => Array.from(new Set(ms.map((m: any) => String(m.acct || "").trim().toUpperCase()).filter(Boolean)));
+    const suggestedIds: number[] = (multi[0] && acctsOf(multi[0].members).length <= 1) ? multi[0].members.map((m: any) => m.id) : [];
     return { phone, members, suggestedIds, activity: members.reduce((s: number, m: any) => s + m.docs + m.vehicles, 0) };
   }).sort((a: any, b: any) => (b.suggestedIds.length ? 1 : 0) - (a.suggestedIds.length ? 1 : 0) || b.activity - a.activity);
   return out;
@@ -2049,6 +2052,12 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   const primary: any = recs.find((r) => r.id === primaryId);
   const secs = secondaryIds.map((id) => recs.find((r) => r.id === id)).filter(Boolean) as any[];
   if (!primary || !secs.length) throw new Error("customer(s) not found");
+  // Account-number guard (Layer B): records with DIFFERENT non-empty GA4 account numbers are
+  // genuinely different accounts and must never be fused, even on a shared phone — this is the
+  // exact Shah/Rosenfelder-class mis-merge (ROS013 ≠ SHA019) that motivated the safeguard.
+  const distinctAccts = Array.from(new Set([primary, ...secs].map((r: any) => String(r.accountNumber || "").trim().toUpperCase()).filter(Boolean)));
+  if (distinctAccts.length > 1)
+    throw new Error(`Won't merge across different GA4 account numbers (${distinctAccts.join(" ≠ ")}). These are distinct accounts — use "Not duplicates" if they really are separate.`);
   let moved = 0;
   for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }
   const parse = (x: any) => { try { return typeof x === "string" ? JSON.parse(x) : (x || []); } catch { return []; } };
@@ -2419,7 +2428,52 @@ export async function deletePayment(id: number) {
   return { ok: true };
 }
 
-/** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance). */
+// ---------------------------------------------------------------------------
+// GA4 number pool — hand a real GA4 invoice number to a printing doc INSTANTLY.
+// Numbers are reserved ahead of demand (each backed by a pre-created blank GA4 draft);
+// the Mac worker fills+issues the reserved draft in the background. See create-invoice.md.
+// ---------------------------------------------------------------------------
+
+/** Atomically claim the lowest available reserved GA4 number for this document.
+ *  FOR UPDATE SKIP LOCKED makes concurrent issues safe (no two grab the same number).
+ *  Returns the number, or null if the pool is empty (caller should alert + backfill). */
+export async function popGa4Number(documentId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const res: any = await db.execute(sql`
+    UPDATE "ga4NumberPool" SET status='claimed', "claimedByDocId"=${documentId}, "claimedAt"=now(), "updatedAt"=now()
+    WHERE id = (
+      SELECT id FROM "ga4NumberPool" WHERE status='available'
+      ORDER BY ("ga4Number")::bigint ASC
+      LIMIT 1 FOR UPDATE SKIP LOCKED
+    )
+    RETURNING "ga4Number"`);
+  return (res.rows?.[0]?.ga4Number as string | undefined) ?? null;
+}
+
+/** Add reserved numbers to the pool (called by the worker/seeder after pre-creating blank GA4
+ *  drafts). Idempotent on ga4Number (ON CONFLICT DO NOTHING). */
+export async function addPoolNumbers(entries: Array<{ ga4Number: string; ga4DraftExternalId?: string }>) {
+  const db = await getDb();
+  if (!db || !entries.length) return { added: 0 };
+  const rows = entries.map((e) => ({ ga4Number: String(e.ga4Number), ga4DraftExternalId: e.ga4DraftExternalId ?? null }));
+  const r: any = await db.insert(ga4NumberPool).values(rows as any).onConflictDoNothing().returning({ id: ga4NumberPool.id });
+  return { added: Array.isArray(r) ? r.length : 0 };
+}
+
+/** Pool health: counts by status + how many are ready to hand out (for depth monitoring/replenish). */
+export async function getPoolStatus() {
+  const db = await getDb();
+  if (!db) return { available: 0, claimed: 0, filled: 0, failed: 0, dead: 0 };
+  const rows = await db.select({ status: ga4NumberPool.status, n: sql<number>`COUNT(*)` }).from(ga4NumberPool).groupBy(ga4NumberPool.status);
+  const out: Record<string, number> = { available: 0, claimed: 0, filled: 0, failed: 0, dead: 0 };
+  for (const r of rows) out[r.status as string] = Number(r.n);
+  return out as { available: number; claimed: number; filled: number; failed: number; dead: number };
+}
+
+/** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance).
+ *  On issuing an invoice we also POP a reserved GA4 number so the printed document carries the
+ *  real GA4 number instantly; the claimed pool row becomes the worker's fill queue. */
 export async function issueDocument(documentId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -2429,8 +2483,16 @@ export async function issueDocument(documentId: number) {
   if (!doc.dateIssued) set.dateIssued = new Date();
   const { balance, receipts } = await recomputeDocBalance(documentId);
   set.docStatus = balance <= 0 && (receipts > 0 || Number(doc.totalGross) === 0) ? "Paid" : "Issued";
+  // Instant GA4 number for the printed doc. Only for invoice-type docs (SI/XS), only once,
+  // and only for web-created records (GA4-imported docs already have their real number).
+  if (!doc.ga4Number && (doc.docType === "SI" || doc.docType === "XS") && String(doc.externalId || "").startsWith("WEB-")) {
+    const n = await popGa4Number(documentId);
+    if (n) set.ga4Number = n;
+    // Pool empty → leave ga4Number null; getPoolStatus()/monitor should alert and the worker
+    // backfills. The doc is still issued; its number just gets stamped when the pool refills.
+  }
   await db.update(serviceHistory).set(set).where(eq(serviceHistory.id, documentId));
-  return { id: documentId, status: set.docStatus };
+  return { id: documentId, status: set.docStatus, ga4Number: set.ga4Number ?? doc.ga4Number ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -2660,6 +2722,7 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
 
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
+    company: String(d2.company || '').trim(),
     address_lines: [...(docStreet || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean), ...(docPostcode ? [docPostcode] : [])],
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     phones,
@@ -2848,7 +2911,9 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   return generateInvoicePDF({
     company, customer: customerData, vehicle: vehicleData,
     invoice: {
-      number: doc.docNo,
+      // Print GA4's authoritative number when we have it (from the number pool / write-back);
+      // the web docNo is only a guess-ahead placeholder. See ga4NumberPool / issueDocument.
+      number: (doc as any).ga4Number || doc.docNo,
       invoice_date: doc.dateIssued ? new Date(doc.dateIssued).toLocaleDateString('en-GB') : dateStr,
       account_no: (doc as any).accountNumber || '',
       order_ref: (doc as any).orderRef || '',
@@ -2936,8 +3001,8 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
 
     return {
       date: dateStr,
-      doc_ref: `${d.docType} ${d.docNo}`,
-      invoice_number: `#${d.docNo}`,
+      doc_ref: `${d.docType} ${d.ga4Number || d.docNo}`,
+      invoice_number: `#${d.ga4Number || d.docNo}`,
       mileage,
       total: `£${(gross || (net + vat)).toFixed(2)}`,
       title,

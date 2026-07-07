@@ -38,6 +38,7 @@ export const customers = pgTable("customers", {
   email: varchar("email", { length: 320 }),
   phone: varchar("phone", { length: 100 }),
   externalId: varchar("externalId", { length: 255 }).unique(), // GA4 _ID
+  accountNumber: varchar("accountNumber", { length: 50 }), // GA4 AccountNumber (ROS013, SHA019…) — identity key
   address: text("address"),
   postcode: varchar("postcode", { length: 20 }),
   notes: text("notes"),
@@ -50,6 +51,7 @@ export const customers = pgTable("customers", {
 }, (table) => ({
   phoneIdx: index("customers_phone_idx").on(table.phone),
   emailIdx: index("customers_email_idx").on(table.email),
+  accountNumberIdx: index("customers_account_number_idx").on(table.accountNumber),
 }));
 
 export type Customer = typeof customers.$inferSelect;
@@ -271,6 +273,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   terms: varchar("terms", { length: 255 }),
   accountsExportedAt: timestamp("accountsExportedAt", { mode: "date" }), // set when exported to the accounts package (Sage CSV); prevents re-export
   accountsUnpaid: integer("accountsUnpaid"), // 1 = manually flagged as not-yet-paid; invoices are treated as paid on issue date otherwise (GA4 doesn't register receipts). Not touched by GA4 sync.
+  ga4Number: varchar("ga4Number", { length: 50 }), // GA4's authoritative invoice number (from the pool / write-back). Web docNo is a guess-ahead; display/print should prefer this when present.
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
@@ -591,3 +594,28 @@ export const carDeals = pgTable("carDeals", {
 
 export type CarDeal = typeof carDeals.$inferSelect;
 export type InsertCarDeal = typeof carDeals.$inferInsert;
+
+// Real GA4 invoice numbers reserved AHEAD of demand (each backed by a pre-created blank GA4
+// draft), so the webapp can hand a genuine GA4 number to a printing invoice INSTANTLY without
+// waiting on the seconds-long GA4 GUI automation. On Issue the webapp atomically pops the lowest
+// 'available' row → prints it; the Mac-side worker then fills+issues that reserved GA4 draft in
+// the background and marks the row 'filled'. See create-invoice.md / the pool-model design.
+export const ga4NumberPool = pgTable("ga4NumberPool", {
+  id: serial("id").primaryKey(),
+  ga4Number: varchar("ga4Number", { length: 50 }).notNull().unique(), // the reserved real GA4 invoice number
+  ga4DraftExternalId: varchar("ga4DraftExternalId", { length: 255 }),  // GA4 draft _ID the worker fills (once known)
+  status: varchar("status", { length: 12 }).$type<"available" | "claimed" | "filled" | "failed" | "dead">().notNull().default("available"),
+  claimedByDocId: integer("claimedByDocId"),                           // serviceHistory.id that popped this number
+  claimedAt: timestamp("claimedAt", { mode: "date" }),
+  filledAt: timestamp("filledAt", { mode: "date" }),
+  attempts: integer("attempts").notNull().default(0),                  // worker fill attempts (for backoff / alerting)
+  note: text("note"),                                                  // last error / worker note
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  statusIdx: index("ga4_number_pool_status_idx").on(table.status),
+  claimedDocIdx: index("ga4_number_pool_claimed_doc_idx").on(table.claimedByDocId),
+}));
+
+export type Ga4PoolEntry = typeof ga4NumberPool.$inferSelect;
+export type InsertGa4PoolEntry = typeof ga4NumberPool.$inferInsert;

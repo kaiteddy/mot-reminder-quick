@@ -133,7 +133,8 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
       {/* customer + doc meta */}
       <div className="cd">
         <div className="cust">
-          {custName && <div className="nm">{custName}</div>}
+          {doc.company && <div className="nm">{doc.company}</div>}
+          {custName && custName !== doc.company && <div className={doc.company ? undefined : "nm"}>{custName}</div>}
           {addressLines.map((l, i) => <div key={i}>{l}</div>)}
           {postcode && <div>{postcode}</div>}
           {phone && <div style={{ marginTop: 8 }}>{doc.custMobile ? "Mobile: " : "Tel: "}{phone}</div>}
