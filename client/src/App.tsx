@@ -48,6 +48,7 @@ const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
 const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
+const GarageSaasLanding = lazy(() => import("./pages/GarageSaasLanding"));
 
 function RouteFallback() {
   return (
@@ -69,6 +70,7 @@ function Router() {
       <Route path="/v/:registration" component={VehicleDetails} />
 
       <Route path="/login" component={Login} />
+      <Route path="/garages" component={GarageSaasLanding} />
       <Route path="/" component={Home} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/customers/:id" component={CustomerDetails} />
