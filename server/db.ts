@@ -2881,7 +2881,9 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   return generateInvoicePDF({
     company, customer: customerData, vehicle: vehicleData,
     invoice: {
-      number: doc.docNo,
+      // Print GA4's authoritative number when we have it (from the number pool / write-back);
+      // the web docNo is only a guess-ahead placeholder. See ga4NumberPool / issueDocument.
+      number: (doc as any).ga4Number || doc.docNo,
       invoice_date: doc.dateIssued ? new Date(doc.dateIssued).toLocaleDateString('en-GB') : dateStr,
       account_no: (doc as any).accountNumber || '',
       order_ref: (doc as any).orderRef || '',
@@ -2969,8 +2971,8 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
 
     return {
       date: dateStr,
-      doc_ref: `${d.docType} ${d.docNo}`,
-      invoice_number: `#${d.docNo}`,
+      doc_ref: `${d.docType} ${d.ga4Number || d.docNo}`,
+      invoice_number: `#${d.ga4Number || d.docNo}`,
       mileage,
       total: `£${(gross || (net + vat)).toFixed(2)}`,
       title,
