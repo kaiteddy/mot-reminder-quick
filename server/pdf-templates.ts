@@ -153,9 +153,22 @@ function customerAndDoc(
     doc.text(`Re. customer: ${customer.name}`, M + 30, cy); cy += 14;
     doc.fillColor('black');
   } else {
-    doc.font('Helvetica').fontSize(10).fillColor('black');
-    doc.text(customer.name, M + 30, cy); cy += 14;
+    // Business customers: company name bold on top, contact person beneath. When the record is
+    // a pure company (no contact name, so customer.name is the 'Unknown Client' placeholder),
+    // show the company alone rather than "Company\nUnknown Client".
+    if (customer.company) {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+      doc.text(customer.company, M + 30, cy); cy += 14;
+    }
+    const namePlaceholder = !customer.name || customer.name === 'Unknown Client';
+    if (!(customer.company && namePlaceholder)) {
+      doc.font('Helvetica').fontSize(10).fillColor('black');
+      doc.text(customer.name, M + 30, cy); cy += 14;
+    }
   }
+  // Reset to the base body font — a company-only block would otherwise leave Helvetica-Bold
+  // active and render the address lines bold.
+  doc.font('Helvetica').fontSize(10).fillColor('black');
   for (const line of customer.address_lines || []) {
     doc.text(line, M + 30, cy); cy += 14;
   }

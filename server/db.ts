@@ -2693,6 +2693,7 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
 
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
+    company: String(d2.company || '').trim(),
     address_lines: [...(docStreet || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean), ...(docPostcode ? [docPostcode] : [])],
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     phones,
