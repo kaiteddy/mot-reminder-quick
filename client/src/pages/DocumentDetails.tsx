@@ -231,8 +231,10 @@ export default function DocumentDetails() {
     try {
       await flushPending();
       const res: any = await convert.mutateAsync({ id, toType });
-      // A "Convert" supersedes the original (server deletes it) — drop its now-dead tab.
-      if (res.replacedSource) removeOpenDoc(id);
+      // "Convert" (unlike "Copy") supersedes the source from the user's perspective — close its
+      // tab even if the server kept the underlying record (e.g. a GA4-mirrored job sheet it
+      // doesn't own and so won't delete).
+      if ((toType === "SI" || toType === "JS") && res.id !== id) removeOpenDoc(id);
       utils.documents.list.invalidate();
       utils.documents.stats.invalidate();
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
