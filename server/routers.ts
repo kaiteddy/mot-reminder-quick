@@ -945,12 +945,15 @@ export const appRouter = router({
             model: vehicles.model,
           })
           .from(vehicles)
-          .where(inArray(vehicles.registration, normalized));
+          // space-insensitive: GA4 stores some plates spaced ("EO15 KVR"); match against the
+          // normalised column or those vehicles return found:false against a solid needle.
+          .where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, normalized));
 
         const vehicleMap = new Map();
         const vehicleIds: number[] = [];
         foundVehicles.forEach(v => {
-          vehicleMap.set(v.registration, v);
+          // key by the normalised reg so the lookup below (which uses `normalized`) always hits
+          vehicleMap.set(v.registration.toUpperCase().replace(/\s/g, ''), v);
           vehicleIds.push(v.id);
         });
 
@@ -1109,7 +1112,7 @@ export const appRouter = router({
               id: vehicles.id,
               registration: vehicles.registration,
               customerId: vehicles.customerId
-            }).from(vehicles).where(inArray(vehicles.registration, batch));
+            }).from(vehicles).where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, batch));
             found.push(...results);
           }
 
@@ -1127,7 +1130,9 @@ export const appRouter = router({
 
           found.forEach(v => {
             const customer = v.customerId ? customerMap.get(v.customerId) : null;
-            vehicleMap.set(v.registration, {
+            // key by the normalised reg so the lookup below (which uses normalizedReg) always hits;
+            // otherwise a spaced-stored plate misses and falls back to the OCR'd name/phone.
+            vehicleMap.set(v.registration.toUpperCase().replace(/\s/g, ''), {
               ...v,
               customer // Attach full customer object to vehicle
             });

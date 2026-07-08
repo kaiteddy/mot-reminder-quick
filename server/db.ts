@@ -1053,7 +1053,10 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   if (opts.docType && opts.docType !== "all") conds.push(eq(serviceHistory.docType, opts.docType));
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
-    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
+    // reg is space-insensitive: GA4 stores plates spaced ("EO15 KVR") while users/DVLA type them
+    // solid ("EO15KVR"), so normalise BOTH sides or the reg search silently returns zero docs.
+    const regS = `%${opts.search.trim().toUpperCase().replace(/\s+/g, "")}%`;
+    conds.push(or(ilike(serviceHistory.docNo, s), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regS}`, ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc
@@ -1892,7 +1895,7 @@ export async function globalSearch(query: string, full = false) {
       .orderBy(customers.name).limit(limV),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
-      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
+      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
       .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
   ]);
 
