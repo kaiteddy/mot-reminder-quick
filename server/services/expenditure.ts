@@ -88,7 +88,7 @@ export async function getReconciliation(opts: { from: string; to: string }) {
     });
     const c = catMap.get(r.category); c.amounts[i] += num(r.amt); c.total += num(r.amt);
   }
-  const categories = [...catMap.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+  const categories = Array.from(catMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
 
   // Input VAT reclaimed on expenditure (money-out only) by month
   const vatRows: any = await db.execute(sql`
@@ -245,7 +245,7 @@ export async function getSupplierSpend(opts: { from: string; to: string }) {
     monthlyTotal[i] += amt;
   }
   const n = months.length;
-  const suppliers = [...map.values()].map((s) => {
+  const suppliers = Array.from(map.values()).map((s) => {
     s.category = Object.entries(s.catSpend).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || "—";
     delete s.catSpend;
     const last3 = s.monthly.slice(Math.max(0, n - 3)).reduce((a: number, b: number) => a + b, 0) / Math.min(3, n || 1);
@@ -525,7 +525,7 @@ export async function importTransactions(input: { source: "bank" | "card"; csvTe
   const byKey = new Map<string, string>();
   for (const t of parsed) if (t.counterpartyKey && !byKey.has(t.counterpartyKey)) byKey.set(t.counterpartyKey, t.suggested);
   let newLabels = 0;
-  for (const [key, suggested] of byKey) {
+  for (const [key, suggested] of Array.from(byKey.entries())) {
     if (suggested === OTHER) continue;
     const res: any = await db.execute(sql`
       INSERT INTO "transactionLabels" ("source","counterpartyKey","category","updatedAt")
