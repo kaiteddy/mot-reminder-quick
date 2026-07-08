@@ -6,6 +6,7 @@ import { round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
@@ -688,19 +689,23 @@ export default function DocumentDetails() {
       <div className="space-y-3 text-slate-800">
         {/* open-document tabs */}
         {openDocs.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-2 mb-1">
-            {openDocs.map((d) => {
-              const active = d.id === id;
-              return (
-                <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
-                  className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
-                  <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
-                  <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
-                  <button type="button" title="Close tab" onClick={(e) => { e.stopPropagation(); closeTab(d.id); }} className="opacity-40 hover:opacity-100"><X className="w-3 h-3" /></button>
-                </div>
-              );
-            })}
-            <button type="button" onClick={() => switchTo("/documents/new")} title="New job sheet" className="inline-flex items-center gap-1 px-2 py-1.5 text-[12px] text-violet-700 hover:bg-violet-50 rounded-t-md shrink-0"><Plus className="w-3.5 h-3.5" /> New</button>
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-1">
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {openDocs.map((d) => {
+                const active = d.id === id;
+                return (
+                  <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
+                    className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
+                    <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
+                    <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
+                    <button type="button" title="Close tab" onClick={(e) => { e.stopPropagation(); closeTab(d.id); }} className="opacity-40 hover:opacity-100"><X className="w-3 h-3" /></button>
+                  </div>
+                );
+              })}
+            </div>
+            <Button onClick={() => switchTo("/documents/new")} size="sm" className="gap-1.5 shrink-0">
+              <Plus className="w-3.5 h-3.5" /> New
+            </Button>
           </div>
         )}
         {/* toolbar */}
