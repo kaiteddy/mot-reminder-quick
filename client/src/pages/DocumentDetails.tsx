@@ -913,8 +913,8 @@ export default function DocumentDetails() {
                   className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
               </div>
               <div className="flex gap-2 items-center">
-                <EF label="House No" field="custHouseNo" {...{ form, set, editing }} />
-                <EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} />
+                <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
+                <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
                 {editing && (
                   <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
                     className="shrink-0 h-[32px] inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 text-xs disabled:opacity-50 hover:bg-violet-800">
