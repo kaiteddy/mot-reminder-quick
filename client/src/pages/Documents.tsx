@@ -176,7 +176,8 @@ export default function Documents() {
                       <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                     </TableHead>
                     <SortHead label="Doc No" col="docNo" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Type" col="type" {...{ sortKey, sortDir, sortBy }} />
+                    {/* Redundant once filtered to a single type — every row would say the same thing. */}
+                    {docType === "all" && <SortHead label="Type" col="type" {...{ sortKey, sortDir, sortBy }} />}
                     <SortHead label="Date" col="date" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Customer" col="customer" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Reg" col="registration" {...{ sortKey, sortDir, sortBy }} />
@@ -189,10 +190,10 @@ export default function Documents() {
                 </TableHeader>
                 <TableBody>
                   {isLoading && (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={docType === "all" ? 11 : 10} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!isLoading && (docs?.length ?? 0) === 0 && (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={docType === "all" ? 11 : 10} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
                     <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
@@ -200,11 +201,13 @@ export default function Documents() {
                         <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                       </TableCell>
                       <TableCell className="font-medium">{d.docNo || "-"}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={TYPE_COLOR[d.docType] || ""}>
-                          {TYPE_LABEL[d.docType] || d.docType || "?"}
-                        </Badge>
-                      </TableCell>
+                      {docType === "all" && (
+                        <TableCell>
+                          <Badge variant="secondary" className={TYPE_COLOR[d.docType] || ""}>
+                            {TYPE_LABEL[d.docType] || d.docType || "?"}
+                          </Badge>
+                        </TableCell>
+                      )}
                       <TableCell>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</TableCell>
                       <TableCell className="max-w-[200px]">
                         <div className="truncate uppercase">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
@@ -221,15 +224,15 @@ export default function Documents() {
                       <TableCell>
                         {d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="text-sm text-slate-600">
+                      <TableCell className="max-w-[200px] text-sm text-slate-600">
                         {d.make || d.model ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5" title={[d.make, d.model].filter(Boolean).join(" ")}>
                             <ManufacturerLogo make={d.make} size="sm" />
-                            <span>{[d.make, d.model].filter(Boolean).join(" ")}</span>
+                            <span className="min-w-0 flex-1 truncate">{[d.make, d.model].filter(Boolean).join(" ")}</span>
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="max-w-[180px]">
                         {(() => {
                           const w = workSummary(d.description);
                           if (!w || (w.badges.length === 0 && !w.summary)) return <span className="text-muted-foreground">—</span>;
@@ -238,7 +241,7 @@ export default function Documents() {
                               {w.badges.map((b) => (
                                 <span key={b.label} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
                               ))}
-                              {w.summary && <span className="text-[11px] text-slate-500">{w.summary}</span>}
+                              {w.summary && <span className="truncate text-[11px] text-slate-500">{w.summary}</span>}
                             </div>
                           );
                         })()}
