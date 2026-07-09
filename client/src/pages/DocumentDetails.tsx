@@ -34,6 +34,9 @@ function splitName(full?: string) {
   const parts = (full || "").trim().split(/\s+/).filter(Boolean);
   let title = "";
   if (parts.length > 1 && TITLES.includes(parts[0].toUpperCase().replace(/\./g, ""))) title = parts.shift()!;
+  // A lone word that's itself a title (e.g. a record saved as just "Mr") belongs in Title,
+  // not Surname — otherwise it renders as if "Mr" were someone's actual surname.
+  if (parts.length === 1 && TITLES.includes(parts[0].toUpperCase().replace(/\./g, ""))) title = parts.shift()!;
   const surname = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || "");
   const forename = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
   return { title, forename, surname };
