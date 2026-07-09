@@ -1067,8 +1067,13 @@ export default function DocumentDetails() {
                     {editing && (
                       <ServicePartsPicker
                         vehInfo={vehInfo}
-                        onAdd={(label, parts, sundries) => {
-                          setItemsDirty((p) => [...p, ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() }))]);
+                        engineCC={form.engineCC}
+                        onAdd={(label, parts, sundries, labour) => {
+                          setItemsDirty((p) => [
+                            ...p,
+                            ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() })),
+                            ...(labour ? [recalc({ itemType: "Labour", description: labour.description, quantity: 1, unitPrice: labour.unitPrice, vatRate: 20, _k: nextItemKey() })] : []),
+                          ]);
                           set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${label}`);
                           // Don't clobber a sundries amount staff already typed in.
                           if (sundries && !num(form.sundriesAmount)) set("sundriesAmount", sundries);
@@ -1722,7 +1727,15 @@ function priceListMatch(desc: string, priceList: { description: string; unitPric
   return hit ? { unitPrice: Number(hit.unitPrice), vatRate: hit.vatRate != null ? Number(hit.vatRate) : undefined } : {};
 }
 
-function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number) => void }) {
+// Small Service labour is a flat rate by engine size — under 2000cc counts as a "smaller" car.
+const SMALL_SERVICE_LABOUR_CC_CUTOFF = 2000;
+const SMALL_SERVICE_LABOUR_SMALL = 124;
+const SMALL_SERVICE_LABOUR_LARGE = 144;
+
+function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
+  vehInfo: any; engineCC?: any;
+  onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number, labour?: { description: string; unitPrice: number }) => void;
+}) {
   const grades: string[] = vehInfo?.oilGrades || [];
   const [grade, setGrade] = useState<string>(grades[0] || "");
   // vehInfo can resolve after this mounts (async lookup) — keep the selected grade valid.
@@ -1739,10 +1752,15 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
   const hasAircon = !!vehInfo?.airconType;
   const acGas = priced(`Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), 1);
 
+  const cc = parseFloat(String(engineCC ?? "").replace(/[^0-9.]/g, "")) || 0;
+  const smallServiceLabour = cc > 0
+    ? { description: "Small Service Labour", unitPrice: cc < SMALL_SERVICE_LABOUR_CC_CUTOFF ? SMALL_SERVICE_LABOUR_SMALL : SMALL_SERVICE_LABOUR_LARGE }
+    : undefined; // engine size not known yet — leave labour for staff to add manually rather than guess
+
   // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
   // priced "part", so it bumps the document's Sundries total rather than adding a line item.
-  const SETS: Record<string, { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number }> = {
-    small: { label: "Small Service", parts: [oil, oilFilter, priced("Sump Plug Seal", 1)], sundries: 4.5 },
+  const SETS: Record<string, { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number; labour?: { description: string; unitPrice: number } }> = {
+    small: { label: "Small Service", parts: [oil, oilFilter, priced("Sump Plug Seal", 1)], sundries: 4.5, labour: smallServiceLabour },
     major: { label: "Major Service", parts: [oil, oilFilter, priced("Air Filter", 1), priced("Cabin Filter", 1), priced("Sump Plug", 1)], sundries: 5.5 },
     aircon: { label: "Air Con Re-Gas", parts: [acGas] },
   };
@@ -1755,7 +1773,7 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
         <select
           className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
           value=""
-          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries); e.currentTarget.value = ""; }}
+          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries, s.labour); e.currentTarget.value = ""; }}
         >
           <option value="">Select a service to add its parts…</option>
           <option value="small">Small Service — oil, oil filter + sump plug seal</option>
