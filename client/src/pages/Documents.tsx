@@ -69,7 +69,7 @@ const workSummary = (desc?: string | null): { badges: { label: string; cls: stri
 
 export default function Documents() {
   const [search, setSearch] = useState("");
-  const [docType, setDocType] = useState("all");
+  const [docType, setDocType] = useState("JS");
   const [, setLocation] = useLocation();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sortKey, setSortKey] = useState("date");
@@ -144,14 +144,12 @@ export default function Documents() {
               <FileText className="w-5 h-5" /> Live Jobs List
             </CardTitle>
             <CardDescription>Search anything — customer, name, surname, address, registration, make/model or job number — then pick a result to view it</CardDescription>
-            <div className="flex flex-col sm:flex-row gap-3 pt-3">
-              <div className="relative flex-1">
-                <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
-              </div>
+            <div className="flex flex-col gap-3 pt-3">
+              <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
               <Tabs value={docType} onValueChange={setDocType}>
-                <TabsList>
+                <TabsList className="w-full">
                   {FILTERS.map((f) => (
-                    <TabsTrigger key={f.key} value={f.key}>{f.label}</TabsTrigger>
+                    <TabsTrigger key={f.key} value={f.key} className="flex-1">{f.label}</TabsTrigger>
                   ))}
                 </TabsList>
               </Tabs>
