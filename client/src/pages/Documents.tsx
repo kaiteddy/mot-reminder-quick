@@ -205,7 +205,7 @@ export default function Documents() {
                       </TableCell>
                       <TableCell>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</TableCell>
                       <TableCell className="max-w-[200px]">
-                        <div className="truncate">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
+                        <div className="truncate uppercase">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
                         {d.phone && (
                           <div
                             title={d.phone}
