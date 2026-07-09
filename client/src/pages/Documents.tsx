@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import UniversalSearch from "@/components/UniversalSearch";
 import { RegPlate } from "@/components/RegPlate";
+import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -221,7 +222,12 @@ export default function Documents() {
                         {d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-sm text-slate-600">
-                        {[d.make, d.model].filter(Boolean).join(" ") || <span className="text-muted-foreground">—</span>}
+                        {d.make || d.model ? (
+                          <div className="flex items-center gap-1.5">
+                            <ManufacturerLogo make={d.make} size="sm" />
+                            <span>{[d.make, d.model].filter(Boolean).join(" ")}</span>
+                          </div>
+                        ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell>
                         {(() => {
