@@ -1138,6 +1138,19 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
         WHERE si."docType" = 'SI'
           AND si."origJobSheetNo" = (NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::int
       )`);
+      // The web app's own "Convert" button doesn't stamp origJobSheetNo (only the GA4 sync does),
+      // so a GA4-mirrored job sheet converted to an invoice IN the app also leaked through above.
+      // convertDocument() copies the description verbatim onto the new invoice, so a substantial
+      // (≥15 char, to skip generic "MOT"-style text) exact description match on the same vehicle,
+      // where the invoice was created on/after the job sheet, is a reliable fingerprint for that.
+      conds.push(sql`NOT EXISTS (
+        SELECT 1 FROM "serviceHistory" si
+        WHERE si."docType" = 'SI'
+          AND si."vehicleId" = ${serviceHistory.vehicleId}
+          AND si."dateCreated" >= ${serviceHistory.dateCreated}
+          AND si.description = ${serviceHistory.description}
+          AND length(${serviceHistory.description}) >= 15
+      )`);
     }
   }
   if (opts.search && opts.search.trim()) {
