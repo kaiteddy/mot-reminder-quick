@@ -2696,6 +2696,11 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // truthy and blocks the fallback to the linked customer's full address. Postcode appended below.
   const docStreet = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty].filter(Boolean).join(", ");
   const docPostcode = String(d2.custPostcode || customer?.postcode || "").trim();
+  // Some imported records have the whole address (town, postcode and all) crammed into a single
+  // free-text field like custRoad — splitting that on commas can repeat the town or the postcode
+  // as its own line. Dedupe case/space-insensitively, and skip appending the postcode again if a
+  // line already IS it, so we never print e.g. "London" or "NW4 1HD" twice.
+  const normAddrPart = (s: string) => s.toLowerCase().replace(/\s+/g, "");
   // Collect EVERY number we hold for this customer — the doc's mobile/tel, the linked
   // customer's primary phone, and any "Other numbers" (altContacts) — so the printed sheet
   // shows all of them. Dedupe on the digits (treating +44… and 0… as the same UK number).
@@ -2720,10 +2725,20 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   const altList = Array.isArray((customer as any)?.altContacts) ? (customer as any).altContacts : [];
   for (const ct of altList) addPhone(ct?.phone, ct?.name);
 
+  const addressLines: string[] = [];
+  const seenAddrParts = new Set<string>();
+  for (const part of (docStreet || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean)) {
+    const key = normAddrPart(part);
+    if (seenAddrParts.has(key)) continue;
+    seenAddrParts.add(key);
+    addressLines.push(part);
+  }
+  if (docPostcode && !seenAddrParts.has(normAddrPart(docPostcode))) addressLines.push(docPostcode);
+
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
     company: String(d2.company || '').trim(),
-    address_lines: [...(docStreet || customer?.address || '').split(',').map((s: string) => s.trim()).filter(Boolean), ...(docPostcode ? [docPostcode] : [])],
+    address_lines: addressLines,
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     phones,
     billTo,
