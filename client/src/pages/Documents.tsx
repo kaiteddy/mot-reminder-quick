@@ -22,10 +22,10 @@ const TYPE_COLOR: Record<string, string> = {
   JS: "bg-amber-100 text-amber-800", CR: "bg-red-100 text-red-800",
 };
 const FILTERS = [
+  { key: "JS", label: "Job Sheets" },
   { key: "all", label: "All" },
   { key: "SI", label: "Invoices" },
   { key: "ES", label: "Estimates" },
-  { key: "JS", label: "Job Sheets" },
   { key: "CR", label: "Credit Notes" },
 ];
 
