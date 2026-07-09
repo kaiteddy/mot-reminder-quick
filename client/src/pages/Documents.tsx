@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
@@ -147,18 +148,13 @@ export default function Documents() {
               <div className="relative flex-1">
                 <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
               </div>
-              <div className="flex gap-2 flex-wrap">
-                {FILTERS.map((f) => (
-                  <Button
-                    key={f.key}
-                    variant={docType === f.key ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setDocType(f.key)}
-                  >
-                    {f.label}
-                  </Button>
-                ))}
-              </div>
+              <Tabs value={docType} onValueChange={setDocType}>
+                <TabsList>
+                  {FILTERS.map((f) => (
+                    <TabsTrigger key={f.key} value={f.key}>{f.label}</TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
           </CardHeader>
           <CardContent>
