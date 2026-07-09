@@ -180,6 +180,7 @@ export default function Documents() {
                     <SortHead label="Customer" col="customer" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Reg" col="registration" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Vehicle" col="vehicle" {...{ sortKey, sortDir, sortBy }} />
+                    <TableHead>Job</TableHead>
                     <SortHead label="Total" col="total" align="right" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Balance" col="balance" align="right" {...{ sortKey, sortDir, sortBy }} />
                     <SortHead label="Status" col="status" {...{ sortKey, sortDir, sortBy }} />
@@ -187,10 +188,10 @@ export default function Documents() {
                 </TableHeader>
                 <TableBody>
                   {isLoading && (
-                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!isLoading && (docs?.length ?? 0) === 0 && (
-                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
                     <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
@@ -220,12 +221,14 @@ export default function Documents() {
                         {d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-sm text-slate-600">
-                        <div>{[d.make, d.model].filter(Boolean).join(" ") || <span className="text-muted-foreground">—</span>}</div>
+                        {[d.make, d.model].filter(Boolean).join(" ") || <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>
                         {(() => {
                           const w = workSummary(d.description);
-                          if (!w || (w.badges.length === 0 && !w.summary)) return null;
+                          if (!w || (w.badges.length === 0 && !w.summary)) return <span className="text-muted-foreground">—</span>;
                           return (
-                            <div className="mt-1 flex flex-wrap items-center gap-1" title={d.description || undefined}>
+                            <div className="flex flex-wrap items-center gap-1" title={d.description || undefined}>
                               {w.badges.map((b) => (
                                 <span key={b.label} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
                               ))}
