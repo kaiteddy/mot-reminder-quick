@@ -123,15 +123,12 @@ export default function WorkshopMOTCheck() {
       setVehicleData(data as VehicleData);
       toast.success("Vehicle found!");
 
-      // Try to fetch customer profile data
+      // Try to fetch customer profile data — keep the response even with no linked customer,
+      // so its `vehicle` id still lets CustomerInfoCard offer an "Assign Owner" prompt.
       try {
         const res = await fetch(`/api/customer-lookup/${data.registration}`);
         const cData = await res.json();
-        if (cData.success && cData.customer) {
-          setCustomerData(cData);
-        } else {
-          setCustomerData(null);
-        }
+        setCustomerData(cData.success ? cData : null);
       } catch (e) {
         console.error("Customer lookup failed", e);
         setCustomerData(null);
@@ -311,9 +308,11 @@ export default function WorkshopMOTCheck() {
         {/* Vehicle Details */}
         {vehicleData && (
           <div className="space-y-5">
-            {/* Customer / owner details first — who the car belongs to + all their numbers */}
-            {customerData?.customer && (
-              <CustomerInfoCard customer={customerData.customer} vehicleId={customerData?.vehicle?.id} />
+            {/* Customer / owner details first — who the car belongs to + all their numbers.
+                CustomerInfoCard shows its own "No Customer Assigned" + Assign Owner prompt
+                when customer is null, as long as it has a vehicleId to assign against. */}
+            {customerData?.vehicle?.id && (
+              <CustomerInfoCard customer={customerData.customer} vehicleId={customerData.vehicle.id} />
             )}
             {/* MOT Status Card */}
             <Card className="border-2">

@@ -23,21 +23,22 @@ customerLookupRouter.get("/:registration", async (req, res) => {
     if (vehicleRecords.length === 0) {
       return res.json({ success: true, customer: null });
     }
-    
+
     const vehicle = vehicleRecords[0];
-    
+
     if (!vehicle.customerId) {
-      return res.json({ success: true, customer: null });
+      // No owner linked yet — still return the vehicle so the client can offer to assign one.
+      return res.json({ success: true, customer: null, vehicle });
     }
-    
+
     // Get the customer
     const customerRecords = await db.select()
       .from(customers)
       .where(eq(customers.id, vehicle.customerId))
       .limit(1);
-      
+
     if (customerRecords.length === 0) {
-      return res.json({ success: true, customer: null });
+      return res.json({ success: true, customer: null, vehicle });
     }
     
     // We could potentially format the data nicely here
