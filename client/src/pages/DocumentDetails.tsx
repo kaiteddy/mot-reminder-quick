@@ -1067,10 +1067,13 @@ export default function DocumentDetails() {
                     {editing && (
                       <ServicePartsPicker
                         vehInfo={vehInfo}
-                        onAdd={(label, parts) => {
-                          setItemsDirty((p) => [...p, ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() }))]);
+                        onAdd={(label, parts, sundries) => {
+                          setItemsDirty((p) => [...p, ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() }))]);
                           set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${label}`);
-                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"} — set prices in the Parts tab`);
+                          // Don't clobber a sundries amount staff already typed in.
+                          if (sundries && !num(form.sundriesAmount)) set("sundriesAmount", sundries);
+                          const unpriced = parts.filter((pt) => pt.unitPrice == null).length;
+                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"}` + (unpriced ? ` — ${unpriced} need a price set in the Parts tab` : ""));
                         }}
                       />
                     )}
@@ -1707,22 +1710,40 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
 // Pick a service type and it drops the right PARTS straight onto the job (not labour),
 // pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
 // oil quantity matches the engine. Multiple services can be added (pick each in turn).
-function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number }[]) => void }) {
+// A part's name matches a price-list entry when every significant word (≥3 letters, so a grade
+// like "5W-30" still counts) in the entry's description appears somewhere in the part's — handles
+// word-order differences like "Engine Oil — 5W-30" vs. a price-list entry titled "5W-30 Engine Oil".
+function priceListMatch(desc: string, priceList: { description: string; unitPrice: string; vatRate: string | null }[]) {
+  const d = desc.toLowerCase();
+  const hit = priceList.find((p) => {
+    const words = p.description.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+    return words.length > 0 && words.every((w) => d.includes(w));
+  });
+  return hit ? { unitPrice: Number(hit.unitPrice), vatRate: hit.vatRate != null ? Number(hit.vatRate) : undefined } : {};
+}
+
+function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number) => void }) {
   const grades: string[] = vehInfo?.oilGrades || [];
   const [grade, setGrade] = useState<string>(grades[0] || "");
   // vehInfo can resolve after this mounts (async lookup) — keep the selected grade valid.
   useEffect(() => { if (grades.length && !grades.includes(grade)) setGrade(grades[0]); }, [grades.join(",")]);
 
+  const { data: priceListData } = trpc.partsPriceList.list.useQuery({});
+  const priceList = (priceListData as any[]) || [];
+  const priced = (description: string, quantity: number) => ({ description, quantity, ...priceListMatch(description, priceList) });
+
   const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
   const oilLabel = grade || vehInfo?.oilSpec || "";
-  const oil = { description: oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", quantity: oilCap || 1 };
-  const oilFilter = { description: "Oil Filter", quantity: 1 };
+  const oil = priced(oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", oilCap || 1);
+  const oilFilter = priced("Oil Filter", 1);
   const hasAircon = !!vehInfo?.airconType;
-  const acGas = { description: `Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), quantity: 1 };
+  const acGas = priced(`Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), 1);
 
-  const SETS: Record<string, { label: string; parts: { description: string; quantity: number }[] }> = {
-    small: { label: "Small Service", parts: [oil, oilFilter, { description: "Sump Plug Seal", quantity: 1 }] },
-    major: { label: "Major Service", parts: [oil, oilFilter, { description: "Air Filter", quantity: 1 }, { description: "Cabin Filter", quantity: 1 }, { description: "Sump Plug", quantity: 1 }] },
+  // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
+  // priced "part", so it bumps the document's Sundries total rather than adding a line item.
+  const SETS: Record<string, { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number }> = {
+    small: { label: "Small Service", parts: [oil, oilFilter, priced("Sump Plug Seal", 1)], sundries: 4.5 },
+    major: { label: "Major Service", parts: [oil, oilFilter, priced("Air Filter", 1), priced("Cabin Filter", 1), priced("Sump Plug", 1)], sundries: 5.5 },
     aircon: { label: "Air Con Re-Gas", parts: [acGas] },
   };
 
@@ -1734,7 +1755,7 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
         <select
           className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
           value=""
-          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
+          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries); e.currentTarget.value = ""; }}
         >
           <option value="">Select a service to add its parts…</option>
           <option value="small">Small Service — oil, oil filter + sump plug seal</option>
