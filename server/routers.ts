@@ -461,6 +461,31 @@ export const appRouter = router({
       }),
   }),
 
+  partsPriceList: router({
+    list: publicProcedure
+      .input(z.object({ search: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const { listPartsPriceList } = await import("./db");
+        return listPartsPriceList(input?.search);
+      }),
+    upsert: publicProcedure
+      .input(z.object({
+        id: z.number().optional(), partNumber: z.string().optional(), description: z.string().min(1),
+        unitPrice: z.number(), vatRate: z.number().optional(), quantity: z.number().optional(), nominalCode: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { upsertPartsPriceListEntry } = await import("./db");
+        return upsertPartsPriceListEntry(input);
+      }),
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deletePartsPriceListEntry } = await import("./db");
+        await deletePartsPriceListEntry(input.id);
+        return { success: true };
+      }),
+  }),
+
   email: router({
     getSettings: publicProcedure.query(async () => {
       const { getEmailSettings } = await import("./services/email");

@@ -48,7 +48,8 @@ import {
   PoundSterling,
   Tag,
   GitMerge,
-  ShieldAlert
+  ShieldAlert,
+  Package
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -65,6 +66,7 @@ const menuGroups = [
     { icon: Search, label: "MOT Check", path: "/mot-check" },
     { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
+    { icon: Package, label: "Parts Price List", path: "/parts-price-list" },
     { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
     { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
     { icon: Wrench, label: "Technical Data", path: "/technical-data" },

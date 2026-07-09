@@ -2071,7 +2071,9 @@ function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v
 // Parts autocomplete: as you type a part number or description, suggest parts the workshop has used
 // before (and known shorthands like 5/30 → oil, OF1 → oil filter). Picking one fills BOTH fields.
 function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
-  value: string; onType: (v: string) => void; onPick: (p: { partNumber?: string | null; description?: string | null }) => void; inp: string; placeholder?: string;
+  value: string; onType: (v: string) => void;
+  onPick: (p: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) => void;
+  inp: string; placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -2138,11 +2140,21 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   // The data cells for one row (everything except the drag-handle column).
   const rowCells = (it: Item, idx: number) => {
     const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
+    // Picking a suggestion fills description/part no AND, when known (a price-list entry or the
+    // part's average historical price), quantity/price/VAT too — not just left at the £0 default.
+    const pickPart = (o: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) =>
+      update(idx, {
+        description: o.description ?? it.description,
+        ...(o.partNumber ? { partNumber: o.partNumber } : {}),
+        ...(o.unitPrice != null ? { unitPrice: o.unitPrice } : {}),
+        ...(o.vatRate != null ? { vatRate: o.vatRate } : {}),
+        ...(o.quantity != null ? { quantity: o.quantity } : {}),
+      });
     return (<>
       {showPartNo && <TableCell>{editing
         ? <PartAutocomplete inp={inp} placeholder="Part No" value={it.partNumber ?? ""}
             onType={(v) => update(idx, { partNumber: v })}
-            onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+            onPick={pickPart} />
         : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
       <TableCell>{editing ? (
         kind === "Labour"
@@ -2151,7 +2163,7 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
           : showPartNo
             ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
                 onType={(v) => update(idx, { description: v })}
-                onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
+                onPick={pickPart} />
             : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
       ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
       <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>

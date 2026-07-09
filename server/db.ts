@@ -7,7 +7,7 @@ import path from "path";
 import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
-  descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool,
+  descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool, partsPriceList,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -495,7 +495,9 @@ const PART_ALIASES: Record<string, string[]> = {
 };
 
 /** Suggest parts the workshop has used before (part number + description), matching the typed text
- *  or a known shorthand. Powers the parts autocomplete so typing fills both fields quickly. */
+ *  or a known shorthand. Powers the parts autocomplete so typing fills both fields quickly — and,
+ *  now, quantity/price too: a maintained partsPriceList entry wins when one matches, otherwise we
+ *  fall back to the part's average historical price so picking a suggestion is never a £0 line. */
 export async function suggestParts(query: string, limit = 8) {
   const db = await getDb();
   if (!db) return [];
@@ -505,16 +507,89 @@ export async function suggestParts(query: string, limit = 8) {
   for (const [k, vals] of Object.entries(PART_ALIASES)) if (qn === k || qn.startsWith(k) || k.startsWith(qn)) vals.forEach((v) => terms.add(v));
   const oil = qn.match(/^(\d{1,2})\s*[\/w-]+\s*(\d{2})$/); // "5/30", "5w30", "5-30" → 5W-30 oil
   if (oil) { terms.add(`${oil[1]}w-${oil[2]}`); terms.add(`${oil[1]}w${oil[2]}`); }
-  const conds = Array.from(terms).flatMap((t) => [ilike(serviceLineItems.description, `%${t}%`), ilike(serviceLineItems.partNumber, `%${t}%`)]);
-  const rows = await db.select({
-    partNumber: serviceLineItems.partNumber, description: serviceLineItems.description, n: sql<number>`COUNT(*)`,
-  })
-    .from(serviceLineItems)
-    .where(and(inArray(serviceLineItems.itemType, ["Part", "Lubricant"]), isNotNull(serviceLineItems.description), ne(serviceLineItems.description, ""), or(...conds)))
-    .groupBy(serviceLineItems.partNumber, serviceLineItems.description)
-    .orderBy(desc(sql<number>`COUNT(*)`))
-    .limit(limit);
-  return rows.map((r) => ({ partNumber: r.partNumber, description: r.description, count: Number(r.n) }));
+  const histConds = Array.from(terms).flatMap((t) => [ilike(serviceLineItems.description, `%${t}%`), ilike(serviceLineItems.partNumber, `%${t}%`)]);
+  const priceConds = Array.from(terms).flatMap((t) => [ilike(partsPriceList.description, `%${t}%`), ilike(partsPriceList.partNumber, `%${t}%`)]);
+
+  const [histRows, priceRows] = await Promise.all([
+    db.select({
+      partNumber: serviceLineItems.partNumber, description: serviceLineItems.description,
+      n: sql<number>`COUNT(*)`, avgPrice: sql<number>`AVG(${serviceLineItems.unitPrice})`,
+    })
+      .from(serviceLineItems)
+      .where(and(inArray(serviceLineItems.itemType, ["Part", "Lubricant"]), isNotNull(serviceLineItems.description), ne(serviceLineItems.description, ""), or(...histConds)))
+      .groupBy(serviceLineItems.partNumber, serviceLineItems.description)
+      .orderBy(desc(sql<number>`COUNT(*)`))
+      .limit(limit * 2),
+    db.select().from(partsPriceList).where(or(...priceConds)).limit(limit * 2),
+  ]);
+
+  const keyOf = (partNumber: string | null | undefined, description: string | null | undefined) =>
+    `${(partNumber || "").toLowerCase().trim()}|${(description || "").toLowerCase().trim()}`;
+  const priceByKey = new Map(priceRows.map((p) => [keyOf(p.partNumber, p.description), p]));
+  const seen = new Set<string>();
+  const out: { partNumber: string | null; description: string | null; count: number; unitPrice: number | null; vatRate: number | null; quantity: number | null }[] = [];
+
+  // Historical usage first (ranked by how often it's been picked) — a price-list match, if any, overrides its price.
+  for (const r of histRows) {
+    const k = keyOf(r.partNumber, r.description);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const priced = priceByKey.get(k);
+    out.push({
+      partNumber: r.partNumber, description: r.description, count: Number(r.n),
+      unitPrice: priced ? Number(priced.unitPrice) : (r.avgPrice != null ? Math.round(Number(r.avgPrice) * 100) / 100 : null),
+      vatRate: priced?.vatRate != null ? Number(priced.vatRate) : null,
+      quantity: priced?.quantity != null ? Number(priced.quantity) : null,
+    });
+  }
+  // Then price-list entries with no usage history yet (freshly added parts).
+  for (const p of priceRows) {
+    const k = keyOf(p.partNumber, p.description);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      partNumber: p.partNumber, description: p.description, count: 0,
+      unitPrice: Number(p.unitPrice), vatRate: p.vatRate != null ? Number(p.vatRate) : null, quantity: p.quantity != null ? Number(p.quantity) : null,
+    });
+  }
+  return out.slice(0, limit);
+}
+
+/** List the maintained parts price list, optionally filtered by a search term. */
+export async function listPartsPriceList(search?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const s = (search || "").trim();
+  const rows = s
+    ? await db.select().from(partsPriceList).where(or(ilike(partsPriceList.description, `%${s}%`), ilike(partsPriceList.partNumber, `%${s}%`))).orderBy(asc(partsPriceList.description)).limit(500)
+    : await db.select().from(partsPriceList).orderBy(asc(partsPriceList.description)).limit(500);
+  return rows;
+}
+
+/** Create or (if `id` given) update a parts price list entry. */
+export async function upsertPartsPriceListEntry(input: { id?: number; partNumber?: string; description: string; unitPrice: number; vatRate?: number; quantity?: number; nominalCode?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = {
+    partNumber: input.partNumber?.trim() || null,
+    description: input.description.trim(),
+    unitPrice: String(input.unitPrice),
+    vatRate: input.vatRate != null ? String(input.vatRate) : "20",
+    quantity: input.quantity != null ? String(input.quantity) : null,
+    nominalCode: input.nominalCode?.trim() || null,
+  };
+  if (input.id) {
+    const [row] = await db.update(partsPriceList).set(values).where(eq(partsPriceList.id, input.id)).returning();
+    return row;
+  }
+  const [row] = await db.insert(partsPriceList).values(values).returning();
+  return row;
+}
+
+export async function deletePartsPriceListEntry(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(partsPriceList).where(eq(partsPriceList.id, id));
 }
 
 export async function findCustomerBySmartMatch(phone: string | null, email: string | null, name: string | null) {

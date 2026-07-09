@@ -390,6 +390,29 @@ export type DescriptionPreset = typeof descriptionPresets.$inferSelect;
 export type InsertDescriptionPreset = typeof descriptionPresets.$inferInsert;
 
 /**
+ * Maintainable parts price list — backs the parts autocomplete's auto-fill of quantity/price
+ * on job sheets/invoices/estimates. A part not yet in this list still gets a price suggestion
+ * (falls back to its average historical price in suggestParts()), but a list entry always wins.
+ */
+export const partsPriceList = pgTable("partsPriceList", {
+  id: serial("id").primaryKey(),
+  partNumber: varchar("partNumber", { length: 100 }),
+  description: text("description").notNull(),
+  unitPrice: numeric("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }).default("20"),
+  quantity: numeric("quantity", { precision: 10, scale: 2 }), // typical qty for this part; blank = default to 1
+  nominalCode: varchar("nominalCode", { length: 50 }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  partNumberIdx: index("parts_price_list_part_number_idx").on(table.partNumber),
+  descriptionIdx: index("parts_price_list_description_idx").on(table.description),
+}));
+
+export type PartsPriceListEntry = typeof partsPriceList.$inferSelect;
+export type InsertPartsPriceListEntry = typeof partsPriceList.$inferInsert;
+
+/**
  * Customer communication / activity log.
  */
 export const customerLogs = pgTable("customerLogs", {

@@ -43,6 +43,7 @@ const MobileJobSummary = lazy(() => import("./pages/MobileJobSummary"));
 const Appointments = lazy(() => import("./pages/Appointments"));
 const PricingIntelligence = lazy(() => import("./pages/PricingIntelligence"));
 const RepairPricing = lazy(() => import("./pages/RepairPricing"));
+const PartsPriceList = lazy(() => import("./pages/PartsPriceList"));
 const SalesStock = lazy(() => import("./pages/SalesStock"));
 const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
@@ -99,6 +100,7 @@ function Router() {
       <Route path="/technical-data" component={TechnicalData} />
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/repair-pricing" component={RepairPricing} />
+      <Route path="/parts-price-list" component={PartsPriceList} />
       <Route path="/sales-stock" component={SalesStock} />
       <Route path="/duplicates" component={Duplicates} />
       <Route path="/system-status" component={SystemStatus} />
