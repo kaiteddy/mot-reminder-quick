@@ -29,7 +29,7 @@ export function getManufacturerLogo(make: string | null | undefined): Manufactur
         },
         'vauxhall': {
             name: 'Vauxhall',
-            logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/81/Vauxhall_logo_2019.svg',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/vauxhall.svg',
             fallbackColor: '#FF0000'
         },
         'volkswagen': {
@@ -126,6 +126,76 @@ export function getManufacturerLogo(make: string | null | undefined): Manufactur
             name: 'Mazda',
             logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/mazda.svg',
             fallbackColor: '#B71234'
+        },
+        'mitsubishi': {
+            name: 'Mitsubishi',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/mitsubishi.svg',
+            fallbackColor: '#E60012'
+        },
+        'lexus': {
+            name: 'Lexus',
+            logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/7/75/Lexus.svg',
+            fallbackColor: '#1A1A1A'
+        },
+        'skoda': {
+            name: 'Škoda',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/skoda.svg',
+            fallbackColor: '#4BA82E'
+        },
+        'seat': {
+            name: 'SEAT',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/seat.svg',
+            fallbackColor: '#E20015'
+        },
+        'suzuki': {
+            name: 'Suzuki',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/suzuki.svg',
+            fallbackColor: '#00549F'
+        },
+        'porsche': {
+            name: 'Porsche',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/porsche.svg',
+            fallbackColor: '#B12B28'
+        },
+        'chrysler': {
+            name: 'Chrysler',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/chrysler.svg',
+            fallbackColor: '#000000'
+        },
+        'smart': {
+            name: 'Smart',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/smart.svg',
+            fallbackColor: '#FFD100'
+        },
+        'chevrolet': {
+            name: 'Chevrolet',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/chevrolet.svg',
+            fallbackColor: '#CD9834'
+        },
+        'jeep': {
+            name: 'Jeep',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/jeep.svg',
+            fallbackColor: '#424225'
+        },
+        'alfa romeo': {
+            name: 'Alfa Romeo',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/alfaromeo.svg',
+            fallbackColor: '#981E32'
+        },
+        'mg': {
+            name: 'MG',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/mg.svg',
+            fallbackColor: '#CC0000'
+        },
+        'dacia': {
+            name: 'Dacia',
+            logoUrl: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/dacia.svg',
+            fallbackColor: '#003D6E'
+        },
+        'saab': {
+            name: 'Saab',
+            logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Saab_wordmark_blue.svg',
+            fallbackColor: '#003057'
         }
     }
 
