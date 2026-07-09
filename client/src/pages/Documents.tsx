@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -29,6 +29,40 @@ const FILTERS = [
   { key: "ES", label: "Estimates" },
   { key: "CR", label: "Credit Notes" },
 ];
+
+// Drag-to-reorder columns — "type" only ever shows on the "All" tab (see docType checks below),
+// but stays in the saved order so it lands back where you put it when All is selected again.
+type ColKey = "docNo" | "type" | "date" | "customer" | "reg" | "vehicle" | "job" | "total" | "balance" | "status";
+const DEFAULT_COLUMN_ORDER: ColKey[] = ["docNo", "type", "date", "customer", "reg", "vehicle", "job", "total", "balance", "status"];
+const COLUMN_ORDER_KEY = "eli.docColumnOrder";
+function loadColumnOrder(): ColKey[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_ORDER_KEY) || "null");
+    if (Array.isArray(saved)) {
+      // Reconcile against the current column set — drop stale keys, append any new ones so a
+      // future column addition doesn't just silently vanish for someone with a saved order.
+      const kept = saved.filter((k): k is ColKey => DEFAULT_COLUMN_ORDER.includes(k));
+      const missing = DEFAULT_COLUMN_ORDER.filter((k) => !kept.includes(k));
+      if (kept.length) return [...kept, ...missing];
+    }
+  } catch { /* ignore corrupt localStorage */ }
+  return DEFAULT_COLUMN_ORDER;
+}
+
+// label/align/sort-column for each header — sortCol is the key `documents.list` accepts, undefined
+// for columns (Job) that have no server-side sort.
+const COLUMN_META: Record<ColKey, { label: string; align?: "right"; sortCol?: string }> = {
+  docNo: { label: "Doc No", sortCol: "docNo" },
+  type: { label: "Type", sortCol: "type" },
+  date: { label: "Date", sortCol: "date" },
+  customer: { label: "Customer", sortCol: "customer" },
+  reg: { label: "Reg", sortCol: "registration" },
+  vehicle: { label: "Vehicle", sortCol: "vehicle" },
+  job: { label: "Job" },
+  total: { label: "Total", align: "right", sortCol: "total" },
+  balance: { label: "Balance", align: "right", sortCol: "balance" },
+  status: { label: "Status", sortCol: "status" },
+};
 
 const money = (v: string | number | null) =>
   v == null ? "-" : `£${Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -83,6 +117,20 @@ export default function Documents() {
     else { setSortKey(key); setSortDir("asc"); }
   };
 
+  // Drag a column header's grip handle to reorder — persisted per-browser so it sticks on reload.
+  const [columnOrder, setColumnOrder] = useState<ColKey[]>(loadColumnOrder);
+  const [draggedCol, setDraggedCol] = useState<ColKey | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<ColKey | null>(null);
+  const reorderColumns = (from: ColKey, to: ColKey) => {
+    if (from === to) return;
+    setColumnOrder((cols) => {
+      const next = cols.filter((c) => c !== from);
+      next.splice(next.indexOf(to), 0, from);
+      localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const { data: stats } = trpc.documents.stats.useQuery();
   const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200, sortKey, sortDir });
   const { data: addrStats } = trpc.documents.addressLookupStats.useQuery();
@@ -106,6 +154,83 @@ export default function Documents() {
       clearSel();
       toast.success(`Deleted ${ids.length} document${ids.length === 1 ? "" : "s"}`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
+  }
+
+  // "Type" is redundant once filtered to a single doc type — every row would say the same thing.
+  const visibleColumns = columnOrder.filter((k) => k !== "type" || docType === "all");
+
+  function renderCell(key: ColKey, d: any) {
+    switch (key) {
+      case "docNo":
+        return <TableCell className="font-medium">{d.docNo || "-"}</TableCell>;
+      case "type":
+        return (
+          <TableCell>
+            <Badge variant="secondary" className={TYPE_COLOR[d.docType] || ""}>
+              {TYPE_LABEL[d.docType] || d.docType || "?"}
+            </Badge>
+          </TableCell>
+        );
+      case "date":
+        return <TableCell>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</TableCell>;
+      case "customer":
+        return (
+          <TableCell className="max-w-[200px]">
+            <div className="truncate uppercase">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
+            {d.phone && (
+              <div
+                title={d.phone}
+                onClick={(e) => e.stopPropagation()}
+                className="w-fit max-w-full origin-bottom-left cursor-text truncate rounded text-[11px] text-muted-foreground transition-transform duration-150 hover:relative hover:z-40 hover:-translate-y-2 hover:scale-[1.9] hover:cursor-none hover:rounded-md hover:border hover:bg-white hover:px-1.5 hover:py-0.5 hover:font-semibold hover:text-slate-900 hover:shadow-lg"
+              >
+                {d.phone}
+              </div>
+            )}
+          </TableCell>
+        );
+      case "reg":
+        return <TableCell>{d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}</TableCell>;
+      case "vehicle":
+        return (
+          <TableCell className="max-w-[200px] text-sm text-slate-600">
+            {d.make || d.model ? (
+              <div className="flex items-center gap-1.5" title={[d.make, d.model].filter(Boolean).join(" ")}>
+                <ManufacturerLogo make={d.make} size="sm" />
+                <span className="min-w-0 flex-1 truncate">{[d.make, d.model].filter(Boolean).join(" ")}</span>
+              </div>
+            ) : <span className="text-muted-foreground">—</span>}
+          </TableCell>
+        );
+      case "job":
+        return (
+          <TableCell className="max-w-[180px]">
+            {(() => {
+              const w = workSummary(d.description);
+              if (!w || (w.badges.length === 0 && !w.summary)) return <span className="text-muted-foreground">—</span>;
+              return (
+                <div className="flex flex-wrap items-center gap-1" title={d.description || undefined}>
+                  {w.badges.map((b) => (
+                    <span key={b.label} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                  ))}
+                  {w.summary && <span className="truncate text-[11px] text-slate-500">{w.summary}</span>}
+                </div>
+              );
+            })()}
+          </TableCell>
+        );
+      case "total":
+        return <TableCell className="text-right">{money(d.totalGross)}</TableCell>;
+      case "balance":
+        return (
+          <TableCell className="text-right">
+            {d.balance != null && Number(d.balance) > 0
+              ? <span className="text-red-600 font-medium">{money(d.balance)}</span>
+              : money(d.balance)}
+          </TableCell>
+        );
+      case "status":
+        return <TableCell><span className="text-xs text-muted-foreground">{d.docStatus || "-"}</span></TableCell>;
+    }
   }
 
   return (
@@ -175,84 +300,44 @@ export default function Documents() {
                     <TableHead className="w-8">
                       <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                     </TableHead>
-                    <SortHead label="Doc No" col="docNo" {...{ sortKey, sortDir, sortBy }} />
-                    {/* Redundant once filtered to a single type — every row would say the same thing. */}
-                    {docType === "all" && <SortHead label="Type" col="type" {...{ sortKey, sortDir, sortBy }} />}
-                    <SortHead label="Date" col="date" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Customer" col="customer" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Reg" col="registration" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Vehicle" col="vehicle" {...{ sortKey, sortDir, sortBy }} />
-                    <TableHead>Job</TableHead>
-                    <SortHead label="Total" col="total" align="right" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Balance" col="balance" align="right" {...{ sortKey, sortDir, sortBy }} />
-                    <SortHead label="Status" col="status" {...{ sortKey, sortDir, sortBy }} />
+                    {visibleColumns.map((key) => {
+                      const meta = COLUMN_META[key];
+                      return (
+                        <TableHead
+                          key={key}
+                          draggable
+                          onDragStart={() => setDraggedCol(key)}
+                          onDragEnter={() => draggedCol && draggedCol !== key && setDragOverCol(key)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => { e.preventDefault(); if (draggedCol) reorderColumns(draggedCol, key); setDraggedCol(null); setDragOverCol(null); }}
+                          onDragEnd={() => { setDraggedCol(null); setDragOverCol(null); }}
+                          className={`${meta.align === "right" ? "text-right" : ""} cursor-grab active:cursor-grabbing ${dragOverCol === key ? "bg-violet-100" : ""} ${draggedCol === key ? "opacity-40" : ""}`}
+                          title="Drag to reorder columns"
+                        >
+                          <div className={`flex items-center gap-1 ${meta.align === "right" ? "flex-row-reverse" : ""}`}>
+                            <GripVertical className="w-3 h-3 text-slate-300 shrink-0" />
+                            {meta.sortCol
+                              ? <SortButton label={meta.label} col={meta.sortCol} align={meta.align} {...{ sortKey, sortDir, sortBy }} />
+                              : <span>{meta.label}</span>}
+                          </div>
+                        </TableHead>
+                      );
+                    })}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading && (
-                    <TableRow><TableCell colSpan={docType === "all" ? 11 : 10} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
                   )}
                   {!isLoading && (docs?.length ?? 0) === 0 && (
-                    <TableRow><TableCell colSpan={docType === "all" ? 11 : 10} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
                     <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
                       <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                       </TableCell>
-                      <TableCell className="font-medium">{d.docNo || "-"}</TableCell>
-                      {docType === "all" && (
-                        <TableCell>
-                          <Badge variant="secondary" className={TYPE_COLOR[d.docType] || ""}>
-                            {TYPE_LABEL[d.docType] || d.docType || "?"}
-                          </Badge>
-                        </TableCell>
-                      )}
-                      <TableCell>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</TableCell>
-                      <TableCell className="max-w-[200px]">
-                        <div className="truncate uppercase">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
-                        {d.phone && (
-                          <div
-                            title={d.phone}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-fit max-w-full origin-bottom-left cursor-text truncate rounded text-[11px] text-muted-foreground transition-transform duration-150 hover:relative hover:z-40 hover:-translate-y-2 hover:scale-[1.9] hover:cursor-none hover:rounded-md hover:border hover:bg-white hover:px-1.5 hover:py-0.5 hover:font-semibold hover:text-slate-900 hover:shadow-lg"
-                          >
-                            {d.phone}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {d.registration ? <RegPlate reg={d.registration} /> : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] text-sm text-slate-600">
-                        {d.make || d.model ? (
-                          <div className="flex items-center gap-1.5" title={[d.make, d.model].filter(Boolean).join(" ")}>
-                            <ManufacturerLogo make={d.make} size="sm" />
-                            <span className="min-w-0 flex-1 truncate">{[d.make, d.model].filter(Boolean).join(" ")}</span>
-                          </div>
-                        ) : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="max-w-[180px]">
-                        {(() => {
-                          const w = workSummary(d.description);
-                          if (!w || (w.badges.length === 0 && !w.summary)) return <span className="text-muted-foreground">—</span>;
-                          return (
-                            <div className="flex flex-wrap items-center gap-1" title={d.description || undefined}>
-                              {w.badges.map((b) => (
-                                <span key={b.label} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
-                              ))}
-                              {w.summary && <span className="truncate text-[11px] text-slate-500">{w.summary}</span>}
-                            </div>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-right">{money(d.totalGross)}</TableCell>
-                      <TableCell className="text-right">
-                        {d.balance != null && Number(d.balance) > 0
-                          ? <span className="text-red-600 font-medium">{money(d.balance)}</span>
-                          : money(d.balance)}
-                      </TableCell>
-                      <TableCell><span className="text-xs text-muted-foreground">{d.docStatus || "-"}</span></TableCell>
+                      {visibleColumns.map((key) => <Fragment key={key}>{renderCell(key, d)}</Fragment>)}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -268,19 +353,19 @@ export default function Documents() {
   );
 }
 
-function SortHead({ label, col, sortKey, sortDir, sortBy, align }: { label: string; col: string; sortKey: string; sortDir: "asc" | "desc"; sortBy: (k: string) => void; align?: "right" }) {
+// The sortable button that goes INSIDE a header cell — the cell itself (with its drag handle) is
+// rendered by the caller so every column, sortable or not, shares one drag-to-reorder wrapper.
+function SortButton({ label, col, sortKey, sortDir, sortBy, align }: { label: string; col: string; sortKey: string; sortDir: "asc" | "desc"; sortBy: (k: string) => void; align?: "right" }) {
   const active = sortKey === col;
   return (
-    <TableHead className={align === "right" ? "text-right" : ""}>
-      <button
-        onClick={() => sortBy(col)}
-        className={`inline-flex items-center gap-1 cursor-pointer select-none hover:text-foreground ${align === "right" ? "flex-row-reverse" : ""} ${active ? "text-foreground font-semibold" : ""}`}
-        title={`Sort by ${label}`}
-      >
-        {label}
-        {active ? (sortDir === "asc" ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />}
-      </button>
-    </TableHead>
+    <button
+      onClick={() => sortBy(col)}
+      className={`inline-flex items-center gap-1 cursor-pointer select-none hover:text-foreground ${align === "right" ? "flex-row-reverse" : ""} ${active ? "text-foreground font-semibold" : ""}`}
+      title={`Sort by ${label}`}
+    >
+      {label}
+      {active ? (sortDir === "asc" ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />) : <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />}
+    </button>
   );
 }
 
