@@ -172,11 +172,14 @@ export default function DocumentDetails() {
   const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
   const [printing, setPrinting] = useState(false);
   // An invoice must have the customer name + vehicle mileage before it goes to the customer.
+  // A job sheet must have a mobile number — it's how we reach the customer once the car's in.
   function requiredMissing(): string[] {
-    if (form.docType !== "SI" && form.docType !== "XS") return [];
     const m: string[] = [];
-    if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
-    if (!String(form.mileage ?? "").trim()) m.push("Mileage");
+    if (form.docType === "SI" || form.docType === "XS") {
+      if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
+      if (!String(form.mileage ?? "").trim()) m.push("Mileage");
+    }
+    if (form.docType === "JS" && !String(form.custMobile ?? "").trim()) m.push("Mobile number");
     return m;
   }
   function blockIfIncomplete(action: string): boolean {
@@ -943,7 +946,7 @@ export default function DocumentDetails() {
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
-              <EF label="Mobile" field="custMobile" {...{ form, set, editing }} />
+              <EF label="Mobile" field="custMobile" required={form.docType === "JS"} {...{ form, set, editing }} />
               {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
