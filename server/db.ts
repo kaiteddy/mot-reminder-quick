@@ -1125,7 +1125,21 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   const limit = Math.min(opts.limit ?? 100, 500);
   const offset = opts.offset ?? 0;
   const conds: any[] = [];
-  if (opts.docType && opts.docType !== "all") conds.push(eq(serviceHistory.docType, opts.docType));
+  if (opts.docType && opts.docType !== "all") {
+    conds.push(eq(serviceHistory.docType, opts.docType));
+    if (opts.docType === "JS") {
+      // GA4 never deletes a job sheet once it's converted to an invoice there — it just leaves the
+      // old JS record sitting alongside the new SI, and our one-way mirror faithfully copies both.
+      // Job sheets already invoiced (tracked via the invoice's origJobSheetNo) are done — keep them
+      // out of the working Job Sheets queue so it isn't cluttered with stale, already-closed jobs.
+      // Still fully visible under "All" — nothing here is deleted or hidden from the record.
+      conds.push(sql`NOT EXISTS (
+        SELECT 1 FROM "serviceHistory" si
+        WHERE si."docType" = 'SI'
+          AND si."origJobSheetNo" = (NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::int
+      )`);
+    }
+  }
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
     conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
