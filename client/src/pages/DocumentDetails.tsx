@@ -290,7 +290,9 @@ export default function DocumentDetails() {
   }
   function emailCtx() {
     const d = (data as any)?.doc; const cust = (data as any)?.customer; const veh = (data as any)?.vehicle;
-    return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
+    // Once issued, an invoice's attached PDF prints GA4's real number (see getRichPDF) — the
+    // subject/body must quote the same number, not the web's own guess-ahead docNo.
+    return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.ga4Number || d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
   }
   function openEmail() {
     if (blockIfIncomplete("email")) return;

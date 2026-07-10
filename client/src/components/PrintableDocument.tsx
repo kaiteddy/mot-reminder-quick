@@ -140,7 +140,9 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
           {phone && <div style={{ marginTop: 8 }}>{doc.custMobile ? "Mobile: " : "Tel: "}{phone}</div>}
         </div>
         <div className="doc">
-          <div className="t"><span className="ti">{title}</span><span className="no">{doc.docNo}</span></div>
+          {/* ga4Number is GA4's authoritative invoice number once issued — docNo is only a
+              guess-ahead placeholder until then. See drizzle/schema.ts serviceHistory.ga4Number. */}
+          <div className="t"><span className="ti">{title}</span><span className="no">{doc.ga4Number || doc.docNo}</span></div>
           <div style={{ height: 10 }} />
           <div className="row"><span>{title} Date:</span><span className="v">{d(doc.dateIssued || doc.dateCreated)}</span></div>
           <div className="row"><span>Account No:</span><span className="v">{doc.accountNumber || ""}</span></div>
