@@ -183,7 +183,8 @@ export default function DocumentDetails() {
       if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
       if (!String(form.mileage ?? "").trim()) m.push("Mileage");
     }
-    if (form.docType === "JS" && !String(form.custMobile ?? "").trim()) m.push("Mobile number");
+    // Either number reaches the customer — only block on a genuinely missing contact number.
+    if (form.docType === "JS" && !String(form.custMobile ?? "").trim() && !String(form.custTelephone ?? "").trim()) m.push("Mobile or telephone number");
     return m;
   }
   function blockIfIncomplete(action: string): boolean {
@@ -953,8 +954,9 @@ export default function DocumentDetails() {
               <EF label="Road" field="custRoad" {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
+              {/* Either number reaches the customer — only flag Mobile as missing when Telephone is empty too. */}
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
-              <EF label="Mobile" field="custMobile" required={form.docType === "JS"} {...{ form, set, editing }} />
+              <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
               {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
