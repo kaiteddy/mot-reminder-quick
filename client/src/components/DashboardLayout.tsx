@@ -64,7 +64,7 @@ const menuGroups = [
   { section: "Workshop", items: [
     { icon: FileText, label: "Live Jobs", path: "/documents" },
     { icon: Search, label: "MOT Check", path: "/mot-check" },
-    { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
+    { icon: LayoutDashboard, label: "MOT Reminders", path: "/mot-reminders" },
     { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
     { icon: Package, label: "Parts Price List", path: "/parts-price-list" },
@@ -222,7 +222,8 @@ function DashboardLayoutContent({
               )}
               <SidebarMenu>
                 {group.items.map((item: any) => {
-                  const isActive = location === item.path;
+                  // "/" renders the same Job Sheets page as "/documents" (the app's landing route).
+                  const isActive = location === item.path || (location === "/" && item.path === "/documents");
                   return (
                     <SidebarMenuItem key={item.path} className="mb-0.5">
                       <SidebarMenuButton

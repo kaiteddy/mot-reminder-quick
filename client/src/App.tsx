@@ -70,7 +70,9 @@ function Router() {
       <Route path="/v/:registration" component={VehicleDetails} />
 
       <Route path="/login" component={Login} />
-      <Route path="/" component={Home} />
+      {/* Job Sheets is the app's landing page — staff should always open onto it. */}
+      <Route path="/" component={Documents} />
+      <Route path="/mot-reminders" component={Home} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/customers" component={Customers} />
