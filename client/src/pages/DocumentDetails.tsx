@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
-import { round2 } from "@/lib/utils";
+import { cn, round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
@@ -516,6 +517,8 @@ export default function DocumentDetails() {
       labourNet, partsNet, sundriesNet: sundries, paintNet: paint, lubricantNet: lubricants,
     };
   }, [items, form.motAmount, form.sundriesAmount, form.lubricantsAmount, form.paintAmount]);
+
+  const techData = ((data as any)?.vehicle?.comprehensiveTechnicalData as any) || undefined;
 
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
@@ -1097,7 +1100,21 @@ export default function DocumentDetails() {
                         }}
                       />
                     )}
-                    {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {editing && (
+                      <div className="flex items-center gap-3 mb-2">
+                        <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
+                        <RepairTimeEstimator
+                          registration={form.registration}
+                          techData={techData}
+                          onEstimate={({ description, minutes }) => {
+                            set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${description} — SWS est. ${minutes} min`);
+                            const hours = round2(minutes / 60);
+                            setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description, quantity: hours || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]);
+                            toast.success(`Added "${description}" (${minutes} min) to Description and as a Labour line — set the rate in the Labour tab`);
+                          }}
+                        />
+                      </div>
+                    )}
                     {editing ? (
                       <>
                         <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />
@@ -1835,6 +1852,120 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
         </button>
       )}
     </div>
+  );
+}
+
+// Browses the SWS repair-time category tree for a vehicle so staff can pull a manufacturer labour
+// allowance straight onto the job sheet instead of guessing — same drill-down data as the Technical Hub.
+function RepairTimeEstimator({ registration, techData, onEstimate }: {
+  registration?: string;
+  techData: any;
+  onEstimate: (item: { description: string; minutes: number }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [repairHistory, setRepairHistory] = useState<{ id: string; text: string; data?: any }[]>([]);
+  const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
+  const [localRepairTimes, setLocalRepairTimes] = useState<any>(null);
+  const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation();
+  const getRepairNodes = trpc.vehicles.getRepairTimesByCategory.useMutation();
+
+  const repairTimes = localRepairTimes ?? techData?.repairTimes;
+
+  useEffect(() => {
+    if (!open || repairTimes || !registration || fetchTechData.isPending) return;
+    fetchTechData.mutate({ registration }, {
+      onSuccess: (res: any) => { if (res?.data?.repairTimes) setLocalRepairTimes(res.data.repairTimes); },
+      onError: () => toast.error("Could not load repair-time data for this vehicle"),
+    });
+  }, [open, registration]);
+
+  const current = repairHistory.length ? repairHistory[repairHistory.length - 1].data : repairTimes;
+  const tree: any[] = current?.tree || [];
+  const details: any[] = current?.details || [];
+
+  const handleCategoryClick = async (node: any) => {
+    if (!node.hasChildren && !node.id) return;
+    if (!registration || !repairTimes?.repairedTypeId) return;
+    setLoadingNodeId(node.id);
+    try {
+      const res = await getRepairNodes.mutateAsync({ registration, repid: String(repairTimes.repairedTypeId), nodeId: node.id });
+      if (res.success && res.data) setRepairHistory((p) => [...p, { id: node.id, text: node.text, data: res.data }]);
+      else toast.error("Could not load sub-categories");
+    } catch {
+      toast.error("Connection error loading repair-time data");
+    } finally {
+      setLoadingNodeId(null);
+    }
+  };
+
+  if (!registration) return null;
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setRepairHistory([]); }}>
+      <PopoverTrigger asChild>
+        <button type="button" className="inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
+          <Clock className="w-3.5 h-3.5" /> Estimate Repair Time
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-3" align="start">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">SWS Repair Times</p>
+          {repairHistory.length > 0 && (
+            <button type="button" onClick={() => setRepairHistory((p) => p.slice(0, -1))} className="text-[11px] text-violet-700 hover:underline">
+              ← Back
+            </button>
+          )}
+        </div>
+        {repairHistory.length > 0 && (
+          <p className="text-[11px] text-slate-400 mb-2 truncate">{repairHistory.map((h) => h.text).join(" › ")}</p>
+        )}
+        <div className="max-h-80 overflow-y-auto space-y-2">
+          {fetchTechData.isPending && !repairTimes ? (
+            <p className="text-[12px] text-slate-400 text-center py-6">Loading repair categories…</p>
+          ) : !repairTimes ? (
+            <p className="text-[12px] text-slate-400 text-center py-6">No repair-time data available for this vehicle.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {tree.map((node: any) => (
+                  <button key={node.id} type="button" disabled={loadingNodeId !== null}
+                    onClick={() => handleCategoryClick(node)}
+                    className={cn(
+                      "inline-flex items-center gap-1 border border-slate-200 rounded-full px-2.5 py-1 text-[11px] font-medium hover:border-violet-400 hover:text-violet-700",
+                      loadingNodeId === node.id && "opacity-50"
+                    )}
+                  >
+                    {loadingNodeId === node.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {node.text}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                {details.length > 0 ? (
+                  details.map((detail: any, i: number) => {
+                    const item = detail.TechnicalData;
+                    if (!item?.descriptions?.item) return null;
+                    return (
+                      <button key={i} type="button"
+                        onClick={() => { onEstimate({ description: item.descriptions.item, minutes: Number(item.totalTime) || 0 }); setOpen(false); setRepairHistory([]); }}
+                        className="w-full flex justify-between items-center gap-2 text-left bg-slate-50 hover:bg-violet-50 border border-slate-200 hover:border-violet-300 rounded px-2.5 py-1.5 text-[12px]"
+                      >
+                        <span className="text-slate-700">{item.descriptions.item}</span>
+                        <span className="text-violet-700 font-semibold shrink-0">{item.totalTime} min</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  tree.length === 0 && (
+                    <p className="text-[12px] text-slate-400 text-center py-4">No repair categories returned for this vehicle model.</p>
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
