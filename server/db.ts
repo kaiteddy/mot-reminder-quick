@@ -608,6 +608,13 @@ export async function findCustomerBySmartMatch(phone: string | null, email: stri
       altPhone = '+44' + phone.substring(1);
       conditions.push(eq(customers.phone, altPhone));
     }
+    // Also match on the national core (digits only, minus +44/0 prefix) so non-canonically
+    // stored numbers (spaces, missing "+") still resolve — see findCustomerByPhone.
+    let core = phone.replace(/\D/g, '');
+    if (core.startsWith('44')) core = core.slice(2); else if (core.startsWith('0')) core = core.slice(1);
+    if (core.length >= 7) {
+      conditions.push(sql`regexp_replace(regexp_replace(${customers.phone}, '[^0-9]', '', 'g'), '^(44|0)', '') = ${core}`);
+    }
   }
 
   if (email && email.includes('@') && !email.includes('placeholder')) {
@@ -638,6 +645,15 @@ export async function findCustomerByPhone(phone: string) {
   }
 
   const conditions = formats.map(p => eq(customers.phone, p));
+  // National "core" (digits only, minus the +44/0/44 prefix), compared on BOTH sides so a stored
+  // number in a non-canonical format (spaces, missing "+") still matches — the exact-format eq()
+  // variants alone miss those. Full-core equality, so no cross-person false match; duplicates that
+  // share a core are still ordered by opt-out below. Guarded at >=7 digits to avoid over-matching.
+  let core = normalizedPhone.replace(/\D/g, '');
+  if (core.startsWith('44')) core = core.slice(2); else if (core.startsWith('0')) core = core.slice(1);
+  if (core.length >= 7) {
+    conditions.push(sql`regexp_replace(regexp_replace(${customers.phone}, '[^0-9]', '', 'g'), '^(44|0)', '') = ${core}`);
+  }
   // Fail-safe for duplicate records sharing a phone: if ANY of them is opted out, return that
   // one so the opt-out guard blocks the send. Without this ordering, limit(1) could pick an
   // opted-in duplicate and we'd message someone who sent STOP on their other record.
@@ -1155,7 +1171,10 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   }
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
-    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
+    // reg is space-insensitive: GA4 stores plates spaced ("EO15 KVR") while users/DVLA type them
+    // solid ("EO15KVR"), so normalise BOTH sides or the reg search silently returns zero docs.
+    const regS = `%${opts.search.trim().toUpperCase().replace(/\s+/g, "")}%`;
+    conds.push(or(ilike(serviceHistory.docNo, s), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regS}`, ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc
@@ -1994,7 +2013,7 @@ export async function globalSearch(query: string, full = false) {
       .orderBy(customers.name).limit(limV),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
-      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
+      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
       .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
   ]);
 
