@@ -77,6 +77,14 @@ export default function PartsPriceList() {
   }
 
   const inp = "bg-white border border-slate-300 rounded px-2 py-1 text-[13px] outline-none focus:border-violet-500 w-full";
+  // Icon buttons with no padding have a hit area as small as the icon itself (~14-16px) — easy to
+  // miss on a real click, and it can look like "Save didn't do anything." Give every action icon a
+  // proper ≥28px tap target with a hover background so misses are much less likely.
+  const iconBtn = "p-1.5 rounded hover:bg-slate-100";
+  const onDraftKeyDown = (e: React.KeyboardEvent, save: () => void, cancel: () => void) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  };
 
   return (
     <DashboardLayout>
@@ -113,7 +121,7 @@ export default function PartsPriceList() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {adding && (
-                <tr className="bg-violet-50/40">
+                <tr className="bg-violet-50/40" onKeyDown={(e) => onDraftKeyDown(e, saveAdd, () => setAdding(false))}>
                   <td className="px-3 py-1.5"><input className={inp} placeholder="Part No" value={addDraft.partNumber} onChange={(e) => setAddDraft((d) => ({ ...d, partNumber: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp} placeholder="Description" autoFocus value={addDraft.description} onChange={(e) => setAddDraft((d) => ({ ...d, description: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="1" value={addDraft.quantity} onChange={(e) => setAddDraft((d) => ({ ...d, quantity: e.target.value }))} /></td>
@@ -121,11 +129,11 @@ export default function PartsPriceList() {
                   <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="20" value={addDraft.vatRate} onChange={(e) => setAddDraft((d) => ({ ...d, vatRate: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp} placeholder="Nominal" value={addDraft.nominalCode} onChange={(e) => setAddDraft((d) => ({ ...d, nominalCode: e.target.value }))} /></td>
                   <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <button onClick={saveAdd} disabled={upsert.isPending} className="text-emerald-600 hover:text-emerald-800" title="Save">
+                    <div className="flex items-center gap-0.5">
+                      <button type="button" onClick={saveAdd} disabled={upsert.isPending} className={iconBtn + " text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"} title="Save">
                         {upsert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       </button>
-                      <button onClick={() => setAdding(false)} className="text-slate-400 hover:text-slate-600" title="Cancel"><X className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => setAdding(false)} className={iconBtn + " text-slate-400 hover:text-slate-600"} title="Cancel"><X className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -140,7 +148,7 @@ export default function PartsPriceList() {
                 const isEditing = editingId === r.id;
                 if (isEditing) {
                   return (
-                    <tr key={r.id} className="bg-violet-50/40">
+                    <tr key={r.id} className="bg-violet-50/40" onKeyDown={(e) => onDraftKeyDown(e, () => saveEdit(r.id), () => setEditingId(null))}>
                       <td className="px-3 py-1.5"><input className={inp} value={editDraft.partNumber} onChange={(e) => setEditDraft((d) => ({ ...d, partNumber: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp} value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp + " text-right"} value={editDraft.quantity} onChange={(e) => setEditDraft((d) => ({ ...d, quantity: e.target.value }))} /></td>
@@ -148,11 +156,11 @@ export default function PartsPriceList() {
                       <td className="px-3 py-1.5"><input className={inp + " text-right"} value={editDraft.vatRate} onChange={(e) => setEditDraft((d) => ({ ...d, vatRate: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp} value={editDraft.nominalCode} onChange={(e) => setEditDraft((d) => ({ ...d, nominalCode: e.target.value }))} /></td>
                       <td className="px-3 py-1.5">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => saveEdit(r.id)} disabled={upsert.isPending} className="text-emerald-600 hover:text-emerald-800" title="Save">
+                        <div className="flex items-center gap-0.5">
+                          <button type="button" onClick={() => saveEdit(r.id)} disabled={upsert.isPending} className={iconBtn + " text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800"} title="Save">
                             {upsert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                           </button>
-                          <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600" title="Cancel"><X className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => setEditingId(null)} className={iconBtn + " text-slate-400 hover:text-slate-600"} title="Cancel"><X className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -167,10 +175,10 @@ export default function PartsPriceList() {
                     <td className="px-3 py-1.5 text-right text-slate-500">{r.vatRate != null ? Number(r.vatRate) : 20}%</td>
                     <td className="px-3 py-1.5 text-slate-500">{r.nominalCode || "—"}</td>
                     <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => startEdit(r)} className="text-slate-400 hover:text-violet-700" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => { if (window.confirm(`Delete "${r.description}" from the price list?`)) del.mutate({ id: r.id }); }}
-                          className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-0.5">
+                        <button type="button" onClick={() => startEdit(r)} className={iconBtn + " text-slate-400 hover:bg-violet-50 hover:text-violet-700"} title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => { if (window.confirm(`Delete "${r.description}" from the price list?`)) del.mutate({ id: r.id }); }}
+                          className={iconBtn + " text-slate-400 hover:bg-red-50 hover:text-red-600"} title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
