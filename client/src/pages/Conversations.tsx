@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { RegPlate } from "@/components/RegPlate";
+import { LineItemsView } from "@/components/ServiceHistory";
+import { useLocation } from "wouter";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess",
@@ -22,9 +24,11 @@ const money = (v: any) => (v == null ? "—" : `£${Number(v).toLocaleString("en
 const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
 
 export default function Conversations() {
+  const [, setLocation] = useLocation();
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [replyMessage, setReplyMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: threads, refetch: refetchThreads } = trpc.conversations.getThreads.useQuery();
@@ -462,13 +466,12 @@ export default function Conversations() {
                   <p className="p-4 text-sm text-slate-400">No previous jobs on file for this car.</p>
                 ) : (
                   vehicleInfo.history.map((h: any) => (
-                    <a
+                    <button
                       key={h.id}
-                      href={`/documents/${h.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block px-4 py-2.5 border-b hover:bg-slate-50 group"
-                      title="Open this document"
+                      type="button"
+                      onClick={() => setSelectedDocId(h.id)}
+                      className="block w-full text-left px-4 py-2.5 border-b hover:bg-slate-50 group"
+                      title="View this document"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", DOC_TYPE_COLOR[h.docType] || "bg-slate-100 text-slate-700")}>
@@ -483,7 +486,7 @@ export default function Conversations() {
                         <span className="text-xs text-slate-400">#{h.docNo}</span>
                         <span className="text-xs font-medium text-slate-600">{money(h.totalGross)}</span>
                       </div>
-                    </a>
+                    </button>
                   ))
                 )}
               </div>
@@ -491,6 +494,26 @@ export default function Conversations() {
           )}
         </div>
       </div>
+
+      {/* Pops the job/invoice up in place — no need to leave the conversation to see what it was. */}
+      <Dialog open={selectedDocId !== null} onOpenChange={(open) => !open && setSelectedDocId(null)}>
+        <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Document Details</DialogTitle>
+            <DialogDescription className="sr-only">Detailed view of the selected workshop document and its line items.</DialogDescription>
+          </DialogHeader>
+          {selectedDocId && vehicleInfo?.history && (
+            <div className="space-y-4">
+              <LineItemsView documentId={selectedDocId} history={vehicleInfo.history} />
+              <div className="flex justify-end pt-4 border-t">
+                <Button variant="outline" size="sm" onClick={() => setLocation(`/documents/${selectedDocId}`)}>
+                  <ExternalLink className="h-4 w-4 mr-2" /> Open Full Job Sheet
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

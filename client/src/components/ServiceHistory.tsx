@@ -606,7 +606,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     );
 }
 
-function LineItemsView({ documentId, history }: { documentId: number, history: any[] }) {
+export function LineItemsView({ documentId, history }: { documentId: number, history: any[] }) {
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery({ documentId });
     const doc = history.find(h => h.id === documentId);
 
