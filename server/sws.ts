@@ -1,7 +1,7 @@
 // SWS Solutions API Configuration (Ported from v0dashboard-2)
 const SWS_CONFIG = {
-    apiKey: "C94A0F3F12E88DB916C008B069E34F65",
-    authHeader: 'Basic R2FyYWdlQXNzaXN0YW50R0E0OkhHdTc2WFQ1c0kxTDBYZ0g4MTZYNzJGMzRSOTkxWmRfNGc=',
+    apiKey: process.env.SWS_API_KEY || "C94A0F3F12E88DB916C008B069E34F65",
+    authHeader: process.env.SWS_AUTH_HEADER || 'Basic R2FyYWdlQXNzaXN0YW50R0E0OkhHdTc2WFQ1c0kxTDBYZ0g4MTZYNzJGMzRSOTkxWmRfNGc=',
     lookupUrl: 'https://www.sws-solutions.co.uk/API-V4/TechnicalData_Query.php'
 };
 

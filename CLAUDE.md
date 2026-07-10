@@ -47,6 +47,9 @@ Pushing to `main` triggers the Vercel deploy.
   back to GA4.
 - DVLA/DVSA vehicle lookups, Autodata deep-link (`vehicles.autodataMid`), Euro Car Parts (Omnipart) +
   PartSouq parts buttons on the job sheet, IdealPostcodes address lookup (server-side key only).
+- **SWS Solutions (HaynesPro reseller)** technical data lookups: `server/sws.ts`. Credentials read from
+  `SWS_API_KEY` / `SWS_AUTH_HEADER` env vars, falling back to the old hardcoded values if unset — set these
+  in `.env` to rotate the key without a code change.
 
 ## House rules
 - One-way mirror only — never push changes back into GA4.
