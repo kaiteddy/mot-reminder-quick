@@ -73,7 +73,9 @@ export default function Vehicles() {
                 label="Refresh MOT & Tax"
                 variant="outline"
                 size="sm"
-                onComplete={refetch}
+                onComplete={() => {
+                  void refetch();
+                }}
               />
             </div>
           </CardHeader>
