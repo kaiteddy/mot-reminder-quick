@@ -89,7 +89,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Live Jobs">
               {data.documents.map((d: any) => (
                 <Item key={"d" + d.id} icon={<FileText className="w-4 h-4 text-slate-500" />} onClick={() => go(`/documents/${d.id}`)}
-                  main={`${DOC_LABEL[d.docType] || d.docType || "Doc"} ${d.docNo || ""}`.trim()}
+                  main={`${DOC_LABEL[d.docType] || d.docType || "Doc"} ${d.ga4Number || d.docNo || ""}`.trim()}
                   sub={<span className="inline-flex items-center gap-1.5">{d.registration && <RegPlate reg={d.registration} size="xs" />}<span>{[d.customerName, d.accountNumber].filter(Boolean).join(" · ")}</span></span>} />
               ))}
             </Group>

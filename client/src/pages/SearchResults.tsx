@@ -94,7 +94,7 @@ export default function SearchResults() {
   ];
   const docCols: Col[] = [
     { key: "type", label: "Type", sortable: true, sortVal: (d) => DOC_LABEL[d.docType] || d.docType || "", cell: (d) => <span className="font-medium text-slate-700">{DOC_LABEL[d.docType] || d.docType || "Doc"}</span> },
-    { key: "no", label: "No.", sortable: true, sortVal: (d) => d.docNo || "", cell: (d) => <span className="font-mono text-[12px] text-slate-600">{d.docNo || "—"}</span> },
+    { key: "no", label: "No.", sortable: true, sortVal: (d) => d.ga4Number || d.docNo || "", cell: (d) => <span className="font-mono text-[12px] text-slate-600">{d.ga4Number || d.docNo || "—"}</span> },
     { key: "reg", label: "Reg", sortable: true, sortVal: (d) => d.registration || "", cell: (d) => d.registration ? <RegPlate reg={d.registration} size="xs" /> : <span className="text-slate-400">—</span> },
     { key: "customer", label: "Customer", sortable: true, sortVal: (d) => d.customerName || "", cell: (d) => <span className="text-slate-700">{d.customerName || "—"}</span> },
     { key: "date", label: "Date", sortable: true, sortVal: (d) => d.date ? new Date(d.date).getTime() : 0, cell: (d) => <span className="text-slate-600 whitespace-nowrap">{d.date ? new Date(d.date).toLocaleDateString("en-GB") : "—"}</span> },

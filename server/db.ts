@@ -1155,7 +1155,9 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   }
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
-    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
+    // ga4Number is what's actually printed/emailed on an issued invoice — search must match it
+    // too, or looking up the number a customer was given finds nothing (or the wrong doc).
+    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.ga4Number, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc
@@ -1187,6 +1189,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     id: serviceHistory.id,
     docType: serviceHistory.docType,
     docNo: serviceHistory.docNo,
+    ga4Number: serviceHistory.ga4Number,
     dateIssued: serviceHistory.dateIssued,
     dateCreated: serviceHistory.dateCreated,
     createdAt: serviceHistory.createdAt, // DB row timestamp — fallback when dateCreated is unset
@@ -1992,9 +1995,11 @@ export async function globalSearch(query: string, full = false) {
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
       .orderBy(customers.name).limit(limV),
-    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
+    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)
-      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
+      // ga4Number is what's actually printed/emailed on an issued invoice — search must match it
+      // too, or looking up the number a customer was given finds nothing (or the wrong doc).
+      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
       .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
   ]);
 

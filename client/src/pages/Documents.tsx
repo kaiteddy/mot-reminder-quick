@@ -162,7 +162,7 @@ export default function Documents() {
   function renderCell(key: ColKey, d: any) {
     switch (key) {
       case "docNo":
-        return <TableCell className="font-medium">{d.docNo || "-"}</TableCell>;
+        return <TableCell className="font-medium">{d.ga4Number || d.docNo || "-"}</TableCell>;
       case "type":
         return (
           <TableCell>
