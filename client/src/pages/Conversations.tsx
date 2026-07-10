@@ -4,11 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { RegPlate } from "@/components/RegPlate";
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess",
+};
+const DOC_TYPE_COLOR: Record<string, string> = {
+  SI: "bg-green-100 text-green-800", ES: "bg-blue-100 text-blue-800",
+  JS: "bg-amber-100 text-amber-800", CR: "bg-red-100 text-red-800", XS: "bg-fuchsia-100 text-fuchsia-800",
+};
+const money = (v: any) => (v == null ? "—" : `£${Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
 
 export default function Conversations() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -98,6 +109,13 @@ export default function Conversations() {
   }, [selectedCustomerId]);
 
   const selectedThread = threads?.find(t => t.customerId === selectedCustomerId);
+
+  // Pulls the car's spec + its full job history so staff can answer "is it due for a service"
+  // (or similar) type questions without leaving the conversation to go dig it up elsewhere.
+  const { data: vehicleInfo } = trpc.vehicles.getByRegistration.useQuery(
+    { registration: selectedThread?.vehicleRegistration ?? "" },
+    { enabled: !!selectedThread?.vehicleRegistration }
+  );
 
   const filteredThreads = threads?.filter(thread =>
     thread.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -404,6 +422,73 @@ export default function Conversations() {
               </div>
             )}
           </div>
+
+          {/* Vehicle + Job History Sidebar — so a question like "is it due for a service" can be
+              answered from the car's own record without leaving the conversation. */}
+          {/* Only shown at ≥1280px — with the 384px thread list already in play, anything
+              narrower squeezes the conversation column itself down to nothing. */}
+          {selectedThread?.vehicleRegistration && (
+            <div className="hidden xl:flex w-72 bg-white border-l flex-col overflow-hidden shrink-0">
+              <div className="border-b p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <RegPlate reg={selectedThread.vehicleRegistration} size="sm" />
+                </div>
+                <div className="text-sm font-semibold text-slate-900">
+                  {[vehicleInfo?.vehicle?.make || selectedThread.vehicleMake, vehicleInfo?.vehicle?.model || selectedThread.vehicleModel].filter(Boolean).join(" ") || "—"}
+                </div>
+                {vehicleInfo?.vehicle && (
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>MOT {fmtDate(vehicleInfo.vehicle.motExpiryDate)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{vehicleInfo.vehicle.taxStatus || "Tax unknown"}</span>
+                    </div>
+                    {vehicleInfo.latestMileage != null && (
+                      <div className="col-span-2 text-slate-500">Last mileage {Number(vehicleInfo.latestMileage).toLocaleString("en-GB")}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="border-b px-4 py-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Wrench className="w-3.5 h-3.5" /> Previous Work
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {!vehicleInfo ? (
+                  <p className="p-4 text-sm text-slate-400">Loading…</p>
+                ) : (vehicleInfo.history?.length ?? 0) === 0 ? (
+                  <p className="p-4 text-sm text-slate-400">No previous jobs on file for this car.</p>
+                ) : (
+                  vehicleInfo.history.map((h: any) => (
+                    <a
+                      key={h.id}
+                      href={`/documents/${h.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block px-4 py-2.5 border-b hover:bg-slate-50 group"
+                      title="Open this document"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", DOC_TYPE_COLOR[h.docType] || "bg-slate-100 text-slate-700")}>
+                          {DOC_TYPE_LABEL[h.docType] || h.docType}
+                        </span>
+                        <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(h.dateIssued || h.dateCreated)}</span>
+                      </div>
+                      <div className="text-sm text-slate-800 truncate mt-1" title={h.mainDescription || h.description || undefined}>
+                        {h.mainDescription || h.description || "—"}
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-xs text-slate-400">#{h.docNo}</span>
+                        <span className="text-xs font-medium text-slate-600">{money(h.totalGross)}</span>
+                      </div>
+                    </a>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>
