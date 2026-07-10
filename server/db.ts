@@ -2817,14 +2817,28 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     return d;
   };
   const phones: { label?: string; value: string }[] = [];
-  const seenPhones = new Set<string>();
+  const seenPhones = new Map<string, number>(); // normalised number -> index in phones
+  // "Mobile"/"Tel" are placeholders for whoever owns the doc/customer record — if the SAME
+  // number later shows up in altContacts with an actual person's name (e.g. this job's mobile
+  // turns out to be "Elaine"), that name is far more useful on a printed sheet, so it replaces
+  // the placeholder instead of being silently dropped as a duplicate.
+  const GENERIC_LABELS = new Set(['Mobile', 'Tel']);
   const addPhone = (value: any, label?: string) => {
     const v = String(value ?? '').trim();
     if (!v) return;
     const key = normPhone(v);
-    if (!key || seenPhones.has(key)) return;
-    seenPhones.add(key);
-    phones.push({ label: (label || '').trim() || undefined, value: v });
+    if (!key) return;
+    const cleanLabel = (label || '').trim() || undefined;
+    const existingIdx = seenPhones.get(key);
+    if (existingIdx !== undefined) {
+      const existing = phones[existingIdx];
+      if (cleanLabel && !GENERIC_LABELS.has(cleanLabel) && (!existing.label || GENERIC_LABELS.has(existing.label))) {
+        existing.label = cleanLabel;
+      }
+      return;
+    }
+    seenPhones.set(key, phones.length);
+    phones.push({ label: cleanLabel, value: v });
   };
   addPhone(d2.custMobile, 'Mobile');
   addPhone(d2.custTelephone, 'Tel');
