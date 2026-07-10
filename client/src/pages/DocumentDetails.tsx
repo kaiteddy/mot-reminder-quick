@@ -981,11 +981,26 @@ export default function DocumentDetails() {
               )}
               {!isExcess && (
                 <Panel title="Extras">
-                  {/* MOT: tick to include an MOT on this job (defaults the statutory fee, editable) */}
+                  {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
+                      usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
+                      value already set (e.g. a re-tick after someone picked Fail/another tester). */}
                   <div className="flex items-center justify-between gap-2">
                     <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
                       <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
-                        onChange={(e) => set("motAmount", e.target.checked ? (num(form.motAmount) ? form.motAmount : "45") : "")}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setForm((f) => ({
+                              ...f,
+                              motAmount: num(f.motAmount) ? f.motAmount : "45",
+                              motClass: f.motClass || "4",
+                              motStatus: f.motStatus || "Pass",
+                              staffMotTester: f.staffMotTester || "Dec Buckley",
+                            }));
+                            markDirty();
+                          } else {
+                            set("motAmount", "");
+                          }
+                        }}
                         className="accent-violet-600 w-3.5 h-3.5" />
                       MOT
                     </label>
