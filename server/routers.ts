@@ -223,6 +223,8 @@ export const appRouter = router({
         offset: z.number().optional(),
         sortKey: z.string().optional(),
         sortDir: z.enum(["asc", "desc"]).optional(),
+        dateFrom: z.string().optional(), // "YYYY-MM-DD", inclusive
+        dateTo: z.string().optional(), // "YYYY-MM-DD", inclusive
       }).optional())
       .query(async ({ input }) => {
         const { getDocuments } = await import("./db");

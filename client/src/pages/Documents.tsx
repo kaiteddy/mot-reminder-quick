@@ -30,6 +30,31 @@ const FILTERS = [
   { key: "CR", label: "Credit Notes" },
 ];
 
+const DATE_FILTERS = [
+  { key: "", label: "Any date" },
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "thisWeek", label: "This Week" },
+  { key: "lastWeek", label: "Last Week" },
+];
+const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Monday-start week (UK convention). Range is applied against the same "effective date"
+// (dateIssued, else dateCreated) as the Date column/sort — see getDocuments in server/db.ts.
+function dateFilterRange(key: string): { dateFrom?: string; dateTo?: string } {
+  if (!key) return {};
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
+  switch (key) {
+    case "today": return { dateFrom: toISODate(today), dateTo: toISODate(today) };
+    case "yesterday": { const y = addDays(today, -1); return { dateFrom: toISODate(y), dateTo: toISODate(y) }; }
+    case "thisWeek": { const mon = mondayOf(today); return { dateFrom: toISODate(mon), dateTo: toISODate(addDays(mon, 6)) }; }
+    case "lastWeek": { const mon = mondayOf(addDays(today, -7)); return { dateFrom: toISODate(mon), dateTo: toISODate(addDays(mon, 6)) }; }
+    default: return {};
+  }
+}
+
 // Drag-to-reorder columns — "type" only ever shows on the "All" tab (see docType checks below),
 // but stays in the saved order so it lands back where you put it when All is selected again.
 type ColKey = "docNo" | "type" | "date" | "customer" | "reg" | "vehicle" | "job" | "total" | "balance" | "status";
@@ -105,6 +130,8 @@ const workSummary = (desc?: string | null): { badges: { label: string; cls: stri
 export default function Documents() {
   const [search, setSearch] = useState("");
   const [docType, setDocType] = useState("JS");
+  const [dateFilter, setDateFilter] = useState("");
+  const { dateFrom, dateTo } = dateFilterRange(dateFilter);
   const [, setLocation] = useLocation();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sortKey, setSortKey] = useState("date");
@@ -132,7 +159,7 @@ export default function Documents() {
   };
 
   const { data: stats } = trpc.documents.stats.useQuery();
-  const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200, sortKey, sortDir });
+  const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200, sortKey, sortDir, dateFrom, dateTo });
   const { data: addrStats } = trpc.documents.addressLookupStats.useQuery();
   const del = trpc.documents.delete.useMutation();
 
@@ -272,13 +299,19 @@ export default function Documents() {
             <CardDescription>Search anything — customer, name, surname, address, registration, make/model or job number — then pick a result to view it</CardDescription>
             <div className="flex flex-col gap-3 pt-3">
               <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
-              <Tabs value={docType} onValueChange={setDocType}>
-                <TabsList className="w-full">
-                  {FILTERS.map((f) => (
-                    <TabsTrigger key={f.key} value={f.key} className="flex-1">{f.label}</TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+              <div className="flex items-center gap-2">
+                <Tabs value={docType} onValueChange={setDocType} className="flex-1 min-w-0">
+                  <TabsList className="w-full">
+                    {FILTERS.map((f) => (
+                      <TabsTrigger key={f.key} value={f.key} className="flex-1">{f.label}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
+                  className="h-9 shrink-0 rounded-md border border-input bg-white px-2.5 text-sm outline-none focus:border-violet-500">
+                  {DATE_FILTERS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                </select>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

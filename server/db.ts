@@ -1119,12 +1119,15 @@ export async function getServiceLineItemsByDocumentId(documentId: number) {
 }
 
 /** Paginated/filterable list of GA4 documents (job sheets / invoices / estimates). */
-export async function getDocuments(opts: { search?: string; docType?: string; limit?: number; offset?: number; sortKey?: string; sortDir?: "asc" | "desc" }) {
+export async function getDocuments(opts: { search?: string; docType?: string; limit?: number; offset?: number; sortKey?: string; sortDir?: "asc" | "desc"; dateFrom?: string; dateTo?: string }) {
   const db = await getDb();
   if (!db) return [];
   const limit = Math.min(opts.limit ?? 100, 500);
   const offset = opts.offset ?? 0;
   const conds: any[] = [];
+  // Same "effective date" as the Date column/sort: issued date if set, else created date.
+  if (opts.dateFrom) conds.push(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}) >= ${opts.dateFrom}::date`);
+  if (opts.dateTo) conds.push(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}) < (${opts.dateTo}::date + interval '1 day')`);
   if (opts.docType && opts.docType !== "all") {
     conds.push(eq(serviceHistory.docType, opts.docType));
     if (opts.docType === "JS") {
