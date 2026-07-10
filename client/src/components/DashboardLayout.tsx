@@ -65,6 +65,7 @@ const menuGroups = [
     { icon: FileText, label: "Live Jobs", path: "/documents" },
     { icon: Search, label: "MOT Check", path: "/mot-check" },
     { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
+    { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
     { icon: Package, label: "Parts Price List", path: "/parts-price-list" },
     { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
@@ -97,7 +98,6 @@ const menuGroups = [
   ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },
-    { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: Mail, label: "Email Settings", path: "/email-settings" },
   ] },
 ];
