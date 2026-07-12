@@ -322,11 +322,11 @@ function DashboardLayoutContent({
           <div className="flex items-center gap-4">
             <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
             <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
-            <div className="flex flex-col">
-              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight">
+            <div className="flex flex-col min-w-0">
+              <span className="hidden sm:block text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight whitespace-nowrap">
                 Current View
               </span>
-              <h2 className="text-sm font-bold text-foreground">
+              <h2 className="text-sm font-bold text-foreground whitespace-nowrap truncate">
                 {activeMenuItem.label}
               </h2>
             </div>

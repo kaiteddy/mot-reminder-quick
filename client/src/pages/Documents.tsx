@@ -405,9 +405,9 @@ function SortButton({ label, col, sortKey, sortDir, sortBy, align }: { label: st
 function StatCard({ label, value }: { label: string; value?: number }) {
   return (
     <Card>
-      <CardContent className="p-4">
-        <p className="text-2xl font-bold">{value?.toLocaleString("en-GB") ?? "—"}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
+      <CardContent className="p-3 sm:p-4">
+        <p className="text-xl sm:text-2xl font-bold whitespace-nowrap tabular-nums">{value?.toLocaleString("en-GB") ?? "—"}</p>
+        <p className="text-xs text-muted-foreground whitespace-nowrap">{label}</p>
       </CardContent>
     </Card>
   );
