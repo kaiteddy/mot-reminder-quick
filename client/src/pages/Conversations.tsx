@@ -253,25 +253,25 @@ export default function Conversations() {
               <>
                 {/* Conversation Header */}
                 <div className="bg-white border-b px-6 py-4 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <h2 className="font-semibold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
-                      {selectedThread.customerName}
+                      <span className="truncate">{selectedThread.customerName}</span>
                       {selectedThread.optedOut && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 shrink-0">
                           <BellOff className="w-3 h-3" /> Reminders stopped
                         </span>
                       )}
                     </h2>
-                    <div className="flex items-center gap-3 text-sm text-slate-600 mt-1 flex-wrap">
-                      <span>{selectedThread.customerPhone}</span>
+                    <div className="flex items-center gap-3 text-sm text-slate-600 mt-1 min-w-0">
+                      <span className="shrink-0">{selectedThread.customerPhone}</span>
                       {selectedThread.vehicleRegistration && (
                         <>
-                          <span>•</span>
-                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                          <span className="shrink-0">•</span>
+                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 shrink-0">
                             {selectedThread.vehicleRegistration}
                           </span>
                           {selectedThread.vehicleMake && (
-                            <span className="text-slate-500">
+                            <span className="text-slate-500 truncate">
                               {selectedThread.vehicleMake} {selectedThread.vehicleModel}
                             </span>
                           )}
@@ -287,7 +287,7 @@ export default function Conversations() {
                       className="border-blue-300 text-blue-700 hover:bg-blue-50"
                       title="Book this customer in for an MOT — sends a reminder on the day"
                     >
-                      <CalendarPlus className="w-4 h-4 mr-1.5" /> Book in
+                      <CalendarPlus className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Book in</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -299,7 +299,9 @@ export default function Conversations() {
                         : "border-red-300 text-red-700 hover:bg-red-50")}
                       title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
                     >
-                      {selectedThread.optedOut ? <><Bell className="w-4 h-4 mr-1.5" /> Re-enable reminders</> : <><BellOff className="w-4 h-4 mr-1.5" /> Stop reminders</>}
+                      {selectedThread.optedOut
+                        ? <><Bell className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Re-enable reminders</span></>
+                        : <><BellOff className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Stop reminders</span></>}
                     </Button>
                   </div>
                 </div>
@@ -429,15 +431,16 @@ export default function Conversations() {
 
           {/* Vehicle + Job History Sidebar — so a question like "is it due for a service" can be
               answered from the car's own record without leaving the conversation. */}
-          {/* Only shown at ≥1280px — with the 384px thread list already in play, anything
-              narrower squeezes the conversation column itself down to nothing. */}
+          {/* Only shown at ≥1536px. The 384px thread list + this 288px panel already total 672px —
+              xl (1280px) still left the conversation column squeezed to ~260px (name collapsing to
+              zero width). 2xl leaves it a comfortable ~500px after the sidebar nav's own chrome. */}
           {selectedThread?.vehicleRegistration && (
-            <div className="hidden xl:flex w-72 bg-white border-l flex-col overflow-hidden shrink-0">
+            <div className="hidden 2xl:flex w-72 bg-white border-l flex-col overflow-hidden shrink-0">
               <div className="border-b p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <RegPlate reg={selectedThread.vehicleRegistration} size="sm" />
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
+                <div className="text-sm font-semibold text-slate-900 truncate">
                   {[vehicleInfo?.vehicle?.make || selectedThread.vehicleMake, vehicleInfo?.vehicle?.model || selectedThread.vehicleModel].filter(Boolean).join(" ") || "—"}
                 </div>
                 {vehicleInfo?.vehicle && (
