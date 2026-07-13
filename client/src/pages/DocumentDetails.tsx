@@ -894,7 +894,7 @@ export default function DocumentDetails() {
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
             </div>
             {/* customer */}
-            <div className="@4xl:col-span-4 space-y-1.5">
+            <div className="@4xl:col-span-4 space-y-1.5 @container/customer">
               {editing && (
                 <>
                   <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
@@ -924,12 +924,12 @@ export default function DocumentDetails() {
                   placeholder={nameMissing ? "Required" : "Surname"}
                   className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
               </div>
-              <div className="flex gap-2 items-center">
+              <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
                 <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
                 <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
                 {editing && (
                   <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
-                    className="shrink-0 h-[32px] inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 text-xs disabled:opacity-50 hover:bg-violet-800">
+                    className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
                     {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
                   </button>
                 )}
