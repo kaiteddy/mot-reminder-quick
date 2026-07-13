@@ -482,7 +482,7 @@ export default function Conversations() {
                         </span>
                         <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(h.dateIssued || h.dateCreated)}</span>
                       </div>
-                      <div className="text-sm text-slate-800 truncate mt-1" title={h.mainDescription || h.description || undefined}>
+                      <div className="text-xs text-slate-700 leading-snug line-clamp-2 mt-1" title={h.mainDescription || h.description || undefined}>
                         {h.mainDescription || h.description || "—"}
                       </div>
                       <div className="flex items-center justify-between mt-0.5">
