@@ -407,13 +407,17 @@ export default function VehicleDetails() {
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Engine CC</p>
                                     <p className="text-sm font-bold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
                                 </div>
-                                <div className="space-y-1">
+                                <div className={`space-y-1 rounded-lg border p-2 ${
+                                    typeof motInfo !== "string" && motInfo.isExpired ? "bg-red-50 border-red-200" :
+                                    typeof motInfo !== "string" && motInfo.daysUntilExpiry <= 30 ? "bg-orange-50 border-orange-200" :
+                                    typeof motInfo !== "string" ? "bg-green-50 border-green-200" : "border-transparent"
+                                }`}>
                                     <p className="text-xs font-medium text-muted-foreground uppercase">MOT Expiry</p>
                                     {typeof motInfo === "string" ? (
                                         <p className="text-sm font-bold text-muted-foreground">{motInfo}</p>
                                     ) : (
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-sm font-bold">{motInfo.date}</p>
+                                            <p className="text-lg font-extrabold">{motInfo.date}</p>
                                             <Badge variant={motBadge.variant} className={`text-[10px] px-2 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
                                         </div>
                                     )}
@@ -424,9 +428,11 @@ export default function VehicleDetails() {
                                         {vehicle.taxStatus as string || "Unknown"}
                                     </Badge>
                                 </div>
-                                <div className="space-y-1">
+                                <div className={`space-y-1 rounded-lg border p-2 ${
+                                    vehicle.taxStatus?.toLowerCase() === 'taxed' ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+                                }`}>
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Tax Due</p>
-                                    <p className="text-sm font-bold">{formatDate(vehicle.taxDueDate)}</p>
+                                    <p className="text-lg font-extrabold">{formatDate(vehicle.taxDueDate)}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase">Reg Date</p>
@@ -488,7 +494,7 @@ export default function VehicleDetails() {
                                     <div>
                                         <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
                                         <Link href={`/customers/${customer.id}`}>
-                                            <p className="text-sm font-bold hover:underline cursor-pointer text-primary">
+                                            <p className="text-sm font-bold uppercase hover:underline cursor-pointer text-primary">
                                                 {customer.name as string}
                                             </p>
                                         </Link>
@@ -496,13 +502,13 @@ export default function VehicleDetails() {
                                     {!!customer.phone && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                                            <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
+                                            <p className="text-sm font-bold font-mono uppercase">{customer.phone as string}</p>
                                         </div>
                                     )}
                                     {!!customer.email && (
                                         <div>
                                             <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm font-bold truncate">{customer.email as string}</p>
+                                            <p className="text-sm font-bold uppercase truncate">{customer.email as string}</p>
                                         </div>
                                     )}
                                     {(!!customer.address || !!customer.postcode) && (() => {
@@ -513,7 +519,7 @@ export default function VehicleDetails() {
                                         return (
                                             <div>
                                                 <p className="text-xs font-medium text-muted-foreground uppercase">Address</p>
-                                                <p className="text-sm font-medium">{full}</p>
+                                                <p className="text-sm font-medium uppercase">{full}</p>
                                             </div>
                                         );
                                     })()}

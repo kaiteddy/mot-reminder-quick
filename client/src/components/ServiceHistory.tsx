@@ -17,7 +17,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
@@ -113,7 +113,6 @@ interface ServiceHistoryProps {
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [, setLocation] = useLocation();
     const { data: history, isLoading } = trpc.serviceHistory.getDetailedByVehicleId.useQuery({ vehicleId });
-    const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
     const [filter, setFilter] = useState<string>("all");
     const printRef = useRef<HTMLDivElement>(null);
     const utils = trpc.useContext();
@@ -121,7 +120,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
         onSuccess: () => {
             utils.serviceHistory.getDetailedByVehicleId.invalidate({ vehicleId });
             toast.success("Document deleted successfully");
-            setSelectedDoc(null);
         },
         onError: (err) => {
             toast.error(`Failed to delete document: ${err.message}`);
@@ -344,7 +342,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 {shown.map((doc: any) => {
                     const { summary } = jobSummary(doc.mainDescription);
                     return (
-                        <div key={doc.id} onClick={() => setSelectedDoc(doc.id)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                        <div key={doc.id} onClick={() => setLocation(`/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
                                 <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
@@ -355,7 +353,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 <span className="text-xs text-muted-foreground font-mono truncate">{doc.docNo || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
                                 <div className="flex gap-1.5 shrink-0">
                                     <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
-                                    <Button variant="outline" size="sm" className="h-9 px-3" onClick={(e) => { e.stopPropagation(); setSelectedDoc(doc.id); }}><FileText className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
                                 </div>
                             </div>
@@ -381,7 +378,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         <TableRow
                             key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => setSelectedDoc(doc.id)}
+                            onClick={() => setLocation(`/documents/${doc.id}`)}
                         >
                             <TableCell>
                                 {(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}
@@ -425,17 +422,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                         Edit
                                     </Button>
                                     <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedDoc(doc.id);
-                                        }}
-                                    >
-                                        <FileText className="h-4 w-4 mr-2" />
-                                        View
-                                    </Button>
-                                    <Button
                                         variant="ghost"
                                         size="sm"
                                         className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
@@ -450,41 +436,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     ))}
                 </TableBody>
             </Table>
-
-            <Dialog open={selectedDoc !== null} onOpenChange={(open) => !open && setSelectedDoc(null)}>
-                <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Document Details</DialogTitle>
-                        <DialogDescription className="sr-only">
-                            Detailed view of the selected workshop document and its line items.
-                        </DialogDescription>
-                    </DialogHeader>
-                    {selectedDoc && (
-                        <div className="space-y-4">
-                            <LineItemsView documentId={selectedDoc} history={history} />
-                            <div className="flex justify-end pt-4 border-t gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setLocation(`/documents/${selectedDoc}`)}
-                                >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit Document
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={(e) => handleDelete(selectedDoc, e as any)}
-                                    disabled={deleteMutation.isPending}
-                                >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete Document
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
 
             {/* Hidden Printable History */}
             <div style={{ display: "none" }}>
