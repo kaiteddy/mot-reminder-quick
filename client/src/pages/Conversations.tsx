@@ -179,9 +179,9 @@ export default function Conversations() {
           </p>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden @container">
           {/* Conversation List Sidebar */}
-          <div className="w-80 xl:w-96 bg-white border-r flex flex-col shrink-0">
+          <div className="w-72 @5xl:w-80 @6xl:w-96 bg-white border-r flex flex-col shrink-0">
             {/* Search */}
             <div className="p-4 border-b">
               <div className="relative">
@@ -287,7 +287,7 @@ export default function Conversations() {
                       className="border-blue-300 text-blue-700 hover:bg-blue-50"
                       title="Book this customer in for an MOT — sends a reminder on the day"
                     >
-                      <CalendarPlus className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Book in</span>
+                      <CalendarPlus className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Book in</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -300,8 +300,8 @@ export default function Conversations() {
                       title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
                     >
                       {selectedThread.optedOut
-                        ? <><Bell className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Re-enable reminders</span></>
-                        : <><BellOff className="w-4 h-4 2xl:mr-1.5" /> <span className="hidden 2xl:inline">Stop reminders</span></>}
+                        ? <><Bell className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Re-enable reminders</span></>
+                        : <><BellOff className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Stop reminders</span></>}
                     </Button>
                   </div>
                 </div>
@@ -435,7 +435,7 @@ export default function Conversations() {
               xl (1280px) still left the conversation column squeezed to ~260px (name collapsing to
               zero width). 2xl leaves it a comfortable ~500px after the sidebar nav's own chrome. */}
           {selectedThread?.vehicleRegistration && (
-            <div className="hidden lg:flex w-64 xl:w-72 bg-white border-l flex-col overflow-hidden shrink-0">
+            <div className="hidden @4xl:flex w-56 @5xl:w-64 @6xl:w-72 bg-white border-l flex-col overflow-hidden shrink-0">
               <div className="border-b p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <RegPlate reg={selectedThread.vehicleRegistration} size="sm" />
