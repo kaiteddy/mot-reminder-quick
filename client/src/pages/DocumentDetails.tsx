@@ -773,7 +773,7 @@ export default function DocumentDetails() {
           </div>
         </div>
 
-        <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100">
+        <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container">
           {/* purple title bar */}
           <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold">
@@ -825,9 +825,9 @@ export default function DocumentDetails() {
           )}
 
           {/* top form */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 p-3">
+          <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3">
             {/* vehicle */}
-            <div className="xl:col-span-5 space-y-1.5">
+            <div className="@4xl:col-span-5 space-y-1.5">
               {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
@@ -894,7 +894,7 @@ export default function DocumentDetails() {
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
             </div>
             {/* customer */}
-            <div className="xl:col-span-4 space-y-1.5">
+            <div className="@4xl:col-span-4 space-y-1.5">
               {editing && (
                 <>
                   <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
@@ -972,7 +972,7 @@ export default function DocumentDetails() {
               )}
             </div>
             {/* additional info */}
-            <div className="xl:col-span-3 space-y-3">
+            <div className="@4xl:col-span-3 space-y-3">
               {/* "Additional Info" fields (Status/Order Ref/Department/Terms/staff) hidden —
                   not used by the workshop. Just the insurer bill-to is kept. */}
               {!isExcess && (
