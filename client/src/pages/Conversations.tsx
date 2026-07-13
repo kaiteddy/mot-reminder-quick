@@ -181,7 +181,7 @@ export default function Conversations() {
 
         <div className="flex-1 flex overflow-hidden">
           {/* Conversation List Sidebar */}
-          <div className="w-96 bg-white border-r flex flex-col">
+          <div className="w-80 xl:w-96 bg-white border-r flex flex-col shrink-0">
             {/* Search */}
             <div className="p-4 border-b">
               <div className="relative">
@@ -435,7 +435,7 @@ export default function Conversations() {
               xl (1280px) still left the conversation column squeezed to ~260px (name collapsing to
               zero width). 2xl leaves it a comfortable ~500px after the sidebar nav's own chrome. */}
           {selectedThread?.vehicleRegistration && (
-            <div className="hidden 2xl:flex w-72 bg-white border-l flex-col overflow-hidden shrink-0">
+            <div className="hidden lg:flex w-64 xl:w-72 bg-white border-l flex-col overflow-hidden shrink-0">
               <div className="border-b p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <RegPlate reg={selectedThread.vehicleRegistration} size="sm" />
