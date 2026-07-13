@@ -10,7 +10,6 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
-import UniversalSearch from "@/components/UniversalSearch";
 import { RegPlate } from "@/components/RegPlate";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 
@@ -298,7 +297,22 @@ export default function Documents() {
             </CardTitle>
             <CardDescription>Search anything — customer, name, surname, address, registration, make/model or job number — then pick a result to view it</CardDescription>
             <div className="flex flex-col gap-3 pt-3">
-              <UniversalSearch placeholder="Search customers, vehicles, registrations, jobs…" />
+              {/* Filters the table below (respecting whichever tab is active) as you type — this is
+                  NOT the global cross-system search (that's UniversalSearch, in the top nav). */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search customers, vehicles, registrations, jobs…"
+                  className="w-full h-10 pl-9 pr-9 rounded-lg border border-slate-300 bg-white text-[14px] outline-none focus:border-violet-500"
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Tabs value={docType} onValueChange={setDocType} className="flex-1 min-w-0">
                   <TabsList className="w-full">
