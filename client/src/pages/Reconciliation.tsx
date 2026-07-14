@@ -22,9 +22,18 @@ const monthLabel = (m: string) => {
 };
 const sumArr = (a: number[]) => a.reduce((x, y) => x + (y || 0), 0);
 
+// Rolling 12-month window ending today, so the current month is always included by default
+// (was previously a hardcoded range that silently went stale once the year rolled over).
+const defaultDateRange = () => {
+  const today = new Date();
+  const from = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { from: iso(from), to: iso(today) };
+};
+
 export default function Reconciliation() {
-  const [from, setFrom] = useState("2025-07-01");
-  const [to, setTo] = useState("2026-06-30");
+  const [from, setFrom] = useState(() => defaultDateRange().from);
+  const [to, setTo] = useState(() => defaultDateRange().to);
 
   const stats = trpc.expenditure.stats.useQuery();
 
