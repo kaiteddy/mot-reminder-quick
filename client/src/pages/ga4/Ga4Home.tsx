@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ChevronsUpDown, Phone, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { RegPlate } from "@/components/RegPlate";
 
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "-");
 const money = (v: string | number | null) =>
@@ -12,83 +11,159 @@ const money = (v: string | number | null) =>
 const isToday = (d: string | Date | null) => { if (!d) return false; const x = new Date(d), n = new Date(); return x.toDateString() === n.toDateString(); };
 const soon = (label: string) => () => toast.message(`${label} isn't wired up in Classic view yet.`);
 
-// One "In Progress" panel — chrome/columns match the real GA4 Home screen exactly
-// (title bar + record count + gear, toolbar row, Created/date filter row, T/Doc No/Date/
-// Registration/Make & Model/Customer/Lab#/Total/Status/phone/Open grid).
-function InProgressPanel({ title, mod, docLabel, rows, allCount, loading, onOpen, onNew }: {
-  title: string; mod: string; docLabel: string; rows: any[]; allCount: number; loading: boolean;
-  onOpen: (id: number) => void; onNew: () => void;
+const tableColumns = [
+  { label: "T", className: "col-type" },
+  { label: "Doc No", className: "col-doc" },
+  { label: "Date", className: "col-date" },
+  { label: "Registration", className: "col-reg" },
+  { label: "Make & Model", className: "col-model" },
+  { label: "Customer", className: "col-customer" },
+  { label: "Lab#", className: "col-lab" },
+  { label: "Total", className: "col-total" },
+  { label: "Status", className: "col-status" },
+  { label: "", className: "col-phone" },
+  { label: "", className: "col-open" },
+];
+
+function BevelButton({ children, className = "", onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
+  return <button type="button" className={`bevel-button ${className}`} onClick={onClick}>{children}</button>;
+}
+
+// Real GA4 desktop table, wired to live data (the reference shell it was ported
+// from left every row blank — see index.css's "Reference-locked shell chrome").
+function DataTable({ rows, loading, onOpen }: { rows: any[]; loading: boolean; onOpen: (id: number) => void }) {
+  return (
+    <div className="data-table-wrap" role="region" aria-label="Documents">
+      <table className="data-table">
+        <thead>
+          <tr>{tableColumns.map((c, i) => <th key={i} className={c.className}>{c.label}</th>)}</tr>
+        </thead>
+        <tbody>
+          {loading && <tr><td colSpan={11} style={{ textAlign: "center", color: "#777" }}>Loading…</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={11} style={{ textAlign: "center", color: "#777" }}>Nothing in progress</td></tr>}
+          {rows.map((d) => (
+            <tr key={d.id} onClick={() => onOpen(d.id)}>
+              <td className="col-type">{d.docType}</td>
+              <td className="col-doc">{d.docNo || "-"}</td>
+              <td className="col-date">{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</td>
+              <td className="col-reg">{d.registration || "—"}</td>
+              <td className="col-model">{[d.make, d.model].filter(Boolean).join(" ") || "—"}</td>
+              <td className="col-customer">{d.customerName || "—"}</td>
+              <td className="col-lab">~</td>
+              <td className="col-total">{money(d.totalGross)}</td>
+              <td className="col-status"><span className="status-placeholder">~ <ChevronDown size={10} /></span></td>
+              <td className="col-phone">{d.phone && <Phone size={12} className="phone-placeholder" style={{ display: "inline" }} />}</td>
+              <td className="col-open"><button type="button" className="open-button" onClick={(e) => { e.stopPropagation(); onOpen(d.id); }}>Open</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function QueuePanel({ type, rows, allCount, loading, collapsed, onCollapse, onOpen, onNew }: {
+  type: "jobs" | "invoices"; rows: any[]; allCount: number; loading: boolean; collapsed: boolean;
+  onCollapse: () => void; onOpen: (id: number) => void; onNew: () => void;
 }) {
+  const isJobs = type === "jobs";
   const [todayOnly, setTodayOnly] = useState(false);
   const shown = todayOnly ? rows.filter((d) => isToday(d.dateIssued || d.dateCreated || d.createdAt)) : rows;
 
-  const toolBtn = "text-white text-[12px] hover:bg-white/10 px-1 py-0.5 -my-0.5";
   return (
-    <div className="ga4-panel">
-      <div className={`${mod} flex items-center justify-between px-3 py-1.5 text-white text-[13px] font-semibold`} style={{ background: "var(--ga4-accent)" }}>
-        <span>{title}: All (Showing {shown.length} Record{shown.length === 1 ? "" : "s"})</span>
-        <button type="button" onClick={soon("Panel settings")} className="opacity-80 hover:opacity-100" title="Expand/collapse"><ChevronsUpDown className="w-3.5 h-3.5" /></button>
-      </div>
+    <section className={`queue-panel ${isJobs ? "jobs-panel" : "invoices-panel"} ${collapsed ? "collapsed" : ""}`}>
+      <header className="panel-titlebar">
+        <div><strong>{isJobs ? "Job Sheets In Progress:" : "Invoices In Progress:"}</strong> All <span>(Showing {shown.length} Record{shown.length === 1 ? "" : "s"})</span></div>
+        {isJobs && (
+          <button className="collapse-button" type="button" onClick={onCollapse} aria-label={collapsed ? "Expand job sheets" : "Collapse job sheets"}>
+            {collapsed ? <ChevronDown size={14} /> : <><ChevronUp size={12} /><ChevronDown size={12} /></>}
+          </button>
+        )}
+      </header>
+      {!collapsed && (
+        <>
+          <div className="panel-actions">
+            <div className="panel-actions-left">
+              <BevelButton onClick={onNew}>{isJobs ? "New Job Sheet" : "New Invoice"}</BevelButton>
+              <BevelButton onClick={soon("Archives")}>Archives</BevelButton>
+              <BevelButton onClick={soon("Print")}>Print</BevelButton>
+            </div>
+            <div className="panel-actions-right">
+              {isJobs ? (
+                <>
+                  <BevelButton onClick={soon("Print Blank JS")}>Print Blank JS</BevelButton>
+                  <BevelButton onClick={soon("Print All JS")}>Print All JS</BevelButton>
+                </>
+              ) : (
+                <BevelButton onClick={soon("New Credit")}>New Credit</BevelButton>
+              )}
+            </div>
+          </div>
+          {isJobs && (
+            <div className="filter-row">
+              <BevelButton className="filter-created">Created</BevelButton>
+              <BevelButton onClick={soon("From date")}>From</BevelButton>
+              <BevelButton onClick={soon("To date")}>To</BevelButton>
+              <BevelButton className="filter-clear" onClick={soon("Clear dates")}>X</BevelButton>
+              <BevelButton onClick={() => setTodayOnly((v) => !v)} className={todayOnly ? "pressed" : ""}>Today</BevelButton>
+              <BevelButton className="filter-dropdown" onClick={soon("Date Range")}>Date Range <ChevronDown size={12} /></BevelButton>
+              <BevelButton className="filter-dropdown" onClick={soon("Status filter")}>Status <ChevronDown size={12} /></BevelButton>
+              <BevelButton className="filter-clear" onClick={soon("Clear status")}>X</BevelButton>
+            </div>
+          )}
+          <DataTable rows={shown} loading={loading} onOpen={onOpen} />
+        </>
+      )}
+    </section>
+  );
+}
 
-      {/* toolbar + filter rows — dark charcoal to match the real GA4 chrome */}
-      <div className="flex items-center gap-4 px-2 py-1.5" style={{ background: "#4b4a47" }}>
-        <button type="button" onClick={onNew} className={toolBtn}>New {docLabel}</button>
-        <button type="button" onClick={soon("Archives")} className={toolBtn}>Archives</button>
-        <button type="button" onClick={soon("Print")} className={toolBtn}>Print</button>
-        <div className="flex-1" />
-        <button type="button" onClick={soon("Print Blank " + docLabel)} className={toolBtn}>Print Blank {docLabel.split(" ").map((w) => w[0]).join("")}</button>
-        <button type="button" onClick={soon("Print All")} className={toolBtn}>Print All {docLabel.split(" ").map((w) => w[0]).join("")}</button>
-      </div>
+function UtilityRail() {
+  const [notesTab, setNotesTab] = useState<"global" | "user">("global");
+  const [notes, setNotes] = useState("");
+  return (
+    <aside className="utility-rail">
+      <section className="rail-panel reminders-panel">
+        <h2>Reminders</h2>
+        <div className="rail-grid">
+          {["Due", "Errors", "Failed", "Expired"].map((label) => (
+            <div className="rail-row" key={label}><span>{label}</span><b>—</b></div>
+          ))}
+        </div>
+      </section>
 
-      <div className="flex items-center gap-3 px-2 py-1.5 text-[11.5px]" style={{ background: "#4b4a47", color: "#fff" }}>
-        <span className="opacity-80">Created</span>
-        <span className="opacity-80">From</span>
-        <span className="inline-block h-[19px] w-20 bg-white rounded-sm" />
-        <span className="opacity-80">To</span>
-        <span className="inline-block h-[19px] w-20 bg-white rounded-sm" />
-        <X className="w-3 h-3 opacity-60" />
-        <button type="button" onClick={() => setTodayOnly((v) => !v)} className={`${toolBtn} ${todayOnly ? "bg-white/20 rounded-sm" : ""}`}>Today</button>
-        <button type="button" onClick={soon("Date Range")} className={`${toolBtn} inline-flex items-center gap-1 bg-white/10 rounded-sm`}>Date Range <ChevronsUpDown className="w-3 h-3" /></button>
-        <button type="button" onClick={soon("Status filter")} className={`${toolBtn} inline-flex items-center gap-1 bg-white/10 rounded-sm`}>Status <ChevronsUpDown className="w-3 h-3" /></button>
-        <X className="w-3 h-3 opacity-60" />
-        <span className="ml-auto opacity-70">{allCount} total in progress</span>
-      </div>
+      <section className="rail-panel stock-panel">
+        <h2>Stock Order Info</h2>
+        <div className="rail-grid">
+          {["Required Stock", "Orders to Process", "Returns to Process", "Due Delivery"].map((label) => (
+            <div className="rail-row" key={label}><span>{label}</span><b>—</b></div>
+          ))}
+        </div>
+      </section>
 
-      <div className="overflow-x-auto">
-        <table className="ga4-listgrid">
-          <thead>
-            <tr>
-              <th>T</th><th>Doc No</th><th>Date</th><th>Registration</th><th>Make &amp; Model</th><th>Customer</th>
-              <th className="text-right">Lab#</th><th className="text-right">Total</th><th>Status</th><th></th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan={11} className="text-center py-4 text-slate-500">Loading…</td></tr>}
-            {!loading && shown.length === 0 && <tr><td colSpan={11} className="text-center py-4 text-slate-500">Nothing in progress</td></tr>}
-            {shown.map((d) => (
-              <tr key={d.id} onClick={() => onOpen(d.id)}>
-                <td className="font-semibold" style={{ color: "var(--ga4-accent)" }}>{d.docType}</td>
-                <td className="font-medium">{d.docNo || "-"}</td>
-                <td>{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</td>
-                <td>{d.registration ? <RegPlate reg={d.registration} /> : "—"}</td>
-                <td>{[d.make, d.model].filter(Boolean).join(" ") || "—"}</td>
-                <td>{d.customerName || "—"}</td>
-                <td className="text-right text-slate-400">~</td>
-                <td className="text-right">{money(d.totalGross)}</td>
-                <td className="text-slate-500">~</td>
-                <td onClick={(e) => e.stopPropagation()}>{d.phone && <Phone className="w-3 h-3 text-slate-400" />}</td>
-                <td onClick={(e) => { e.stopPropagation(); onOpen(d.id); }} className="font-semibold" style={{ color: "#1d4ed8", cursor: "pointer" }}>Open</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <section className="rail-panel notes-panel">
+        <div className="notes-tabs" role="tablist">
+          <button type="button" className={notesTab === "global" ? "active" : ""} onClick={() => setNotesTab("global")}>Global Notes</button>
+          <button type="button" className={notesTab === "user" ? "active" : ""} onClick={() => setNotesTab("user")}>User Notes</button>
+        </div>
+        <textarea
+          aria-label={notesTab === "global" ? "Global Notes" : "User Notes"}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          spellCheck={false}
+        />
+        <div className="notes-footer">
+          <BevelButton onClick={() => toast.message("Notes aren't wired up in Classic view yet.")}>Save Notes</BevelButton>
+          <button type="button" className="refresh-notes" onClick={() => setNotes("")} aria-label="Clear notes">↻</button>
+        </div>
+      </section>
+    </aside>
   );
 }
 
 export default function Ga4Home() {
   const [, setLocation] = useLocation();
+  const [jobsCollapsed, setJobsCollapsed] = useState(false);
   const { data: jobSheets, isLoading: jsLoading } = trpc.documents.list.useQuery({ docType: "JS", limit: 200, sortKey: "date", sortDir: "desc" });
   const { data: invoices, isLoading: siLoading } = trpc.documents.list.useQuery({ docType: "SI", limit: 200, sortKey: "date", sortDir: "desc" });
 
@@ -99,18 +174,21 @@ export default function Ga4Home() {
 
   return (
     <DashboardLayout>
-      <div className="p-3 space-y-3">
-        <InProgressPanel
-          title="Job Sheets In Progress" mod="ga4-mod-jobsheets" docLabel="Job Sheet"
-          rows={jsInProgress} allCount={jsInProgress.length} loading={jsLoading} onOpen={openDoc}
-          onNew={() => setLocation("/classic/documents/new?docType=JS")}
-        />
-        <InProgressPanel
-          title="Invoices In Progress" mod="ga4-mod-invoices" docLabel="Invoice"
-          rows={siInProgress} allCount={siInProgress.length} loading={siLoading} onOpen={openDoc}
-          onNew={() => setLocation("/classic/documents/new?docType=SI")}
-        />
-      </div>
+      <main className="workspace">
+        <div className="queue-column">
+          <QueuePanel
+            type="jobs" rows={jsInProgress} allCount={jsInProgress.length} loading={jsLoading}
+            collapsed={jobsCollapsed} onCollapse={() => setJobsCollapsed((v) => !v)}
+            onOpen={openDoc} onNew={() => setLocation("/classic/documents/new?docType=JS")}
+          />
+          <QueuePanel
+            type="invoices" rows={siInProgress} allCount={siInProgress.length} loading={siLoading}
+            collapsed={false} onCollapse={() => undefined}
+            onOpen={openDoc} onNew={() => setLocation("/classic/documents/new?docType=SI")}
+          />
+        </div>
+        <UtilityRail />
+      </main>
     </DashboardLayout>
   );
 }
