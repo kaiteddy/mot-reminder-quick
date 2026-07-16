@@ -371,6 +371,108 @@
   .ga4-theme .data-table th, .ga4-theme .data-table td { height: 21px; }
 }
 
+/**
+ * Reference-locked Standard Job Sheet screen, ported from the same recreation as
+ * the shell chrome above (see job-sheet-spec.md). Unlike the reference (a fixed
+ * 100vh single-screen app), DocumentDetails.tsx already flows as a normal page
+ * inside Ga4Shell's .app-scroll region, so height:100vh/overflow:hidden are
+ * dropped here in favour of natural content height — same visuals, scrolls
+ * normally instead of being pinned to one viewport.
+ */
+.ga4-theme .job-sheet-shell { width: 100%; padding: 6px; color: #222; }
+.ga4-theme .js-screen-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 9px; align-items: start; }
+.ga4-theme .js-main-column { min-width: 0; display: grid; gap: 8px; }
+.ga4-theme .js-top-card, .ga4-theme .js-workspace-panel, .ga4-theme .js-right-rail { border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434; }
+.ga4-theme .js-top-card { overflow: hidden; padding: 5px; }
+
+.ga4-theme .js-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) 116px minmax(96px, 1fr); align-items: center; background: linear-gradient(90deg, #590069 0%, #49005a 58%, #5d006b 100%); border: 1px solid #2b1730; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px #181818; color: white; text-shadow: 0 1px #211027; }
+.ga4-theme .js-titlebar > div:first-child { display: flex; align-items: center; gap: 7px; padding-left: 7px; font-size: 15px; height: 38px; }
+.ga4-theme .js-titlebar > div:first-child strong { font-size: 16px; }
+.ga4-theme .js-notice { justify-self: center; height: 28px; border: 1px solid #36103e; border-radius: 0; background: linear-gradient(#7b367f, #5b1966); color: white; text-shadow: 0 1px #321039; padding: 0 14px; font-size: 12px; }
+.ga4-theme .js-window-controls { justify-self: end; height: 38px; display: flex; }
+.ga4-theme .js-window-controls button { width: 40px; border: 0; border-left: 1px solid rgba(0,0,0,.34); border-radius: 0; background: linear-gradient(#6d306e, #4f1558); color: white; display: grid; place-items: center; }
+.ga4-theme .js-window-controls button:last-child { background: linear-gradient(#a73146, #761527); }
+
+.ga4-theme .js-primary-actions { display: flex; flex-wrap: wrap; background: linear-gradient(#5e5e5e, #414141); border: 1px solid #292929; }
+.ga4-theme .js-action-button { min-width: 84px; height: 34px; padding: 0 14px; border: 0; border-right: 1px solid #252525; border-left: 1px solid #646464; border-radius: 0; background: linear-gradient(#5d5d5d, #414141); color: #f1f1f1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-shadow: 0 1px #222; font-size: 12.5px; }
+.ga4-theme .js-action-button:hover { background: linear-gradient(#6d6d6d, #4b4b4b); }
+.ga4-theme .js-action-button:active { transform: scale(.985); box-shadow: inset 0 2px 4px #252525; }
+.ga4-theme .js-action-button:disabled { opacity: .45; }
+.ga4-theme .js-action-spacer { flex: 1; }
+.ga4-theme .js-action-issue { background: linear-gradient(#c026d3, #a21caf) !important; }
+
+.ga4-theme .js-info-forms { display: grid; grid-template-columns: 1.07fr .93fr; gap: 22px; padding: 11px 18px 14px; background: #f5f5f5; border: 1px solid #777; }
+.ga4-theme .js-info-column { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ga4-theme .js-lookup-row { display: grid; grid-template-columns: 112px minmax(160px, 1fr) auto; align-items: stretch; gap: 6px; }
+.ga4-theme .js-lookup-row.customer { grid-template-columns: 126px minmax(160px, 1fr) auto; }
+.ga4-theme .js-lookup-row > span { display: flex; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-lookup-row input { min-width: 0; height: 29px; }
+
+.ga4-theme .js-form-grid { padding-top: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; align-content: start; }
+.ga4-theme .js-field { min-width: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-field.wide { grid-column: 1 / -1; }
+.ga4-theme .js-field > span { padding-right: 7px; white-space: nowrap; text-align: right; }
+.ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; }
+.ga4-theme .customer-grid .js-field { grid-template-columns: 126px minmax(0, 1fr); }
+.ga4-theme .js-form-tools { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
+.ga4-theme .js-form-tools .js-action-button { min-width: 100px; height: 30px; padding: 0 10px; border: 1px solid #aaa; background: linear-gradient(#fafafa, #dcdcdc); color: #444; text-shadow: none; }
+.ga4-theme .js-form-tools .icon-only { min-width: 40px; width: 40px; padding: 0; }
+.ga4-theme .js-tool-spacer { flex: 1; }
+
+.ga4-theme .js-main-tabs { display: flex; flex-wrap: wrap; min-width: 0; overflow: hidden; border: 1px solid #171717; border-radius: 3px; background: linear-gradient(#5a5a5a, #3c3c3c); box-shadow: inset 0 1px #696969; }
+.ga4-theme .js-main-tabs button, .ga4-theme .js-main-tabs [role="tab"] { min-width: 100px; height: 34px; border: 0; border-right: 1px solid #202020; border-left: 1px solid #616161; border-radius: 0 !important; background: transparent; color: #e8e8e8; text-shadow: 0 1px #222; font-size: 12.5px !important; }
+.ga4-theme .js-main-tabs button.active, .ga4-theme .js-main-tabs [role="tab"][data-state="active"] { background: linear-gradient(#6b6b6b, #474747); box-shadow: inset 0 -2px #808080; color: white; }
+.ga4-theme .js-workspace-panel { padding: 8px; }
+.ga4-theme .js-workspace-panel > [role="tabpanel"] { background: #fff; padding: 10px; min-height: 240px; }
+
+.ga4-theme .js-history-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 8px; background: #f5f5f5; align-items: start; }
+.ga4-theme .js-reminders-column { border: 1px solid #6b6b6b; background: white; }
+.ga4-theme .js-subheader { height: 31px; display: flex; align-items: center; justify-content: space-between; padding-left: 8px; background: linear-gradient(#686868, #4c4c4c); color: #eee; text-shadow: 0 1px #222; font-size: 12.5px; }
+.ga4-theme .js-subheader button { align-self: stretch; min-width: 70px; border: 0; border-left: 1px solid #292929; border-radius: 0; background: transparent; color: white; font-size: 11.5px; }
+.ga4-theme .js-reminder-head { display: grid; grid-template-columns: 1fr 85px; background: linear-gradient(#d0d0d0, #bcbcbc); border-bottom: 1px solid #888; height: 26px; font-size: 11.5px; }
+.ga4-theme .js-reminder-head span { display: flex; align-items: center; padding-left: 8px; border-right: 1px solid #888; }
+.ga4-theme .js-reminder-body { background: #fff; border-bottom: 1px solid #8c8c8c; min-height: 60px; font-size: 12px; }
+.ga4-theme .js-reminder-body .js-reminder-row { display: grid; grid-template-columns: 1fr 85px; padding: 4px 0 4px 8px; border-bottom: 1px solid #eee; align-items: center; }
+.ga4-theme .js-privacy-button { width: 100%; height: 28px; border: 0; border-radius: 0; background: linear-gradient(#65bf32, #4faa24); color: white; text-shadow: 0 1px #34751a; font-size: 12px; }
+.ga4-theme .js-account-summary { display: grid; grid-auto-rows: 27px; padding: 7px 8px 8px; background: #fffef0; color: #555; font-size: 12px; }
+.ga4-theme .js-account-summary > div, .ga4-theme .js-account-summary > label { display: grid; grid-template-columns: 1fr 100px; align-items: center; }
+.ga4-theme .js-account-summary b { text-align: right; font-weight: normal; }
+.ga4-theme .js-account-summary select { width: 100px; height: 25px; background: #fffde2; border: 1px solid #c7c58e; }
+.ga4-theme .js-account-balance { padding-top: 6px; margin-top: 4px; border-top: 1px solid #ddd8ac; }
+.ga4-theme .js-account-balance strong { font-weight: normal; }
+
+.ga4-theme .js-history-table-panel { min-width: 0; border: 1px solid #666; background: white; }
+.ga4-theme .js-history-tabs { display: flex; flex-wrap: wrap; background: linear-gradient(#676767, #4a4a4a); }
+.ga4-theme .js-history-tabs button { min-width: 90px; height: 31px; border: 0; border-right: 1px solid #292929; border-radius: 0; background: transparent; color: #eee; text-shadow: 0 1px #222; font-size: 12px; }
+.ga4-theme .js-history-tabs button.active { background: linear-gradient(#777, #555); box-shadow: inset 0 -2px #909090; }
+.ga4-theme .js-history-tabs .js-print-icon { margin-left: auto; min-width: 44px; display: grid; place-items: center; color: white; }
+.ga4-theme .js-history-table-head { display: grid; background: linear-gradient(#d3d3d3, #bdbdbd); border-bottom: 1px solid #858585; height: 26px; font-size: 11.5px; }
+.ga4-theme .js-history-table-head span { display: flex; align-items: center; padding-left: 7px; border-right: 1px solid #8e8e8e; }
+.ga4-theme .js-history-empty { min-height: 60px; background: white; }
+.ga4-theme .js-empty-row { height: 27px; background: #f5f5f5; border-bottom: 1px solid #aaa; color: #8a8a8a; }
+
+.ga4-theme .js-right-rail { display: grid; gap: 8px; padding: 6px; }
+.ga4-theme .js-rail-section { border: 1px solid #343434; background: #f7f7f7; overflow: hidden; }
+.ga4-theme .js-rail-section h2 { height: 32px; margin: 0; display: flex; align-items: center; padding: 0 9px; background: linear-gradient(#6c6c6c, #4d4d4d); border-bottom: 1px solid #333; color: #eee; font-size: 13px; font-weight: normal; text-shadow: 0 1px #222; }
+.ga4-theme .js-rail-fields { padding: 8px; display: grid; grid-auto-rows: 30px; gap: 2px; }
+.ga4-theme .js-rail-fields .js-field { grid-template-columns: 96px minmax(0, 1fr); }
+.ga4-theme .js-rail-fields .js-field input, .ga4-theme .js-rail-fields .js-field select { height: 26px !important; }
+.ga4-theme .js-total-list { padding: 8px; display: grid; grid-auto-rows: 25px; gap: 2px; }
+.ga4-theme .js-total-list label { display: grid; grid-template-columns: 1fr 100px; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-total-list input { width: 100px; height: 24px !important; border: 1px solid #bbb; background: white; text-align: right; padding: 2px 6px !important; }
+.ga4-theme .js-total-list label.emphasis span { font-weight: bold; color: #333; }
+.ga4-theme .js-total-list label.balance input { background: #fffed3; }
+
+/* Generic Panel body (Insurance/Extras/Account/Totals share the Panel component) —
+   .js-field rows (EF/SelectField) size themselves; this just spaces them out. */
+.ga4-theme .js-panel-body { padding: 8px; display: grid; gap: 4px; }
+/* TRow (Totals rows) isn't always inside .js-total-list's ancestor styling since
+   Panel is generic, so give it the same look standalone. */
+.ga4-theme label.js-total-row { display: grid; grid-template-columns: 1fr 100px; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme label.js-total-row input { width: 100px; height: 24px !important; border: 1px solid #bbb; background: white; text-align: right; padding: 2px 6px !important; }
+.ga4-theme label.js-total-row.emphasis span { font-weight: bold; color: #333; }
+.ga4-theme label.js-total-row.balance input { background: #fffed3; }
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

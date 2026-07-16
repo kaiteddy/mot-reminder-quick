@@ -783,16 +783,16 @@ export default function DocumentDetails() {
           </div>
         )}
 
-        <div className={base ? "border border-black/40 overflow-hidden shadow-sm @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"} style={base ? { background: "#eeecf2" } : undefined}>
+        <div className={base ? "js-top-card @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"}>
           {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
               a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
           <div
-            className={base ? "text-white px-4 py-2 flex items-center justify-between" : "bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between"}
+            className={base ? "js-titlebar" : "bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between"}
             style={base ? { background: GA4_TITLEBAR_COLOR[form.docType] || GA4_TITLEBAR_COLOR.JS } : undefined}
           >
-            <div className="flex items-center gap-2 font-semibold">
+            <div>
               <span className="text-amber-300">★</span>
-              <span>{typeLabel}</span>
+              <strong>{typeLabel}</strong>
               <span className="text-white/60">No.</span>
               <input
                 value={form.docNo ?? ""}
@@ -800,62 +800,67 @@ export default function DocumentDetails() {
                 placeholder={isNew ? "(auto)" : "number"}
                 title="Set the document number to match GA4 — saves automatically"
                 spellCheck={false}
-                className="w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"
+                className={base ? "w-28 bg-white/15 border border-white/30 px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60" : "w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"}
               />
             </div>
-            <div className="flex items-center gap-3">
-              {!isNew && isInvoice && (
-                <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
-              )}
-              <span className="text-[11px] text-white/70">Auto-saves</span>
-              {base && (
-                <>
-                  <button type="button" onClick={() => toast.message("Settings aren't available in Classic view yet.")} className="opacity-80 hover:opacity-100" title="Settings"><Cog className="w-4 h-4" /></button>
-                  <button type="button" onClick={goBack} className="w-5 h-5 flex items-center justify-center bg-red-600 hover:bg-red-500 rounded-sm" title="Close"><X className="w-3.5 h-3.5" /></button>
-                </>
-              )}
-            </div>
+            {base ? (
+              <button type="button" className="js-notice" onClick={() => toast.message("Auto-saves — no manual save needed.")}>
+                {!isNew && isInvoice ? docStatusLabel : "Auto-saves"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                {!isNew && isInvoice && (
+                  <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
+                )}
+                <span className="text-[11px] text-white/70">Auto-saves</span>
+              </div>
+            )}
+            {base && (
+              <div className="js-window-controls">
+                <button type="button" onClick={() => toast.message("Settings aren't available in Classic view yet.")} title="Settings"><Cog className="w-4 h-4" /></button>
+                <button type="button" onClick={goBack} title="Close"><X className="w-4 h-4" /></button>
+              </div>
+            )}
           </div>
 
           {/* Toolbar — GA4 Classic only: dark charcoal bar with plain text buttons, matching
               the real record toolbar exactly (Save/Print/Email/Extras/Convert … Delete). */}
           {base && (
-            <div className="flex items-center justify-between px-3 py-1.5" style={{ background: "#4b4a47" }}>
-              <div className="flex items-center gap-5 text-[12.5px]">
-                <button onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm">Save</button>
-                <button onClick={handlePrint} disabled={printing || isNew} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm disabled:opacity-40">Print</button>
-                {!isNew && <button onClick={openEmail} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm">Email</button>}
-                <button onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1">Extras <ChevronDown className="w-3 h-3" /></button>
-                {!isNew && (
-                  <div className="relative">
-                    <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 disabled:opacity-40">
-                      Convert <ChevronDown className="w-3 h-3" />
-                    </button>
-                    {convertOpen && (
-                      <div className="absolute left-0 mt-1 bg-white border border-slate-300 shadow-lg z-30 min-w-[190px] py-1 text-slate-800">
-                        {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
-                          .filter(([code]) => code !== (data as any)?.doc?.docType)
-                          .map(([code, label]) => (
-                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50">{label}</button>
-                          ))}
-                        {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
-                          <>
-                            <div className="border-t my-1" />
-                            <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {!isNew && isInvoice && (
-                  <button onClick={() => setIssueOpen(true)} className="bg-fuchsia-700 text-white px-2.5 py-0.5 rounded-sm hover:bg-fuchsia-600">Issue</button>
-                )}
-              </div>
+            <nav className="js-primary-actions">
+              <button className="js-action-button" onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }}>Save</button>
+              <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
+              {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
+              <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
               {!isNew && (
-                <button onClick={doDelete} disabled={delMut.isPending} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm text-[12.5px] disabled:opacity-40">Delete</button>
+                <div className="relative">
+                  <button className="js-action-button" onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending}>
+                    Convert <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute left-0 mt-1 bg-white border border-slate-300 shadow-lg z-30 min-w-[190px] py-1 text-slate-800">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
+              <span className="js-action-spacer" />
+              {!isNew && isInvoice && (
+                <button className="js-action-button js-action-issue" onClick={() => setIssueOpen(true)}>Issue</button>
+              )}
+              {!isNew && (
+                <button className="js-action-button" onClick={doDelete} disabled={delMut.isPending}>Delete</button>
+              )}
+            </nav>
           )}
 
           {/* policy-excess banner */}
@@ -886,7 +891,7 @@ export default function DocumentDetails() {
           )}
 
           {/* top form */}
-          <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3">
+          <div className={base ? "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3 mt-2" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"} style={base ? { background: "#f5f5f5", border: "1px solid #777" } : undefined}>
             {/* vehicle */}
             <div className="@4xl:col-span-5 space-y-1.5">
               {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
@@ -903,10 +908,10 @@ export default function DocumentDetails() {
                   lookup(v.registration);
                 }} />
               )}
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
+              <div className={base ? "js-lookup-row" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Registration</span>
                 <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                  className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                  className={base ? "bg-yellow-50 font-mono font-semibold" : "flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500"} />
                 {editing && (
                   <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
                     {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
@@ -987,13 +992,15 @@ export default function DocumentDetails() {
               )}
               <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
               <EF label="Company" field="company" {...{ form, set, editing }} />
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Name</span>
-                <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
-                <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
-                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
-                  placeholder={nameMissing ? "Required" : "Surname"}
-                  className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+              <div className={base ? "js-field" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Name</span>
+                <div className="flex items-center gap-2">
+                  <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={base ? "w-14" : boxCls(editing) + " w-14"} />
+                  <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={base ? "flex-1" : boxCls(editing) + " flex-1"} />
+                  <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
+                    placeholder={nameMissing ? "Required" : "Surname"}
+                    className={(base ? "flex-1" : boxCls(editing) + " flex-1") + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+                </div>
               </div>
               <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
                 <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
@@ -1161,12 +1168,12 @@ export default function DocumentDetails() {
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
             <div className="xl:col-span-9">
               <Tabs defaultValue="description">
-                <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
+                <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
                   {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
-                    <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
+                    <TabsTrigger key={v} value={v} className={base ? "" : "rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
-                <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
+                <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
                   <TabsContent value="description" className="mt-0">
                     {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     {editing && (
@@ -1606,7 +1613,18 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
 }
 
 function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
+  const base = useClassicBase();
   const empty = !String(form[field] ?? "").trim();
+  if (base) {
+    return (
+      <label className={`js-field ${grow ? "wide" : ""}`}>
+        <span>{label}</span>
+        <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
+          placeholder={required ? "Required" : undefined}
+          className={(upper ? "uppercase " : "") + (required && empty ? "placeholder:text-red-600 placeholder:font-semibold" : "")} />
+      </label>
+    );
+  }
   return (
     <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
@@ -1618,18 +1636,40 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
 }
 
 function SelectField({ label, field, form, set, editing, options, w = "w-24" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; options: string[]; w?: string }) {
+  const base = useClassicBase();
+  const optionEls = (form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>);
+  if (base) {
+    return (
+      <label className="js-field">
+        <span>{label}</span>
+        <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing}>
+          <option value=""></option>
+          {optionEls}
+        </select>
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
       <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
         <option value=""></option>
-        {(form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
+        {optionEls}
       </select>
     </div>
   );
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <section className="js-rail-section">
+        <h2>{title}</h2>
+        <div className="js-panel-body">{children}</div>
+      </section>
+    );
+  }
   return (
     <div className="border border-slate-300 rounded-sm bg-slate-50 overflow-hidden">
       <div className="bg-slate-200/70 px-3 py-1.5 text-[13px] font-semibold text-slate-700">{title}</div>
@@ -1639,6 +1679,15 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function TRow({ label, value, bold }: { label: string; value: any; bold?: boolean }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <label className={`js-total-row ${bold ? "emphasis" : ""}`}>
+        <span>{label}</span>
+        <input readOnly value={`£${money(value)}`} />
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
