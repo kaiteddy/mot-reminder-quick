@@ -837,7 +837,7 @@ export default function DocumentDetails() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-3 text-slate-800">
+      <div className={base ? "space-y-3 js-record-page" : "space-y-3 text-slate-800"}>
         {/* open-document tabs */}
         {openDocs.length > 0 && (
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-1">
@@ -1229,8 +1229,8 @@ export default function DocumentDetails() {
           )}
 
           {/* body: tabs + totals */}
-          <div className={base ? undefined : "grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3"}>
-            <div className={base ? undefined : "xl:col-span-9"}>
+          <div className={base ? "js-body-row" : "grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3"}>
+            <div className={base ? "js-cell-main" : "xl:col-span-9"}>
               <Tabs defaultValue={base ? "history" : "description"}>
                 <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
                   {(base
