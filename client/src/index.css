@@ -225,10 +225,22 @@
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   border-radius: 0 !important;
-  border-color: var(--border) !important;
-  box-shadow: none !important;
+  /* Tailwind's preflight zeroes border-width on every element, so setting only
+     border-color (as before) left every field borderless — every GA4 field is a
+     crisp white box with a visible 1px border, matching the reference exactly. */
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #b7b7b7 !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.08) !important;
 }
 .ga4-theme textarea { height: auto !important; min-height: 46px !important; padding: 4px 6px !important; }
+/* Force white only on fields with no explicit bg-* class of their own (e.g. Registration's
+   bg-yellow-50 highlight must survive — this must never fight an intentional field colour). */
+.ga4-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="bg-"]),
+.ga4-theme select:not([class*="bg-"]),
+.ga4-theme textarea:not([class*="bg-"]) {
+  background-color: #fff !important;
+}
 
 .ga4-theme label,
 .ga4-theme [class*="text-slate-500"],
