@@ -894,14 +894,14 @@ export default function DocumentDetails() {
           <div className={base ? "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3 mt-2" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"} style={base ? { background: "#f5f5f5", border: "1px solid #777" } : undefined}>
             {/* vehicle */}
             <div className="@4xl:col-span-5 space-y-1.5">
-              {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
+              {!base && lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
                     onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = "none"; }}
                     className="max-h-[110px] w-auto rounded-md border border-slate-200 shadow-sm object-contain bg-white" />
                 </div>
               )}
-              {editing && (
+              {!base && editing && (
                 <VehicleSearch onSelect={(v) => {
                   set("registration", v.registration);
                   regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, ""); // known car → use its cached data, no SWS re-pay
@@ -914,10 +914,10 @@ export default function DocumentDetails() {
                   className={base ? "bg-yellow-50 font-mono font-semibold" : "flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500"} />
                 {editing && (
                   <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
-                    {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
+                    {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} {base ? "VRM Lookup" : "Lookup"}
                   </button>
                 )}
-                {form.registration && (
+                {!base && form.registration && (
                   <button
                     type="button"
                     title="Order parts on Euro Car Parts (Omnipart) — opens with this reg, also copied to clipboard"
@@ -938,12 +938,12 @@ export default function DocumentDetails() {
               </div>
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                 <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
               </div>
               <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
-                {form.vin && (
+                {!base && form.vin && (
                   <button type="button" title="Search this VIN on PartSouq"
                     onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
                     className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
@@ -959,7 +959,7 @@ export default function DocumentDetails() {
                   the actual print/email block still only applies to invoices, see requiredMissing(). */}
               <EF label="Mileage" field="mileage" required={isInvoice || !!base} grow {...{ form, set, editing }} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
-              {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {!base && editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
               {base && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
@@ -971,7 +971,7 @@ export default function DocumentDetails() {
             </div>
             {/* customer */}
             <div className="@4xl:col-span-4 space-y-1.5 @container/customer">
-              {editing && (
+              {!base && editing && (
                 <>
                   <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
                     ...f, customerId: c.id, customerName: c.name || f.customerName,
@@ -1005,14 +1005,14 @@ export default function DocumentDetails() {
               <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
                 <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
                 <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
-                {editing && (
+                {!base && editing && (
                   <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
                     className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
                     {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
                   </button>
                 )}
               </div>
-              {addr.open && (
+              {!base && addr.open && (
                 <div className="border border-slate-300 rounded-sm bg-white shadow-sm overflow-hidden text-[13px]">
                   <div className="flex items-center justify-between px-2 py-1 bg-slate-100 text-[11px] text-slate-500">
                     <span>{addr.loading ? "Searching…" : `${addr.results.length} address${addr.results.length === 1 ? "" : "es"}`}</span>
@@ -1035,10 +1035,10 @@ export default function DocumentDetails() {
               {/* Either number reaches the customer — only flag Mobile as missing when Telephone is empty too. */}
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
-              {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
+              {!base && editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
-              <OtherNumbers customerId={form.customerId} editing={editing} />
+              {!base && <OtherNumbers customerId={form.customerId} editing={editing} />}
               {base && (
                 <div className="flex items-center gap-1 pt-1">
                   {[
@@ -1051,7 +1051,7 @@ export default function DocumentDetails() {
                   <button type="button" onClick={() => toast.message("More isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">More</button>
                 </div>
               )}
-              {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
+              {!base && custSync.changes.length > 0 && dismissSig !== custSync.sig && (
                 <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
                   <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
                   <div className="flex gap-1.5 shrink-0">
@@ -1143,7 +1143,7 @@ export default function DocumentDetails() {
           </div>
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
-          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
+          {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
             <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
@@ -1167,16 +1167,19 @@ export default function DocumentDetails() {
           {/* body: tabs + totals */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
             <div className="xl:col-span-9">
-              <Tabs defaultValue="description">
+              <Tabs defaultValue={base ? "history" : "description"}>
                 <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
+                  {(base
+                    ? [["history", `History (${history.length})`], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
+                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
+                  ).map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className={base ? "" : "rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
                 <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
                   <TabsContent value="description" className="mt-0">
-                    {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
-                    {editing && (
+                    {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {!base && editing && (
                       <ServicePartsPicker
                         vehInfo={vehInfo}
                         engineCC={form.engineCC}
@@ -1194,7 +1197,7 @@ export default function DocumentDetails() {
                         }}
                       />
                     )}
-                    {editing && (
+                    {!base && editing && (
                       <div className="flex items-center gap-3 mb-2">
                         <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
                         <RepairTimeEstimator
@@ -1211,7 +1214,7 @@ export default function DocumentDetails() {
                     )}
                     {editing ? (
                       <>
-                        <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />
+                        {!base && <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />}
                         <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
                           placeholder="Describe the work to be carried out…"
                           className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
@@ -1219,7 +1222,7 @@ export default function DocumentDetails() {
                     ) : <DescriptionView text={form.description ?? ""} />}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0">
-                    {editing && (form.make || form.model) && (
+                    {!base && editing && (form.make || form.model) && (
                       <button type="button" onClick={() => window.open(`/repair-pricing?make=${encodeURIComponent(form.make || "")}&model=${encodeURIComponent(form.model || "")}`, "_blank")}
                         className="mb-2 inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
                         <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
