@@ -133,6 +133,403 @@
   }
 }
 
+/**
+ * "GA4 Classic" theme — a visual skin that makes the modern app look like the legacy
+ * FileMaker desktop app (Garage Assistant GA4) so long-time users don't have to relearn
+ * anything. Scoped to `.ga4-theme` (applied by Ga4Shell) so it never affects the normal
+ * modern UI. Same data, same tRPC calls, same pages underneath — only chrome changes.
+ *
+ * Leverage point: this project's Tailwind theme maps rounded-sm/md/lg/xl to `--radius`
+ * via `@theme inline` above, so overriding `--radius` here flattens corners app-wide
+ * inside the scope without having to touch every component's className.
+ */
+.ga4-theme {
+  --radius: 0px;
+  --background: #ece9e4;
+  --foreground: #1c1c1c;
+  --card: #ffffff;
+  --card-foreground: #1c1c1c;
+  --border: #a8a8a8;
+  --input: #ffffff;
+  --muted: #dedad2;
+  --muted-foreground: #5a5a5a;
+  --primary: #3b5fa0;
+  --primary-foreground: #ffffff;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, Arial, sans-serif;
+}
+
+.ga4-theme,
+.ga4-theme input,
+.ga4-theme select,
+.ga4-theme textarea,
+.ga4-theme button {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, Arial, sans-serif;
+}
+
+/* Module accent colours, matching the real GA4 top-nav (see ga4-system-map + a live
+   screenshot of the actual Home screen for the exact module order/colours). */
+.ga4-mod-home { --ga4-accent: #3b5fa0; }
+.ga4-mod-calendar { --ga4-accent: #c2410c; }
+.ga4-mod-jobsheets { --ga4-accent: #7c3aed; }
+.ga4-mod-invoices { --ga4-accent: #2563eb; }
+.ga4-mod-estimates { --ga4-accent: #16a34a; }
+.ga4-mod-vehsales { --ga4-accent: #78716c; }
+.ga4-mod-unpaid { --ga4-accent: #c026d3; }
+.ga4-mod-archives { --ga4-accent: #7c3aed; }
+.ga4-mod-customers { --ga4-accent: #2563eb; }
+.ga4-mod-vehicles { --ga4-accent: #0e7490; }
+.ga4-mod-stock { --ga4-accent: #c2410c; }
+.ga4-mod-reminders { --ga4-accent: #dc2626; }
+
+/* Flat, beveled "Windows classic" button — used by Ga4Shell nav + toolbar actions. */
+.ga4-btn {
+  border-radius: 0;
+  border: 1px solid #8a8a8a;
+  border-top-color: #fafafa;
+  border-left-color: #fafafa;
+  background: linear-gradient(180deg, #fdfdfd 0%, #e2e2e2 100%);
+  color: #1c1c1c;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  box-shadow: none;
+}
+.ga4-btn:hover { background: linear-gradient(180deg, #ffffff 0%, #ececec 100%); }
+.ga4-btn:active { background: #d8d8d8; border-top-color: #8a8a8a; border-left-color: #8a8a8a; }
+
+/* Flat white panel with a hairline border, matching GA4's record-card chrome. */
+.ga4-panel { background: #fff; border: 1px solid var(--border); border-radius: 0; }
+
+/*
+ * Density pass. The reused pages (Documents/DocumentDetails/Customers/Vehicles) are built
+ * with modern, generously-spaced Tailwind sizing (h-12 inputs, text-4xl headings, soft
+ * shadows) — visually nothing like GA4's tightly-packed FileMaker fields. `!important` is
+ * intentional here: these are one-off utility classes on individual elements (high
+ * specificity, baked into the wide-viewport modern design), and the goal of this scope is
+ * to override them wholesale for GA4 Classic rather than rewrite every className.
+ */
+.ga4-theme { font-size: 12.5px; }
+.ga4-theme h1 { font-size: 19px !important; font-weight: 700 !important; line-height: 1.25 !important; }
+.ga4-theme h2 { font-size: 15px !important; font-weight: 700 !important; }
+.ga4-theme h3 { font-size: 13.5px !important; font-weight: 700 !important; }
+
+.ga4-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.ga4-theme select,
+.ga4-theme textarea {
+  height: 23px !important;
+  min-height: 23px !important;
+  font-size: 12.5px !important;
+  line-height: 1.3 !important;
+  /* vertical only — horizontal padding is left to each input's own class (pl-7/pl-9 etc
+     make room for an absolutely-positioned search icon; overriding it here would put the
+     icon on top of the text) */
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  border-radius: 0 !important;
+  /* Tailwind's preflight zeroes border-width on every element, so setting only
+     border-color (as before) left every field borderless — every GA4 field is a
+     crisp white box with a visible 1px border, matching the reference exactly. */
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #b7b7b7 !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.08) !important;
+}
+.ga4-theme textarea { height: auto !important; min-height: 46px !important; padding: 4px 6px !important; }
+/* Force white only on fields with no explicit bg-* class of their own (e.g. Registration's
+   bg-yellow-50 highlight must survive — this must never fight an intentional field colour). */
+.ga4-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="bg-"]),
+.ga4-theme select:not([class*="bg-"]),
+.ga4-theme textarea:not([class*="bg-"]) {
+  background-color: #fff !important;
+}
+
+.ga4-theme label,
+.ga4-theme [class*="text-slate-500"],
+.ga4-theme [class*="text-muted-foreground"] {
+  font-size: 12px !important;
+}
+
+.ga4-theme button:not(.ga4-btn) {
+  border-radius: 0 !important;
+  font-size: 12.5px !important;
+}
+
+/* Flatten every arbitrary/literal rounded-* utility too (e.g. rounded-[4px] reg plates),
+   but leave true circles (avatars, dots) alone. */
+.ga4-theme [class*="rounded-"]:not([class*="rounded-full"]) { border-radius: 0 !important; }
+
+.ga4-theme .shadow-sm,
+.ga4-theme .shadow,
+.ga4-theme .shadow-md,
+.ga4-theme .shadow-lg,
+.ga4-theme .shadow-xl { box-shadow: none !important; }
+
+.ga4-theme table { font-size: 12px !important; }
+.ga4-theme th { padding: 4px 8px !important; font-size: 11.5px !important; }
+.ga4-theme td { padding: 3px 8px !important; }
+
+/* Dense list-grid rows, matching GA4's document/customer/vehicle browse lists. */
+.ga4-listgrid { font-size: 12.5px; border-collapse: collapse; width: 100%; }
+.ga4-listgrid th {
+  background: #dfe3e8; border: 1px solid #b7bcc4; padding: 4px 8px; text-align: left;
+  font-weight: 600; text-transform: none; position: sticky; top: 0;
+}
+.ga4-listgrid td { border: 1px solid #d7dae0; padding: 3px 8px; }
+.ga4-listgrid tbody tr:nth-child(even) { background: #f4f6f8; }
+.ga4-listgrid tbody tr:hover { background: #dbe7fb; cursor: pointer; }
+
+/**
+ * Reference-locked shell chrome, ported from a purpose-built recreation that was
+ * verified pixel-for-pixel against a live GA4 screenshot (graphite gradients,
+ * beveled controls, dense spreadsheet tables, real toolbar icon art). Every
+ * selector is scoped under .ga4-theme so it can't leak into the modern app.
+ */
+.ga4-theme .app-shell { height: 100vh; min-height: 640px; display: flex; flex-direction: column; overflow: hidden; background: #1d1d1d; }
+.ga4-theme .app-header { flex: 0 0 auto; color: #f6f6f6; box-shadow: 0 2px 4px #000; position: relative; z-index: 3; }
+/* Reused pages (Documents/DocumentDetails/Customers/Vehicles) are normal flowing
+   pages, not the reference's fixed-viewport single-page app — this scroll region
+   is what lets them flow/scroll normally inside the fixed-height shell below. */
+.ga4-theme .app-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ga4-theme .main-toolbar { height: 50px; display: flex; align-items: stretch; background: linear-gradient(#5b5b5b 0%, #454545 52%, #383838 100%); border-top: 1px solid #7a7a7a; border-bottom: 1px solid #121212; box-shadow: inset 0 -1px #555; overflow: hidden; overflow-x: auto; }
+.ga4-theme .main-nav-items { display: flex; align-items: stretch; flex: 0 0 auto; }
+.ga4-theme .toolbar-spacer { min-width: 26px; flex: 1 1 auto; border-left: 1px solid #262626; box-shadow: inset 1px 0 #626262; }
+
+.ga4-theme .nav-button { width: 74px; min-width: 74px; height: 50px; border: 0; border-right: 1px solid #222; border-left: 1px solid #626262; border-radius: 0; background: transparent; color: #f5f5f5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 3px 3px 4px; position: relative; text-shadow: 0 1px #1c1c1c; line-height: 1; transition: background 120ms cubic-bezier(0.23, 1, 0.32, 1); text-align: center; }
+.ga4-theme .nav-button:hover, .ga4-theme .nav-button.active { background: linear-gradient(#666, #4c4c4c 54%, #343434); }
+.ga4-theme .nav-button:active { transform: scale(0.98); box-shadow: inset 0 2px 5px #202020; }
+.ga4-theme .nav-button > span:last-child { white-space: nowrap; font-size: 10.5px; }
+.ga4-theme .nav-button.soon { opacity: 0.62; }
+
+.ga4-theme .toolbar-icon-image { width: 24px; height: 24px; object-fit: contain; margin-bottom: 0px; filter: drop-shadow(0 1px 1px #242424); }
+.ga4-theme .count-badge { position: absolute; right: 2px; top: 2px; min-width: 20px; height: 20px; padding: 0 3px; display: grid; place-items: center; border: 1px solid #1d1d1d; border-radius: 3px; background: linear-gradient(#d6d6d6, #b8b8b8); box-shadow: inset 0 1px #f5f5f5; color: #222; font-size: 10px; text-shadow: none; }
+
+.ga4-theme .quick-strip { height: 36px; display: flex; align-items: center; gap: 7px; padding: 5px 9px; background: linear-gradient(#4a4a4a, #303030); border-top: 1px solid #6c6c6c; border-bottom: 1px solid #0b0b0b; }
+.ga4-theme .quick-search { width: 220px; height: 24px; display: grid; grid-template-columns: 1fr 29px; position: relative; }
+.ga4-theme .quick-search > span { position: absolute; left: 8px; top: 4px; z-index: 1; color: #b9b9b9; font-size: 12px; font-style: italic; pointer-events: none; }
+.ga4-theme .quick-search:focus-within > span { opacity: 0; }
+.ga4-theme .quick-search input { grid-column: 1; min-width: 0; border: 1px solid #262626; background: linear-gradient(#585858, #464646); color: white; padding: 2px 6px; box-shadow: inset 0 1px 2px #313131, 0 1px #646464; height: 24px !important; }
+.ga4-theme .quick-search button { grid-column: 2; border: 1px solid #242424; border-left: 0; border-radius: 0; background: linear-gradient(#585858, #343434); color: #ddd; display: grid; place-items: center; }
+
+.ga4-theme .bevel-button { min-width: 84px; height: 25px; border: 1px solid #272727; border-radius: 0; background: linear-gradient(#626262, #484848); box-shadow: inset 0 1px #777, 0 1px #171717; color: #f1f1f1; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; line-height: 1; text-shadow: 0 1px #222; white-space: nowrap; font-size: 12px; }
+.ga4-theme .quick-strip .bevel-button { height: 24px; min-width: auto; padding: 0 13px; font-size: 12px; color: #d6d6d6; }
+.ga4-theme .bevel-button:hover, .ga4-theme .bevel-button.pressed { background: linear-gradient(#707070, #505050); color: white; }
+.ga4-theme .bevel-button:active { transform: scale(.985); box-shadow: inset 0 2px 4px #262626; }
+.ga4-theme .current-user { margin-left: auto; padding-right: 7px; color: #a9a9a9; font-size: 12px; font-style: italic; white-space: nowrap; }
+.ga4-theme .current-user strong { color: #dedede; }
+
+.ga4-theme .workspace { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 9px; padding: 8px 9px 9px; background: #202020; }
+.ga4-theme .queue-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(320px, 2.12fr) minmax(235px, 1fr); gap: 8px; }
+.ga4-theme .queue-panel, .ga4-theme .rail-panel { min-height: 0; overflow: hidden; border: 1px solid #080808; border-radius: 4px; background: #4b4b4b; box-shadow: inset 0 0 0 2px #565656, 0 0 0 1px #333; }
+.ga4-theme .queue-panel { display: flex; flex-direction: column; padding: 5px; }
+
+.ga4-theme .panel-titlebar { flex: 0 0 38px; height: 38px; display: flex; align-items: center; justify-content: space-between; color: white; padding: 0 9px; border: 1px solid #292929; box-shadow: inset 0 1px rgba(255,255,255,.16), 0 1px #171717; text-shadow: 0 1px #222; font-size: 14px; }
+.ga4-theme .jobs-panel .panel-titlebar { background: linear-gradient(90deg, #5c006c 0%, #430057 68%, #5f0874 100%); }
+.ga4-theme .invoices-panel .panel-titlebar { background: linear-gradient(90deg, #07576e 0%, #06455e 68%, #006278 100%); }
+.ga4-theme .panel-titlebar strong { font-size: 15px; }
+.ga4-theme .panel-titlebar span { color: #ddd; margin-left: 4px; }
+.ga4-theme .collapse-button { width: 32px; height: 34px; margin-right: -8px; border: 0; border-left: 1px solid rgba(0,0,0,.32); border-radius: 0; background: rgba(0,0,0,.08); color: #ddd; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+.ga4-theme .panel-actions { flex: 0 0 42px; display: flex; justify-content: space-between; background: linear-gradient(#565656, #414141); border-left: 1px solid #282828; border-right: 1px solid #282828; flex-wrap: wrap; }
+.ga4-theme .panel-actions-left, .ga4-theme .panel-actions-right { display: flex; }
+.ga4-theme .panel-actions .bevel-button { height: 42px; min-width: 120px; border-top: 0; border-bottom: 0; box-shadow: inset 0 1px #6e6e6e; font-size: 13px; }
+.ga4-theme .filter-row { flex: 0 0 50px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: #4e4e4e; border: 1px solid #2d2d2d; flex-wrap: wrap; }
+.ga4-theme .filter-row .bevel-button { height: 30px; min-width: 90px; color: #ddd; font-size: 12px; }
+.ga4-theme .filter-row .filter-clear { min-width: 30px; width: 30px; padding: 0; }
+.ga4-theme .filter-row .filter-dropdown { min-width: 130px; justify-content: space-between; }
+
+.ga4-theme .data-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; display: block; background: white; border: 1px solid #292929; }
+.ga4-theme .data-table { width: 100%; height: fit-content; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; color: #111; }
+.ga4-theme .data-table th, .ga4-theme .data-table td { height: 27px; border-right: 1px solid #909090; border-bottom: 1px solid #9f9f9f; padding: 2px 7px; text-align: left; font-weight: normal; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ga4-theme .data-table th { height: 28px; background: linear-gradient(#d1d1d1, #bcbcbc); box-shadow: inset 0 1px #e5e5e5; position: sticky; top: 0; z-index: 1; }
+.ga4-theme .data-table tbody tr:nth-child(odd) td { background: #e2e2e2; }
+.ga4-theme .data-table tbody tr:nth-child(even) td { background: #f8f8f8; }
+.ga4-theme .data-table tbody tr:hover td { background: #fffde0; cursor: pointer; }
+.ga4-theme .data-table tbody td:first-child { background: #b36cff; color: #501070; text-align: center; }
+.ga4-theme .invoices-panel .data-table tbody td:first-child { background: #7da7ff; color: #173776; }
+.ga4-theme .col-type { width: 28px; text-align: center !important; padding: 0 !important; }
+.ga4-theme .col-doc { width: 80px; text-align: right !important; }
+.ga4-theme .col-date { width: 88px; }
+.ga4-theme .col-reg { width: 92px; }
+.ga4-theme .col-model { width: 22%; }
+.ga4-theme .col-customer { width: 18%; }
+.ga4-theme .col-lab { width: 48px; text-align: right !important; }
+.ga4-theme .col-total { width: 78px; text-align: right !important; }
+.ga4-theme .col-status { width: 90px; text-align: center !important; }
+.ga4-theme .col-phone { width: 40px; text-align: center !important; padding: 0 !important; }
+.ga4-theme .col-open { width: 50px; text-align: center !important; padding: 0 !important; }
+.ga4-theme .status-placeholder { display: flex; align-items: center; justify-content: center; gap: 3px; color: #555; }
+.ga4-theme .phone-placeholder { color: #8b8b8b; font-size: 13px; }
+.ga4-theme .open-button { width: 100%; height: 100%; border: 0; border-radius: 0; background: linear-gradient(#f5f5f5, #d3d3d3); box-shadow: inset 0 1px white; color: #222; font-size: 11.5px; font-weight: 600; }
+
+.ga4-theme .utility-rail { min-width: 0; min-height: 0; display: grid; grid-template-rows: 177px 169px minmax(0, 1fr); gap: 8px; }
+.ga4-theme .rail-panel { padding: 5px; }
+.ga4-theme .rail-panel h2 { height: 36px; margin: 0; display: flex; align-items: center; padding: 0 9px; background: linear-gradient(#696969, #4d4d4d); border: 1px solid #333; color: #dedede; font-size: 14px; font-weight: normal; text-shadow: 0 1px #222; }
+.ga4-theme .rail-grid { border: 1px solid #333; border-top: 0; background: white; }
+.ga4-theme .rail-row { height: 33px; display: grid; grid-template-columns: minmax(0, 1fr) 89px; border-bottom: 1px solid #9c9c9c; font-size: 13px; }
+.ga4-theme .rail-row:last-child { border-bottom: 0; }
+.ga4-theme .rail-row span { display: flex; align-items: center; padding: 0 6px; }
+.ga4-theme .rail-row b { border-left: 1px solid #9c9c9c; background: #f7f7f7; font-weight: normal; display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; }
+
+.ga4-theme .notes-panel { display: grid; grid-template-rows: 38px minmax(0, 1fr) 35px; padding-bottom: 4px; }
+.ga4-theme .notes-tabs { display: grid; grid-template-columns: 1fr 1fr; }
+.ga4-theme .notes-tabs button { border: 1px solid #333; border-radius: 0; background: linear-gradient(#686868, #4b4b4b); color: #ddd; text-shadow: 0 1px #222; font-size: 13px; }
+.ga4-theme .notes-tabs button.active { background: linear-gradient(#575757, #383838); color: white; box-shadow: inset 0 -2px #737373; }
+.ga4-theme .notes-panel textarea { width: 100%; min-height: 0; resize: none; border: 1px solid #777; border-radius: 0; padding: 7px 9px; line-height: 24px; color: #333; cursor: text; background-color: #fffef0; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 23px, #e8e7bd 23px, #e8e7bd 24px); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); font-size: 12.5px !important; }
+.ga4-theme .notes-footer { display: grid; grid-template-columns: 1fr 38px; }
+.ga4-theme .notes-footer .bevel-button { width: 100%; height: 35px; font-size: 12px; }
+.ga4-theme .refresh-notes { border: 1px solid #292929; border-radius: 0; background: linear-gradient(#777, #555); color: #ccc; }
+
+@media (max-height: 800px) {
+  .ga4-theme .queue-column { grid-template-rows: minmax(290px, 1.7fr) minmax(205px, 1fr); }
+  .ga4-theme .data-table th, .ga4-theme .data-table td { height: 21px; }
+}
+
+/**
+ * Reference-locked Standard Job Sheet screen, ported from the same recreation as
+ * the shell chrome above (see job-sheet-spec.md). Unlike the reference (a fixed
+ * 100vh single-screen app), DocumentDetails.tsx already flows as a normal page
+ * inside Ga4Shell's .app-scroll region, so height:100vh/overflow:hidden are
+ * dropped here in favour of natural content height — same visuals, scrolls
+ * normally instead of being pinned to one viewport.
+ */
+.ga4-theme .job-sheet-shell { width: 100%; padding: 6px; color: #222; }
+/* The reference is a fixed 100vh single-screen app, so its record card always exactly
+   fills the screen — trailing space shows up as blank white space inside a content panel,
+   never as raw shell background below the card. Since this port flows/scrolls normally
+   instead (see .app-scroll above), short records need this recreated: the page wrapper
+   fills the scroll area's height, the card grows to fill leftover space in it, and the
+   History tab's tables absorb that growth so the "gap" looks like the reference's
+   deliberately-tall content panels rather than empty void below the card. */
+.ga4-theme .js-record-page { display: flex; flex-direction: column; min-height: 100%; }
+.ga4-theme .js-record-page .js-top-card { flex: 1 1 auto; }
+.ga4-theme .js-record-page .js-cell-body { display: flex; flex-direction: column; gap: 8px; }
+.ga4-theme .js-record-page .js-body-row { flex: 1 1 auto; min-height: 0; display: flex; }
+.ga4-theme .js-record-page .js-cell-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ga4-theme .js-record-page .js-cell-main > [data-slot="tabs"] { flex: 1 1 auto; min-height: 0; }
+.ga4-theme .js-record-page .js-workspace-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ga4-theme .js-record-page .js-workspace-panel > [role="tabpanel"] { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ga4-theme .js-record-page .js-history-layout { flex: 1 1 auto; min-height: 0; }
+.ga4-theme .js-screen-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 9px; align-items: start; }
+.ga4-theme .js-main-column { min-width: 0; display: grid; gap: 8px; }
+.ga4-theme .js-top-card, .ga4-theme .js-workspace-panel, .ga4-theme .js-right-rail { border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434; }
+.ga4-theme .js-top-card { overflow: hidden; padding: 5px; }
+
+/* Classic-mode job sheet: .js-top-card is a 2-column grid — the main column
+   (title/toolbar/forms/tabs/content, .js-cell-body) on the left, and the
+   Insurance/Extras/Account/Totals rail (.js-cell-rail) on the right. Grid's default
+   align-items:stretch makes the rail's box match the main column's natural height
+   exactly (matching the reference, where the rail spans the full record height),
+   without needing to know how tall the main column will be up front. `grid-row: 1/-1`
+   doesn't work for this: with no grid-template-rows, the explicit grid has zero row
+   tracks, so line -1 IS line 1 and the span collapses to nothing — stretch is the
+   robust way to do this. */
+.ga4-theme .js-top-card.js-record-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 8px; padding: 8px; }
+.ga4-theme .js-cell-body { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.ga4-theme .js-vehicle-customer-row { display: grid; grid-template-columns: 1.07fr 0.93fr; gap: 8px; }
+.ga4-theme .js-cell-vehicle, .ga4-theme .js-cell-customer { background: #f5f5f5; border: 1px solid #777; padding: 10px; align-self: start; }
+.ga4-theme .js-cell-rail { display: flex; flex-direction: column; gap: 8px; }
+
+.ga4-theme .js-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) 116px minmax(96px, 1fr); align-items: center; background: linear-gradient(90deg, #590069 0%, #49005a 58%, #5d006b 100%); border: 1px solid #2b1730; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px #181818; color: white; text-shadow: 0 1px #211027; }
+.ga4-theme .js-titlebar > div:first-child { display: flex; align-items: center; gap: 7px; padding-left: 7px; font-size: 15px; height: 38px; }
+.ga4-theme .js-titlebar > div:first-child strong { font-size: 16px; }
+.ga4-theme .js-notice { justify-self: center; height: 28px; border: 1px solid #36103e; border-radius: 0; background: linear-gradient(#7b367f, #5b1966); color: white; text-shadow: 0 1px #321039; padding: 0 14px; font-size: 12px; }
+.ga4-theme .js-window-controls { justify-self: end; height: 38px; display: flex; }
+.ga4-theme .js-window-controls button { width: 40px; border: 0; border-left: 1px solid rgba(0,0,0,.34); border-radius: 0; background: linear-gradient(#6d306e, #4f1558); color: white; display: grid; place-items: center; }
+.ga4-theme .js-window-controls button:last-child { background: linear-gradient(#a73146, #761527); }
+
+.ga4-theme .js-primary-actions { display: flex; flex-wrap: wrap; background: linear-gradient(#5e5e5e, #414141); border: 1px solid #292929; }
+.ga4-theme .js-action-button { min-width: 84px; height: 34px; padding: 0 14px; border: 0; border-right: 1px solid #252525; border-left: 1px solid #646464; border-radius: 0; background: linear-gradient(#5d5d5d, #414141); color: #f1f1f1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-shadow: 0 1px #222; font-size: 12.5px; }
+.ga4-theme .js-action-button:hover { background: linear-gradient(#6d6d6d, #4b4b4b); }
+.ga4-theme .js-action-button:active { transform: scale(.985); box-shadow: inset 0 2px 4px #252525; }
+.ga4-theme .js-action-button:disabled { opacity: .45; }
+.ga4-theme .js-action-spacer { flex: 1; }
+.ga4-theme .js-action-issue { background: linear-gradient(#c026d3, #a21caf) !important; }
+
+.ga4-theme .js-info-forms { display: grid; grid-template-columns: 1.07fr .93fr; gap: 22px; padding: 11px 18px 14px; background: #f5f5f5; border: 1px solid #777; }
+.ga4-theme .js-info-column { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ga4-theme .js-lookup-row { display: grid; grid-template-columns: 112px minmax(160px, 1fr) auto; align-items: stretch; gap: 6px; }
+.ga4-theme .js-lookup-row.customer { grid-template-columns: 126px minmax(160px, 1fr) auto; }
+.ga4-theme .js-lookup-row > span { display: flex; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-lookup-row input { min-width: 0; height: 29px; }
+/* Registration / Acc Number: a combo-style input (value + dropdown arrow + clear) sitting
+   right next to its own search button — both fields share this exact look in the reference,
+   only the search button's label differs (VRM Lookup vs a plain find icon). */
+.ga4-theme .js-combo-field { display: flex; align-items: stretch; min-width: 0; border: 1px solid #b7b7b7; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); background: #fff; }
+.ga4-theme .js-combo-field input { flex: 1; min-width: 0; border: 0 !important; box-shadow: none !important; background: transparent !important; }
+.ga4-theme .js-combo-arrow { display: flex; align-items: center; justify-content: center; width: 18px; flex-shrink: 0; color: #666; font-size: 9px; border-left: 1px solid #ccc; background: #ececec; }
+.ga4-theme .js-combo-clear { display: flex; align-items: center; justify-content: center; width: 24px; flex-shrink: 0; border: 0; border-left: 1px solid #7a1010; background: linear-gradient(#c0392b, #962c22); color: #fff; }
+.ga4-theme .js-combo-clear:disabled { opacity: .45; }
+.ga4-theme .js-search-button { display: flex; align-items: stretch; flex-shrink: 0; border: 1px solid #999; border-radius: 2px; background: linear-gradient(#fdfdfd, #e3e3e3); color: #333; font-size: 12px; font-weight: 600; overflow: hidden; }
+.ga4-theme .js-search-button:disabled { opacity: .5; }
+.ga4-theme .js-search-button .js-search-icon { display: flex; align-items: center; justify-content: center; padding: 0 8px; color: #5b2c82; }
+.ga4-theme .js-search-button .js-search-label { display: flex; align-items: center; padding: 0 10px; white-space: nowrap; border-left: 1px solid #ccc; }
+
+.ga4-theme .js-form-grid { padding-top: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; align-content: start; }
+.ga4-theme .js-field { min-width: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-field.wide { grid-column: 1 / -1; }
+.ga4-theme .js-field > span { padding-right: 7px; white-space: nowrap; text-align: left; }
+.ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; }
+.ga4-theme .customer-grid .js-field { grid-template-columns: 126px minmax(0, 1fr); }
+.ga4-theme .js-form-tools { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
+.ga4-theme .js-form-tools .js-action-button { min-width: 100px; height: 30px; padding: 0 10px; border: 1px solid #aaa; background: linear-gradient(#fafafa, #dcdcdc); color: #444; text-shadow: none; }
+.ga4-theme .js-form-tools .icon-only { min-width: 40px; width: 40px; padding: 0; }
+.ga4-theme .js-tool-spacer { flex: 1; }
+
+.ga4-theme .js-main-tabs { display: flex; flex-wrap: wrap; min-width: 0; overflow: hidden; border: 1px solid #171717; border-radius: 3px; background: linear-gradient(#5a5a5a, #3c3c3c); box-shadow: inset 0 1px #696969; }
+.ga4-theme .js-main-tabs button, .ga4-theme .js-main-tabs [role="tab"] { min-width: 100px; height: 34px; border: 0; border-right: 1px solid #202020; border-left: 1px solid #616161; border-radius: 0 !important; background: transparent; color: #e8e8e8; text-shadow: 0 1px #222; font-size: 12.5px !important; }
+.ga4-theme .js-main-tabs button.active, .ga4-theme .js-main-tabs [role="tab"][data-state="active"] { background: linear-gradient(#6b6b6b, #474747); box-shadow: inset 0 -2px #808080; color: white; }
+.ga4-theme .js-workspace-panel { padding: 8px; }
+.ga4-theme .js-workspace-panel > [role="tabpanel"] { background: #fff; padding: 10px; min-height: 240px; }
+
+/* align-items: stretch (the default) matches the reminders column's height to the
+   history table's, same technique as the record screen's right rail above. */
+.ga4-theme .js-history-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 8px; background: #f5f5f5; }
+.ga4-theme .js-reminders-column { display: flex; flex-direction: column; border: 1px solid #6b6b6b; background: white; }
+.ga4-theme .js-subheader { height: 31px; display: flex; align-items: center; justify-content: space-between; padding-left: 8px; background: linear-gradient(#686868, #4c4c4c); color: #eee; text-shadow: 0 1px #222; font-size: 12.5px; }
+.ga4-theme .js-subheader button { align-self: stretch; min-width: 70px; border: 0; border-left: 1px solid #292929; border-radius: 0; background: transparent; color: white; font-size: 11.5px; }
+.ga4-theme .js-reminder-head { display: grid; grid-template-columns: 1fr 85px; background: linear-gradient(#d0d0d0, #bcbcbc); border-bottom: 1px solid #888; height: 26px; font-size: 11.5px; }
+.ga4-theme .js-reminder-head span { display: flex; align-items: center; padding-left: 8px; border-right: 1px solid #888; }
+.ga4-theme .js-reminder-body { flex: 1; background: #fff; border-bottom: 1px solid #8c8c8c; min-height: 60px; font-size: 12px; }
+.ga4-theme .js-reminder-body .js-reminder-row { display: grid; grid-template-columns: 1fr 85px; padding: 4px 0 4px 8px; border-bottom: 1px solid #eee; align-items: center; }
+.ga4-theme .js-privacy-button { width: 100%; height: 28px; border: 0; border-radius: 0; background: linear-gradient(#65bf32, #4faa24); color: white; text-shadow: 0 1px #34751a; font-size: 12px; }
+.ga4-theme .js-account-summary { display: grid; grid-auto-rows: 27px; padding: 7px 8px 8px; background: #fffef0; color: #555; font-size: 12px; }
+.ga4-theme .js-account-summary > div, .ga4-theme .js-account-summary > label { display: grid; grid-template-columns: 1fr 100px; align-items: center; }
+.ga4-theme .js-account-summary b { text-align: right; font-weight: normal; }
+.ga4-theme .js-account-summary select { width: 100px; height: 25px; background: #fffde2; border: 1px solid #c7c58e; }
+.ga4-theme .js-account-balance { padding-top: 6px; margin-top: 4px; border-top: 1px solid #ddd8ac; }
+.ga4-theme .js-account-balance strong { font-weight: normal; }
+
+.ga4-theme .js-history-table-panel { min-width: 0; border: 1px solid #666; background: white; }
+.ga4-theme .js-history-tabs { display: flex; flex-wrap: wrap; background: linear-gradient(#676767, #4a4a4a); }
+.ga4-theme .js-history-tabs button { min-width: 90px; height: 31px; border: 0; border-right: 1px solid #292929; border-radius: 0; background: transparent; color: #eee; text-shadow: 0 1px #222; font-size: 12px; }
+.ga4-theme .js-history-tabs button.active { background: linear-gradient(#777, #555); box-shadow: inset 0 -2px #909090; }
+.ga4-theme .js-history-tabs .js-print-icon { margin-left: auto; min-width: 44px; display: grid; place-items: center; color: white; }
+.ga4-theme .js-history-table-head { display: grid; background: linear-gradient(#d3d3d3, #bdbdbd); border-bottom: 1px solid #858585; height: 26px; font-size: 11.5px; }
+.ga4-theme .js-history-table-head span { display: flex; align-items: center; padding-left: 7px; border-right: 1px solid #8e8e8e; }
+.ga4-theme .js-history-empty { min-height: 60px; background: white; }
+.ga4-theme .js-empty-row { height: 27px; background: #f5f5f5; border-bottom: 1px solid #aaa; color: #8a8a8a; }
+
+.ga4-theme .js-right-rail { display: grid; gap: 8px; padding: 6px; }
+.ga4-theme .js-rail-section { border: 1px solid #343434; background: #f7f7f7; overflow: hidden; }
+.ga4-theme .js-rail-section h2 { height: 32px; margin: 0; display: flex; align-items: center; padding: 0 9px; background: linear-gradient(#6c6c6c, #4d4d4d); border-bottom: 1px solid #333; color: #eee; font-size: 13px; font-weight: normal; text-shadow: 0 1px #222; }
+.ga4-theme .js-rail-fields { padding: 8px; display: grid; grid-auto-rows: 30px; gap: 2px; }
+.ga4-theme .js-rail-fields .js-field { grid-template-columns: 96px minmax(0, 1fr); }
+.ga4-theme .js-rail-fields .js-field input, .ga4-theme .js-rail-fields .js-field select { height: 26px !important; }
+.ga4-theme .js-total-list { padding: 8px; display: grid; grid-auto-rows: 25px; gap: 2px; }
+.ga4-theme .js-total-list label { display: grid; grid-template-columns: 1fr 100px; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme .js-total-list input { width: 100px; height: 24px !important; border: 1px solid #bbb; background: white; text-align: right; padding: 2px 6px !important; }
+.ga4-theme .js-total-list label.emphasis span { font-weight: bold; color: #333; }
+.ga4-theme .js-total-list label.balance input { background: #fffed3; }
+
+/* Generic Panel body (Insurance/Extras/Account/Totals share the Panel component) —
+   .js-field rows (EF/SelectField) size themselves; this just spaces them out. */
+.ga4-theme .js-panel-body { padding: 8px; display: grid; gap: 4px; }
+/* TRow (Totals rows) isn't always inside .js-total-list's ancestor styling since
+   Panel is generic, so give it the same look standalone. */
+.ga4-theme label.js-total-row { display: grid; grid-template-columns: 1fr 100px; align-items: center; color: #555; font-size: 12px; }
+.ga4-theme label.js-total-row input { width: 100px; height: 24px !important; border: 1px solid #bbb; background: white; text-align: right; padding: 2px 6px !important; }
+.ga4-theme label.js-total-row.emphasis span { font-weight: bold; color: #333; }
+.ga4-theme label.js-total-row.balance input { background: #fffed3; }
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

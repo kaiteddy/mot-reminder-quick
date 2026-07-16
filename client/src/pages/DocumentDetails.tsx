@@ -8,17 +8,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useClassicBase } from "@/lib/classicNav";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
+};
+// GA4 Classic title-bar colour per doc type — JS sampled off a live Job Sheet record
+// (deep plum/purple); others follow the same module colours as the top nav.
+const GA4_TITLEBAR_COLOR: Record<string, string> = {
+  JS: "#5b2c82", SI: "#1d4ed8", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c",
 };
 const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
@@ -64,6 +70,7 @@ function motTone(d: any): InfoTone {
   return "green";
 }
 type InfoTone = "amber" | "sky" | "slate" | "green" | "red";
+const REMINDER_DOT: Record<InfoTone, string> = { green: "#4caf50", amber: "#f0a020", red: "#e53935", slate: "#999", sky: "#0ea5e9" };
 const TONES: Record<InfoTone, string> = {
   amber: "border-amber-200 bg-amber-50 text-amber-700",
   sky: "border-sky-200 bg-sky-50 text-sky-700",
@@ -147,6 +154,7 @@ export default function DocumentDetails() {
   const isNew = params.id === "new";
   const id = isNew ? 0 : Number(params.id);
   const [, setLocation] = useLocation();
+  const base = useClassicBase();
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.documents.getById.useQuery({ id }, { enabled: !isNew && !!id });
@@ -246,7 +254,7 @@ export default function DocumentDetails() {
       utils.documents.list.invalidate();
       utils.documents.stats.invalidate();
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
   }
   const emailMut = trpc.email.sendDocument.useMutation();
@@ -266,7 +274,7 @@ export default function DocumentDetails() {
       await delMut.mutateAsync({ ids: [id] });
       await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
       toast.success("Document deleted");
-      setLocation("/documents");
+      setLocation(`${base}/documents`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
   async function doIssue(after: "none" | "print" | "email" | "both") {
@@ -286,7 +294,7 @@ export default function DocumentDetails() {
       const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
       setExcessOpen(false);
       toast.success(`Policy excess invoice ${res.docNo} created`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Create excess failed: " + (e.message || "")); }
   }
   function emailCtx() {
@@ -606,7 +614,7 @@ export default function DocumentDetails() {
       if (res?.customerId) setForm((f) => (f.customerId ? f : { ...f, customerId: res.customerId }));
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
-        setLocation(`/documents/${res.id}`, { replace: true });
+        setLocation(`${base}/documents/${res.id}`, { replace: true });
       } else {
         utils.documents.list.invalidate();
         utils.documents.stats.invalidate();
@@ -625,7 +633,7 @@ export default function DocumentDetails() {
 
   // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
   async function flushPending() { if (dirty) await autoSave(); }
-  async function goBack() { await flushPending(); setLocation("/documents"); }
+  async function goBack() { await flushPending(); setLocation(`${base}/documents`); }
 
   // Open-document "tabs" — keep several docs on the go and jump between them.
   const openDocs = useOpenDocs();
@@ -643,7 +651,7 @@ export default function DocumentDetails() {
     if (data !== undefined && !(data as any)?.doc) {
       removeOpenDoc(id);
       const rest = openDocs.filter((d) => d.id !== id);
-      setLocation(rest.length ? `/documents/${rest[0].id}` : "/documents");
+      setLocation(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, data, id]);
@@ -651,7 +659,7 @@ export default function DocumentDetails() {
   async function switchTo(to: string) { await flushPending(); setLocation(to); }
   function closeTab(tabId: number) {
     removeOpenDoc(tabId);
-    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `/documents/${rest[0].id}` : "/documents"); }
+    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`); }
   }
 
   // Push the edited customer details back to the customer's master record (opt-in).
@@ -677,7 +685,7 @@ export default function DocumentDetails() {
     <DashboardLayout>
       <div className="p-8 space-y-3">
         <p className="text-muted-foreground">This document no longer exists — it may have been deleted. Taking you back…</p>
-        <button onClick={() => setLocation("/documents")} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
+        <button onClick={() => setLocation(`${base}/documents`)} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
       </div>
     </DashboardLayout>
   );
@@ -698,9 +706,138 @@ export default function DocumentDetails() {
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
+  // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
+  // beside vehicle/customer) and classic (rendered in its own full-height rail, see
+  // js-cell-rail below), so the two views can't drift apart.
+  const railContent = (
+    <>
+      {base && (
+        <Panel title="Additional Info">
+          <EF label="Order Ref" field="orderRef" grow {...{ form, set, editing }} />
+          <EF label="Department" field="department" grow {...{ form, set, editing }} />
+          <EF label="Terms" field="terms" grow {...{ form, set, editing }} />
+          <SelectField label="Status" field="docStatus" options={["Not Issued", "Issued", "Paid"]} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <SelectField label="Sales Advisor" field="staffSalesPerson" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Technician" field="staffTechnician" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Road Tester" field="staffRoadTester" options={TECHNICIANS} {...{ form, set, editing }} />
+        </Panel>
+      )}
+      {!isExcess && (
+        <Panel title="Insurance">
+          <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
+          {insurerDetected && (
+            <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
+              className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
+              Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
+            </button>
+          )}
+        </Panel>
+      )}
+      {!isExcess && (
+        <Panel title="Extras">
+          {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
+              usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
+              value already set (e.g. a re-tick after someone picked Fail/another tester). */}
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
+              <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setForm((f) => ({
+                      ...f,
+                      motAmount: num(f.motAmount) ? f.motAmount : "45",
+                      motClass: f.motClass || "4",
+                      motStatus: f.motStatus || "Pass",
+                      staffMotTester: f.staffMotTester || "Dec Buckley",
+                    }));
+                    markDirty();
+                  } else {
+                    set("motAmount", "");
+                  }
+                }}
+                className="accent-violet-600 w-3.5 h-3.5" />
+              MOT
+            </label>
+            <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
+          </div>
+          <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
+          <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
+          <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
+        </Panel>
+      )}
+      {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
+      {isExcess && relatedDoc && (
+        <Panel title="Insurance Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
+        </Panel>
+      )}
+      {!isExcess && relatedDoc && (
+        <Panel title="Policy Excess Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
+          <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
+        </Panel>
+      )}
+      {/* Classic view puts this in the History tab's left-hand column instead (see
+          js-reminders-column below), matching the reference exactly. */}
+      {!isNew && !base && (
+        <Panel title="Account">
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
+        </Panel>
+      )}
+      {/* Classic view only: Totals lives in the same full-height rail as Insurance/Extras/
+          Account (matching the reference), instead of sitting beside the tabs below. */}
+      {base && (
+        <Panel title="Totals">
+          <TRow label="SubTotal" value={liveTotals.subTotal} />
+          {liveTotals.discountTotal > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+              <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+            </div>
+          )}
+          <TRow label="VAT" value={liveTotals.vat} />
+          <TRow label="MOT" value={liveTotals.motGross} />
+          <TRow label="Total" value={liveTotals.gross} bold />
+          {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+            <div className="border-t mt-1 pt-1 space-y-1.5">
+              {!isExcess && excessDeduction > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                  <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                </div>
+              )}
+              {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+              {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                  <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      )}
+    </>
+  );
+
   return (
     <DashboardLayout>
-      <div className="space-y-3 text-slate-800">
+      <div className={base ? "space-y-3 js-record-page" : "space-y-3 text-slate-800"}>
         {/* open-document tabs */}
         {openDocs.length > 0 && (
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-1">
@@ -708,7 +845,7 @@ export default function DocumentDetails() {
               {openDocs.map((d) => {
                 const active = d.id === id;
                 return (
-                  <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
+                  <div key={d.id} onClick={() => { if (!active) switchTo(`${base}/documents/${d.id}`); }}
                     className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
                     <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
                     <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
@@ -717,68 +854,80 @@ export default function DocumentDetails() {
                 );
               })}
             </div>
-            <Button onClick={() => switchTo("/documents/new")} size="sm" className="gap-1.5 shrink-0">
+            <Button onClick={() => switchTo(`${base}/documents/new`)} size="sm" className="gap-1.5 shrink-0">
               <Plus className="w-3.5 h-3.5" /> New
             </Button>
           </div>
         )}
-        {/* toolbar */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" /> Back to documents
-          </button>
-          <div className="flex items-center gap-2">
-            {/* auto-save status */}
-            <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
-              {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
-                : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
-                : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
-                : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
-                : null}
-            </span>
-            {!isNew && (
-              <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
-            )}
-            <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
-            {!isNew && (
-              <div className="relative">
-                <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
-                  {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+        {/* toolbar — GA4 Classic moves this inside the record card below the title bar (see
+            the dark toolbar below); the modern app keeps its own light bordered-button row. */}
+        {!base && (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back to documents
+            </button>
+            <div className="flex items-center gap-2">
+              {/* auto-save status */}
+              <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
+                {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+                  : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
+                  : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
+                  : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
+                  : null}
+              </span>
+              {!isNew && (
+                <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+              )}
+              <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
+              {!isNew && (
+                <div className="relative">
+                  <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+                    {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isNew && isInvoice && (
+                <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
+              )}
+              {!isNew && (
+                <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
+                  {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
                 </button>
-                {convertOpen && (
-                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
-                    {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
-                      .filter(([code]) => code !== (data as any)?.doc?.docType)
-                      .map(([code, label]) => (
-                        <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
-                      ))}
-                    {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
-                      <>
-                        <div className="border-t my-1" />
-                        <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {!isNew && isInvoice && (
-              <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
-            )}
-            {!isNew && (
-              <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
-                {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
-              </button>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container">
-          {/* purple title bar */}
-          <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold">
+        <div className={base ? "js-top-card js-record-grid @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"}>
+        {/* js-cell-body is the grid's main column (title/toolbar/forms/tabs/content); it's a
+            plain block wrapper in modern mode, so it's inert there — only classic mode makes
+            js-top-card an actual grid, where this needs to be one grid item so js-cell-rail
+            (added as its sibling below) can stretch to match its height. */}
+        <div className={base ? "js-cell-body" : undefined}>
+          {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
+              a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
+          <div
+            className={base ? "js-titlebar" : "bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between"}
+            style={base ? { background: GA4_TITLEBAR_COLOR[form.docType] || GA4_TITLEBAR_COLOR.JS } : undefined}
+          >
+            <div>
               <span className="text-amber-300">★</span>
-              <span>{typeLabel}</span>
+              <strong>{typeLabel}</strong>
               <span className="text-white/60">No.</span>
               <input
                 value={form.docNo ?? ""}
@@ -786,16 +935,68 @@ export default function DocumentDetails() {
                 placeholder={isNew ? "(auto)" : "number"}
                 title="Set the document number to match GA4 — saves automatically"
                 spellCheck={false}
-                className="w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"
+                className={base ? "w-28 bg-white/15 border border-white/30 px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60" : "w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"}
               />
             </div>
-            <div className="flex items-center gap-3">
-              {!isNew && isInvoice && (
-                <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
-              )}
-              <span className="text-[11px] text-white/70">Auto-saves</span>
-            </div>
+            {base ? (
+              <button type="button" className="js-notice" onClick={() => toast.message("Auto-saves — no manual save needed.")}>
+                {!isNew && isInvoice ? docStatusLabel : "Auto-saves"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                {!isNew && isInvoice && (
+                  <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
+                )}
+                <span className="text-[11px] text-white/70">Auto-saves</span>
+              </div>
+            )}
+            {base && (
+              <div className="js-window-controls">
+                <button type="button" onClick={() => toast.message("Settings aren't available in Classic view yet.")} title="Settings"><Cog className="w-4 h-4" /></button>
+                <button type="button" onClick={goBack} title="Close"><X className="w-4 h-4" /></button>
+              </div>
+            )}
           </div>
+
+          {/* Toolbar — GA4 Classic only: dark charcoal bar with plain text buttons, matching
+              the real record toolbar exactly (Save/Print/Email/Extras/Convert … Delete). */}
+          {base && (
+            <nav className="js-primary-actions">
+              <button className="js-action-button" onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }}>Save</button>
+              <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
+              {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
+              <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
+              {!isNew && (
+                <div className="relative">
+                  <button className="js-action-button" onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending}>
+                    Convert <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute left-0 mt-1 bg-white border border-slate-300 shadow-lg z-30 min-w-[190px] py-1 text-slate-800">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <span className="js-action-spacer" />
+              {!isNew && isInvoice && (
+                <button className="js-action-button js-action-issue" onClick={() => setIssueOpen(true)}>Issue</button>
+              )}
+              {!isNew && (
+                <button className="js-action-button" onClick={doDelete} disabled={delMut.isPending}>Delete</button>
+              )}
+            </nav>
+          )}
 
           {/* policy-excess banner */}
           {isExcess && (
@@ -825,33 +1026,49 @@ export default function DocumentDetails() {
           )}
 
           {/* top form */}
-          <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3">
+          <div className={base ? "js-vehicle-customer-row" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"}>
             {/* vehicle */}
-            <div className="@4xl:col-span-5 space-y-1.5">
-              {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
+            <div className={base ? "js-cell-vehicle space-y-1.5" : "@4xl:col-span-5 space-y-1.5"}>
+              {!base && lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
                     onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = "none"; }}
                     className="max-h-[110px] w-auto rounded-md border border-slate-200 shadow-sm object-contain bg-white" />
                 </div>
               )}
-              {editing && (
+              {!base && editing && (
                 <VehicleSearch onSelect={(v) => {
                   set("registration", v.registration);
                   regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, ""); // known car → use its cached data, no SWS re-pay
                   lookup(v.registration);
                 }} />
               )}
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
-                <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                  className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+              <div className={base ? "js-lookup-row" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Registration</span>
+                {base ? (
+                  <div className="js-combo-field">
+                    <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                      className="bg-yellow-50 font-mono font-semibold" />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { set("registration", ""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                    className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                )}
                 {editing && (
-                  <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
-                    {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
+                  <button onClick={() => lookup()} disabled={looking} className={base ? "js-search-button" : "inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50"}>
+                    {base ? (
+                      <>
+                        <span className="js-search-icon">{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}</span>
+                        <span className="js-search-label">VRM Lookup</span>
+                      </>
+                    ) : (
+                      <>{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup</>
+                    )}
                   </button>
                 )}
-                {form.registration && (
+                {!base && form.registration && (
                   <button
                     type="button"
                     title="Order parts on Euro Car Parts (Omnipart) — opens with this reg, also copied to clipboard"
@@ -872,12 +1089,12 @@ export default function DocumentDetails() {
               </div>
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                 <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
               </div>
               <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
-                {form.vin && (
+                {!base && form.vin && (
                   <button type="button" title="Search this VIN on PartSouq"
                     onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
                     className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
@@ -889,13 +1106,23 @@ export default function DocumentDetails() {
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              <EF label="Mileage" field="mileage" required={isInvoice} grow {...{ form, set, editing }} />
+              {/* GA4 Classic always shows Mileage as required (matches the real app's visual cue);
+                  the actual print/email block still only applies to invoices, see requiredMissing(). */}
+              <EF label="Mileage" field="mileage" required={isInvoice || !!base} grow {...{ form, set, editing }} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
-              {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {!base && editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {base && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
+                  <button type="button" onClick={() => toast.message("Technical Data isn't wired up in Classic view — see the cards below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-red-700" /> Technical Data</button>
+                  <button type="button" onClick={() => toast.message("VRM Transfer isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">VRM Transfer</button>
+                  <button type="button" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> More</button>
+                </div>
+              )}
             </div>
             {/* customer */}
-            <div className="@4xl:col-span-4 space-y-1.5 @container/customer">
-              {editing && (
+            <div className={base ? "js-cell-customer space-y-1.5 @container/customer" : "@4xl:col-span-4 space-y-1.5 @container/customer"}>
+              {!base && editing && (
                 <>
                   <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
                     ...f, customerId: c.id, customerName: c.name || f.customerName,
@@ -914,27 +1141,43 @@ export default function DocumentDetails() {
                   </div>
                 </>
               )}
-              <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              {base ? (
+                <div className="js-lookup-row customer">
+                  <span>Acc Number</span>
+                  <div className="js-combo-field">
+                    <input value={form.accountNumber ?? ""} onChange={(e) => set("accountNumber", e.target.value)} readOnly={!editing} />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.accountNumber} onClick={() => { set("accountNumber", ""); }} aria-label="Clear account number"><X className="w-3 h-3" /></button>
+                  </div>
+                  <button type="button" className="js-search-button" onClick={() => toast.message("Customer search isn't available in Classic view yet.")} title="Find customer" aria-label="Find customer">
+                    <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
+                  </button>
+                </div>
+              ) : (
+                <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              )}
               <EF label="Company" field="company" {...{ form, set, editing }} />
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Name</span>
-                <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
-                <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
-                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
-                  placeholder={nameMissing ? "Required" : "Surname"}
-                  className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+              <div className={base ? "js-field" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Name</span>
+                <div className="flex items-center gap-2">
+                  <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={base ? "w-14" : boxCls(editing) + " w-14"} />
+                  <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={base ? "flex-1" : boxCls(editing) + " flex-1"} />
+                  <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
+                    placeholder={nameMissing ? "Required" : "Surname"}
+                    className={(base ? "flex-1" : boxCls(editing) + " flex-1") + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+                </div>
               </div>
               <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
                 <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
                 <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
-                {editing && (
+                {!base && editing && (
                   <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
                     className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
                     {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
                   </button>
                 )}
               </div>
-              {addr.open && (
+              {!base && addr.open && (
                 <div className="border border-slate-300 rounded-sm bg-white shadow-sm overflow-hidden text-[13px]">
                   <div className="flex items-center justify-between px-2 py-1 bg-slate-100 text-[11px] text-slate-500">
                     <span>{addr.loading ? "Searching…" : `${addr.results.length} address${addr.results.length === 1 ? "" : "es"}`}</span>
@@ -957,11 +1200,23 @@ export default function DocumentDetails() {
               {/* Either number reaches the customer — only flag Mobile as missing when Telephone is empty too. */}
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
-              {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
+              {!base && editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
-              <OtherNumbers customerId={form.customerId} editing={editing} />
-              {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
+              {!base && <OtherNumbers customerId={form.customerId} editing={editing} />}
+              {base && (
+                <div className="flex items-center gap-1 pt-1">
+                  {[
+                    [Pencil, "Edit"], [Mail, "Email"], [MessageSquare, "Notes"], [MapPin, "Address"],
+                  ].map(([Icon, label]: any) => (
+                    <button key={label} type="button" title={label} onClick={() => toast.message(`${label} isn't wired up in Classic view yet.`)} className="ga4-btn !px-2 !py-1"><Icon className="w-3.5 h-3.5" /></button>
+                  ))}
+                  <button type="button" onClick={() => toast.message("Deliver To isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> Deliver To</button>
+                  <button type="button" title="Attachments" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !px-2 !py-1"><Paperclip className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => toast.message("More isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">More</button>
+                </div>
+              )}
+              {!base && custSync.changes.length > 0 && dismissSig !== custSync.sig && (
                 <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
                   <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
                   <div className="flex gap-1.5 shrink-0">
@@ -971,89 +1226,18 @@ export default function DocumentDetails() {
                 </div>
               )}
             </div>
-            {/* additional info */}
-            <div className="@4xl:col-span-3 space-y-3">
-              {/* "Additional Info" fields (Status/Order Ref/Department/Terms/staff) hidden —
-                  not used by the workshop. Just the insurer bill-to is kept. */}
-              {!isExcess && (
-                <Panel title="Insurance">
-                  <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
-                  {insurerDetected && (
-                    <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
-                      className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
-                      Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
-                    </button>
-                  )}
-                </Panel>
-              )}
-              {!isExcess && (
-                <Panel title="Extras">
-                  {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
-                      usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
-                      value already set (e.g. a re-tick after someone picked Fail/another tester). */}
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
-                      <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setForm((f) => ({
-                              ...f,
-                              motAmount: num(f.motAmount) ? f.motAmount : "45",
-                              motClass: f.motClass || "4",
-                              motStatus: f.motStatus || "Pass",
-                              staffMotTester: f.staffMotTester || "Dec Buckley",
-                            }));
-                            markDirty();
-                          } else {
-                            set("motAmount", "");
-                          }
-                        }}
-                        className="accent-violet-600 w-3.5 h-3.5" />
-                      MOT
-                    </label>
-                    <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
-                  </div>
-                  <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-                  <div className="border-t my-1.5" />
-                  <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
-                  <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
-                  <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
-                </Panel>
-              )}
-              {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
-              {isExcess && relatedDoc && (
-                <Panel title="Insurance Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
-                </Panel>
-              )}
-              {!isExcess && relatedDoc && (
-                <Panel title="Policy Excess Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
-                  <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
-                </Panel>
-              )}
-              {!isNew && (
-                <Panel title="Account">
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
-                </Panel>
-              )}
-            </div>
+            {/* additional info — modern only; classic renders the same railContent in its
+                own full-height rail (js-cell-rail, added as a sibling of this whole card's
+                main column below) instead of sitting beside vehicle/customer. */}
+            {!base && (
+              <div className="@4xl:col-span-3 space-y-3">
+                {railContent}
+              </div>
+            )}
           </div>
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
-          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
+          {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
             <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
@@ -1075,18 +1259,21 @@ export default function DocumentDetails() {
           )}
 
           {/* body: tabs + totals */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
-            <div className="xl:col-span-9">
-              <Tabs defaultValue="description">
-                <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
-                    <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
+          <div className={base ? "js-body-row" : "grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3"}>
+            <div className={base ? "js-cell-main" : "xl:col-span-9"}>
+              <Tabs defaultValue={base ? "history" : "description"}>
+                <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
+                  {(base
+                    ? [["history", `History (${history.length})`], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
+                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
+                  ).map(([v, label]) => (
+                    <TabsTrigger key={v} value={v} className={base ? "" : "rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
-                <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
+                <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
                   <TabsContent value="description" className="mt-0">
-                    {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
-                    {editing && (
+                    {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {!base && editing && (
                       <ServicePartsPicker
                         vehInfo={vehInfo}
                         engineCC={form.engineCC}
@@ -1104,7 +1291,7 @@ export default function DocumentDetails() {
                         }}
                       />
                     )}
-                    {editing && (
+                    {!base && editing && (
                       <div className="flex items-center gap-3 mb-2">
                         <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
                         <RepairTimeEstimator
@@ -1121,7 +1308,7 @@ export default function DocumentDetails() {
                     )}
                     {editing ? (
                       <>
-                        <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />
+                        {!base && <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />}
                         <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
                           placeholder="Describe the work to be carried out…"
                           className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
@@ -1129,7 +1316,7 @@ export default function DocumentDetails() {
                     ) : <DescriptionView text={form.description ?? ""} />}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0">
-                    {editing && (form.make || form.model) && (
+                    {!base && editing && (form.make || form.model) && (
                       <button type="button" onClick={() => window.open(`/repair-pricing?make=${encodeURIComponent(form.make || "")}&model=${encodeURIComponent(form.model || "")}`, "_blank")}
                         className="mb-2 inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
                         <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
@@ -1141,7 +1328,7 @@ export default function DocumentDetails() {
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={(data as any)?.doc?.vehicleId}
-                    onOpen={(docId) => setLocation(`/documents/${docId}`)}
+                    onOpen={(docId) => setLocation(`${base}/documents/${docId}`)}
                     onAdd={(pt) => {
                       setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20, _k: nextItemKey() })]);
                       toast.success(`Added ${pt.description || "part"} (£${(Number(pt.unitPrice) || 0).toFixed(2)}) — see the Parts tab`);
@@ -1168,11 +1355,69 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
-                    {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
+                    {base ? (
+                      <div className="js-history-layout">
+                        {/* Reminders + account summary — mirrors the reference exactly (this
+                            record's own MOT due date, not the full cross-vehicle reminders
+                            queue that Home's Reminders panel covers). */}
+                        <aside className="js-reminders-column">
+                          <div className="js-subheader">
+                            <span>Reminders:</span>
+                            <button type="button" onClick={() => toast.message("Reminder editing isn't available in Classic view yet.")}>View/Edit</button>
+                          </div>
+                          <div className="js-reminder-head"><span>Type</span><span>Due</span></div>
+                          <div className="js-reminder-body">
+                            {vehInfo.motExpiry ? (
+                              <div className="js-reminder-row">
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: REMINDER_DOT[motTone(vehInfo.motExpiry)], display: "inline-block", flexShrink: 0 }} />
+                                  MOT
+                                </span>
+                                <span>{fmtDate(vehInfo.motExpiry)}</span>
+                              </div>
+                            ) : <div className="js-empty-row" />}
+                          </div>
+                          <button type="button" className="js-privacy-button" onClick={() => toast.message("Customer Privacy Options aren't available in Classic view yet.")}>
+                            Customer Privacy Options
+                          </button>
+                          <div className="js-account-summary">
+                            <div><span>Veh Last Invoiced</span><b>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</b></div>
+                            <div><span>Cust Last Invoiced</span><b>{fmtDate((data as any)?.custLastInvoiced) || "—"}</b></div>
+                            <label>
+                              <span>Referral</span>
+                              <select disabled title="Referral source isn't tracked in Classic view yet"><option>—</option></select>
+                            </label>
+                            <div className="js-account-balance">
+                              <span>Acc Balance</span>
+                              <b className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</b>
+                            </div>
+                          </div>
+                        </aside>
+                        <div className="js-history-table-panel">
+                          {history.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p>
+                          ) : (
+                            <Table>
+                              <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
+                              <TableBody>{history.map((h: any) => (
+                                <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
+                                  <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
+                                  <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                                  <TableCell>{h.docNo}</TableCell>
+                                  <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
+                                  <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
+                                  <TableCell className="text-right">£{money(h.totalGross)}</TableCell>
+                                </TableRow>))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </div>
+                      </div>
+                    ) : history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
-                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/documents/${h.id}`)}>
+                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
                             <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
                             <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>{h.docNo}</TableCell>
@@ -1187,39 +1432,45 @@ export default function DocumentDetails() {
                 </div>
               </Tabs>
             </div>
-            <div className="xl:col-span-3 space-y-3">
-              <Panel title="Totals">
-                <TRow label="SubTotal" value={liveTotals.subTotal} />
-                {liveTotals.discountTotal > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
-                    <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
-                  </div>
-                )}
-                <TRow label="VAT" value={liveTotals.vat} />
-                <TRow label="MOT" value={liveTotals.motGross} />
-                <TRow label="Total" value={liveTotals.gross} bold />
-                {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
-                  <div className="border-t mt-1 pt-1 space-y-1.5">
-                    {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
-                    {!isExcess && excessDeduction > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
-                        <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
-                      </div>
-                    )}
-                    {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
-                    {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
-                        <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Panel>
-            </div>
+            {!base && (
+              <div className="xl:col-span-3 space-y-3">
+                <Panel title="Totals">
+                  <TRow label="SubTotal" value={liveTotals.subTotal} />
+                  {liveTotals.discountTotal > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+                      <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+                    </div>
+                  )}
+                  <TRow label="VAT" value={liveTotals.vat} />
+                  <TRow label="MOT" value={liveTotals.motGross} />
+                  <TRow label="Total" value={liveTotals.gross} bold />
+                  {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+                    <div className="border-t mt-1 pt-1 space-y-1.5">
+                      {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
+                      {!isExcess && excessDeduction > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                          <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                        </div>
+                      )}
+                      {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+                      {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                          <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            )}
           </div>
+        </div>
+        {/* classic view: the full-height rail, a sibling grid column of js-cell-body above —
+            grid's default align-items:stretch matches its box height to js-cell-body's. */}
+        {base && <div className="js-cell-rail">{railContent}</div>}
         </div>
 
         {/* email dialog */}
@@ -1523,7 +1774,18 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
 }
 
 function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
+  const base = useClassicBase();
   const empty = !String(form[field] ?? "").trim();
+  if (base) {
+    return (
+      <label className={`js-field ${grow ? "wide" : ""}`}>
+        <span>{label}</span>
+        <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
+          placeholder={required ? "Required" : undefined}
+          className={(upper ? "uppercase " : "") + (required && empty ? "placeholder:text-red-600 placeholder:font-semibold" : "")} />
+      </label>
+    );
+  }
   return (
     <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
@@ -1535,18 +1797,40 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
 }
 
 function SelectField({ label, field, form, set, editing, options, w = "w-24" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; options: string[]; w?: string }) {
+  const base = useClassicBase();
+  const optionEls = (form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>);
+  if (base) {
+    return (
+      <label className="js-field">
+        <span>{label}</span>
+        <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing}>
+          <option value=""></option>
+          {optionEls}
+        </select>
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
       <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
         <option value=""></option>
-        {(form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
+        {optionEls}
       </select>
     </div>
   );
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <section className="js-rail-section">
+        <h2>{title}</h2>
+        <div className="js-panel-body">{children}</div>
+      </section>
+    );
+  }
   return (
     <div className="border border-slate-300 rounded-sm bg-slate-50 overflow-hidden">
       <div className="bg-slate-200/70 px-3 py-1.5 text-[13px] font-semibold text-slate-700">{title}</div>
@@ -1556,6 +1840,15 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function TRow({ label, value, bold }: { label: string; value: any; bold?: boolean }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <label className={`js-total-row ${bold ? "emphasis" : ""}`}>
+        <span>{label}</span>
+        <input readOnly value={`£${money(value)}`} />
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>

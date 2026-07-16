@@ -28,6 +28,8 @@ import {
     CheckCircle2
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
+import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -177,6 +179,7 @@ export default function VehicleDetails() {
     console.log("VehicleDetails: registration detected from URL:", registration);
 
     const [, setLocation] = useLocation(); // Added
+    const base = useClassicBase();
     const utils = trpc.useUtils(); // Added
 
     const { data: result, isLoading } = trpc.vehicles.getByRegistration.useQuery(
@@ -246,7 +249,7 @@ export default function VehicleDetails() {
                     <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
                     <h2 className="text-xl font-bold">Vehicle Not Found</h2>
                     <p className="text-muted-foreground mb-6">Could not find vehicle with registration: {registration}</p>
-                    <Link href="/vehicles">
+                    <Link href={`${base}/vehicles`}>
                         <Button variant="outline">
                             <ArrowLeft className="w-4 h-4 mr-2" />
                             Back to Vehicles
@@ -276,9 +279,13 @@ export default function VehicleDetails() {
                     <div className="flex items-center gap-4">
                         <ManufacturerLogo make={vehicle.make as string} size="xl" />
                         <div>
-                            <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
-                                {vehicle.registration}
-                            </div>
+                            {base ? (
+                                <div className="text-2xl font-bold tracking-wide">{ga4Spaced(vehicle.registration || "")}</div>
+                            ) : (
+                                <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
+                                    {vehicle.registration}
+                                </div>
+                            )}
                             <h1 className="text-2xl font-bold mt-2">
                                 {vehicle.make as string} {vehicle.model as string}
                             </h1>
@@ -290,7 +297,7 @@ export default function VehicleDetails() {
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <Button
-                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
+                            onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             New Job Sheet
@@ -298,7 +305,7 @@ export default function VehicleDetails() {
                         <Button
                             variant="outline"
                             className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
-                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=SI`)}
+                            onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=SI`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             Create Estimate/Invoice
@@ -493,7 +500,7 @@ export default function VehicleDetails() {
                                 <div className="space-y-4">
                                     <div>
                                         <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
-                                        <Link href={`/customers/${customer.id}`}>
+                                        <Link href={`${base}/customers/${customer.id}`}>
                                             <p className="text-sm font-bold uppercase hover:underline cursor-pointer text-primary">
                                                 {customer.name as string}
                                             </p>
@@ -523,7 +530,7 @@ export default function VehicleDetails() {
                                             </div>
                                         );
                                     })()}
-                                    <Link href={`/customers/${customer.id}`}>
+                                    <Link href={`${base}/customers/${customer.id}`}>
                                         <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
                                     </Link>
                                     {!!customer.optedOut && (

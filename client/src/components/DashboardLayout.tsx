@@ -59,6 +59,7 @@ import { UnreadMessageBadge } from "./UnreadMessageBadge";
 import UniversalSearch from "./UniversalSearch";
 import QuickMOTCheck from "./QuickMOTCheck";
 import Ga4SyncButton from "./Ga4SyncButton";
+import Ga4Shell from "./ga4/Ga4Shell";
 
 const menuGroups = [
   { section: "Workshop", items: [
@@ -118,6 +119,10 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
+  const [location] = useLocation();
+  // "GA4 Classic" — same pages, same data, a chrome that looks like the legacy desktop
+  // app instead of the modern sidebar. Same auth guard below, different shell entirely.
+  const isClassic = location.startsWith("/classic");
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -133,6 +138,10 @@ export default function DashboardLayout({
       window.location.href = "/login";
     }
     return null;
+  }
+
+  if (isClassic) {
+    return <Ga4Shell>{children}</Ga4Shell>;
   }
 
   return (
@@ -335,6 +344,10 @@ function DashboardLayoutContent({
 
             <div className="flex items-center gap-4 shrink-0">
               <Ga4SyncButton />
+              <button type="button" onClick={() => setLocation(location === "/" || location === "/documents" ? "/classic" : `/classic${location}`)} title="Switch to the GA4-look Classic view"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-300 bg-slate-50 text-[13px] font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+                <LayoutDashboard className="w-4 h-4" /> <span className="hidden lg:inline">Classic View</span>
+              </button>
               <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
                 <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>

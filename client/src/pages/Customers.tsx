@@ -8,9 +8,11 @@ import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useClassicBase } from "@/lib/classicNav";
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const base = useClassicBase();
   const { data: customers, isLoading } = trpc.customers.list.useQuery();
 
   const filteredCustomers = customers?.filter((customer) => {
@@ -78,7 +80,7 @@ export default function Customers() {
                     {filteredCustomers.map((customer) => (
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">
-                          <Link href={`/customers/${customer.id}`}>
+                          <Link href={`${base}/customers/${customer.id}`}>
                             <span className="cursor-pointer hover:underline text-blue-600">
                               {customer.name}
                             </span>
@@ -125,7 +127,7 @@ export default function Customers() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/customers/${customer.id}`}>
+                          <Link href={`${base}/customers/${customer.id}`}>
                             <Button variant="ghost" size="sm">
                               View Details
                             </Button>
