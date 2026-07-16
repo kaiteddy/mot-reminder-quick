@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
@@ -729,58 +729,61 @@ export default function DocumentDetails() {
             </Button>
           </div>
         )}
-        {/* toolbar */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" /> Back to documents
-          </button>
-          <div className="flex items-center gap-2">
-            {/* auto-save status */}
-            <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
-              {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
-                : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
-                : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
-                : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
-                : null}
-            </span>
-            {!isNew && (
-              <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
-            )}
-            <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
-            {!isNew && (
-              <div className="relative">
-                <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
-                  {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+        {/* toolbar — GA4 Classic moves this inside the record card below the title bar (see
+            the dark toolbar below); the modern app keeps its own light bordered-button row. */}
+        {!base && (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back to documents
+            </button>
+            <div className="flex items-center gap-2">
+              {/* auto-save status */}
+              <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
+                {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+                  : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
+                  : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
+                  : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
+                  : null}
+              </span>
+              {!isNew && (
+                <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+              )}
+              <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
+              {!isNew && (
+                <div className="relative">
+                  <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+                    {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isNew && isInvoice && (
+                <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
+              )}
+              {!isNew && (
+                <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
+                  {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
                 </button>
-                {convertOpen && (
-                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
-                    {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
-                      .filter(([code]) => code !== (data as any)?.doc?.docType)
-                      .map(([code, label]) => (
-                        <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
-                      ))}
-                    {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
-                      <>
-                        <div className="border-t my-1" />
-                        <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {!isNew && isInvoice && (
-              <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
-            )}
-            {!isNew && (
-              <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
-                {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
-              </button>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container">
+        <div className={base ? "border border-black/40 overflow-hidden shadow-sm @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"} style={base ? { background: "#eeecf2" } : undefined}>
           {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
               a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
           <div
@@ -805,8 +808,55 @@ export default function DocumentDetails() {
                 <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
               )}
               <span className="text-[11px] text-white/70">Auto-saves</span>
+              {base && (
+                <>
+                  <button type="button" onClick={() => toast.message("Settings aren't available in Classic view yet.")} className="opacity-80 hover:opacity-100" title="Settings"><Cog className="w-4 h-4" /></button>
+                  <button type="button" onClick={goBack} className="w-5 h-5 flex items-center justify-center bg-red-600 hover:bg-red-500 rounded-sm" title="Close"><X className="w-3.5 h-3.5" /></button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Toolbar — GA4 Classic only: dark charcoal bar with plain text buttons, matching
+              the real record toolbar exactly (Save/Print/Email/Extras/Convert … Delete). */}
+          {base && (
+            <div className="flex items-center justify-between px-3 py-1.5" style={{ background: "#4b4a47" }}>
+              <div className="flex items-center gap-5 text-[12.5px]">
+                <button onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm">Save</button>
+                <button onClick={handlePrint} disabled={printing || isNew} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm disabled:opacity-40">Print</button>
+                {!isNew && <button onClick={openEmail} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm">Email</button>}
+                <button onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1">Extras <ChevronDown className="w-3 h-3" /></button>
+                {!isNew && (
+                  <div className="relative">
+                    <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm inline-flex items-center gap-1 disabled:opacity-40">
+                      Convert <ChevronDown className="w-3 h-3" />
+                    </button>
+                    {convertOpen && (
+                      <div className="absolute left-0 mt-1 bg-white border border-slate-300 shadow-lg z-30 min-w-[190px] py-1 text-slate-800">
+                        {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                          .filter(([code]) => code !== (data as any)?.doc?.docType)
+                          .map(([code, label]) => (
+                            <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50">{label}</button>
+                          ))}
+                        {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                          <>
+                            <div className="border-t my-1" />
+                            <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!isNew && isInvoice && (
+                  <button onClick={() => setIssueOpen(true)} className="bg-fuchsia-700 text-white px-2.5 py-0.5 rounded-sm hover:bg-fuchsia-600">Issue</button>
+                )}
+              </div>
+              {!isNew && (
+                <button onClick={doDelete} disabled={delMut.isPending} className="text-white hover:bg-white/10 px-1.5 py-0.5 rounded-sm text-[12.5px] disabled:opacity-40">Delete</button>
+              )}
+            </div>
+          )}
 
           {/* policy-excess banner */}
           {isExcess && (
@@ -900,9 +950,19 @@ export default function DocumentDetails() {
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              <EF label="Mileage" field="mileage" required={isInvoice} grow {...{ form, set, editing }} />
+              {/* GA4 Classic always shows Mileage as required (matches the real app's visual cue);
+                  the actual print/email block still only applies to invoices, see requiredMissing(). */}
+              <EF label="Mileage" field="mileage" required={isInvoice || !!base} grow {...{ form, set, editing }} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {base && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
+                  <button type="button" onClick={() => toast.message("Technical Data isn't wired up in Classic view — see the cards below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-red-700" /> Technical Data</button>
+                  <button type="button" onClick={() => toast.message("VRM Transfer isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">VRM Transfer</button>
+                  <button type="button" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> More</button>
+                </div>
+              )}
             </div>
             {/* customer */}
             <div className="@4xl:col-span-4 space-y-1.5 @container/customer">
@@ -972,6 +1032,18 @@ export default function DocumentDetails() {
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
               <OtherNumbers customerId={form.customerId} editing={editing} />
+              {base && (
+                <div className="flex items-center gap-1 pt-1">
+                  {[
+                    [Pencil, "Edit"], [Mail, "Email"], [MessageSquare, "Notes"], [MapPin, "Address"],
+                  ].map(([Icon, label]: any) => (
+                    <button key={label} type="button" title={label} onClick={() => toast.message(`${label} isn't wired up in Classic view yet.`)} className="ga4-btn !px-2 !py-1"><Icon className="w-3.5 h-3.5" /></button>
+                  ))}
+                  <button type="button" onClick={() => toast.message("Deliver To isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> Deliver To</button>
+                  <button type="button" title="Attachments" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !px-2 !py-1"><Paperclip className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => toast.message("More isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">More</button>
+                </div>
+              )}
               {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
                 <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
                   <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
