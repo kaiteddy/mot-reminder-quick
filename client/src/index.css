@@ -289,17 +289,17 @@
    pages, not the reference's fixed-viewport single-page app — this scroll region
    is what lets them flow/scroll normally inside the fixed-height shell below. */
 .ga4-theme .app-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.ga4-theme .main-toolbar { height: 65px; display: flex; align-items: stretch; background: linear-gradient(#5b5b5b 0%, #454545 52%, #383838 100%); border-top: 1px solid #7a7a7a; border-bottom: 1px solid #121212; box-shadow: inset 0 -1px #555; overflow: hidden; overflow-x: auto; }
+.ga4-theme .main-toolbar { height: 50px; display: flex; align-items: stretch; background: linear-gradient(#5b5b5b 0%, #454545 52%, #383838 100%); border-top: 1px solid #7a7a7a; border-bottom: 1px solid #121212; box-shadow: inset 0 -1px #555; overflow: hidden; overflow-x: auto; }
 .ga4-theme .main-nav-items { display: flex; align-items: stretch; flex: 0 0 auto; }
 .ga4-theme .toolbar-spacer { min-width: 26px; flex: 1 1 auto; border-left: 1px solid #262626; box-shadow: inset 1px 0 #626262; }
 
-.ga4-theme .nav-button { width: 82px; min-width: 82px; height: 65px; border: 0; border-right: 1px solid #222; border-left: 1px solid #626262; border-radius: 0; background: transparent; color: #f5f5f5; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; padding: 4px 4px 6px; position: relative; text-shadow: 0 1px #1c1c1c; line-height: 1; transition: background 120ms cubic-bezier(0.23, 1, 0.32, 1); text-align: center; }
+.ga4-theme .nav-button { width: 74px; min-width: 74px; height: 50px; border: 0; border-right: 1px solid #222; border-left: 1px solid #626262; border-radius: 0; background: transparent; color: #f5f5f5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 3px 3px 4px; position: relative; text-shadow: 0 1px #1c1c1c; line-height: 1; transition: background 120ms cubic-bezier(0.23, 1, 0.32, 1); text-align: center; }
 .ga4-theme .nav-button:hover, .ga4-theme .nav-button.active { background: linear-gradient(#666, #4c4c4c 54%, #343434); }
 .ga4-theme .nav-button:active { transform: scale(0.98); box-shadow: inset 0 2px 5px #202020; }
-.ga4-theme .nav-button > span:last-child { white-space: nowrap; font-size: 11px; }
+.ga4-theme .nav-button > span:last-child { white-space: nowrap; font-size: 10.5px; }
 .ga4-theme .nav-button.soon { opacity: 0.62; }
 
-.ga4-theme .toolbar-icon-image { width: 30px; height: 30px; object-fit: contain; margin-bottom: 1px; filter: drop-shadow(0 1px 1px #242424); }
+.ga4-theme .toolbar-icon-image { width: 24px; height: 24px; object-fit: contain; margin-bottom: 0px; filter: drop-shadow(0 1px 1px #242424); }
 .ga4-theme .count-badge { position: absolute; right: 2px; top: 2px; min-width: 20px; height: 20px; padding: 0 3px; display: grid; place-items: center; border: 1px solid #1d1d1d; border-radius: 3px; background: linear-gradient(#d6d6d6, #b8b8b8); box-shadow: inset 0 1px #f5f5f5; color: #222; font-size: 10px; text-shadow: none; }
 
 .ga4-theme .quick-strip { height: 36px; display: flex; align-items: center; gap: 7px; padding: 5px 9px; background: linear-gradient(#4a4a4a, #303030); border-top: 1px solid #6c6c6c; border-bottom: 1px solid #0b0b0b; }
@@ -450,6 +450,18 @@
 .ga4-theme .js-lookup-row.customer { grid-template-columns: 126px minmax(160px, 1fr) auto; }
 .ga4-theme .js-lookup-row > span { display: flex; align-items: center; color: #555; font-size: 12px; }
 .ga4-theme .js-lookup-row input { min-width: 0; height: 29px; }
+/* Registration / Acc Number: a combo-style input (value + dropdown arrow + clear) sitting
+   right next to its own search button — both fields share this exact look in the reference,
+   only the search button's label differs (VRM Lookup vs a plain find icon). */
+.ga4-theme .js-combo-field { display: flex; align-items: stretch; min-width: 0; border: 1px solid #b7b7b7; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); background: #fff; }
+.ga4-theme .js-combo-field input { flex: 1; min-width: 0; border: 0 !important; box-shadow: none !important; background: transparent !important; }
+.ga4-theme .js-combo-arrow { display: flex; align-items: center; justify-content: center; width: 18px; flex-shrink: 0; color: #666; font-size: 9px; border-left: 1px solid #ccc; background: #ececec; }
+.ga4-theme .js-combo-clear { display: flex; align-items: center; justify-content: center; width: 24px; flex-shrink: 0; border: 0; border-left: 1px solid #7a1010; background: linear-gradient(#c0392b, #962c22); color: #fff; }
+.ga4-theme .js-combo-clear:disabled { opacity: .45; }
+.ga4-theme .js-search-button { display: flex; align-items: stretch; flex-shrink: 0; border: 1px solid #999; border-radius: 2px; background: linear-gradient(#fdfdfd, #e3e3e3); color: #333; font-size: 12px; font-weight: 600; overflow: hidden; }
+.ga4-theme .js-search-button:disabled { opacity: .5; }
+.ga4-theme .js-search-button .js-search-icon { display: flex; align-items: center; justify-content: center; padding: 0 8px; color: #5b2c82; }
+.ga4-theme .js-search-button .js-search-label { display: flex; align-items: center; padding: 0 10px; white-space: nowrap; border-left: 1px solid #ccc; }
 
 .ga4-theme .js-form-grid { padding-top: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; align-content: start; }
 .ga4-theme .js-field { min-width: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; color: #555; font-size: 12px; }

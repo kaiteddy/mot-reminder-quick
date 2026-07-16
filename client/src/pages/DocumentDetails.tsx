@@ -1045,11 +1045,27 @@ export default function DocumentDetails() {
               )}
               <div className={base ? "js-lookup-row" : "flex items-center gap-2"}>
                 <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Registration</span>
-                <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                  className={base ? "bg-yellow-50 font-mono font-semibold" : "flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500"} />
+                {base ? (
+                  <div className="js-combo-field">
+                    <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                      className="bg-yellow-50 font-mono font-semibold" />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { set("registration", ""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                    className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                )}
                 {editing && (
-                  <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
-                    {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} {base ? "VRM Lookup" : "Lookup"}
+                  <button onClick={() => lookup()} disabled={looking} className={base ? "js-search-button" : "inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50"}>
+                    {base ? (
+                      <>
+                        <span className="js-search-icon">{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}</span>
+                        <span className="js-search-label">VRM Lookup</span>
+                      </>
+                    ) : (
+                      <>{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup</>
+                    )}
                   </button>
                 )}
                 {!base && form.registration && (
@@ -1125,7 +1141,21 @@ export default function DocumentDetails() {
                   </div>
                 </>
               )}
-              <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              {base ? (
+                <div className="js-lookup-row customer">
+                  <span>Acc Number</span>
+                  <div className="js-combo-field">
+                    <input value={form.accountNumber ?? ""} onChange={(e) => set("accountNumber", e.target.value)} readOnly={!editing} />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.accountNumber} onClick={() => { set("accountNumber", ""); }} aria-label="Clear account number"><X className="w-3 h-3" /></button>
+                  </div>
+                  <button type="button" className="js-search-button" onClick={() => toast.message("Customer search isn't available in Classic view yet.")} title="Find customer" aria-label="Find customer">
+                    <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
+                  </button>
+                </div>
+              ) : (
+                <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              )}
               <EF label="Company" field="company" {...{ form, set, editing }} />
               <div className={base ? "js-field" : "flex items-center gap-2"}>
                 <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Name</span>
