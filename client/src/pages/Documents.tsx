@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { RegPlate } from "@/components/RegPlate";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
+import { useClassicBase } from "@/lib/classicNav";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -128,10 +129,13 @@ const workSummary = (desc?: string | null): { badges: { label: string; cls: stri
 
 export default function Documents() {
   const [search, setSearch] = useState("");
-  const [docType, setDocType] = useState("JS");
+  // "GA4 Classic" nav links here with e.g. ?docType=SI (its Job Sheets/Invoices/Estimates
+  // buttons are separate pages in the real GA4, so they deep-link straight to the filter).
+  const [docType, setDocType] = useState(() => new URLSearchParams(window.location.search).get("docType") || "JS");
   const [dateFilter, setDateFilter] = useState("");
   const { dateFrom, dateTo } = dateFilterRange(dateFilter);
   const [, setLocation] = useLocation();
+  const base = useClassicBase();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -270,7 +274,7 @@ export default function Documents() {
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Button onClick={() => setLocation("/documents/new")} className="gap-2">
+            <Button onClick={() => setLocation(`${base}/documents/new`)} className="gap-2">
               <FileText className="w-4 h-4" /> New Job Sheet
             </Button>
             {addrStats && (
@@ -380,7 +384,7 @@ export default function Documents() {
                     <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
                   {docs?.map((d: any) => (
-                    <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`/documents/${d.id}`)}>
+                    <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`${base}/documents/${d.id}`)}>
                       <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                       </TableCell>

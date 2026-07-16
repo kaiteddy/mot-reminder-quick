@@ -15,10 +15,16 @@ import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useClassicBase } from "@/lib/classicNav";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
+};
+// GA4 Classic title-bar colour per doc type — JS sampled off a live Job Sheet record
+// (deep plum/purple); others follow the same module colours as the top nav.
+const GA4_TITLEBAR_COLOR: Record<string, string> = {
+  JS: "#5b2c82", SI: "#1d4ed8", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c",
 };
 const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
@@ -147,6 +153,7 @@ export default function DocumentDetails() {
   const isNew = params.id === "new";
   const id = isNew ? 0 : Number(params.id);
   const [, setLocation] = useLocation();
+  const base = useClassicBase();
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.documents.getById.useQuery({ id }, { enabled: !isNew && !!id });
@@ -246,7 +253,7 @@ export default function DocumentDetails() {
       utils.documents.list.invalidate();
       utils.documents.stats.invalidate();
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
   }
   const emailMut = trpc.email.sendDocument.useMutation();
@@ -266,7 +273,7 @@ export default function DocumentDetails() {
       await delMut.mutateAsync({ ids: [id] });
       await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
       toast.success("Document deleted");
-      setLocation("/documents");
+      setLocation(`${base}/documents`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
   async function doIssue(after: "none" | "print" | "email" | "both") {
@@ -286,7 +293,7 @@ export default function DocumentDetails() {
       const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
       setExcessOpen(false);
       toast.success(`Policy excess invoice ${res.docNo} created`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Create excess failed: " + (e.message || "")); }
   }
   function emailCtx() {
@@ -606,7 +613,7 @@ export default function DocumentDetails() {
       if (res?.customerId) setForm((f) => (f.customerId ? f : { ...f, customerId: res.customerId }));
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
-        setLocation(`/documents/${res.id}`, { replace: true });
+        setLocation(`${base}/documents/${res.id}`, { replace: true });
       } else {
         utils.documents.list.invalidate();
         utils.documents.stats.invalidate();
@@ -625,7 +632,7 @@ export default function DocumentDetails() {
 
   // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
   async function flushPending() { if (dirty) await autoSave(); }
-  async function goBack() { await flushPending(); setLocation("/documents"); }
+  async function goBack() { await flushPending(); setLocation(`${base}/documents`); }
 
   // Open-document "tabs" — keep several docs on the go and jump between them.
   const openDocs = useOpenDocs();
@@ -643,7 +650,7 @@ export default function DocumentDetails() {
     if (data !== undefined && !(data as any)?.doc) {
       removeOpenDoc(id);
       const rest = openDocs.filter((d) => d.id !== id);
-      setLocation(rest.length ? `/documents/${rest[0].id}` : "/documents");
+      setLocation(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, data, id]);
@@ -651,7 +658,7 @@ export default function DocumentDetails() {
   async function switchTo(to: string) { await flushPending(); setLocation(to); }
   function closeTab(tabId: number) {
     removeOpenDoc(tabId);
-    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `/documents/${rest[0].id}` : "/documents"); }
+    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`); }
   }
 
   // Push the edited customer details back to the customer's master record (opt-in).
@@ -677,7 +684,7 @@ export default function DocumentDetails() {
     <DashboardLayout>
       <div className="p-8 space-y-3">
         <p className="text-muted-foreground">This document no longer exists — it may have been deleted. Taking you back…</p>
-        <button onClick={() => setLocation("/documents")} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
+        <button onClick={() => setLocation(`${base}/documents`)} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
       </div>
     </DashboardLayout>
   );
@@ -708,7 +715,7 @@ export default function DocumentDetails() {
               {openDocs.map((d) => {
                 const active = d.id === id;
                 return (
-                  <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
+                  <div key={d.id} onClick={() => { if (!active) switchTo(`${base}/documents/${d.id}`); }}
                     className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
                     <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
                     <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
@@ -717,7 +724,7 @@ export default function DocumentDetails() {
                 );
               })}
             </div>
-            <Button onClick={() => switchTo("/documents/new")} size="sm" className="gap-1.5 shrink-0">
+            <Button onClick={() => switchTo(`${base}/documents/new`)} size="sm" className="gap-1.5 shrink-0">
               <Plus className="w-3.5 h-3.5" /> New
             </Button>
           </div>
@@ -774,8 +781,12 @@ export default function DocumentDetails() {
         </div>
 
         <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container">
-          {/* purple title bar */}
-          <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between">
+          {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
+              a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
+          <div
+            className={base ? "text-white px-4 py-2 flex items-center justify-between" : "bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between"}
+            style={base ? { background: GA4_TITLEBAR_COLOR[form.docType] || GA4_TITLEBAR_COLOR.JS } : undefined}
+          >
             <div className="flex items-center gap-2 font-semibold">
               <span className="text-amber-300">★</span>
               <span>{typeLabel}</span>
@@ -1025,7 +1036,7 @@ export default function DocumentDetails() {
               {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
               {isExcess && relatedDoc && (
                 <Panel title="Insurance Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
+                  <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
                     <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
                   </button>
                   <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
@@ -1035,7 +1046,7 @@ export default function DocumentDetails() {
               )}
               {!isExcess && relatedDoc && (
                 <Panel title="Policy Excess Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
+                  <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
                     <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
                   </button>
                   <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
@@ -1141,7 +1152,7 @@ export default function DocumentDetails() {
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={(data as any)?.doc?.vehicleId}
-                    onOpen={(docId) => setLocation(`/documents/${docId}`)}
+                    onOpen={(docId) => setLocation(`${base}/documents/${docId}`)}
                     onAdd={(pt) => {
                       setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20, _k: nextItemKey() })]);
                       toast.success(`Added ${pt.description || "part"} (£${(Number(pt.unitPrice) || 0).toFixed(2)}) — see the Parts tab`);
@@ -1172,7 +1183,7 @@ export default function DocumentDetails() {
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
-                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/documents/${h.id}`)}>
+                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
                             <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
                             <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>{h.docNo}</TableCell>

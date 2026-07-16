@@ -49,6 +49,7 @@ const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
 const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
+const Ga4Home = lazy(() => import("./pages/ga4/Ga4Home"));
 
 function RouteFallback() {
   return (
@@ -68,6 +69,20 @@ function Router() {
       */}
       <Route path="/view-vehicle/:registration" component={VehicleDetails} />
       <Route path="/v/:registration" component={VehicleDetails} />
+
+      {/*
+        "GA4 Classic" — same pages/data as above, reused as-is, just reached under /classic/*
+        so DashboardLayout (see isClassic there) swaps in the GA4-look Ga4Shell chrome instead
+        of the normal sidebar. Every page below reads useClassicBase() to keep its own links
+        under /classic too, so navigating around never drops back into the modern chrome.
+      */}
+      <Route path="/classic/view-vehicle/:registration" component={VehicleDetails} />
+      <Route path="/classic/documents/:id" component={DocumentDetails} />
+      <Route path="/classic/documents" component={Documents} />
+      <Route path="/classic/customers/:id" component={CustomerDetails} />
+      <Route path="/classic/customers" component={Customers} />
+      <Route path="/classic/vehicles" component={Vehicles} />
+      <Route path="/classic" component={Ga4Home} />
 
       <Route path="/login" component={Login} />
       {/* Job Sheets is the app's landing page — staff should always open onto it. */}

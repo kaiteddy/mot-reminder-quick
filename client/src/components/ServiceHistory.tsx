@@ -22,6 +22,7 @@ import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
 
 // Document type → friendly label + badge colour (was previously only "Invoice"/"Estimate",
 // which mislabelled job sheets and credit notes).
@@ -112,6 +113,7 @@ interface ServiceHistoryProps {
 
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [, setLocation] = useLocation();
+    const base = useClassicBase();
     const { data: history, isLoading } = trpc.serviceHistory.getDetailedByVehicleId.useQuery({ vehicleId });
     const [filter, setFilter] = useState<string>("all");
     const printRef = useRef<HTMLDivElement>(null);
@@ -342,7 +344,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 {shown.map((doc: any) => {
                     const { summary } = jobSummary(doc.mainDescription);
                     return (
-                        <div key={doc.id} onClick={() => setLocation(`/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                        <div key={doc.id} onClick={() => setLocation(`${base}/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
                                 <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
@@ -352,7 +354,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             <div className="flex items-center justify-between gap-2 mt-2.5">
                                 <span className="text-xs text-muted-foreground font-mono truncate">{doc.docNo || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
                                 <div className="flex gap-1.5 shrink-0">
-                                    <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
+                                    <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`${base}/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
                                 </div>
                             </div>
@@ -378,7 +380,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         <TableRow
                             key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => setLocation(`/documents/${doc.id}`)}
+                            onClick={() => setLocation(`${base}/documents/${doc.id}`)}
                         >
                             <TableCell>
                                 {(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}
@@ -415,7 +417,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setLocation(`/documents/${doc.id}`);
+                                            setLocation(`${base}/documents/${doc.id}`);
                                         }}
                                     >
                                         <Edit className="h-4 w-4 mr-2" />

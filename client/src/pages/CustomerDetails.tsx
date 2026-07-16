@@ -1,4 +1,5 @@
-import { useRoute } from "wouter";
+import { useParams } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -250,7 +251,8 @@ function AdditionalNumbers({ customerId }: { customerId: number }) {
 }
 
 export default function CustomerDetails() {
-    const [match, params] = useRoute("/customers/:id");
+    const params = useParams<{ id: string }>();
+    const base = useClassicBase();
     const id = params?.id ? parseInt(params.id) : 0;
 
     const { data, isLoading, error, refetch } = trpc.customers.getById.useQuery(
@@ -305,12 +307,12 @@ export default function CustomerDetails() {
         });
     };
 
-    if (!match || !id) {
+    if (!id) {
         return (
             <DashboardLayout>
                 <div className="text-center py-12">
                     <h2 className="text-xl font-semibold text-red-500">Invalid Customer ID</h2>
-                    <Link href="/customers">
+                    <Link href={`${base}/customers`}>
                         <Button variant="link" className="mt-4">Back to Customers</Button>
                     </Link>
                 </div>
@@ -335,7 +337,7 @@ export default function CustomerDetails() {
                     <h2 className="text-xl font-semibold text-red-500">
                         {error ? error.message : "Customer not found"}
                     </h2>
-                    <Link href="/customers">
+                    <Link href={`${base}/customers`}>
                         <Button variant="link" className="mt-4">Back to Customers</Button>
                     </Link>
                 </div>
@@ -351,7 +353,7 @@ export default function CustomerDetails() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/customers">
+                        <Link href={`${base}/customers`}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="w-4 h-4" />
                             </Button>
@@ -369,7 +371,7 @@ export default function CustomerDetails() {
                         <Button
                             variant="default"
                             size="sm"
-                            onClick={() => window.location.href = `/documents/new?customerId=${customer.id}`}
+                            onClick={() => window.location.href = `${base}/documents/new?customerId=${customer.id}`}
                         >
                             <Plus className="w-4 h-4 mr-2" />
                             New Job
@@ -522,7 +524,7 @@ export default function CustomerDetails() {
                                                 return (
                                                     <TableRow key={v.id} className="group">
                                                         <TableCell className="py-2">
-                                                            <Link href={`/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
+                                                            <Link href={`${base}/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
                                                                 <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm cursor-pointer hover:scale-105 transition-transform">
                                                                     {v.registration}
                                                                 </div>
@@ -566,7 +568,7 @@ export default function CustomerDetails() {
                                                                     size="icon"
                                                                     className="h-7 w-7 text-primary"
                                                                     title="New Job"
-                                                                    onClick={() => window.location.href = `/documents/new?reg=${encodeURIComponent(v.registration)}`}
+                                                                    onClick={() => window.location.href = `${base}/documents/new?reg=${encodeURIComponent(v.registration)}`}
                                                                 >
                                                                     <Plus className="w-3.5 h-3.5" />
                                                                 </Button>

@@ -133,6 +133,129 @@
   }
 }
 
+/**
+ * "GA4 Classic" theme — a visual skin that makes the modern app look like the legacy
+ * FileMaker desktop app (Garage Assistant GA4) so long-time users don't have to relearn
+ * anything. Scoped to `.ga4-theme` (applied by Ga4Shell) so it never affects the normal
+ * modern UI. Same data, same tRPC calls, same pages underneath — only chrome changes.
+ *
+ * Leverage point: this project's Tailwind theme maps rounded-sm/md/lg/xl to `--radius`
+ * via `@theme inline` above, so overriding `--radius` here flattens corners app-wide
+ * inside the scope without having to touch every component's className.
+ */
+.ga4-theme {
+  --radius: 0px;
+  --background: #ece9e4;
+  --foreground: #1c1c1c;
+  --card: #ffffff;
+  --card-foreground: #1c1c1c;
+  --border: #a8a8a8;
+  --input: #ffffff;
+  --muted: #dedad2;
+  --muted-foreground: #5a5a5a;
+  --primary: #3b5fa0;
+  --primary-foreground: #ffffff;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, Arial, sans-serif;
+}
+
+.ga4-theme,
+.ga4-theme input,
+.ga4-theme select,
+.ga4-theme textarea,
+.ga4-theme button {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, Arial, sans-serif;
+}
+
+/* Module accent colours, matching the real GA4 top-nav (see ga4-system-map): */
+.ga4-mod-home { --ga4-accent: #4b5563; }
+.ga4-mod-jobsheets { --ga4-accent: #7c3aed; }
+.ga4-mod-invoices { --ga4-accent: #2563eb; }
+.ga4-mod-estimates { --ga4-accent: #16a34a; }
+.ga4-mod-vehsales { --ga4-accent: #78716c; }
+.ga4-mod-unpaid { --ga4-accent: #c026d3; }
+.ga4-mod-customers { --ga4-accent: #0f766e; }
+.ga4-mod-vehicles { --ga4-accent: #b45309; }
+
+/* Flat, beveled "Windows classic" button — used by Ga4Shell nav + toolbar actions. */
+.ga4-btn {
+  border-radius: 0;
+  border: 1px solid #8a8a8a;
+  border-top-color: #fafafa;
+  border-left-color: #fafafa;
+  background: linear-gradient(180deg, #fdfdfd 0%, #e2e2e2 100%);
+  color: #1c1c1c;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  box-shadow: none;
+}
+.ga4-btn:hover { background: linear-gradient(180deg, #ffffff 0%, #ececec 100%); }
+.ga4-btn:active { background: #d8d8d8; border-top-color: #8a8a8a; border-left-color: #8a8a8a; }
+
+/* Flat white panel with a hairline border, matching GA4's record-card chrome. */
+.ga4-panel { background: #fff; border: 1px solid var(--border); border-radius: 0; }
+
+/*
+ * Density pass. The reused pages (Documents/DocumentDetails/Customers/Vehicles) are built
+ * with modern, generously-spaced Tailwind sizing (h-12 inputs, text-4xl headings, soft
+ * shadows) — visually nothing like GA4's tightly-packed FileMaker fields. `!important` is
+ * intentional here: these are one-off utility classes on individual elements (high
+ * specificity, baked into the wide-viewport modern design), and the goal of this scope is
+ * to override them wholesale for GA4 Classic rather than rewrite every className.
+ */
+.ga4-theme { font-size: 12.5px; }
+.ga4-theme h1 { font-size: 19px !important; font-weight: 700 !important; line-height: 1.25 !important; }
+.ga4-theme h2 { font-size: 15px !important; font-weight: 700 !important; }
+.ga4-theme h3 { font-size: 13.5px !important; font-weight: 700 !important; }
+
+.ga4-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.ga4-theme select,
+.ga4-theme textarea {
+  height: 23px !important;
+  min-height: 23px !important;
+  font-size: 12.5px !important;
+  line-height: 1.3 !important;
+  padding: 1px 6px !important;
+  border-radius: 0 !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+.ga4-theme textarea { height: auto !important; min-height: 46px !important; padding: 4px 6px !important; }
+
+.ga4-theme label,
+.ga4-theme [class*="text-slate-500"],
+.ga4-theme [class*="text-muted-foreground"] {
+  font-size: 12px !important;
+}
+
+.ga4-theme button:not(.ga4-btn) {
+  border-radius: 0 !important;
+  font-size: 12.5px !important;
+}
+
+/* Flatten every arbitrary/literal rounded-* utility too (e.g. rounded-[4px] reg plates),
+   but leave true circles (avatars, dots) alone. */
+.ga4-theme [class*="rounded-"]:not([class*="rounded-full"]) { border-radius: 0 !important; }
+
+.ga4-theme .shadow-sm,
+.ga4-theme .shadow,
+.ga4-theme .shadow-md,
+.ga4-theme .shadow-lg,
+.ga4-theme .shadow-xl { box-shadow: none !important; }
+
+.ga4-theme table { font-size: 12px !important; }
+.ga4-theme th { padding: 4px 8px !important; font-size: 11.5px !important; }
+.ga4-theme td { padding: 3px 8px !important; }
+
+/* Dense list-grid rows, matching GA4's document/customer/vehicle browse lists. */
+.ga4-listgrid { font-size: 12.5px; border-collapse: collapse; width: 100%; }
+.ga4-listgrid th {
+  background: #dfe3e8; border: 1px solid #b7bcc4; padding: 4px 8px; text-align: left;
+  font-weight: 600; text-transform: none; position: sticky; top: 0;
+}
+.ga4-listgrid td { border: 1px solid #d7dae0; padding: 3px 8px; }
+.ga4-listgrid tbody tr:nth-child(even) { background: #f4f6f8; }
+.ga4-listgrid tbody tr:hover { background: #dbe7fb; cursor: pointer; }
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.
