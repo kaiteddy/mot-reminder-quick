@@ -128,9 +128,9 @@ const workSummary = (desc?: string | null): { badges: { label: string; cls: stri
 };
 
 export default function Documents() {
-  const [search, setSearch] = useState("");
-  // "GA4 Classic" nav links here with e.g. ?docType=SI (its Job Sheets/Invoices/Estimates
-  // buttons are separate pages in the real GA4, so they deep-link straight to the filter).
+  // "GA4 Classic" nav links here with e.g. ?docType=SI&search=... (its Job Sheets/Invoices/
+  // Estimates/Quick Search are separate controls in the real GA4, so they deep-link straight in).
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") || "");
   const [docType, setDocType] = useState(() => new URLSearchParams(window.location.search).get("docType") || "JS");
   const [dateFilter, setDateFilter] = useState("");
   const { dateFrom, dateTo } = dateFilterRange(dateFilter);

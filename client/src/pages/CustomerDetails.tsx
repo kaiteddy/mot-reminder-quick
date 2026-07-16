@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
+import { RegPlate } from "@/components/RegPlate";
 import { format } from "date-fns";
 import { useState, useEffect, useRef } from "react";
 import {
@@ -525,9 +526,13 @@ export default function CustomerDetails() {
                                                     <TableRow key={v.id} className="group">
                                                         <TableCell className="py-2">
                                                             <Link href={`${base}/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
-                                                                <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm cursor-pointer hover:scale-105 transition-transform">
-                                                                    {v.registration}
-                                                                </div>
+                                                                {base ? (
+                                                                    <span className="cursor-pointer hover:underline font-medium">{v.registration}</span>
+                                                                ) : (
+                                                                    <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm cursor-pointer hover:scale-105 transition-transform">
+                                                                        {v.registration}
+                                                                    </div>
+                                                                )}
                                                             </Link>
                                                         </TableCell>
                                                         <TableCell className="py-2">

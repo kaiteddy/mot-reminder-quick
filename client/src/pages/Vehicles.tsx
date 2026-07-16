@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { Link, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
+import { RegPlate } from "@/components/RegPlate";
 
 export default function Vehicles() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -117,9 +118,11 @@ export default function Vehicles() {
                           onClick={() => setLocation(`${base}/view-vehicle/${encodeURIComponent(vehicle.registration || "")}`)}
                         >
                           <TableCell>
-                            <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm group-hover:scale-105 transition-transform">
-                              {vehicle.registration}
-                            </div>
+                            {base ? <RegPlate reg={vehicle.registration} /> : (
+                              <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm group-hover:scale-105 transition-transform">
+                                {vehicle.registration}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div>

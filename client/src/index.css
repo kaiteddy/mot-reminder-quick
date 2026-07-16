@@ -166,15 +166,20 @@
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, Arial, sans-serif;
 }
 
-/* Module accent colours, matching the real GA4 top-nav (see ga4-system-map): */
-.ga4-mod-home { --ga4-accent: #4b5563; }
+/* Module accent colours, matching the real GA4 top-nav (see ga4-system-map + a live
+   screenshot of the actual Home screen for the exact module order/colours). */
+.ga4-mod-home { --ga4-accent: #3b5fa0; }
+.ga4-mod-calendar { --ga4-accent: #c2410c; }
 .ga4-mod-jobsheets { --ga4-accent: #7c3aed; }
 .ga4-mod-invoices { --ga4-accent: #2563eb; }
 .ga4-mod-estimates { --ga4-accent: #16a34a; }
 .ga4-mod-vehsales { --ga4-accent: #78716c; }
 .ga4-mod-unpaid { --ga4-accent: #c026d3; }
-.ga4-mod-customers { --ga4-accent: #0f766e; }
-.ga4-mod-vehicles { --ga4-accent: #b45309; }
+.ga4-mod-archives { --ga4-accent: #7c3aed; }
+.ga4-mod-customers { --ga4-accent: #2563eb; }
+.ga4-mod-vehicles { --ga4-accent: #0e7490; }
+.ga4-mod-stock { --ga4-accent: #c2410c; }
+.ga4-mod-reminders { --ga4-accent: #dc2626; }
 
 /* Flat, beveled "Windows classic" button — used by Ga4Shell nav + toolbar actions. */
 .ga4-btn {
@@ -214,7 +219,11 @@
   min-height: 23px !important;
   font-size: 12.5px !important;
   line-height: 1.3 !important;
-  padding: 1px 6px !important;
+  /* vertical only — horizontal padding is left to each input's own class (pl-7/pl-9 etc
+     make room for an absolutely-positioned search icon; overriding it here would put the
+     icon on top of the text) */
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
   border-radius: 0 !important;
   border-color: var(--border) !important;
   box-shadow: none !important;

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
+import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -278,9 +279,13 @@ export default function VehicleDetails() {
                     <div className="flex items-center gap-4">
                         <ManufacturerLogo make={vehicle.make as string} size="xl" />
                         <div>
-                            <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
-                                {vehicle.registration}
-                            </div>
+                            {base ? (
+                                <div className="text-2xl font-bold tracking-wide">{ga4Spaced(vehicle.registration || "")}</div>
+                            ) : (
+                                <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
+                                    {vehicle.registration}
+                                </div>
+                            )}
                             <h1 className="text-2xl font-bold mt-2">
                                 {vehicle.make as string} {vehicle.model as string}
                             </h1>
