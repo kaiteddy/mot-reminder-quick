@@ -23,6 +23,7 @@ import { parse } from "csv-parse/sync";
 import { mapGA4Document, buildCustomerName, buildAddress, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
 import { buildCustomerContacts } from "../server/services/contactCleanup";
 import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
+import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -287,6 +288,9 @@ function dt2(v: any): string | null { return v ? new Date(v).toISOString().slice
 
 // ---- 5) Retire web job sheets that GA4 has since invoiced (keeps the transition clean) ----
 await retireInvoicedJobSheets(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 6) Retire web invoices whose real GA4 invoice has now been imported (same ga4Number+reg+total) ----
+await retireSupersededWebInvoices(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
