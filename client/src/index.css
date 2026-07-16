@@ -530,6 +530,25 @@
 .ga4-theme label.js-total-row.emphasis span { font-weight: bold; color: #333; }
 .ga4-theme label.js-total-row.balance input { background: #fffed3; }
 
+/* Quick Search results — a floating window, not a dropdown under the nav's search box
+   (see Ga4QuickSearchModal.tsx). Reuses the same dark bezel/gradient chrome as the record
+   screen's title bar and rail-section headers so it reads as the same app. */
+.ga4-theme .qs-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ga4-theme .qs-modal { width: min(1100px, 92vw); height: min(760px, 88vh); display: flex; flex-direction: column; border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434, 0 12px 40px rgba(0,0,0,.5); overflow: hidden; }
+.ga4-theme .qs-titlebar { flex: 0 0 auto; height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 12px; background: linear-gradient(#6c6c6c, #4d4d4d); border-bottom: 1px solid #333; color: #eee; font-size: 14px; font-weight: 600; text-shadow: 0 1px #222; }
+.ga4-theme .qs-titlebar button { width: 34px; height: 28px; border: 0; border-radius: 0; background: linear-gradient(#a73146, #761527); color: white; display: grid; place-items: center; }
+.ga4-theme .qs-searchbar { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 6px 9px; background: linear-gradient(#4a4a4a, #303030); border-bottom: 1px solid #0b0b0b; }
+.ga4-theme .qs-searchbar input { flex: 1; min-width: 0; height: 26px; border: 1px solid #262626; background: linear-gradient(#585858, #464646); color: white; padding: 2px 8px; box-shadow: inset 0 1px 2px #313131, 0 1px #646464; font-size: 13px; }
+.ga4-theme .qs-searchbar button { width: 30px; height: 26px; border: 1px solid #242424; border-radius: 0; background: linear-gradient(#585858, #343434); color: #ddd; display: grid; place-items: center; flex-shrink: 0; }
+.ga4-theme .qs-results { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #f5f5f5; }
+.ga4-theme .qs-hint { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+.ga4-theme .qs-section-head { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: linear-gradient(#d3d3d3, #bdbdbd); border-bottom: 1px solid #858585; border-top: 1px solid #eee; font-size: 13px; font-weight: 700; color: #222; }
+.ga4-theme .qs-section-head span { font-weight: 400; color: #555; }
+.ga4-theme .qs-row, .ga4-theme .qs-row-empty { display: grid; grid-template-columns: 1fr 1.3fr 1.6fr; gap: 10px; height: 30px; padding: 0 10px; align-items: center; background: #fff; border-bottom: 1px solid #ddd; text-align: left; font-size: 12.5px; color: #333; }
+.ga4-theme .qs-row span, .ga4-theme .qs-row-empty span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ga4-theme .qs-row:hover { background: #e8effc; }
+.ga4-theme .qs-row-empty { background: #fafafa; }
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { Search, History, Wrench, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
+import Ga4QuickSearchModal from "./Ga4QuickSearchModal";
 
 // GA4 Classic — the real GA4 desktop chrome, ported from a purpose-built recreation
 // that was verified pixel-for-pixel against a live screenshot (graphite gradients,
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
 export default function Ga4Shell({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const urlSearch = typeof window !== "undefined" ? window.location.search : "";
 
   const go = (href: string) => (e: React.MouseEvent) => {
@@ -58,7 +60,9 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
     setLocation(qs ? `${path}?${qs}` : path);
   };
   const soon = (label: string) => (e: React.MouseEvent) => { e.preventDefault(); toast.message(`${label} isn't available in Classic view yet — use Modern view.`); };
-  const runSearch = () => { if (search.trim()) setLocation(`/classic/documents?docType=all&search=${encodeURIComponent(search.trim())}`); };
+  // Real GA4's Quick Search opens a results window (grouped Documents/Vehicles/Customers
+  // tables), not a page navigation — see Ga4QuickSearchModal.
+  const runSearch = () => { if (search.trim().length >= 2) setQuickSearchOpen(true); };
 
   return (
     <div className="ga4-theme">
@@ -117,6 +121,7 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
 
         <div className="app-scroll">{children}</div>
       </div>
+      {quickSearchOpen && <Ga4QuickSearchModal query={search} onClose={() => setQuickSearchOpen(false)} />}
     </div>
   );
 }

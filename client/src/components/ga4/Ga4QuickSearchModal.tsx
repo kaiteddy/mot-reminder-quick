@@ -1,0 +1,101 @@
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { Search, X } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { ga4Spaced } from "@/components/RegPlate";
+
+const DOC_LABEL: Record<string, string> = { SI: "SI", ES: "ES", JS: "JS", CR: "CR", XS: "XS", VS: "VS" };
+
+// GA4 Classic's Quick Search results — a floating window (title bar, dark search
+// row, grouped results tables) matching the real app exactly, not the modern app's
+// dropdown-under-the-input (see UniversalSearch.tsx). Same trpc.documents.globalSearch
+// query as that component, just laid out to match GA4's fixed-column result tables.
+export default function Ga4QuickSearchModal({ query, onClose }: { query: string; onClose: () => void }) {
+  const [, setLocation] = useLocation();
+  const [term, setTerm] = useState(query);
+  const [debounced, setDebounced] = useState(query.trim());
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(term.trim()), 200);
+    return () => clearTimeout(t);
+  }, [term]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const res = trpc.documents.globalSearch.useQuery({ query: debounced }, { enabled: debounced.length >= 2, staleTime: 15_000 });
+  const data = res.data as any;
+  const hasResults = data && (data.documents?.length || data.vehicles?.length || data.customers?.length);
+
+  const go = (path: string) => { onClose(); setLocation(path); };
+
+  return (
+    <div className="qs-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="qs-modal">
+        <div className="qs-titlebar">
+          <span>Quick Search</span>
+          <button type="button" onClick={onClose} aria-label="Close"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="qs-searchbar">
+          <input
+            value={term}
+            autoFocus
+            onChange={(e) => setTerm(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && setDebounced(term.trim())}
+          />
+          <button type="button" onClick={() => setDebounced(term.trim())} aria-label="Search"><Search size={14} /></button>
+        </div>
+        <div className="qs-results">
+          {debounced.length < 2 && <div className="qs-hint">Type at least 2 characters…</div>}
+          {debounced.length >= 2 && res.isFetching && !data && <div className="qs-hint">Searching…</div>}
+          {debounced.length >= 2 && data && !hasResults && <div className="qs-hint">No matches for “{debounced}”.</div>}
+
+          {data?.documents?.length > 0 && (
+            <>
+              <div className="qs-section-head">Documents <span>(showing {data.documents.length})</span></div>
+              {data.documents.map((d: any) => (
+                <button key={`d${d.id}`} type="button" className="qs-row" onClick={() => go(`/classic/documents/${d.id}`)}>
+                  <span>{DOC_LABEL[d.docType] || d.docType} {d.ga4Number || d.docNo}</span>
+                  <span>{d.customerName || "—"}</span>
+                  <span>{[d.registration ? ga4Spaced(d.registration) : null, [d.make, d.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" - ") || "—"}</span>
+                </button>
+              ))}
+              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+            </>
+          )}
+
+          {data?.vehicles?.length > 0 && (
+            <>
+              <div className="qs-section-head">Vehicles <span>(showing {data.vehicles.length})</span></div>
+              {data.vehicles.map((v: any) => (
+                <button key={`v${v.id}`} type="button" className="qs-row" onClick={() => go(`/classic/view-vehicle/${encodeURIComponent(v.registration)}`)}>
+                  <span>{ga4Spaced(v.registration)}</span>
+                  <span>{[v.make, v.model].filter(Boolean).join(" ") || "—"}</span>
+                  <span>{v.ownerName || "—"}</span>
+                </button>
+              ))}
+              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+            </>
+          )}
+
+          {data?.customers?.length > 0 && (
+            <>
+              <div className="qs-section-head">Customers <span>(showing {data.customers.length})</span></div>
+              {data.customers.map((c: any) => (
+                <button key={`c${c.id}`} type="button" className="qs-row" onClick={() => go(`/classic/customers/${c.id}`)}>
+                  <span>{c.name || "—"}</span>
+                  <span>{c.phone || "—"}</span>
+                  <span>{c.address || c.postcode || "—"}</span>
+                </button>
+              ))}
+              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
