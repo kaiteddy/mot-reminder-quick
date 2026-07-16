@@ -70,6 +70,7 @@ function motTone(d: any): InfoTone {
   return "green";
 }
 type InfoTone = "amber" | "sky" | "slate" | "green" | "red";
+const REMINDER_DOT: Record<InfoTone, string> = { green: "#4caf50", amber: "#f0a020", red: "#e53935", slate: "#999", sky: "#0ea5e9" };
 const TONES: Record<InfoTone, string> = {
   amber: "border-amber-200 bg-amber-50 text-amber-700",
   sky: "border-sky-200 bg-sky-50 text-sky-700",
@@ -710,6 +711,18 @@ export default function DocumentDetails() {
   // js-cell-rail below), so the two views can't drift apart.
   const railContent = (
     <>
+      {base && (
+        <Panel title="Additional Info">
+          <EF label="Order Ref" field="orderRef" grow {...{ form, set, editing }} />
+          <EF label="Department" field="department" grow {...{ form, set, editing }} />
+          <EF label="Terms" field="terms" grow {...{ form, set, editing }} />
+          <SelectField label="Status" field="docStatus" options={["Not Issued", "Issued", "Paid"]} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <SelectField label="Sales Advisor" field="staffSalesPerson" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Technician" field="staffTechnician" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Road Tester" field="staffRoadTester" options={TECHNICIANS} {...{ form, set, editing }} />
+        </Panel>
+      )}
       {!isExcess && (
         <Panel title="Insurance">
           <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
@@ -777,7 +790,9 @@ export default function DocumentDetails() {
           <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
         </Panel>
       )}
-      {!isNew && (
+      {/* Classic view puts this in the History tab's left-hand column instead (see
+          js-reminders-column below), matching the reference exactly. */}
+      {!isNew && !base && (
         <Panel title="Account">
           <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
           <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
@@ -1310,7 +1325,65 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
-                    {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
+                    {base ? (
+                      <div className="js-history-layout">
+                        {/* Reminders + account summary — mirrors the reference exactly (this
+                            record's own MOT due date, not the full cross-vehicle reminders
+                            queue that Home's Reminders panel covers). */}
+                        <aside className="js-reminders-column">
+                          <div className="js-subheader">
+                            <span>Reminders:</span>
+                            <button type="button" onClick={() => toast.message("Reminder editing isn't available in Classic view yet.")}>View/Edit</button>
+                          </div>
+                          <div className="js-reminder-head"><span>Type</span><span>Due</span></div>
+                          <div className="js-reminder-body">
+                            {vehInfo.motExpiry ? (
+                              <div className="js-reminder-row">
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: REMINDER_DOT[motTone(vehInfo.motExpiry)], display: "inline-block", flexShrink: 0 }} />
+                                  MOT
+                                </span>
+                                <span>{fmtDate(vehInfo.motExpiry)}</span>
+                              </div>
+                            ) : <div className="js-empty-row" />}
+                          </div>
+                          <button type="button" className="js-privacy-button" onClick={() => toast.message("Customer Privacy Options aren't available in Classic view yet.")}>
+                            Customer Privacy Options
+                          </button>
+                          <div className="js-account-summary">
+                            <div><span>Veh Last Invoiced</span><b>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</b></div>
+                            <div><span>Cust Last Invoiced</span><b>{fmtDate((data as any)?.custLastInvoiced) || "—"}</b></div>
+                            <label>
+                              <span>Referral</span>
+                              <select disabled title="Referral source isn't tracked in Classic view yet"><option>—</option></select>
+                            </label>
+                            <div className="js-account-balance">
+                              <span>Acc Balance</span>
+                              <b className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</b>
+                            </div>
+                          </div>
+                        </aside>
+                        <div className="js-history-table-panel">
+                          {history.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p>
+                          ) : (
+                            <Table>
+                              <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
+                              <TableBody>{history.map((h: any) => (
+                                <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
+                                  <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
+                                  <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                                  <TableCell>{h.docNo}</TableCell>
+                                  <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
+                                  <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
+                                  <TableCell className="text-right">£{money(h.totalGross)}</TableCell>
+                                </TableRow>))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </div>
+                      </div>
+                    ) : history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
