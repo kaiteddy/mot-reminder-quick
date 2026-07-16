@@ -705,6 +705,121 @@ export default function DocumentDetails() {
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
+  // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
+  // beside vehicle/customer) and classic (rendered in its own full-height rail, see
+  // js-cell-rail below), so the two views can't drift apart.
+  const railContent = (
+    <>
+      {!isExcess && (
+        <Panel title="Insurance">
+          <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
+          {insurerDetected && (
+            <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
+              className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
+              Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
+            </button>
+          )}
+        </Panel>
+      )}
+      {!isExcess && (
+        <Panel title="Extras">
+          {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
+              usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
+              value already set (e.g. a re-tick after someone picked Fail/another tester). */}
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
+              <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setForm((f) => ({
+                      ...f,
+                      motAmount: num(f.motAmount) ? f.motAmount : "45",
+                      motClass: f.motClass || "4",
+                      motStatus: f.motStatus || "Pass",
+                      staffMotTester: f.staffMotTester || "Dec Buckley",
+                    }));
+                    markDirty();
+                  } else {
+                    set("motAmount", "");
+                  }
+                }}
+                className="accent-violet-600 w-3.5 h-3.5" />
+              MOT
+            </label>
+            <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
+          </div>
+          <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
+          <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
+          <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
+        </Panel>
+      )}
+      {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
+      {isExcess && relatedDoc && (
+        <Panel title="Insurance Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
+        </Panel>
+      )}
+      {!isExcess && relatedDoc && (
+        <Panel title="Policy Excess Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
+          <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
+        </Panel>
+      )}
+      {!isNew && (
+        <Panel title="Account">
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
+        </Panel>
+      )}
+      {/* Classic view only: Totals lives in the same full-height rail as Insurance/Extras/
+          Account (matching the reference), instead of sitting beside the tabs below. */}
+      {base && (
+        <Panel title="Totals">
+          <TRow label="SubTotal" value={liveTotals.subTotal} />
+          {liveTotals.discountTotal > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+              <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+            </div>
+          )}
+          <TRow label="VAT" value={liveTotals.vat} />
+          <TRow label="MOT" value={liveTotals.motGross} />
+          <TRow label="Total" value={liveTotals.gross} bold />
+          {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+            <div className="border-t mt-1 pt-1 space-y-1.5">
+              {!isExcess && excessDeduction > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                  <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                </div>
+              )}
+              {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+              {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                  <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      )}
+    </>
+  );
+
   return (
     <DashboardLayout>
       <div className="space-y-3 text-slate-800">
@@ -783,7 +898,12 @@ export default function DocumentDetails() {
           </div>
         )}
 
-        <div className={base ? "js-top-card @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"}>
+        <div className={base ? "js-top-card js-record-grid @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"}>
+        {/* js-cell-body is the grid's main column (title/toolbar/forms/tabs/content); it's a
+            plain block wrapper in modern mode, so it's inert there — only classic mode makes
+            js-top-card an actual grid, where this needs to be one grid item so js-cell-rail
+            (added as its sibling below) can stretch to match its height. */}
+        <div className={base ? "js-cell-body" : undefined}>
           {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
               a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
           <div
@@ -891,9 +1011,9 @@ export default function DocumentDetails() {
           )}
 
           {/* top form */}
-          <div className={base ? "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3 mt-2" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"} style={base ? { background: "#f5f5f5", border: "1px solid #777" } : undefined}>
+          <div className={base ? "js-vehicle-customer-row" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"}>
             {/* vehicle */}
-            <div className="@4xl:col-span-5 space-y-1.5">
+            <div className={base ? "js-cell-vehicle space-y-1.5" : "@4xl:col-span-5 space-y-1.5"}>
               {!base && lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
@@ -970,7 +1090,7 @@ export default function DocumentDetails() {
               )}
             </div>
             {/* customer */}
-            <div className="@4xl:col-span-4 space-y-1.5 @container/customer">
+            <div className={base ? "js-cell-customer space-y-1.5 @container/customer" : "@4xl:col-span-4 space-y-1.5 @container/customer"}>
               {!base && editing && (
                 <>
                   <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
@@ -1061,85 +1181,14 @@ export default function DocumentDetails() {
                 </div>
               )}
             </div>
-            {/* additional info */}
-            <div className="@4xl:col-span-3 space-y-3">
-              {/* "Additional Info" fields (Status/Order Ref/Department/Terms/staff) hidden —
-                  not used by the workshop. Just the insurer bill-to is kept. */}
-              {!isExcess && (
-                <Panel title="Insurance">
-                  <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
-                  {insurerDetected && (
-                    <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
-                      className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
-                      Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
-                    </button>
-                  )}
-                </Panel>
-              )}
-              {!isExcess && (
-                <Panel title="Extras">
-                  {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
-                      usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
-                      value already set (e.g. a re-tick after someone picked Fail/another tester). */}
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
-                      <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setForm((f) => ({
-                              ...f,
-                              motAmount: num(f.motAmount) ? f.motAmount : "45",
-                              motClass: f.motClass || "4",
-                              motStatus: f.motStatus || "Pass",
-                              staffMotTester: f.staffMotTester || "Dec Buckley",
-                            }));
-                            markDirty();
-                          } else {
-                            set("motAmount", "");
-                          }
-                        }}
-                        className="accent-violet-600 w-3.5 h-3.5" />
-                      MOT
-                    </label>
-                    <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
-                  </div>
-                  <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-                  <div className="border-t my-1.5" />
-                  <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
-                  <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
-                  <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
-                </Panel>
-              )}
-              {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
-              {isExcess && relatedDoc && (
-                <Panel title="Insurance Invoice">
-                  <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
-                </Panel>
-              )}
-              {!isExcess && relatedDoc && (
-                <Panel title="Policy Excess Invoice">
-                  <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
-                  <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
-                </Panel>
-              )}
-              {!isNew && (
-                <Panel title="Account">
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
-                </Panel>
-              )}
-            </div>
+            {/* additional info — modern only; classic renders the same railContent in its
+                own full-height rail (js-cell-rail, added as a sibling of this whole card's
+                main column below) instead of sitting beside vehicle/customer. */}
+            {!base && (
+              <div className="@4xl:col-span-3 space-y-3">
+                {railContent}
+              </div>
+            )}
           </div>
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
@@ -1165,8 +1214,8 @@ export default function DocumentDetails() {
           )}
 
           {/* body: tabs + totals */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
-            <div className="xl:col-span-9">
+          <div className={base ? undefined : "grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3"}>
+            <div className={base ? undefined : "xl:col-span-9"}>
               <Tabs defaultValue={base ? "history" : "description"}>
                 <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
                   {(base
@@ -1280,39 +1329,45 @@ export default function DocumentDetails() {
                 </div>
               </Tabs>
             </div>
-            <div className="xl:col-span-3 space-y-3">
-              <Panel title="Totals">
-                <TRow label="SubTotal" value={liveTotals.subTotal} />
-                {liveTotals.discountTotal > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
-                    <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
-                  </div>
-                )}
-                <TRow label="VAT" value={liveTotals.vat} />
-                <TRow label="MOT" value={liveTotals.motGross} />
-                <TRow label="Total" value={liveTotals.gross} bold />
-                {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
-                  <div className="border-t mt-1 pt-1 space-y-1.5">
-                    {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
-                    {!isExcess && excessDeduction > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
-                        <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
-                      </div>
-                    )}
-                    {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
-                    {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
-                        <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Panel>
-            </div>
+            {!base && (
+              <div className="xl:col-span-3 space-y-3">
+                <Panel title="Totals">
+                  <TRow label="SubTotal" value={liveTotals.subTotal} />
+                  {liveTotals.discountTotal > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+                      <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+                    </div>
+                  )}
+                  <TRow label="VAT" value={liveTotals.vat} />
+                  <TRow label="MOT" value={liveTotals.motGross} />
+                  <TRow label="Total" value={liveTotals.gross} bold />
+                  {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+                    <div className="border-t mt-1 pt-1 space-y-1.5">
+                      {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
+                      {!isExcess && excessDeduction > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                          <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                        </div>
+                      )}
+                      {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+                      {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                          <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            )}
           </div>
+        </div>
+        {/* classic view: the full-height rail, a sibling grid column of js-cell-body above —
+            grid's default align-items:stretch matches its box height to js-cell-body's. */}
+        {base && <div className="js-cell-rail">{railContent}</div>}
         </div>
 
         {/* email dialog */}

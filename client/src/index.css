@@ -397,6 +397,21 @@
 .ga4-theme .js-top-card, .ga4-theme .js-workspace-panel, .ga4-theme .js-right-rail { border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434; }
 .ga4-theme .js-top-card { overflow: hidden; padding: 5px; }
 
+/* Classic-mode job sheet: .js-top-card is a 2-column grid — the main column
+   (title/toolbar/forms/tabs/content, .js-cell-body) on the left, and the
+   Insurance/Extras/Account/Totals rail (.js-cell-rail) on the right. Grid's default
+   align-items:stretch makes the rail's box match the main column's natural height
+   exactly (matching the reference, where the rail spans the full record height),
+   without needing to know how tall the main column will be up front. `grid-row: 1/-1`
+   doesn't work for this: with no grid-template-rows, the explicit grid has zero row
+   tracks, so line -1 IS line 1 and the span collapses to nothing — stretch is the
+   robust way to do this. */
+.ga4-theme .js-top-card.js-record-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 8px; padding: 8px; }
+.ga4-theme .js-cell-body { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.ga4-theme .js-vehicle-customer-row { display: grid; grid-template-columns: 1.07fr 0.93fr; gap: 8px; }
+.ga4-theme .js-cell-vehicle, .ga4-theme .js-cell-customer { background: #f5f5f5; border: 1px solid #777; padding: 10px; align-self: start; }
+.ga4-theme .js-cell-rail { display: flex; flex-direction: column; gap: 8px; }
+
 .ga4-theme .js-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) 116px minmax(96px, 1fr); align-items: center; background: linear-gradient(90deg, #590069 0%, #49005a 58%, #5d006b 100%); border: 1px solid #2b1730; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px #181818; color: white; text-shadow: 0 1px #211027; }
 .ga4-theme .js-titlebar > div:first-child { display: flex; align-items: center; gap: 7px; padding-left: 7px; font-size: 15px; height: 38px; }
 .ga4-theme .js-titlebar > div:first-child strong { font-size: 16px; }
