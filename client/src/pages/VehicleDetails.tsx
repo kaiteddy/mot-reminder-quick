@@ -302,6 +302,7 @@ export default function VehicleDetails() {
         ];
         return (
             <DashboardLayout>
+                <div className="vd-page">
                 <div className="vd-body">
                     <div className="js-titlebar" style={{ background: "linear-gradient(90deg, #5c5c5c 0%, #464646 58%, #3a3a3a 100%)" }}>
                         <div>
@@ -478,6 +479,7 @@ export default function VehicleDetails() {
                                 </button>
                             ))}
                         </div>
+                        <div className="vd-history-body">
                         {historyTab === "issued" && (
                             history.length === 0 ? <div className="js-history-empty" /> : (
                                 <>
@@ -539,7 +541,9 @@ export default function VehicleDetails() {
                                 </>
                             )
                         )}
+                        </div>
                     </div>
+                </div>
                 </div>
             </DashboardLayout>
         );
