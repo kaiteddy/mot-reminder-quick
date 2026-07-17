@@ -2,10 +2,17 @@ import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateText, generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { ENV } from "../_core/env";
 import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
+
+// generateJobSpec runs on Claude instead of the OpenAI/Forge path the rest of this
+// router uses — see JOB_SPEC_SYSTEM below for why (prompt caching needs a large,
+// static system prompt to actually activate).
+const anthropic = new Anthropic();
 
 // Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
 // Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
@@ -26,6 +33,93 @@ const getRuntimeProvider = () => {
       });
 };
 
+// Static rules + worked examples for generateJobSpec — identical on every call, so it's
+// the prefix Claude's prompt cache reuses. Kept as one frozen constant (never
+// interpolated) so its rendered bytes never change; a single byte difference here would
+// invalidate the cache for every technician's request, not just this one.
+const JOB_SPEC_SYSTEM = `You are an expert UK master technician writing job specifications as a list of clear, short workshop steps for the job sheet / invoice.
+
+RULES:
+- Cover EVERYTHING in the job description. If several jobs or tasks are described, include the steps for EVERY one of them — do not drop, merge or summarise away any job the user mentioned.
+- Use as many bullets as needed for the full scope of ALL the work: gaining access (panels, wheels, covers), each replacement/repair itself, fluids/bleeding, adjustments, torque/calibration, and a final check / road test where relevant.
+- ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
+- Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
+- UK terminology. No prices, no part numbers, no preamble.
+- Title: 3–6 words naming the job (or covering the main theme if several jobs, e.g. "Service & Repairs"). Do NOT repeat the make/model.
+
+EXAMPLE 1 — single job (Front Brake Discs & Pads):
+Title: "Front Brake Discs & Pads"
+- Raise vehicle and remove front road wheels
+- Remove calipers and old pads
+- Remove old discs and clean hub faces
+- Fit new discs and pads
+- Refit calipers and lubricate slider pins
+- Check fluid, bleed brakes if required
+- Refit wheels and torque to spec
+- Road test and check braking
+
+EXAMPLE 2 — routine service (Interim Service):
+Title: "Interim Service"
+- Raise vehicle on ramp and carry out visual inspection
+- Drain and replace engine oil
+- Remove and replace oil filter
+- Reset sump plug washer and torque to spec
+- Top up screen wash and check coolant level
+- Check tyre condition and pressures, adjust to spec
+- Check brake pad and disc wear front and rear
+- Check all exterior lights and wipers
+- Reset service indicator
+- Road test vehicle
+
+EXAMPLE 3 — several jobs mentioned together (Full Service & Cambelt Replacement):
+Title: "Full Service & Cambelt"
+- Raise vehicle on ramp and carry out full visual inspection
+- Drain and replace engine oil and filter
+- Replace air filter and cabin/pollen filter
+- Check and top up all fluid levels
+- Remove auxiliary drive belt and covers to access cambelt
+- Fit new cambelt, tensioner and idler pulleys to correct tension
+- Refit auxiliary belt and covers
+- Check and reset service indicator
+- Recheck for leaks after running engine to temperature
+- Road test vehicle
+
+EXAMPLE 4 — diagnostic + repair (Engine Warning Light — Coil Pack Fault):
+Title: "Engine Fault Diagnosis & Repair"
+- Connect diagnostic equipment and retrieve stored fault codes
+- Interpret codes and identify cylinder 3 misfire
+- Inspect ignition coil pack and spark plug on cylinder 3
+- Replace faulty ignition coil pack
+- Replace spark plug on affected cylinder
+- Clear fault codes and run engine to confirm fix
+- Road test and recheck for fault code return
+
+EXAMPLE 5 — MOT failure repair (Front Suspension & Steering):
+Title: "Front Suspension & Steering Repair"
+- Raise vehicle on ramp and remove front road wheels
+- Inspect front suspension, steering and driveshaft components
+- Remove and replace worn front lower arm bushes
+- Remove and replace offside front anti-roll bar drop link
+- Remove and replace nearside front outer track rod end
+- Set toe angle to manufacturer specification
+- Torque all suspension and steering fixings to spec
+- Refit wheels and torque to spec
+- Road test and recheck for noise or vibration
+
+When several jobs are listed together, keep each job's steps grouped in the order the
+jobs were described, but still return them as ONE combined bullet list under a single
+title covering all of them — do not return separate lists per job.
+
+COMMON PHRASING TO MATCH:
+- "Raise vehicle" / "raise on ramp" for anything needing the car off the ground.
+- "Torque to spec" rather than a made-up number, unless the job description gives one.
+- "Road test" as the closing step whenever the job affects how the car drives, brakes,
+  or steers — omit it only for jobs with no effect on driving (e.g. bulb replacement,
+  interior trim, infotainment).
+- Prefer "remove and replace" over separate remove/replace bullets for a simple part swap;
+  split into separate steps only when there's meaningful work between them (cleaning a
+  mating face, bleeding a system, calibrating a sensor).
+- "Check and reset service indicator" only for service-type jobs, never for one-off repairs.`;
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -198,6 +292,14 @@ CRITICAL INSTRUCTIONS:
 
   // Smart job specification: the technician types what job was done; the AI returns a
   // vehicle-aware bullet-point breakdown of the work carried out, for the job-sheet/invoice.
+  //
+  // Runs on Claude (Sonnet 5) instead of the OpenAI/Forge path above, with prompt
+  // caching on the system prompt — every technician's request shares the exact same
+  // rules + worked examples, only the vehicle/job details in the user turn change, so
+  // this is the one call in this router where caching pays for itself. The worked
+  // examples below aren't just instructional — they also need to be long enough to
+  // clear Sonnet's cache-eligible prefix minimum (1024 tokens), or cache_control is a
+  // no-op (silently: no error, no discount, cache_creation_input_tokens stays 0).
   generateJobSpec: publicProcedure
     .input(z.object({
       job: z.string().min(2),
@@ -205,47 +307,25 @@ CRITICAL INSTRUCTIONS:
       year: z.number().optional(), fuelType: z.string().optional(), engineCode: z.string().optional(), engineCC: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error("AI API key is not configured. Please set ANTHROPIC_API_KEY in your .env");
       }
       const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
       const detail = [input.engineCode && `engine ${input.engineCode}`, input.engineCC && `${input.engineCC}cc`, input.fuelType].filter(Boolean).join(", ");
-      const prompt = `A UK garage technician is carrying out this job on ${veh}${detail ? ` (${detail})` : ""}:
+      const userPrompt = `A UK garage technician is carrying out this job on ${veh}${detail ? ` (${detail})` : ""}:\n\n"${input.job}"`;
 
-"${input.job}"
-
-Write a job specification for the job sheet / invoice listing, as bullet points, the WORK
-REQUIRED — each task the technician carries out, start to finish.
-- Cover EVERYTHING written above. If several jobs or tasks are described, include the steps
-  for EVERY one of them — do not drop, merge or summarise away any job the user mentioned.
-- Use as many bullets as needed for the full scope of ALL the work: gaining access (panels,
-  wheels, covers), each replacement/repair itself, fluids/bleeding, adjustments,
-  torque/calibration, and a final check / road test where relevant.
-- ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps
-  into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
-- Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
-- UK terminology. No prices, no part numbers, no preamble.
-- Title: 3–6 words naming the job (or covering the main theme if several jobs, e.g. "Service & Repairs"). Do NOT repeat the make/model.
-
-Example — note each bullet is ONE short step (Front Brake Discs & Pads):
-Title: "Front Brake Discs & Pads"
-- Raise vehicle and remove front road wheels
-- Remove calipers and old pads
-- Remove old discs and clean hub faces
-- Fit new discs and pads
-- Refit calipers and lubricate slider pins
-- Check fluid, bleed brakes if required
-- Refit wheels and torque to spec
-- Road test and check braking`;
       try {
-        const provider = getRuntimeProvider();
-        const { object } = await generateObject({
-          model: provider(AI_MODEL),
-          system: "You are an expert UK master technician writing job specifications as a list of clear, short workshop steps — ONE action per bullet, covering the full scope of ALL the work described (every job mentioned, none dropped). Never cram multiple steps into one bullet; no filler or padding.",
-          prompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) }),
+        const message = await anthropic.messages.parse({
+          model: "claude-sonnet-5",
+          max_tokens: 2048,
+          system: [{ type: "text", text: JOB_SPEC_SYSTEM, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: userPrompt }],
+          output_config: {
+            format: zodOutputFormat(z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) })),
+          },
         });
-        return object;
+        if (!message.parsed_output) throw new Error("Model response didn't match the expected schema");
+        return message.parsed_output;
       } catch (e: any) {
         console.error("AI Generation Error:", e);
         throw new Error("Failed to generate job spec: " + e.message);
