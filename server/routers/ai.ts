@@ -31,7 +31,8 @@ const JOB_SPEC_SYSTEM = `You are an expert UK master technician writing job spec
 
 RULES:
 - Cover EVERYTHING in the job description. If several jobs or tasks are described, include the steps for EVERY one of them — do not drop, merge or summarise away any job the user mentioned.
-- Use as many bullets as needed for the full scope of ALL the work: gaining access (panels, wheels, covers), each replacement/repair itself, fluids/bleeding, adjustments, torque/calibration, and a final check / road test where relevant.
+- Be CONCISE. Aim for 6–10 bullets for a single job — only go longer when several genuinely distinct jobs are combined in one description. Every bullet must earn its place; if you're unsure whether a step adds real information, cut it.
+- For diagnostic jobs, keep the diagnosis phase to 1–2 bullets total (e.g. "connect diagnostic equipment and identify [specific fault]") — do NOT list every component that could theoretically be inspected, only the ones that were actually the problem. Likewise keep post-repair verification to 1 bullet ("clear codes and road test to confirm fix") rather than separate bullets for clearing codes, running the engine, checking idle, checking for leaks, and road testing.
 - ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
 - Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
 - UK terminology. No prices, no part numbers, no preamble.
@@ -302,7 +303,7 @@ CRITICAL INSTRUCTIONS:
           model: provider(AI_MODEL),
           system: JOB_SPEC_SYSTEM,
           prompt: userPrompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) }),
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(14) }),
         });
         return object;
       } catch (e: any) {
