@@ -2,17 +2,10 @@ import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateText, generateObject } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { ENV } from "../_core/env";
 import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
-
-// generateJobSpec runs on Claude instead of the OpenAI/Forge path the rest of this
-// router uses — see JOB_SPEC_SYSTEM below for why (prompt caching needs a large,
-// static system prompt to actually activate).
-const anthropic = new Anthropic();
 
 // Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
 // Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
@@ -33,10 +26,7 @@ const getRuntimeProvider = () => {
       });
 };
 
-// Static rules + worked examples for generateJobSpec — identical on every call, so it's
-// the prefix Claude's prompt cache reuses. Kept as one frozen constant (never
-// interpolated) so its rendered bytes never change; a single byte difference here would
-// invalidate the cache for every technician's request, not just this one.
+// Static rules + worked examples for generateJobSpec's system prompt.
 const JOB_SPEC_SYSTEM = `You are an expert UK master technician writing job specifications as a list of clear, short workshop steps for the job sheet / invoice.
 
 RULES:
@@ -292,14 +282,6 @@ CRITICAL INSTRUCTIONS:
 
   // Smart job specification: the technician types what job was done; the AI returns a
   // vehicle-aware bullet-point breakdown of the work carried out, for the job-sheet/invoice.
-  //
-  // Runs on Claude (Sonnet 5) instead of the OpenAI/Forge path above, with prompt
-  // caching on the system prompt — every technician's request shares the exact same
-  // rules + worked examples, only the vehicle/job details in the user turn change, so
-  // this is the one call in this router where caching pays for itself. The worked
-  // examples below aren't just instructional — they also need to be long enough to
-  // clear Sonnet's cache-eligible prefix minimum (1024 tokens), or cache_control is a
-  // no-op (silently: no error, no discount, cache_creation_input_tokens stays 0).
   generateJobSpec: publicProcedure
     .input(z.object({
       job: z.string().min(2),
@@ -307,25 +289,22 @@ CRITICAL INSTRUCTIONS:
       year: z.number().optional(), fuelType: z.string().optional(), engineCode: z.string().optional(), engineCC: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      if (!process.env.ANTHROPIC_API_KEY) {
-        throw new Error("AI API key is not configured. Please set ANTHROPIC_API_KEY in your .env");
+      if (!hasAIKey()) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
       const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
       const detail = [input.engineCode && `engine ${input.engineCode}`, input.engineCC && `${input.engineCC}cc`, input.fuelType].filter(Boolean).join(", ");
       const userPrompt = `A UK garage technician is carrying out this job on ${veh}${detail ? ` (${detail})` : ""}:\n\n"${input.job}"`;
 
       try {
-        const message = await anthropic.messages.parse({
-          model: "claude-sonnet-5",
-          max_tokens: 2048,
-          system: [{ type: "text", text: JOB_SPEC_SYSTEM, cache_control: { type: "ephemeral" } }],
-          messages: [{ role: "user", content: userPrompt }],
-          output_config: {
-            format: zodOutputFormat(z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) })),
-          },
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider(AI_MODEL),
+          system: JOB_SPEC_SYSTEM,
+          prompt: userPrompt,
+          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(20) }),
         });
-        if (!message.parsed_output) throw new Error("Model response didn't match the expected schema");
-        return message.parsed_output;
+        return object;
       } catch (e: any) {
         console.error("AI Generation Error:", e);
         throw new Error("Failed to generate job spec: " + e.message);
