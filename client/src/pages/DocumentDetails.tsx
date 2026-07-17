@@ -610,8 +610,13 @@ export default function DocumentDetails() {
       const res = await save.mutateAsync(buildPayload());
       if (editSeq.current === seq) setDirty(false); // nothing changed during the save
       setSaveStatus("saved");
-      // Capture the resolved/created customer so later auto-saves don't register a duplicate.
-      if (res?.customerId) setForm((f) => (f.customerId ? f : { ...f, customerId: res.customerId }));
+      // Capture the resolved/created customer (and any GA4-style account number just
+      // minted for them) so later auto-saves don't register a duplicate.
+      if (res?.customerId || res?.accountNumber) setForm((f) => ({
+        ...f,
+        customerId: f.customerId ?? res.customerId,
+        accountNumber: f.accountNumber ? f.accountNumber : (res.accountNumber ?? f.accountNumber),
+      }));
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
         setLocation(`${base}/documents/${res.id}`, { replace: true });

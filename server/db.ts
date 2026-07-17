@@ -2322,6 +2322,27 @@ export interface SaveDocInput {
 
 const undef = (o: Record<string, any>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
+/** Mint a new GA4-style account number: first 3 letters of the surname (uppercase) + the
+ * next unused 3-digit sequence for that prefix — e.g. "Stone" -> STO014 if STO001..STO013
+ * are already taken. Format reverse-engineered from real GA4-synced customer records
+ * (ROS013, SHA019, MAL014/MAL018/MAL006 for three different "Mal-" surnames, etc.). */
+async function generateAccountNumber(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: string, surname?: string) {
+  const source = (surname || name.trim().split(/\s+/).pop() || name).replace(/[^A-Za-z]/g, "");
+  const prefix = (source.slice(0, 3) || "CUS").toUpperCase().padEnd(3, "X");
+
+  const [fromCustomers, fromDocs] = await Promise.all([
+    db.select({ accountNumber: customers.accountNumber }).from(customers).where(ilike(customers.accountNumber, `${prefix}%`)),
+    db.select({ accountNumber: serviceHistory.accountNumber }).from(serviceHistory).where(ilike(serviceHistory.accountNumber, `${prefix}%`)),
+  ]);
+
+  let max = 0;
+  for (const row of [...fromCustomers, ...fromDocs]) {
+    const digits = String(row.accountNumber || "").slice(3).replace(/\D/g, "");
+    if (digits) max = Math.max(max, parseInt(digits, 10));
+  }
+  return `${prefix}${String(max + 1).padStart(3, "0")}`;
+}
+
 /** Create or update a job sheet / document, its vehicle link, line items, and recomputed totals. */
 export async function saveDocument(input: SaveDocInput) {
   const db = await getDb();
@@ -2354,15 +2375,18 @@ export async function saveDocument(input: SaveDocInput) {
   }
 
   // 1b) create a new customer from entered details when requested
+  let accountNumber = input.accountNumber;
   if (!input.customerId && input.createCustomer && input.customerName) {
     const hadOwner = customerId != null;
     const address = [input.custHouseNo, input.custRoad, input.custLocality, input.custTown, input.custCounty].filter(Boolean).join(", ");
+    if (!accountNumber) accountNumber = await generateAccountNumber(db, input.customerName, input.custSurname);
     const [{ id }] = await db.insert(customers).values({
       name: input.customerName,
       email: input.custEmail || null,
       phone: input.custMobile || input.custTelephone || null,
       postcode: input.custPostcode || null,
       address: address || null,
+      accountNumber,
       externalId: `WEB-CUST-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
     } as any).returning({ id: customers.id });
     customerId = id;
@@ -2401,7 +2425,7 @@ export async function saveDocument(input: SaveDocInput) {
     docType, vehicleId, customerId: input.customerId ?? customerId, registration: input.registration ? input.registration.toUpperCase() : undefined,
     customerName: input.customerName || [input.custTitle, input.custForename, input.custSurname].filter(Boolean).join(" ") || undefined,
     custTitle: input.custTitle, custForename: input.custForename, custSurname: input.custSurname,
-    company: input.company, accountNumber: input.accountNumber,
+    company: input.company, accountNumber,
     custHouseNo: input.custHouseNo, custRoad: input.custRoad, custLocality: input.custLocality,
     custTown: input.custTown, custCounty: input.custCounty, custPostcode: input.custPostcode,
     custTelephone: input.custTelephone, custMobile: input.custMobile, custEmail: input.custEmail,
@@ -2440,7 +2464,7 @@ export async function saveDocument(input: SaveDocInput) {
       discount: i.discount != null ? String(i.discount) : null, discountType: i.discountType ?? null,
     })) as any);
   }
-  return { id: docId, customerId };
+  return { id: docId, customerId, accountNumber };
 }
 
 /** Convert a document to another type (Estimate↔Job Sheet↔Invoice…), copying all data into a new document. */
