@@ -321,16 +321,16 @@
 .ga4-theme .queue-panel, .ga4-theme .rail-panel { min-height: 0; overflow: hidden; border: 1px solid #080808; border-radius: 4px; background: #4b4b4b; box-shadow: inset 0 0 0 2px #565656, 0 0 0 1px #333; }
 .ga4-theme .queue-panel { display: flex; flex-direction: column; padding: 5px; }
 
-.ga4-theme .panel-titlebar { flex: 0 0 38px; height: 38px; display: flex; align-items: center; justify-content: space-between; color: white; padding: 0 9px; border: 1px solid #292929; box-shadow: inset 0 1px rgba(255,255,255,.16), 0 1px #171717; text-shadow: 0 1px #222; font-size: 14px; }
+.ga4-theme .panel-titlebar { flex: 0 0 28px; height: 28px; display: flex; align-items: center; justify-content: space-between; color: white; padding: 0 9px; border: 1px solid #292929; box-shadow: inset 0 1px rgba(255,255,255,.16), 0 1px #171717; text-shadow: 0 1px #222; font-size: 13px; }
 .ga4-theme .jobs-panel .panel-titlebar { background: linear-gradient(90deg, #5c006c 0%, #430057 68%, #5f0874 100%); }
 .ga4-theme .invoices-panel .panel-titlebar { background: linear-gradient(90deg, #07576e 0%, #06455e 68%, #006278 100%); }
-.ga4-theme .panel-titlebar strong { font-size: 15px; }
+.ga4-theme .panel-titlebar strong { font-size: 13.5px; }
 .ga4-theme .panel-titlebar span { color: #ddd; margin-left: 4px; }
-.ga4-theme .collapse-button { width: 32px; height: 34px; margin-right: -8px; border: 0; border-left: 1px solid rgba(0,0,0,.32); border-radius: 0; background: rgba(0,0,0,.08); color: #ddd; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ga4-theme .collapse-button { width: 26px; height: 24px; margin-right: -8px; border: 0; border-left: 1px solid rgba(0,0,0,.32); border-radius: 0; background: rgba(0,0,0,.08); color: #ddd; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-.ga4-theme .panel-actions { flex: 0 0 42px; display: flex; justify-content: space-between; background: linear-gradient(#565656, #414141); border-left: 1px solid #282828; border-right: 1px solid #282828; flex-wrap: wrap; }
+.ga4-theme .panel-actions { flex: 0 0 30px; display: flex; justify-content: space-between; background: linear-gradient(#565656, #414141); border-left: 1px solid #282828; border-right: 1px solid #282828; flex-wrap: wrap; }
 .ga4-theme .panel-actions-left, .ga4-theme .panel-actions-right { display: flex; }
-.ga4-theme .panel-actions .bevel-button { height: 42px; min-width: 120px; border-top: 0; border-bottom: 0; box-shadow: inset 0 1px #6e6e6e; font-size: 13px; }
+.ga4-theme .panel-actions .bevel-button { height: 30px; min-width: 110px; border-top: 0; border-bottom: 0; box-shadow: inset 0 1px #6e6e6e; font-size: 12.5px; }
 .ga4-theme .filter-row { flex: 0 0 50px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: #4e4e4e; border: 1px solid #2d2d2d; flex-wrap: wrap; }
 .ga4-theme .filter-row .bevel-button { height: 30px; min-width: 90px; color: #ddd; font-size: 12px; }
 .ga4-theme .filter-row .filter-clear { min-width: 30px; width: 30px; padding: 0; }
