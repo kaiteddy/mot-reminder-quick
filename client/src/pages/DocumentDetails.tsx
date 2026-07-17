@@ -1159,7 +1159,7 @@ export default function DocumentDetails() {
               <EF label="Company" field="company" {...{ form, set, editing }} />
               <div className={base ? "js-field" : "flex items-center gap-2"}>
                 <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Name</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 js-name-fields">
                   <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={base ? "w-14" : boxCls(editing) + " w-14"} />
                   <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={base ? "flex-1" : boxCls(editing) + " flex-1"} />
                   <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}

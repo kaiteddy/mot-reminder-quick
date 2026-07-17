@@ -474,6 +474,12 @@
 .ga4-theme .js-field > span { padding-right: 7px; white-space: nowrap; text-align: left; }
 .ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; padding-left: 6px !important; padding-right: 6px !important; }
 .ga4-theme .customer-grid .js-field { grid-template-columns: 126px minmax(0, 1fr); }
+/* Title/Forename/Surname share one row — the generic ".js-field input { width: 100% }"
+   rule above fights their flex sizing (Title balloons, Forename/Surname get squeezed to
+   ~14px), so give this row its own explicit widths. */
+.ga4-theme .js-name-fields input { width: auto !important; min-width: 0; }
+.ga4-theme .js-name-fields input[placeholder="Title"] { flex: 0 0 46px; }
+.ga4-theme .js-name-fields input[placeholder="Forename"], .ga4-theme .js-name-fields input[placeholder="Surname"] { flex: 1 1 0; }
 .ga4-theme .js-mot-hint { display: flex; align-items: center; gap: 5px; padding-left: 112px; margin-top: -3px; font-size: 11px; color: #777; }
 .ga4-theme .js-mot-hint svg { color: #999; }
 .ga4-theme .js-mot-hint b { color: #333; }
