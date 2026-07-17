@@ -316,6 +316,12 @@
 .ga4-theme .current-user { margin-left: auto; padding-right: 7px; color: #a9a9a9; font-size: 12px; font-style: italic; white-space: nowrap; }
 .ga4-theme .current-user strong { color: #dedede; }
 
+.ga4-theme .zoom-control { display: flex; align-items: stretch; gap: 3px; margin-left: 8px; }
+.ga4-theme .zoom-control .icon-only { min-width: 24px; width: 24px; padding: 0; }
+.ga4-theme .zoom-control select { min-width: 58px; padding: 0 6px; text-align: center; text-align-last: center; }
+.ga4-theme .zoom-control .bevel-button:disabled { opacity: .4; cursor: default; }
+.ga4-theme .zoom-control .bevel-button:disabled:hover { background: linear-gradient(#626262, #484848); color: #f1f1f1; }
+
 /* .workspace's direct parent (.app-scroll) is display:block, not flex, so "flex: 1 1 auto"
    here was inert — nothing bounded this grid's height, so the utility-rail's 1fr notes
    panel had no real size to resolve against and its textarea inflated to ~2400px instead

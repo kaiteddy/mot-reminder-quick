@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Search, History, Wrench, SlidersHorizontal } from "lucide-react";
+import { Search, History, Wrench, SlidersHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { toast } from "sonner";
 import Ga4QuickSearchModal from "./Ga4QuickSearchModal";
 
@@ -48,11 +48,23 @@ const NAV: NavItem[] = [
   { label: "Reminders", icon: "reminders", soon: true },
 ];
 
+// Whole-UI zoom (CSS `zoom`, not transform) so vh/vw-based layout — the record page's
+// 100vh stretch chain, this dashboard's fixed-viewport panels — keeps resolving correctly
+// at every level instead of just visually scaling on top of a still-100%-sized layout.
+const ZOOM_LEVELS = [50, 75, 100, 125] as const;
+const ZOOM_STORAGE_KEY = "ga4-classic-zoom";
+
 export default function Ga4Shell({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const urlSearch = typeof window !== "undefined" ? window.location.search : "";
+  const [zoom, setZoom] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(ZOOM_STORAGE_KEY));
+    return (ZOOM_LEVELS as readonly number[]).includes(saved) ? saved : 100;
+  });
+  useEffect(() => { localStorage.setItem(ZOOM_STORAGE_KEY, String(zoom)); }, [zoom]);
+  const zoomIndex = ZOOM_LEVELS.indexOf(zoom as any);
 
   const go = (href: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -66,7 +78,7 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="ga4-theme">
-      <div className="app-shell">
+      <div className="app-shell" style={{ zoom: `${zoom}%` }}>
         <header className="app-header">
           <nav className="main-toolbar" aria-label="Primary navigation">
             <div className="main-nav-items">
@@ -115,6 +127,19 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
             <button type="button" className="bevel-button" onClick={soon("History")}><History size={13} /> History</button>
             <button type="button" className="bevel-button" onClick={soon("Technical Data")}><Wrench size={13} /> Technical Data</button>
             <button type="button" className="bevel-button" onClick={go("/documents")}>Modern view</button>
+            <div className="zoom-control">
+              <button type="button" className="bevel-button icon-only" aria-label="Zoom out" disabled={zoomIndex <= 0}
+                onClick={() => setZoom(ZOOM_LEVELS[Math.max(0, zoomIndex - 1)])}>
+                <ZoomOut size={13} />
+              </button>
+              <select aria-label="Zoom level" className="bevel-button" value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
+                {ZOOM_LEVELS.map((z) => <option key={z} value={z}>{z}%</option>)}
+              </select>
+              <button type="button" className="bevel-button icon-only" aria-label="Zoom in" disabled={zoomIndex >= ZOOM_LEVELS.length - 1}
+                onClick={() => setZoom(ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, zoomIndex + 1)])}>
+                <ZoomIn size={13} />
+              </button>
+            </div>
             <span className="current-user">User: <strong>Admin</strong></span>
           </div>
         </header>
