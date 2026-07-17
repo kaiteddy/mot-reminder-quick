@@ -345,7 +345,7 @@
 .ga4-theme .data-table tbody tr:hover td { background: #fffde0; cursor: pointer; }
 .ga4-theme .data-table tbody td:first-child { background: #b36cff !important; color: #501070 !important; text-align: center; font-weight: bold; }
 .ga4-theme .invoices-panel .data-table tbody td:first-child { background: #7da7ff !important; color: #173776 !important; }
-.ga4-theme .col-type { width: 28px; text-align: center !important; padding: 0 !important; }
+.ga4-theme .col-type { width: 18px; font-size: 10.5px; text-align: center !important; padding: 0 !important; }
 .ga4-theme .col-doc { width: 80px; text-align: right !important; }
 .ga4-theme .col-date { width: 88px; }
 .ga4-theme .col-reg { width: 92px; }
