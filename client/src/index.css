@@ -343,8 +343,8 @@
 .ga4-theme .data-table tbody tr:nth-child(odd) td { background: #e2e2e2; }
 .ga4-theme .data-table tbody tr:nth-child(even) td { background: #f8f8f8; }
 .ga4-theme .data-table tbody tr:hover td { background: #fffde0; cursor: pointer; }
-.ga4-theme .data-table tbody td:first-child { background: #b36cff; color: #501070; text-align: center; }
-.ga4-theme .invoices-panel .data-table tbody td:first-child { background: #7da7ff; color: #173776; }
+.ga4-theme .data-table tbody td:first-child { background: #b36cff !important; color: #501070 !important; text-align: center; font-weight: bold; }
+.ga4-theme .invoices-panel .data-table tbody td:first-child { background: #7da7ff !important; color: #173776 !important; }
 .ga4-theme .col-type { width: 28px; text-align: center !important; padding: 0 !important; }
 .ga4-theme .col-doc { width: 80px; text-align: right !important; }
 .ga4-theme .col-date { width: 88px; }
