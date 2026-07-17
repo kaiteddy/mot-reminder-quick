@@ -1030,6 +1030,10 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     createdAt: serviceHistory.createdAt,
     description: serviceHistory.description,
     mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
+    accountNumber: serviceHistory.accountNumber,
+    customerName: serviceHistory.customerName,
+    paymentMethods: serviceHistory.paymentMethods,
+    balance: serviceHistory.balance,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))

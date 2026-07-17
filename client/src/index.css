@@ -533,6 +533,7 @@
 /* Quick Search results — a floating window, not a dropdown under the nav's search box
    (see Ga4QuickSearchModal.tsx). Reuses the same dark bezel/gradient chrome as the record
    screen's title bar and rail-section headers so it reads as the same app. */
+
 .ga4-theme .qs-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .ga4-theme .qs-modal { width: min(1100px, 92vw); height: min(760px, 88vh); display: flex; flex-direction: column; border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434, 0 12px 40px rgba(0,0,0,.5); overflow: hidden; }
 .ga4-theme .qs-titlebar { flex: 0 0 auto; height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 12px; background: linear-gradient(#6c6c6c, #4d4d4d); border-bottom: 1px solid #333; color: #eee; font-size: 14px; font-weight: 600; text-shadow: 0 1px #222; }
@@ -548,6 +549,40 @@
 .ga4-theme .qs-row span, .ga4-theme .qs-row-empty span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ga4-theme .qs-row:hover { background: #e8effc; }
 .ga4-theme .qs-row-empty { background: #fafafa; }
+
+/* Vehicle Details (classic) — same dark-bezel record-card chrome as the Job Sheet screen
+   (title bar/toolbar reuse .js-titlebar/.js-primary-actions directly), but its own body:
+   a spec form + tabbed owner panel up top, and a full document-history table below. */
+.ga4-theme .vd-body { border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434; overflow: hidden; }
+.ga4-theme .vd-main { display: grid; grid-template-columns: 1.15fr 1fr; gap: 8px; padding: 8px; align-items: start; }
+.ga4-theme .vd-specs { background: #f5f5f5; border: 1px solid #777; padding: 10px; display: grid; gap: 5px; align-content: start; }
+.ga4-theme .vd-specs .js-lookup-row { grid-template-columns: 128px minmax(120px, 1fr) auto; }
+.ga4-theme .vd-specs .js-field { grid-template-columns: 128px minmax(0, 1fr); }
+.ga4-theme .vd-tyres { display: grid; grid-template-columns: 128px 1fr 1fr; gap: 5px 8px; padding-top: 8px; margin-top: 4px; border-top: 1px solid #ccc; }
+.ga4-theme .vd-tyres > span:first-child { grid-column: 1; align-self: center; font-size: 12px; color: #555; }
+.ga4-theme .vd-tyres input { height: 27px; }
+
+.ga4-theme .vd-owner-panel { background: #fff; border: 1px solid #666; display: flex; flex-direction: column; min-height: 100%; }
+.ga4-theme .vd-owner-body { padding: 10px; display: grid; gap: 8px; align-content: start; }
+.ga4-theme .vd-stock-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ga4-theme .vd-stock-row > span { font-size: 12px; color: #555; font-weight: 600; }
+.ga4-theme .vd-yn-toggle { display: flex; border: 1px solid #999; }
+.ga4-theme .vd-yn-toggle button { width: 28px; height: 24px; border: 0; font-size: 12px; font-weight: 700; background: #e2e2e2; color: #888; }
+.ga4-theme .vd-yn-toggle button + button { border-left: 1px solid #999; }
+.ga4-theme .vd-yn-toggle button.on { background: #b91c1c; color: #fff; }
+.ga4-theme .vd-owner-actions { display: flex; gap: 5px; margin-left: auto; }
+.ga4-theme .vd-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 16px; padding-top: 8px; margin-top: 4px; border-top: 1px solid #ddd; }
+.ga4-theme .vd-checkbox-grid label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #444; }
+.ga4-theme .vd-checkbox-grid input { accent-color: #5b2c82; }
+.ga4-theme .vd-placeholder { padding: 24px; text-align: center; color: #888; font-size: 12.5px; }
+
+.ga4-theme .vd-doc-row { display: grid; grid-template-columns: 82px 66px 78px 1fr 2fr 64px 76px 90px 76px 56px; align-items: center; }
+.ga4-theme .vd-doc-row > span, .ga4-theme .vd-doc-row > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 7px; }
+.ga4-theme .vd-doc-row .vd-num { text-align: right; }
+.ga4-theme button.vd-doc-row { width: 100%; height: 27px; background: #fff; border: 0; border-bottom: 1px solid #ddd; font-size: 12px; color: #333; text-align: left; cursor: pointer; }
+.ga4-theme button.vd-doc-row:nth-of-type(even) { background: #f7f7f7; }
+.ga4-theme button.vd-doc-row:hover { background: #e8effc; }
+.ga4-theme .vd-open-btn { justify-self: end; height: 20px; padding: 0 10px; border: 1px solid #999; border-radius: 2px; background: linear-gradient(#fdfdfd, #e3e3e3); font-size: 11px; font-weight: 600; display: flex; align-items: center; }
 
 @layer components {
   /**
