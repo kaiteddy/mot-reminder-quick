@@ -429,8 +429,13 @@
 .ga4-theme .js-cell-rail { display: flex; flex-direction: column; gap: 8px; }
 
 .ga4-theme .js-titlebar { display: grid; grid-template-columns: minmax(0, 1fr) 116px minmax(96px, 1fr); align-items: center; background: linear-gradient(90deg, #590069 0%, #49005a 58%, #5d006b 100%); border: 1px solid #2b1730; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px #181818; color: white; text-shadow: 0 1px #211027; }
-.ga4-theme .js-titlebar > div:first-child { display: flex; align-items: center; gap: 7px; padding-left: 7px; font-size: 15px; height: 38px; }
-.ga4-theme .js-titlebar > div:first-child strong { font-size: 16px; }
+.ga4-theme .js-titlebar > div:first-child { display: flex; align-items: center; gap: 7px; padding-left: 7px; padding-right: 7px; font-size: 15px; height: 38px; min-width: 0; white-space: nowrap; }
+.ga4-theme .js-titlebar > div:first-child strong { font-size: 16px; flex-shrink: 0; }
+.ga4-theme .js-titlebar > div:first-child > span.text-amber-300 { flex-shrink: 0; }
+/* Vehicle Details' title (reg + make/model/derivative) can run much longer than a Job
+   Sheet's "No. 12345" — truncate with an ellipsis instead of wrapping onto a second line,
+   which used to overflow the fixed-height title bar and collide with the toolbar below. */
+.ga4-theme .vd-title-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ga4-theme .js-notice { justify-self: center; height: 28px; border: 1px solid #36103e; border-radius: 0; background: linear-gradient(#7b367f, #5b1966); color: white; text-shadow: 0 1px #321039; padding: 0 14px; font-size: 12px; }
 .ga4-theme .js-window-controls { justify-self: end; height: 38px; display: flex; }
 .ga4-theme .js-window-controls button { width: 40px; border: 0; border-left: 1px solid rgba(0,0,0,.34); border-radius: 0; background: linear-gradient(#6d306e, #4f1558); color: white; display: grid; place-items: center; }
@@ -449,12 +454,12 @@
 .ga4-theme .js-lookup-row { display: grid; grid-template-columns: 112px minmax(160px, 1fr) auto; align-items: stretch; gap: 6px; }
 .ga4-theme .js-lookup-row.customer { grid-template-columns: 126px minmax(160px, 1fr) auto; }
 .ga4-theme .js-lookup-row > span { display: flex; align-items: center; color: #555; font-size: 12px; }
-.ga4-theme .js-lookup-row input { min-width: 0; height: 29px; }
+.ga4-theme .js-lookup-row input { min-width: 0; height: 29px; padding-left: 6px !important; padding-right: 6px !important; }
 /* Registration / Acc Number: a combo-style input (value + dropdown arrow + clear) sitting
    right next to its own search button — both fields share this exact look in the reference,
    only the search button's label differs (VRM Lookup vs a plain find icon). */
 .ga4-theme .js-combo-field { display: flex; align-items: stretch; min-width: 0; border: 1px solid #b7b7b7; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); background: #fff; }
-.ga4-theme .js-combo-field input { flex: 1; min-width: 0; border: 0 !important; box-shadow: none !important; background: transparent !important; }
+.ga4-theme .js-combo-field input { flex: 1; min-width: 0; border: 0 !important; box-shadow: none !important; background: transparent !important; padding-left: 6px !important; }
 .ga4-theme .js-combo-arrow { display: flex; align-items: center; justify-content: center; width: 18px; flex-shrink: 0; color: #666; font-size: 9px; border-left: 1px solid #ccc; background: #ececec; }
 .ga4-theme .js-combo-clear { display: flex; align-items: center; justify-content: center; width: 24px; flex-shrink: 0; border: 0; border-left: 1px solid #7a1010; background: linear-gradient(#c0392b, #962c22); color: #fff; }
 .ga4-theme .js-combo-clear:disabled { opacity: .45; }
@@ -467,7 +472,7 @@
 .ga4-theme .js-field { min-width: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; color: #555; font-size: 12px; }
 .ga4-theme .js-field.wide { grid-column: 1 / -1; }
 .ga4-theme .js-field > span { padding-right: 7px; white-space: nowrap; text-align: left; }
-.ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; }
+.ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; padding-left: 6px !important; padding-right: 6px !important; }
 .ga4-theme .customer-grid .js-field { grid-template-columns: 126px minmax(0, 1fr); }
 .ga4-theme .js-form-tools { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
 .ga4-theme .js-form-tools .js-action-button { min-width: 100px; height: 30px; padding: 0 10px; border: 1px solid #aaa; background: linear-gradient(#fafafa, #dcdcdc); color: #444; text-shadow: none; }
@@ -565,7 +570,7 @@
 .ga4-theme .vd-specs .js-field { grid-template-columns: 128px minmax(0, 1fr); }
 .ga4-theme .vd-tyres { display: grid; grid-template-columns: 128px 1fr 1fr; gap: 3px 8px; padding-top: 5px; margin-top: 2px; border-top: 1px solid #ccc; }
 .ga4-theme .vd-tyres > span:first-child { grid-column: 1; align-self: center; font-size: 12px; color: #555; }
-.ga4-theme .vd-tyres input { height: 23px; }
+.ga4-theme .vd-tyres input { height: 23px; padding-left: 6px !important; padding-right: 6px !important; }
 
 .ga4-theme .vd-owner-panel { background: #fff; border: 1px solid #666; display: flex; flex-direction: column; min-height: 100%; }
 .ga4-theme .vd-owner-body { padding: 7px; display: grid; gap: 4px; align-content: start; }

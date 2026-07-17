@@ -308,7 +308,7 @@ export default function VehicleDetails() {
                         <div>
                             <span className="text-amber-300">★</span>
                             <strong>Vehicle Details:</strong>
-                            <span className="text-white/80">{ga4Spaced(vehicle.registration || "")} - {vehicle.make as string} {vehicle.model as string}{(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}</span>
+                            <span className="text-white/80 vd-title-text" title={`${ga4Spaced(vehicle.registration || "")} - ${vehicle.make as string} ${vehicle.model as string}${(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}`}>{ga4Spaced(vehicle.registration || "")} - {vehicle.make as string} {vehicle.model as string}{(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}</span>
                         </div>
                         <button type="button" className="js-notice" onClick={soon("Notice")}>Notice</button>
                         <div className="js-window-controls">
