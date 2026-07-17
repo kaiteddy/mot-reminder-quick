@@ -1313,6 +1313,7 @@ export default function DocumentDetails() {
                     )}
                     {editing ? (
                       <>
+                        {base && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                         {!base && <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />}
                         <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
                           placeholder="Describe the work to be carried out…"
@@ -2147,9 +2148,28 @@ function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
 }
 
 function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void; currentBody?: string }) {
+  const base = useClassicBase();
   const { data: presets } = trpc.descriptionPresets.list.useQuery();
   const create = trpc.descriptionPresets.create.useMutation();
   const utils = trpc.useUtils();
+  const savePreset = async () => {
+    const title = prompt("Save current description as a preset — enter a title:");
+    if (title?.trim()) { await create.mutateAsync({ title: title.trim(), body: currentBody! }); await utils.descriptionPresets.list.invalidate(); toast.success("Preset saved"); }
+  };
+  if (base) {
+    return (
+      <div className="js-preset-row">
+        <select className="ga4-btn" value=""
+          onChange={(e) => { const p = (presets as any[])?.find((x) => String(x.id) === e.target.value); if (p) onPick(p.body); }}>
+          <option value="">Pre-set descriptions</option>
+          {(presets as any[])?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+        <button type="button" className="ga4-btn" disabled={!currentBody?.trim()} title="Save current description as a preset" aria-label="Save as preset" onClick={savePreset}>
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-3 mb-2">
       <select className="border border-slate-300 rounded-sm px-2 py-1 text-[13px] bg-white" value=""
@@ -2158,8 +2178,7 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
         {(presets as any[])?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
       </select>
       {currentBody?.trim() && (
-        <button type="button" className="text-[12px] text-violet-700 hover:underline"
-          onClick={async () => { const title = prompt("Save current description as a preset — enter a title:"); if (title?.trim()) { await create.mutateAsync({ title: title.trim(), body: currentBody! }); await utils.descriptionPresets.list.invalidate(); toast.success("Preset saved"); } }}>
+        <button type="button" className="text-[12px] text-violet-700 hover:underline" onClick={savePreset}>
           + Save as preset
         </button>
       )}
