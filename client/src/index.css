@@ -451,8 +451,12 @@
 
 .ga4-theme .js-info-forms { display: grid; grid-template-columns: 1.07fr .93fr; gap: 22px; padding: 11px 18px 14px; background: #f5f5f5; border: 1px solid #777; }
 .ga4-theme .js-info-column { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.ga4-theme .js-lookup-row { display: grid; grid-template-columns: 112px minmax(160px, 1fr) auto; align-items: stretch; gap: 6px; }
-.ga4-theme .js-lookup-row.customer { grid-template-columns: 126px minmax(160px, 1fr) auto; }
+/* Label column is 6px narrower than .js-field's to offset this row's 6px grid gap — keeps
+   the input's left edge aligned with .js-field rows below it (e.g. Registration vs Make/Model). */
+.ga4-theme .js-lookup-row { display: grid; grid-template-columns: 106px minmax(160px, 1fr) auto; align-items: stretch; gap: 6px; }
+/* The customer cell's .js-field rows use the base 112px column (the "customer-grid" 126px
+   variant below isn't applied anywhere), so this matches .js-lookup-row's own offset, not it. */
+.ga4-theme .js-lookup-row.customer { grid-template-columns: 106px minmax(160px, 1fr) auto; }
 .ga4-theme .js-lookup-row > span { display: flex; align-items: center; color: #555; font-size: 12px; }
 .ga4-theme .js-lookup-row input { min-width: 0; height: 29px; padding-left: 6px !important; padding-right: 6px !important; }
 /* Registration / Acc Number: a combo-style input (value + dropdown arrow + clear) sitting
@@ -580,7 +584,7 @@
 .ga4-theme .vd-body { flex: 1 1 auto; display: flex; flex-direction: column; border: 1px solid #090909; border-radius: 4px; background: #4a4a4a; box-shadow: inset 0 0 0 2px #5b5b5b, 0 0 0 1px #343434; overflow: hidden; }
 .ga4-theme .vd-main { display: grid; grid-template-columns: 1.15fr 1fr; gap: 6px; padding: 6px; align-items: start; }
 .ga4-theme .vd-specs { background: #f5f5f5; border: 1px solid #777; padding: 7px; display: grid; gap: 3px; align-content: start; }
-.ga4-theme .vd-specs .js-lookup-row { grid-template-columns: 128px minmax(120px, 1fr) auto; }
+.ga4-theme .vd-specs .js-lookup-row { grid-template-columns: 122px minmax(120px, 1fr) auto; }
 .ga4-theme .vd-specs .js-field { grid-template-columns: 128px minmax(0, 1fr); }
 .ga4-theme .vd-tyres { display: grid; grid-template-columns: 128px 1fr 1fr; gap: 3px 8px; padding-top: 5px; margin-top: 2px; border-top: 1px solid #ccc; }
 .ga4-theme .vd-tyres > span:first-child { grid-column: 1; align-self: center; font-size: 12px; color: #555; }
