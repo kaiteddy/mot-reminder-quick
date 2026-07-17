@@ -1922,7 +1922,15 @@ export async function getNextDocNo(docType: string) {
   const key = `docNoNext:${docType}`;
   const reserved = Number(await getAppSetting(key)) || 0;
   // still ahead of GA4 -> take our next reserved slot; GA4 caught up (or first run) -> leap clear
-  const next = reserved > dbMax ? reserved : dbMax + clearance + 1;
+  let next = reserved > dbMax ? reserved : dbMax + clearance + 1;
+  // skip any number already taken as a docNo/ga4Number, or reserved in the pool
+  for (;;) {
+    const taken: any = await db.execute(sql`
+      SELECT 1 WHERE EXISTS (SELECT 1 FROM "serviceHistory" WHERE "docNo"=${String(next)} OR "ga4Number"=${String(next)})
+                OR EXISTS (SELECT 1 FROM "ga4NumberPool" WHERE "ga4Number"=${String(next)})`);
+    if (!(taken.rows?.length)) break;
+    next++;
+  }
   await setAppSetting(key, next + 1);
   return String(next);
 }
@@ -2582,8 +2590,13 @@ export async function popGa4Number(documentId: number): Promise<string | null> {
   const res: any = await db.execute(sql`
     UPDATE "ga4NumberPool" SET status='claimed', "claimedByDocId"=${documentId}, "claimedAt"=now(), "updatedAt"=now()
     WHERE id = (
-      SELECT id FROM "ga4NumberPool" WHERE status='available'
-      ORDER BY ("ga4Number")::bigint ASC
+      SELECT p.id FROM "ga4NumberPool" p WHERE p.status='available'
+        AND NOT EXISTS (
+          SELECT 1 FROM "serviceHistory" sh
+          WHERE (sh."docNo" = p."ga4Number" OR sh."ga4Number" = p."ga4Number")
+            AND sh.id <> ${documentId}
+        )
+      ORDER BY (p."ga4Number")::bigint ASC
       LIMIT 1 FOR UPDATE SKIP LOCKED
     )
     RETURNING "ga4Number"`);
