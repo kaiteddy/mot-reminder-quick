@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +26,9 @@ import {
     ShieldAlert,
     Banknote,
     Gauge,
-    CheckCircle2
+    CheckCircle2,
+    Search,
+    X
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
@@ -190,6 +193,11 @@ export default function VehicleDetails() {
     const vehicle = result?.vehicle;
     const customer = result?.customer;
     const reminders = result?.reminders || [];
+    const history = result?.history || [];
+
+    const [rightTab, setRightTab] = useState<"General" | "Specs" | "Extra" | "Features" | "Notes">("General");
+    const [historyTab, setHistoryTab] = useState<"issued" | "parts" | "reminders">("issued");
+    const partsHistory = trpc.documents.partsHistory.useQuery({ vehicleId: vehicle?.id as number }, { enabled: !!vehicle?.id && historyTab === "parts", staleTime: 60_000 });
 
     // Added fetchTechnicalData mutation
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
@@ -223,6 +231,19 @@ export default function VehicleDetails() {
             toast.error("Failed to remove owner: " + err.message);
         }
     });
+
+    const deleteVehicle = trpc.database.delete.useMutation({
+        onSuccess: () => {
+            toast.success("Vehicle deleted.");
+            setLocation(`${base}/vehicles`);
+        },
+        onError: (err: any) => {
+            toast.error("Failed to delete vehicle: " + err.message);
+        }
+    });
+
+    const soon = (label: string) => () => toast.message(`${label} isn't available in Classic view yet.`);
+    const money = (v: any) => (v == null || v === "" || Number(v) === 0 ? "" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
     const formatDate = (date: Date | string | null) => {
         if (!date) return "-";
@@ -265,6 +286,265 @@ export default function VehicleDetails() {
 
     const jobSummaryUrl = `${window.location.protocol}//${window.location.host}/mobile/job/${vehicle.id}`;
 
+    if (base) {
+        const altMobile = Array.isArray(customer?.altContacts) ? (customer!.altContacts as any[])[0]?.phone : undefined;
+        const CHECKBOX_FLAGS_LEFT = ["Air Conditioning", "Power Steering", "ABS Brakes", "Traction Control", "Pollen Filter"];
+        const CHECKBOX_FLAGS_RIGHT = ["Solid Discs", "Vented Discs", "Rear Shoes & Cylinders", "Rear Discs", "Timing Chain"];
+        const HISTORY_TABS: { key: "issued" | "parts" | "reminders" | null; label: string }[] = [
+            { key: "issued", label: "Issued Docs" },
+            { key: null, label: "Other Docs" },
+            { key: null, label: "Appointments" },
+            { key: null, label: "All Labour" },
+            { key: "parts", label: "All Parts" },
+            { key: null, label: "All Advisories" },
+            { key: "reminders", label: "Reminders" },
+            { key: null, label: "Overview" },
+        ];
+        return (
+            <DashboardLayout>
+                <div className="vd-body">
+                    <div className="js-titlebar" style={{ background: "linear-gradient(90deg, #5c5c5c 0%, #464646 58%, #3a3a3a 100%)" }}>
+                        <div>
+                            <span className="text-amber-300">★</span>
+                            <strong>Vehicle Details:</strong>
+                            <span className="text-white/80">{ga4Spaced(vehicle.registration || "")} - {vehicle.make as string} {vehicle.model as string}{(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}</span>
+                        </div>
+                        <button type="button" className="js-notice" onClick={soon("Notice")}>Notice</button>
+                        <div className="js-window-controls">
+                            <button type="button" onClick={() => { if (window.history.length > 1) window.history.back(); else setLocation(`${base}/vehicles`); }} title="Close"><X className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+
+                    <nav className="js-primary-actions">
+                        <button className="js-action-button" onClick={soon("Save")}>Save</button>
+                        <button className="js-action-button" onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration as string)}&docType=JS`)}>New Doc</button>
+                        <button className="js-action-button" onClick={() => customer && setLocation(`${base}/customers/${customer.id}`)} disabled={!customer}>View Owner</button>
+                        <button className="js-action-button" onClick={soon("Print")}>Print</button>
+                        <button className="js-action-button" onClick={soon("History")}>History</button>
+                        <button className="js-action-button" onClick={soon("Attachments")}>Attachments</button>
+                        <button className="js-action-button" onClick={soon("Tech Data")}>Tech Data</button>
+                        <button className="js-action-button" onClick={() => setLocation(`/mot-check?reg=${encodeURIComponent(vehicle.registration as string)}`)}>MOT Check</button>
+                        <span className="js-action-spacer" />
+                        <button
+                            className="js-action-button"
+                            disabled={deleteVehicle.isPending}
+                            onClick={() => {
+                                if (window.confirm(`Delete ${vehicle.registration}? This removes the vehicle record — its service history stays on the system.`)) {
+                                    deleteVehicle.mutate({ vehicleIds: [vehicle.id as number] });
+                                }
+                            }}
+                        >
+                            Delete
+                        </button>
+                    </nav>
+
+                    <div className="vd-main">
+                        <div className="vd-specs">
+                            <div className="js-lookup-row">
+                                <span>Registration</span>
+                                <div className="js-combo-field">
+                                    <input readOnly value={ga4Spaced(vehicle.registration || "")} className="bg-yellow-50 font-mono font-semibold" />
+                                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                                    <button type="button" className="js-combo-clear" disabled aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                                </div>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                    <button type="button" className="js-search-button" onClick={soon("VRM Lookup")}>
+                                        <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
+                                        <span className="js-search-label">VRM Lookup</span>
+                                    </button>
+                                    <button type="button" className="js-search-button" onClick={soon("VRM Transfer")}>
+                                        <span className="js-search-label">VRM Transfer</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <label className="js-field"><span>Make / Model</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle.make as string) || ""} />
+                                    <input readOnly value={(vehicle.model as string) || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Derivative</span><input readOnly value={(vehicle as any).derivative || ""} /></label>
+                            <label className="js-field"><span>Chassis Number</span><input readOnly value={vehicle.vin || ""} /></label>
+                            <label className="js-field"><span>Engine CC</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={vehicle.engineCC || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Fuel Type</span>
+                                    <input readOnly value={(vehicle.fuelType as string) || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Engine Code</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle as any).engineCode || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Engine No</span>
+                                    <input readOnly value={(vehicle as any).engineNo || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Colour</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle.colour as string) || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Paint Code</span>
+                                    <input readOnly value={(vehicle as any).paintCode || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Key Code</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle as any).keyCode || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Radio Code</span>
+                                    <input readOnly value={(vehicle as any).radioCode || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Date Manufactured</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={formatDate(vehicle.dateOfRegistration)} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Date Reg</span>
+                                    <input readOnly value={formatDate(vehicle.dateOfRegistration)} />
+                                </div>
+                            </label>
+                            {/* Tyre size/depth aren't tracked in the schema yet — shown for visual
+                                fidelity with the reference, not persisted. */}
+                            <div className="vd-tyres">
+                                <span>Tyre Size</span>
+                                <input placeholder="Front" />
+                                <input placeholder="Rear" />
+                                <span>Tyre Depth</span>
+                                <input placeholder="Front" />
+                                <input placeholder="Rear" />
+                            </div>
+                        </div>
+
+                        <div className="vd-owner-panel">
+                            <div className="js-history-tabs">
+                                {(["General", "Specs", "Extra", "Features", "Notes"] as const).map((t) => (
+                                    <button key={t} type="button" className={rightTab === t ? "active" : ""} onClick={() => setRightTab(t)}>{t}</button>
+                                ))}
+                            </div>
+                            <div className="vd-owner-body">
+                                {rightTab === "General" ? (
+                                    <>
+                                        <div className="vd-stock-row">
+                                            <span>Used Vehicle Stock</span>
+                                            <div className="vd-yn-toggle">
+                                                <button type="button" onClick={soon("Used Vehicle Stock")}>Y</button>
+                                                <button type="button" className="on" onClick={soon("Used Vehicle Stock")}>N</button>
+                                            </div>
+                                            <span style={{ marginLeft: 12 }}>Owner</span>
+                                            <div className="vd-owner-actions">
+                                                <button type="button" className="ga4-btn" disabled={!customer} onClick={() => customer && setLocation(`${base}/customers/${customer.id}`)}>View</button>
+                                                <button type="button" className="ga4-btn" onClick={soon("Change owner")}>Change</button>
+                                                <button
+                                                    type="button"
+                                                    className="ga4-btn"
+                                                    disabled={!customer || unlinkOwner.isPending}
+                                                    onClick={() => {
+                                                        if (customer && window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned.`)) {
+                                                            unlinkOwner.mutate({ vehicleId: vehicle.id as number });
+                                                        }
+                                                    }}
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <label className="js-field"><span>Acc Number</span><input readOnly value={customer?.accountNumber || ""} /></label>
+                                        <label className="js-field"><span>Name</span><input readOnly value={customer?.name || ""} /></label>
+                                        <label className="js-field"><span>Telephone</span><input readOnly value={customer?.phone || ""} /></label>
+                                        <label className="js-field"><span>Mobile</span><input readOnly value={altMobile || ""} /></label>
+                                        <div className="vd-checkbox-grid">
+                                            {CHECKBOX_FLAGS_LEFT.map((f) => (
+                                                <label key={f}><input type="checkbox" disabled /> {f}</label>
+                                            ))}
+                                            {CHECKBOX_FLAGS_RIGHT.map((f) => (
+                                                <label key={f}><input type="checkbox" disabled /> {f}</label>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="vd-placeholder">{rightTab} isn't available in Classic view yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="vd-history-panel">
+                        <div className="js-history-tabs">
+                            {HISTORY_TABS.map((t) => (
+                                <button
+                                    key={t.label}
+                                    type="button"
+                                    className={t.key && historyTab === t.key ? "active" : ""}
+                                    onClick={t.key ? () => setHistoryTab(t.key as "issued" | "parts" | "reminders") : soon(t.label)}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+                        {historyTab === "issued" && (
+                            history.length === 0 ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row">
+                                        <span>Date</span><span>Doc No</span><span>Acc Number</span><span>Customer</span><span>Description</span><span>Mileage</span><span>Total</span><span>Receipts</span><span>Balance</span><span></span>
+                                    </div>
+                                    {history.map((d: any) => (
+                                        <button key={d.id} type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                                            <span>{formatDate(d.dateIssued || d.dateCreated)}</span>
+                                            <span>{d.docType} {d.docNo}</span>
+                                            <span>{d.accountNumber || ""}</span>
+                                            <span>{d.customerName || ""}</span>
+                                            <span>{d.mainDescription || ""}</span>
+                                            <span className="vd-num">{d.mileage ? Number(d.mileage).toLocaleString("en-GB") : ""}</span>
+                                            <span className="vd-num">{money(d.totalGross)}</span>
+                                            <span>{d.paymentMethods || ""}</span>
+                                            <span className="vd-num">{money(d.balance)}</span>
+                                            <span className="vd-open-btn">Open</span>
+                                        </button>
+                                    ))}
+                                </>
+                            )
+                        )}
+                        {historyTab === "parts" && (
+                            partsHistory.isFetching && !partsHistory.data ? <div className="js-history-empty" /> :
+                            !partsHistory.data?.length ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px" }}>
+                                        <span>Date</span><span>Part</span><span>Part No.</span><span>Doc</span><span>Qty</span><span>Price</span>
+                                    </div>
+                                    {partsHistory.data!.map((p: any) => (
+                                        <div key={p.id} className="vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px", height: 27, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                            <span>{formatDate(p.dateIssued || p.dateCreated)}</span>
+                                            <span>{p.description}</span>
+                                            <span>{p.partNumber || ""}</span>
+                                            <span>{p.docNo}</span>
+                                            <span className="vd-num">{Number(p.quantity || 0)}</span>
+                                            <span className="vd-num">{money(p.unitPrice)}</span>
+                                        </div>
+                                    ))}
+                                </>
+                            )
+                        )}
+                        {historyTab === "reminders" && (
+                            reminders.length === 0 ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px" }}>
+                                        <span>Type</span><span>Due Date</span><span>Status</span><span>Sent At</span><span>Method</span>
+                                    </div>
+                                    {reminders.map((r: any) => (
+                                        <div key={r.id} className="vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px", height: 27, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                            <span>{r.type}</span>
+                                            <span>{formatDate(r.dueDate)}</span>
+                                            <span>{r.status}</span>
+                                            <span>{formatDate(r.sentAt)}</span>
+                                            <span>{r.sentMethod || ""}</span>
+                                        </div>
+                                    ))}
+                                </>
+                            )
+                        )}
+                    </div>
+                </div>
+            </DashboardLayout>
+        );
+    }
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
@@ -279,13 +559,9 @@ export default function VehicleDetails() {
                     <div className="flex items-center gap-4">
                         <ManufacturerLogo make={vehicle.make as string} size="xl" />
                         <div>
-                            {base ? (
-                                <div className="text-2xl font-bold tracking-wide">{ga4Spaced(vehicle.registration || "")}</div>
-                            ) : (
-                                <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
-                                    {vehicle.registration}
-                                </div>
-                            )}
+                            <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
+                                {vehicle.registration}
+                            </div>
                             <h1 className="text-2xl font-bold mt-2">
                                 {vehicle.make as string} {vehicle.model as string}
                             </h1>
