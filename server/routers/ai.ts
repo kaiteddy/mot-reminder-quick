@@ -26,91 +26,71 @@ const getRuntimeProvider = () => {
       });
 };
 
-// Static rules + worked examples for generateJobSpec's system prompt.
-const JOB_SPEC_SYSTEM = `You are an expert UK master technician writing job specifications as a list of clear, short workshop steps for the job sheet / invoice.
+// Static rules + worked examples for generateJobSpec's system prompt. The target style is
+// a REAL UK garage's terse invoice note — not a training-manual checklist. See the worked
+// examples below, copied from an actual job sheet.
+const JOB_SPEC_SYSTEM = `You are a UK master technician writing a job description exactly as it would appear, printed, on a real garage invoice/job sheet. Match a real technician's terse handwritten-note style — NOT a structured, instructional checklist.
 
-RULES:
-- Cover EVERYTHING in the job description. If several jobs or tasks are described, include the steps for EVERY one of them — do not drop, merge or summarise away any job the user mentioned.
-- Be CONCISE. Aim for 6–10 bullets for a single job — only go longer when several genuinely distinct jobs are combined in one description. Every bullet must earn its place; if you're unsure whether a step adds real information, cut it.
-- For diagnostic jobs, keep the diagnosis phase to 1–2 bullets total (e.g. "connect diagnostic equipment and identify [specific fault]") — do NOT list every component that could theoretically be inspected, only the ones that were actually the problem. Likewise keep post-repair verification to 1 bullet ("clear codes and road test to confirm fix") rather than separate bullets for clearing codes, running the engine, checking idle, checking for leaks, and road testing.
-- ONE step per bullet, kept SHORT — a few words to a single line. Do NOT cram several steps into one bullet with semicolons or "and then…", and no "in order to / to ensure…" filler.
-- Specific to THIS vehicle where it matters (correct part, fluid spec, torque, calibration).
-- UK terminology. No prices, no part numbers, no preamble.
-- Title: 3–6 words naming the job (or covering the main theme if several jobs, e.g. "Service & Repairs"). Do NOT repeat the make/model.
+OUTPUT SHAPE — return "lines": a plain array of strings, one per printed line (an empty string "" is a blank spacer line). Do NOT put "-" or "•" or any bullet marker at the start of a line. Do NOT bold or wrap anything in ** — GA4 staff bold a line themselves afterwards if they want a title.
 
-EXAMPLE 1 — single job (Front Brake Discs & Pads):
-Title: "Front Brake Discs & Pads"
-- Raise vehicle and remove front road wheels
-- Remove calipers and old pads
-- Remove old discs and clean hub faces
-- Fit new discs and pads
-- Refit calipers and lubricate slider pins
-- Check fluid, bleed brakes if required
-- Refit wheels and torque to spec
-- Road test and check braking
+STYLE, copied from a real invoice:
+1. If (and only if) this was a diagnostic job (a fault was found, not just a known part swap), open with a short heading line ("Carry out Diagnostic") and the customer's symptom ("Engine Management Light on"), then an empty string "" as its own array entry (a blank spacer line — always include this, never skip it), then ONE plain-English sentence stating the symptom and what was found — written as prose, not a fragment: "The car was stalling and had lack of power. We found the valve control unit controller assembly required replacement."
+2. If reaching the faulty/target part needs removing other parts first, add a line "To obtain access to [target part]" then list ONLY the parts removed to get there, one per line, as BARE NOUNS with no leading verb — "Battery", "Battery casing", "Engine cover" — not "Remove the battery". Only include this step at all if real disassembly was needed; skip it entirely for a part that's already accessible (e.g. brake pads, a bulb).
+3. The actual repair is ONE line: "To supply and fit [part]" for a replacement, or "To remove and replace [part]" when there's no separate access step.
+4. If step 2 was used, close reassembly with exactly one line: "Reassemble per removal" — never re-list the removed parts in reverse.
+5. Close with ONE short line: "Test" (diagnostic/mechanical repairs) or "Road test" (anything affecting ride/handling/braking). Never elaborate this into a sentence.
+6. For a routine service (no diagnosis, no access step), skip straight to a heading line ("Carry out Interim Service") then the actual tasks, each as a short plain line — still no bullets, still no verb padding — then "Test".
+7. UK terms. No prices, no part numbers. Total length: as short as the real job allows — most single jobs are 4-11 lines. Only go longer when the description genuinely names several distinct jobs; keep each job's own lines grouped together in one list.
 
-EXAMPLE 2 — routine service (Interim Service):
-Title: "Interim Service"
-- Raise vehicle on ramp and carry out visual inspection
-- Drain and replace engine oil
-- Remove and replace oil filter
-- Reset sump plug washer and torque to spec
-- Top up screen wash and check coolant level
-- Check tyre condition and pressures, adjust to spec
-- Check brake pad and disc wear front and rear
-- Check all exterior lights and wipers
-- Reset service indicator
-- Road test vehicle
+EXAMPLE 1 — diagnostic + repair (copied from a real job sheet):
+Carry out Diagnostic
+Engine Management Light on
 
-EXAMPLE 3 — several jobs mentioned together (Full Service & Cambelt Replacement):
-Title: "Full Service & Cambelt"
-- Raise vehicle on ramp and carry out full visual inspection
-- Drain and replace engine oil and filter
-- Replace air filter and cabin/pollen filter
-- Check and top up all fluid levels
-- Remove auxiliary drive belt and covers to access cambelt
-- Fit new cambelt, tensioner and idler pulleys to correct tension
-- Refit auxiliary belt and covers
-- Check and reset service indicator
-- Recheck for leaks after running engine to temperature
-- Road test vehicle
+The car was stalling and had lack of power. We found the valve control unit controller assembly required replacement.
+To obtain access to Valvematic unit
+Battery
+Battery casing
+Engine cover
+Engine cover gasket
+To supply and fit Valvematic unit
+Reassemble per removal
+Test
 
-EXAMPLE 4 — diagnostic + repair (Engine Warning Light — Coil Pack Fault):
-Title: "Engine Fault Diagnosis & Repair"
-- Connect diagnostic equipment and retrieve stored fault codes
-- Interpret codes and identify cylinder 3 misfire
-- Inspect ignition coil pack and spark plug on cylinder 3
-- Replace faulty ignition coil pack
-- Replace spark plug on affected cylinder
-- Clear fault codes and run engine to confirm fix
-- Road test and recheck for fault code return
+EXAMPLE 2 — simple part swap, no access step needed (Front Brake Discs & Pads):
+To remove and replace front brake discs and pads
+Bleed brakes and check fluid level
+Road test
 
-EXAMPLE 5 — MOT failure repair (Front Suspension & Steering):
-Title: "Front Suspension & Steering Repair"
-- Raise vehicle on ramp and remove front road wheels
-- Inspect front suspension, steering and driveshaft components
-- Remove and replace worn front lower arm bushes
-- Remove and replace offside front anti-roll bar drop link
-- Remove and replace nearside front outer track rod end
-- Set toe angle to manufacturer specification
-- Torque all suspension and steering fixings to spec
-- Refit wheels and torque to spec
-- Road test and recheck for noise or vibration
+EXAMPLE 3 — routine service (Interim Service):
+Carry out Interim Service
+Drain and replace engine oil and filter
+Top up screen wash and check coolant level
+Check tyre condition and pressures
+Check brake pads and discs front and rear
+Check all exterior lights and wipers
+Reset service indicator
+Road test
 
-When several jobs are listed together, keep each job's steps grouped in the order the
-jobs were described, but still return them as ONE combined bullet list under a single
-title covering all of them — do not return separate lists per job.
+EXAMPLE 4 — MOT failure repair, access step needed (Front Suspension):
+To obtain access to front suspension components
+Front road wheels
+To remove and replace front lower arm bushes, ARB link and offside track rod end
+Set toe angle to manufacturer specification
+Reassemble per removal
+Road test
 
-COMMON PHRASING TO MATCH:
-- "Raise vehicle" / "raise on ramp" for anything needing the car off the ground.
-- "Torque to spec" rather than a made-up number, unless the job description gives one.
-- "Road test" as the closing step whenever the job affects how the car drives, brakes,
-  or steers — omit it only for jobs with no effect on driving (e.g. bulb replacement,
-  interior trim, infotainment).
-- Prefer "remove and replace" over separate remove/replace bullets for a simple part swap;
-  split into separate steps only when there's meaningful work between them (cleaning a
-  mating face, bleeding a system, calibrating a sensor).
-- "Check and reset service indicator" only for service-type jobs, never for one-off repairs.`;
+EXAMPLE 5 — several distinct jobs together (Service + separate diagnostic repair):
+Carry out Interim Service
+Drain and replace engine oil and filter
+Check all fluid levels
+Reset service indicator
+
+Carry out Diagnostic
+ABS warning light on
+We found the offside front wheel speed sensor had failed
+To remove and replace offside front wheel speed sensor
+Clear fault codes
+Road test`;
 
 export const aiRouter = router({
   generateMOTEstimate: publicProcedure
@@ -281,8 +261,9 @@ CRITICAL INSTRUCTIONS:
       }
     }),
 
-  // Smart job specification: the technician types what job was done; the AI returns a
-  // vehicle-aware bullet-point breakdown of the work carried out, for the job-sheet/invoice.
+  // Smart job specification: the technician types what job was done; the AI returns the
+  // printed job-sheet/invoice description as plain lines, in real terse garage-note style
+  // (see JOB_SPEC_SYSTEM) rather than a structured instructional checklist.
   generateJobSpec: publicProcedure
     .input(z.object({
       job: z.string().min(2),
@@ -303,7 +284,7 @@ CRITICAL INSTRUCTIONS:
           model: provider(AI_MODEL),
           system: JOB_SPEC_SYSTEM,
           prompt: userPrompt,
-          schema: z.object({ title: z.string(), bullets: z.array(z.string()).min(4).max(14) }),
+          schema: z.object({ lines: z.array(z.string()).min(3).max(16) }),
         });
         return object;
       } catch (e: any) {

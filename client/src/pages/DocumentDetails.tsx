@@ -2022,7 +2022,7 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
         engineCC: form.engineCC ? String(form.engineCC) : undefined,
         year: form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined,
       });
-      const block = [res.title ? `**${res.title}**` : "", ...((res.bullets || []) as string[]).map((b) => `- ${b}`)].filter(Boolean).join("\n");
+      const block = ((res.lines || []) as string[]).join("\n");
       onInsert(block);
       setJob("");
       toast.success("Job spec added to the description");
