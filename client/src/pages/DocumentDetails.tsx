@@ -21,10 +21,10 @@ const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
 };
-// GA4 Classic title-bar colour per doc type — JS sampled off a live Job Sheet record
-// (deep plum/purple); others follow the same module colours as the top nav.
+// GA4 Classic title-bar colour per doc type — JS/SI sampled off live GA4 reference
+// screenshots (plum/purple and dark petrol teal); others follow the top nav module colours.
 const GA4_TITLEBAR_COLOR: Record<string, string> = {
-  JS: "#5b2c82", SI: "#1d4ed8", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c",
+  JS: "#5b2c82", SI: "#155263", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c",
 };
 const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
