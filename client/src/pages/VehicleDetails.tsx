@@ -511,7 +511,7 @@ export default function VehicleDetails() {
                                         <span>Date</span><span>Part</span><span>Part No.</span><span>Doc</span><span>Qty</span><span>Price</span>
                                     </div>
                                     {partsHistory.data!.map((p: any) => (
-                                        <div key={p.id} className="vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px", height: 27, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                        <div key={p.id} className="vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px", height: 23, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
                                             <span>{formatDate(p.dateIssued || p.dateCreated)}</span>
                                             <span>{p.description}</span>
                                             <span>{p.partNumber || ""}</span>
@@ -530,7 +530,7 @@ export default function VehicleDetails() {
                                         <span>Type</span><span>Due Date</span><span>Status</span><span>Sent At</span><span>Method</span>
                                     </div>
                                     {reminders.map((r: any) => (
-                                        <div key={r.id} className="vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px", height: 27, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                        <div key={r.id} className="vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px", height: 23, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
                                             <span>{r.type}</span>
                                             <span>{formatDate(r.dueDate)}</span>
                                             <span>{r.status}</span>
