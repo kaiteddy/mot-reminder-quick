@@ -474,6 +474,11 @@
 .ga4-theme .js-field > span { padding-right: 7px; white-space: nowrap; text-align: left; }
 .ga4-theme .js-field input, .ga4-theme .js-field select { width: 100%; height: 27px !important; padding-left: 6px !important; padding-right: 6px !important; }
 .ga4-theme .customer-grid .js-field { grid-template-columns: 126px minmax(0, 1fr); }
+.ga4-theme .js-mot-hint { display: flex; align-items: center; gap: 5px; padding-left: 112px; margin-top: -3px; font-size: 11px; color: #777; }
+.ga4-theme .js-mot-hint svg { color: #999; }
+.ga4-theme .js-mot-hint b { color: #333; }
+.ga4-theme .js-mot-hint-use { color: #0645ad; font-weight: 600; }
+.ga4-theme .js-mot-hint-use:hover { text-decoration: underline; }
 .ga4-theme .js-form-tools { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
 .ga4-theme .js-form-tools .js-action-button { min-width: 100px; height: 30px; padding: 0 10px; border: 1px solid #aaa; background: linear-gradient(#fafafa, #dcdcdc); color: #444; text-shadow: none; }
 .ga4-theme .js-form-tools .icon-only { min-width: 40px; width: 40px; padding: 0; }

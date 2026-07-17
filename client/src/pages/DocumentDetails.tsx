@@ -1110,7 +1110,7 @@ export default function DocumentDetails() {
                   the actual print/email block still only applies to invoices, see requiredMissing(). */}
               <EF label="Mileage" field="mileage" required={isInvoice || !!base} grow {...{ form, set, editing }} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
-              {!base && editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
               {base && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
@@ -1877,6 +1877,7 @@ function PhoneMatchHint({ phone, currentCustomerId, onLink }: { phone: string; c
 // Pull the odometer reading from the vehicle's most recent MOT (DVSA) and offer to drop it
 // into the Mileage field — the reading on the day of the last test is a good current default.
 function MotMileageHint({ registration, current, onUse }: { registration: string; current: any; onUse: (v: string) => void }) {
+  const base = useClassicBase();
   const reg = (registration || "").replace(/\s+/g, "").toUpperCase();
   const { data } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: reg.length >= 4, staleTime: 60_000 });
   const latest = useMemo(() => {
@@ -1890,6 +1891,15 @@ function MotMileageHint({ registration, current, onUse }: { registration: string
   }, [data]);
   if (!latest) return null;
   const already = num(current) === latest.miles;
+  if (base) {
+    return (
+      <div className="js-mot-hint">
+        <Gauge className="w-3 h-3 shrink-0" />
+        <span>Last MOT: <b>{latest.miles.toLocaleString()}</b> mi{latest.date ? ` · ${fmtDate(latest.date)}` : ""}</span>
+        {!already && <button type="button" onClick={() => onUse(String(latest.miles))} className="js-mot-hint-use">use</button>}
+      </div>
+    );
+  }
   return (
     <div className="ml-[104px] flex items-center gap-1.5 text-[11px] text-slate-500">
       <Gauge className="w-3 h-3 text-slate-400 shrink-0" />
