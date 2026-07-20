@@ -2530,7 +2530,7 @@ export async function saveDocument(input: SaveDocInput) {
 export async function convertDocument(id: number, toType: string) {
   const detail = await getDocumentDetail(id);
   if (!detail?.doc) throw new Error("Document not found");
-  const { doc, vehicle, lineItems } = detail as any;
+  const { doc, vehicle, customer, lineItems } = detail as any;
   const created = await saveDocument({
     docType: toType,
     registration: vehicle?.registration || doc.registration,
@@ -2540,7 +2540,10 @@ export async function convertDocument(id: number, toType: string) {
       engineCC: vehicle.engineCC, engineNo: vehicle.engineNo, engineCode: vehicle.engineCode, vin: vehicle.vin,
       derivative: vehicle.derivative, paintCode: vehicle.paintCode, keyCode: vehicle.keyCode, radioCode: vehicle.radioCode,
     } : undefined,
-    customerName: doc.customerName, company: doc.company, accountNumber: doc.accountNumber,
+    // doc.customerName is the document's own denormalized snapshot, which is blank on plenty of
+    // real GA4-synced rows — fall back so a convert never carries a blank name into the new doc.
+    customerName: doc.customerName || [doc.custTitle, doc.custForename, doc.custSurname].filter(Boolean).join(" ") || customer?.name || undefined,
+    company: doc.company, accountNumber: doc.accountNumber,
     custHouseNo: doc.custHouseNo, custRoad: doc.custRoad, custLocality: doc.custLocality, custTown: doc.custTown,
     custCounty: doc.custCounty, custPostcode: doc.custPostcode, custTelephone: doc.custTelephone,
     custMobile: doc.custMobile, custEmail: doc.custEmail,
@@ -2687,9 +2690,10 @@ export async function getStuckGa4Claims(minAgeHours = 24) {
   const res: any = await db.execute(sql`
     SELECT p."ga4Number", p.status, p.attempts, p."claimedByDocId", p."claimedAt",
            ROUND(EXTRACT(EPOCH FROM (now() - p."claimedAt")) / 3600)::int AS "ageHours",
-           sh."docNo", sh."registration", sh."customerName", sh."totalGross", sh."docStatus"
+           sh."docNo", sh."registration", COALESCE(NULLIF(sh."customerName", ''), c.name) AS "customerName", sh."totalGross", sh."docStatus"
       FROM "ga4NumberPool" p
       LEFT JOIN "serviceHistory" sh ON sh.id = p."claimedByDocId"
+      LEFT JOIN "customers" c ON c.id = sh."customerId"
      WHERE p.status IN ('claimed','failed')
        AND p."filledAt" IS NULL
        AND p."claimedAt" < now() - (${String(minAgeHours)} || ' hours')::interval
@@ -2751,6 +2755,15 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   const insurer = (String(main.insuranceCompany || "").trim() || (detectInsurer(main.company) ? main.company : "")) || null;
   const xsCompany = detectInsurer(main.company) ? null : main.company;
 
+  // main.customerName is the document's own denormalized snapshot, which is blank on plenty of
+  // real GA4-synced rows even though customerId correctly links to a customer — fall back so the
+  // excess invoice doesn't inherit a blank name.
+  let mainCustomerName = main.customerName || [main.custTitle, main.custForename, main.custSurname].filter(Boolean).join(" ") || null;
+  if (!mainCustomerName && main.customerId) {
+    const linked = (await db.select({ name: customers.name }).from(customers).where(eq(customers.id, main.customerId)).limit(1))[0];
+    mainCustomerName = linked?.name || null;
+  }
+
   const discount = Math.max(0, Number(input.discount) || 0);
   const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
   const vatRate = input.vatRegistered ? 20 : 0;
@@ -2763,7 +2776,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   const xsFields: any = undef({
     docType: "XS", docNo, externalId,
     customerId: main.customerId, vehicleId: main.vehicleId, registration: main.registration,
-    customerName: main.customerName, custTitle: main.custTitle, custForename: main.custForename, custSurname: main.custSurname,
+    customerName: mainCustomerName, custTitle: main.custTitle, custForename: main.custForename, custSurname: main.custSurname,
     custEmail: main.custEmail, company: xsCompany, accountNumber: main.accountNumber,
     custHouseNo: main.custHouseNo, custRoad: main.custRoad, custLocality: main.custLocality,
     custTown: main.custTown, custCounty: main.custCounty, custPostcode: main.custPostcode,

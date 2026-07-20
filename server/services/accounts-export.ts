@@ -280,14 +280,17 @@ export async function generateExpensesExport(opts: { toDate: string }): Promise<
 const invSel = {
   id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType,
   date: serviceHistory.dateIssued, gross: serviceHistory.totalGross,
-  customer: serviceHistory.customerName, registration: serviceHistory.registration,
+  // serviceHistory.customerName is blank on plenty of real GA4-synced rows even though
+  // customerId correctly links to a customer — fall back to the linked record's name.
+  customer: sql<string>`COALESCE(NULLIF(${serviceHistory.customerName}, ''), ${customers.name})`,
+  registration: serviceHistory.registration,
   unpaid: serviceHistory.accountsUnpaid,
 };
 
 /** Invoices currently flagged as not-yet-paid (excluded from the payments export). */
 export async function getUnpaidInvoices() {
   const db = await getDb(); if (!db) return [];
-  return db.select(invSel).from(serviceHistory)
+  return db.select(invSel).from(serviceHistory).leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .where(and(inArray(serviceHistory.docType, ["SI", "XS"]), eq(serviceHistory.accountsUnpaid, 1)))
     .orderBy(desc(serviceHistory.dateIssued));
 }
@@ -296,9 +299,9 @@ export async function getUnpaidInvoices() {
 export async function searchInvoices(term: string) {
   const db = await getDb(); if (!db) return [];
   const t = `%${term.trim()}%`;
-  return db.select(invSel).from(serviceHistory)
+  return db.select(invSel).from(serviceHistory).leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .where(and(inArray(serviceHistory.docType, ["SI", "XS"]),
-      sql`(${serviceHistory.docNo} ILIKE ${t} OR ${serviceHistory.customerName} ILIKE ${t} OR ${serviceHistory.registration} ILIKE ${t})`))
+      sql`(${serviceHistory.docNo} ILIKE ${t} OR ${serviceHistory.customerName} ILIKE ${t} OR ${customers.name} ILIKE ${t} OR ${serviceHistory.registration} ILIKE ${t})`))
     .orderBy(desc(serviceHistory.dateIssued)).limit(40);
 }
 
