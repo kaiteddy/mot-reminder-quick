@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -67,8 +67,12 @@ export default function Ga4Home() {
   const { data: jobSheets, isLoading: jsLoading } = trpc.documents.list.useQuery({ docType: "JS", limit: 200, sortKey: "date", sortDir: "desc" });
   const { data: invoices, isLoading: siLoading } = trpc.documents.list.useQuery({ docType: "SI", limit: 200, sortKey: "date", sortDir: "desc" });
 
-  const jsInProgress = useMemo(() => (jobSheets ?? []).filter((d: any) => !d.dateIssued), [jobSheets]);
-  const siInProgress = useMemo(() => (invoices ?? []).filter((d: any) => !d.dateIssued), [invoices]);
+  // "In Progress" isn't "not yet issued" — Archives is a separate, still-unimplemented manual
+  // action (the button above is a placeholder), so a doc issued today must stay visible here
+  // until real archiving exists. Filtering on dateIssued was hiding every invoice/job sheet
+  // finished today the moment staff issued it.
+  const jsInProgress = jobSheets ?? [];
+  const siInProgress = invoices ?? [];
 
   const openDoc = (id: number) => setLocation(`/classic/documents/${id}`);
 

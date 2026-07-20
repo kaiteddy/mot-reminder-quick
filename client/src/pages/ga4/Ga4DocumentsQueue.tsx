@@ -36,9 +36,13 @@ export default function Ga4DocumentsQueue() {
     { docType: config?.docType || "JS", limit: 200, sortKey: "date", sortDir: "desc" },
     { enabled: !!config }
   );
+  // "In Progress" isn't "not yet issued" — Archives is a separate, still-unimplemented manual
+  // action (the button below is a placeholder), so a doc issued today must stay visible here
+  // until real archiving exists. Filtering on dateIssued was hiding every doc finished today
+  // the moment staff issued it.
   const rows = useMemo(() => {
-    const inProgress = (data ?? []).filter((d: any) => !d.dateIssued);
-    return todayOnly ? inProgress.filter((d: any) => isToday(d.dateIssued || d.dateCreated || d.createdAt)) : inProgress;
+    const list = data ?? [];
+    return todayOnly ? list.filter((d: any) => isToday(d.dateIssued || d.dateCreated || d.createdAt)) : list;
   }, [data, todayOnly]);
   const openDoc = (id: number) => setLocation(`/classic/documents/${id}`);
 
