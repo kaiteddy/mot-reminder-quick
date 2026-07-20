@@ -2623,6 +2623,38 @@ export async function getPoolStatus() {
   return out as { available: number; claimed: number; filled: number; failed: number; dead: number };
 }
 
+/** The safety net the pool code always assumed but never had ("getPoolStatus()/monitor should
+ *  alert and the worker backfills"). A reserved number is claimed at web-issue time (popGa4Number),
+ *  but the GA4 draft is only filled+issued later; if that fill never happens the web invoice carries
+ *  a ga4Number pointing at a blank GA4 shell — silently. This returns that worklist: pool rows
+ *  claimed/failed, never filled, older than `minAgeHours`, AND with no real GA4-imported invoice of
+ *  that number yet (so a filled-but-not-yet-reconciled number auto-drops off once GA4 sync imports it).
+ *  Read-only. Consumed by the /api/cron/ga4-pool-check monitor. */
+export async function getStuckGa4Claims(minAgeHours = 24) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const res: any = await db.execute(sql`
+    SELECT p."ga4Number", p.status, p.attempts, p."claimedByDocId", p."claimedAt",
+           ROUND(EXTRACT(EPOCH FROM (now() - p."claimedAt")) / 3600)::int AS "ageHours",
+           sh."docNo", sh."registration", sh."customerName", sh."totalGross", sh."docStatus"
+      FROM "ga4NumberPool" p
+      LEFT JOIN "serviceHistory" sh ON sh.id = p."claimedByDocId"
+     WHERE p.status IN ('claimed','failed')
+       AND p."filledAt" IS NULL
+       AND p."claimedAt" < now() - (${String(minAgeHours)} || ' hours')::interval
+       AND NOT EXISTS (
+         SELECT 1 FROM "serviceHistory" g
+          WHERE g."docNo" = p."ga4Number"
+            AND (g."externalId" IS NULL OR g."externalId" NOT LIKE 'WEB-%')
+       )
+     ORDER BY p."claimedAt" ASC`);
+  return (res.rows ?? []) as Array<{
+    ga4Number: string; status: string; attempts: number; claimedByDocId: number | null;
+    claimedAt: string; ageHours: number; docNo: string | null; registration: string | null;
+    customerName: string | null; totalGross: string | null; docStatus: string | null;
+  }>;
+}
+
 /** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance).
  *  On issuing an invoice we also POP a reserved GA4 number so the printed document carries the
  *  real GA4 number instantly; the claimed pool row becomes the worker's fill queue. */
