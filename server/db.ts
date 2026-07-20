@@ -2019,9 +2019,18 @@ export async function globalSearch(query: string, full = false) {
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
       .orderBy(customers.name).limit(limV),
-    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued, make: vehicles.make, model: vehicles.model })
+    db.select({
+        id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number, docType: serviceHistory.docType, registration: serviceHistory.registration,
+        // The doc's own denormalized customerName text is blank on plenty of real GA4-synced
+        // rows even though customerId correctly links to a customer — fall back to the linked
+        // record's name so the results don't show a blank "—" for a document that DOES have
+        // an owner on file.
+        customerName: sql<string>`COALESCE(${serviceHistory.customerName}, ${customers.name})`,
+        accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued, make: vehicles.make, model: vehicles.model,
+      })
       .from(serviceHistory)
       .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+      .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
       // ga4Number is what's actually printed/emailed on an issued invoice — search must match it
       // too, or looking up the number a customer was given finds nothing (or the wrong doc).
       // Also match a part description/number on any line item of the doc, so typing a part
