@@ -582,10 +582,18 @@
 .ga4-theme .qs-hint { padding: 24px; text-align: center; color: #888; font-size: 13px; }
 .ga4-theme .qs-section-head { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: linear-gradient(#d3d3d3, #bdbdbd); border-bottom: 1px solid #858585; border-top: 1px solid #eee; font-size: 13px; font-weight: 700; color: #222; }
 .ga4-theme .qs-section-head span { font-weight: 400; color: #555; }
-.ga4-theme .qs-row, .ga4-theme .qs-row-empty { display: grid; grid-template-columns: 1fr 1.3fr 1.6fr; gap: 10px; height: 30px; padding: 0 10px; align-items: center; background: #fff; border-bottom: 1px solid #ddd; text-align: left; font-size: 12.5px; color: #333; }
+/* Fixed px column widths (not fr) — each .qs-row is its own independent grid container
+   (buttons, not shared table rows), so fr/auto tracks were sizing to THAT row's own
+   content and drifting from row to row (e.g. a short reg vs a long one). Fixed widths
+   plus the nowrap+ellipsis below keep every row's columns lined up under the header. */
+.ga4-theme .qs-row, .ga4-theme .qs-row-empty { display: grid; gap: 10px; height: 30px; padding: 0 10px; align-items: center; background: #fff; border-bottom: 1px solid #ddd; text-align: left; font-size: 12.5px; color: #333; }
+.ga4-theme .qs-row-documents { grid-template-columns: 100px 200px 1fr; }
+.ga4-theme .qs-row-vehicles { grid-template-columns: 110px 220px 1fr; }
+.ga4-theme .qs-row-customers { grid-template-columns: 160px 140px 1fr; }
 .ga4-theme .qs-row span, .ga4-theme .qs-row-empty span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ga4-theme .qs-row:hover { background: #e8effc; }
 .ga4-theme .qs-row-empty { background: #fafafa; }
+.ga4-theme .qs-col-head { background: #ececec; border-bottom: 1px solid #ccc; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; color: #666; height: 22px; }
 
 /* Vehicle Details (classic) — same dark-bezel record-card chrome as the Job Sheet screen
    (title bar/toolbar reuse .js-titlebar/.js-primary-actions directly), but its own body:

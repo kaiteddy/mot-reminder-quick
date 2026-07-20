@@ -56,42 +56,45 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
           {data?.documents?.length > 0 && (
             <>
               <div className="qs-section-head">Documents <span>(showing {data.documents.length})</span></div>
+              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true"><span>Doc No</span><span>Customer</span><span>Vehicle</span></div>
               {data.documents.map((d: any) => (
-                <button key={`d${d.id}`} type="button" className="qs-row" onClick={() => go(`/classic/documents/${d.id}`)}>
+                <button key={`d${d.id}`} type="button" className="qs-row qs-row-documents" onClick={() => go(`/classic/documents/${d.id}`)}>
                   <span>{DOC_LABEL[d.docType] || d.docType} {d.ga4Number || d.docNo}</span>
                   <span>{d.customerName || "—"}</span>
                   <span>{[d.registration ? ga4Spaced(d.registration) : null, [d.make, d.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" - ") || "—"}</span>
                 </button>
               ))}
-              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+              <div className="qs-row qs-row-empty qs-row-documents" aria-hidden="true"><span /><span /><span /></div>
             </>
           )}
 
           {data?.vehicles?.length > 0 && (
             <>
               <div className="qs-section-head">Vehicles <span>(showing {data.vehicles.length})</span></div>
+              <div className="qs-row qs-col-head qs-row-vehicles" aria-hidden="true"><span>Registration</span><span>Vehicle</span><span>Owner</span></div>
               {data.vehicles.map((v: any) => (
-                <button key={`v${v.id}`} type="button" className="qs-row" onClick={() => go(`/classic/view-vehicle/${encodeURIComponent(v.registration)}`)}>
+                <button key={`v${v.id}`} type="button" className="qs-row qs-row-vehicles" onClick={() => go(`/classic/view-vehicle/${encodeURIComponent(v.registration)}`)}>
                   <span>{ga4Spaced(v.registration)}</span>
                   <span>{[v.make, v.model].filter(Boolean).join(" ") || "—"}</span>
                   <span>{v.ownerName || "—"}</span>
                 </button>
               ))}
-              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+              <div className="qs-row qs-row-empty qs-row-vehicles" aria-hidden="true"><span /><span /><span /></div>
             </>
           )}
 
           {data?.customers?.length > 0 && (
             <>
               <div className="qs-section-head">Customers <span>(showing {data.customers.length})</span></div>
+              <div className="qs-row qs-col-head qs-row-customers" aria-hidden="true"><span>Name</span><span>Mobile</span><span>Address</span></div>
               {data.customers.map((c: any) => (
-                <button key={`c${c.id}`} type="button" className="qs-row" onClick={() => go(`/classic/customers/${c.id}`)}>
+                <button key={`c${c.id}`} type="button" className="qs-row qs-row-customers" onClick={() => go(`/classic/customers/${c.id}`)}>
                   <span>{c.name || "—"}</span>
                   <span>{c.phone || "—"}</span>
                   <span>{c.address || c.postcode || "—"}</span>
                 </button>
               ))}
-              <div className="qs-row qs-row-empty" aria-hidden="true"><span /><span /><span /></div>
+              <div className="qs-row qs-row-empty qs-row-customers" aria-hidden="true"><span /><span /><span /></div>
             </>
           )}
         </div>
