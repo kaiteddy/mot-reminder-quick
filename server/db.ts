@@ -2010,7 +2010,7 @@ export async function globalSearch(query: string, full = false) {
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
       .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
       .orderBy(customers.name).limit(limV),
-    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, make: vehicles.make, model: vehicles.model })
+    db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued, make: vehicles.make, model: vehicles.model })
       .from(serviceHistory)
       .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
       // ga4Number is what's actually printed/emailed on an issued invoice — search must match it

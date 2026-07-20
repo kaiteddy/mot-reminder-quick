@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { ga4Spaced } from "@/components/RegPlate";
 
 const DOC_LABEL: Record<string, string> = { SI: "SI", ES: "ES", JS: "JS", CR: "CR", XS: "XS", VS: "VS" };
+const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
 
 // GA4 Classic's Quick Search results — a floating window (title bar, dark search
 // row, grouped results tables) matching the real app exactly, not the modern app's
@@ -56,15 +57,16 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
           {data?.documents?.length > 0 && (
             <>
               <div className="qs-section-head">Documents <span>(showing {data.documents.length})</span></div>
-              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true"><span>Doc No</span><span>Customer</span><span>Vehicle</span></div>
+              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true"><span>Doc No</span><span>Date</span><span>Customer</span><span>Vehicle</span></div>
               {data.documents.map((d: any) => (
                 <button key={`d${d.id}`} type="button" className="qs-row qs-row-documents" onClick={() => go(`/classic/documents/${d.id}`)}>
                   <span>{DOC_LABEL[d.docType] || d.docType} {d.ga4Number || d.docNo}</span>
+                  <span>{fmtDate(d.dateIssued || d.date)}</span>
                   <span>{d.customerName || "—"}</span>
                   <span>{[d.registration ? ga4Spaced(d.registration) : null, [d.make, d.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" - ") || "—"}</span>
                 </button>
               ))}
-              <div className="qs-row qs-row-empty qs-row-documents" aria-hidden="true"><span /><span /><span /></div>
+              <div className="qs-row qs-row-empty qs-row-documents" aria-hidden="true"><span /><span /><span /><span /></div>
             </>
           )}
 
