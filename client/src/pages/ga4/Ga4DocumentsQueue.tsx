@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { ChevronDown } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -21,7 +21,11 @@ const TYPE_CONFIG: Record<string, {
 
 export default function Ga4DocumentsQueue() {
   const [, setLocation] = useLocation();
-  const docType = new URLSearchParams(window.location.search).get("docType") || "";
+  // useSearch() (not window.location.search) so nav clicks that only change the query
+  // string — Job Sheets -> Estimates -> Invoices, same /classic/documents path — actually
+  // re-render this component. wouter's <Route> only remounts on path changes, so a plain
+  // window.location.search read left the panel frozen on whichever doc type loaded first.
+  const docType = new URLSearchParams(useSearch()).get("docType") || "";
   const config = TYPE_CONFIG[docType];
   const [todayOnly, setTodayOnly] = useState(false);
 
