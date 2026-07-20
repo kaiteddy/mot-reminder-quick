@@ -50,6 +50,7 @@ const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
 const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
 const Ga4Home = lazy(() => import("./pages/ga4/Ga4Home"));
+const Ga4DocumentsQueue = lazy(() => import("./pages/ga4/Ga4DocumentsQueue"));
 
 function RouteFallback() {
   return (
@@ -78,7 +79,7 @@ function Router() {
       */}
       <Route path="/classic/view-vehicle/:registration" component={VehicleDetails} />
       <Route path="/classic/documents/:id" component={DocumentDetails} />
-      <Route path="/classic/documents" component={Documents} />
+      <Route path="/classic/documents" component={Ga4DocumentsQueue} />
       <Route path="/classic/customers/:id" component={CustomerDetails} />
       <Route path="/classic/customers" component={Customers} />
       <Route path="/classic/vehicles" component={Vehicles} />
