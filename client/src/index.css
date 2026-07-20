@@ -594,6 +594,8 @@
 .ga4-theme .qs-row:hover { background: #e8effc; }
 .ga4-theme .qs-row-empty { background: #fafafa; }
 .ga4-theme .qs-col-head { background: #ececec; border-bottom: 1px solid #ccc; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; color: #666; height: 22px; }
+.ga4-theme .qs-sort-toggle { display: flex; align-items: center; gap: 3px; background: none; border: 0; padding: 0; margin: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; color: #333; cursor: pointer; }
+.ga4-theme .qs-sort-toggle:hover { color: #000; text-decoration: underline; }
 
 /* Vehicle Details (classic) — same dark-bezel record-card chrome as the Job Sheet screen
    (title bar/toolbar reuse .js-titlebar/.js-primary-actions directly), but its own body:

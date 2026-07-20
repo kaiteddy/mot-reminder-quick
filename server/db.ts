@@ -1985,8 +1985,8 @@ export async function searchCustomers(query: string, limit = 10) {
 export async function globalSearch(query: string, full = false) {
   const db = await getDb();
   const qq = String(query ?? "").trim();
-  if (!db || qq.length < 2) return { customers: [], vehicles: [], documents: [] };
-  const limC = full ? 100 : 8, limV = full ? 200 : 15, limD = full ? 60 : 8;
+  if (!db || qq.length < 2) return { customers: [], vehicles: [], documents: [], documentsTotal: 0 };
+  const limC = full ? 100 : 8, limV = full ? 200 : 15, limD = full ? 300 : 50;
   // Every typed word must match SOMEWHERE on the row — an AND of (per-word OR-across-fields).
   // So "Honda Jazz John" finds the Honda Jazz owned by John: words can span make/model/owner/reg.
   const tokens = qq.split(/\s+/).filter(Boolean);
@@ -1994,7 +1994,16 @@ export async function globalSearch(query: string, full = false) {
   const regLikeOf = (t: string) => `%${t.toUpperCase().replace(/\s+/g, "")}%`;
   const allTokens = (colsFor: (t: string) => any[]) => and(...tokens.map((t) => or(...colsFor(t))));
 
-  const [cust, veh, docs] = await Promise.all([
+  // A part name ("brake pads") can hit thousands of documents over the years — cap what's
+  // rendered but still report the true total, and sort by the SAME date shown in the UI
+  // (issued, falling back to created) so the capped page is actually the most recent ones.
+  const docsWhere = allTokens((t) => { const l = likeOf(t); return [
+    ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l),
+    sql`EXISTS (SELECT 1 FROM ${serviceLineItems} WHERE ${serviceLineItems.documentId} = ${serviceHistory.id} AND (${serviceLineItems.description} ILIKE ${l} OR ${serviceLineItems.partNumber} ILIKE ${l}))`,
+  ]; });
+  const docDateDesc = desc(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`);
+
+  const [cust, veh, docs, docsCount] = await Promise.all([
     db.select({ id: customers.id, name: customers.name, phone: customers.phone, postcode: customers.postcode, address: customers.address })
       .from(customers)
       .where(allTokens((t) => {
@@ -2017,12 +2026,11 @@ export async function globalSearch(query: string, full = false) {
       // too, or looking up the number a customer was given finds nothing (or the wrong doc).
       // Also match a part description/number on any line item of the doc, so typing a part
       // ("Oil Filter", "BP1234") surfaces the job sheets/invoices that used it.
-      .where(allTokens((t) => { const l = likeOf(t); return [
-        ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l),
-        sql`EXISTS (SELECT 1 FROM ${serviceLineItems} WHERE ${serviceLineItems.documentId} = ${serviceHistory.id} AND (${serviceLineItems.description} ILIKE ${l} OR ${serviceLineItems.partNumber} ILIKE ${l}))`,
-      ]; }))
-      .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
+      .where(docsWhere)
+      .orderBy(docDateDesc).limit(limD),
+    db.select({ n: sql<number>`COUNT(*)` }).from(serviceHistory).leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id)).where(docsWhere),
   ]);
+  const documentsTotal = Number(docsCount[0]?.n ?? docs.length);
 
   // Attach each matched customer's vehicles so they show next to the name.
   const custIds = cust.map((c) => c.id);
@@ -2050,7 +2058,7 @@ export async function globalSearch(query: string, full = false) {
   }
   const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: lastVisitByVeh.get(v.id) || null }));
 
-  return { customers: customersWithVehicles, vehicles: vehiclesWithVisit, documents: docs };
+  return { customers: customersWithVehicles, vehicles: vehiclesWithVisit, documents: docs, documentsTotal };
 }
 
 // Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Search, X } from "lucide-react";
+import { Search, X, ChevronDown, ChevronUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ga4Spaced } from "@/components/RegPlate";
 
@@ -31,6 +31,14 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
   const data = res.data as any;
   const hasResults = data && (data.documents?.length || data.vehicles?.length || data.customers?.length);
 
+  // Server already returns documents most-recent-first (issued, falling back to created) — this
+  // just lets staff flip to oldest-first without a round trip, since the page is already fetched.
+  const [docsOldestFirst, setDocsOldestFirst] = useState(false);
+  const documents = useMemo(() => {
+    const list = data?.documents ?? [];
+    return docsOldestFirst ? [...list].reverse() : list;
+  }, [data?.documents, docsOldestFirst]);
+
   const go = (path: string) => { onClose(); setLocation(path); };
 
   return (
@@ -54,11 +62,22 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
           {debounced.length >= 2 && res.isFetching && !data && <div className="qs-hint">Searching…</div>}
           {debounced.length >= 2 && data && !hasResults && <div className="qs-hint">No matches for “{debounced}”.</div>}
 
-          {data?.documents?.length > 0 && (
+          {documents.length > 0 && (
             <>
-              <div className="qs-section-head">Documents <span>(showing {data.documents.length})</span></div>
-              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true"><span>Doc No</span><span>Date</span><span>Customer</span><span>Vehicle</span></div>
-              {data.documents.map((d: any) => (
+              <div className="qs-section-head">
+                Documents{" "}
+                <span>({documents.length < (data.documentsTotal ?? documents.length)
+                  ? `showing most recent ${documents.length} of ${data.documentsTotal.toLocaleString()} — refine your search to narrow this down`
+                  : `showing ${documents.length}`})</span>
+              </div>
+              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true">
+                <span>Doc No</span>
+                <button type="button" className="qs-sort-toggle" onClick={() => setDocsOldestFirst((v) => !v)} title={docsOldestFirst ? "Showing oldest first — click for most recent first" : "Showing most recent first — click for oldest first"}>
+                  Date {docsOldestFirst ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                </button>
+                <span>Customer</span><span>Vehicle</span>
+              </div>
+              {documents.map((d: any) => (
                 <button key={`d${d.id}`} type="button" className="qs-row qs-row-documents" onClick={() => go(`/classic/documents/${d.id}`)}>
                   <span>{DOC_LABEL[d.docType] || d.docType} {d.ga4Number || d.docNo}</span>
                   <span>{fmtDate(d.dateIssued || d.date)}</span>
