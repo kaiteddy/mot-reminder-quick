@@ -703,12 +703,14 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
         const { vehicles } = await import("../drizzle/schema");
-        const { eq } = await import("drizzle-orm");
+        const { sql } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) throw new Error("No database");
 
         const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
-        const vehicleRecord = await db.select().from(vehicles).where(eq(vehicles.registration, cleanReg)).limit(1);
+        // cleanReg is normalized but the stored column may not be ("PE59 OFH") — normalize
+        // both sides, or this 404s for any vehicle whose registration was saved with a space.
+        const vehicleRecord = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${cleanReg}`).limit(1);
         if (!vehicleRecord.length) throw new Error("Vehicle not found in database");
 
         const dbVeh = vehicleRecord[0];
@@ -1132,11 +1134,14 @@ export const appRouter = router({
 
           for (let i = 0; i < regs.length; i += BATCH_SIZE) {
             const batch = regs.slice(i, i + BATCH_SIZE);
+            // batch entries are normalized (no spaces) but vehicles.registration may not be
+            // ("PE59 OFH") — matching the raw column here silently drops those vehicles from
+            // the reminder run, and a missed reminder is worse than most bugs in this file.
             const results = await db.select({
               id: vehicles.id,
               registration: vehicles.registration,
               customerId: vehicles.customerId
-            }).from(vehicles).where(inArray(vehicles.registration, batch));
+            }).from(vehicles).where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, batch));
             found.push(...results);
           }
 
@@ -3035,7 +3040,9 @@ export const appRouter = router({
 
         // Auto-create vehicle if missing but data provided
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
-          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          // Normalized match (not exact-string eq) — a typed "PE59 OFH" must find the existing
+          // "PE59OFH" row instead of minting a duplicate vehicle for the same plate.
+          const existingVehicles = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${input.registration.toUpperCase().replace(/\s+/g, "")}`).limit(1);
           if (existingVehicles.length > 0) {
             autogenVehicleId = existingVehicles[0].id;
             if (autogenCustomerId && !existingVehicles[0].customerId) {
@@ -3132,7 +3139,7 @@ export const appRouter = router({
         }
 
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
-          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          const existingVehicles = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${input.registration.toUpperCase().replace(/\s+/g, "")}`).limit(1);
           if (existingVehicles.length > 0) {
             autogenVehicleId = existingVehicles[0].id;
             if (autogenCustomerId && !existingVehicles[0].customerId) {

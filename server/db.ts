@@ -408,10 +408,23 @@ export async function getRemindersByCustomerId(customerId: number) {
   return db.select().from(reminders).where(eq(reminders.customerId, customerId));
 }
 
+/** All vehicle ids that represent the SAME physical car as `vehicleId` — the same plate can
+ * end up as two `vehicles` rows split by registration spacing/case (e.g. "PE59OFH" vs
+ * "PE59 OFH" — see "Reg format split matching"), so a bare vehicleId match on a dependent
+ * table silently misses whatever's linked to the "other" row. Falls back to [vehicleId]
+ * if the vehicle can't be found or has no registration. */
+async function getVehicleIdsForSamePlate(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, vehicleId: number): Promise<number[]> {
+  const v = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+  const normReg = v?.registration ? v.registration.toUpperCase().replace(/\s+/g, "") : null;
+  if (!normReg) return [vehicleId];
+  const matches = await db.select({ id: vehicles.id }).from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${normReg}`);
+  return matches.map((m) => m.id);
+}
+
 export async function getRemindersByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(reminders).where(eq(reminders.vehicleId, vehicleId));
+  return db.select().from(reminders).where(inArray(reminders.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)));
 }
 
 export async function getVehicleByRegistration(registration: string) {
@@ -991,7 +1004,7 @@ export async function getLatestVehicleMileage(vehicleId: number) {
   if (!db) return 0;
   const result = await db.select({ mileage: serviceHistory.mileage })
     .from(serviceHistory)
-    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .where(inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)))
     .orderBy(desc(serviceHistory.dateCreated))
     .limit(1);
   return result.length > 0 ? result[0].mileage : 0;
@@ -1548,7 +1561,7 @@ export async function getDocumentDetail(id: number) {
   }
   if (doc.vehicleId) {
     const r = await db.select({ last: sql<any>`MAX(CASE WHEN ${serviceHistory.docType}='SI' THEN ${serviceHistory.dateIssued} END)` })
-      .from(serviceHistory).where(eq(serviceHistory.vehicleId, doc.vehicleId));
+      .from(serviceHistory).where(inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, doc.vehicleId)));
     vehLastInvoiced = r[0]?.last ?? null;
   }
   const docPayments = await db.select().from(payments).where(eq(payments.documentId, id)).orderBy(desc(payments.paymentDate));
@@ -1643,7 +1656,7 @@ export async function getVehiclePartsHistory(vehicleId: number, limit = 400) {
   })
     .from(serviceLineItems)
     .innerJoin(serviceHistory, eq(serviceLineItems.documentId, serviceHistory.id))
-    .where(and(eq(serviceHistory.vehicleId, vehicleId), eq(serviceLineItems.itemType, "Part")))
+    .where(and(inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)), eq(serviceLineItems.itemType, "Part")))
     .orderBy(desc(serviceHistory.dateCreated))
     .limit(limit);
 }
@@ -2275,7 +2288,7 @@ export async function getCustomerLog(customerId?: number, vehicleId?: number) {
   // 1) manual / system logs (customerLogs)
   const logConds: any[] = [];
   if (customerId) logConds.push(eq(customerLogs.customerId, customerId));
-  if (vehicleId) logConds.push(eq(customerLogs.vehicleId, vehicleId));
+  if (vehicleId) logConds.push(inArray(customerLogs.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)));
   const logs = await db.select().from(customerLogs).where(logConds.length > 1 ? or(...logConds) : logConds[0]).orderBy(desc(customerLogs.createdAt)).limit(300);
   for (const l of logs as any[]) {
     out.push({ key: `log-${l.id}`, date: l.createdAt, type: l.type, direction: l.direction, channel: l.type,
@@ -3193,7 +3206,7 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
   // in-progress) or estimates (quotes). Only SI (invoice) and XS (policy-excess invoice).
   const INVOICE_TYPES = new Set(["SI", "XS"]);
   const allDocs = await db.select().from(serviceHistory)
-    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .where(inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)))
     .orderBy(desc(serviceHistory.dateCreated));
   const docs = allDocs
     .filter((d) => INVOICE_TYPES.has(String(d.docType)))

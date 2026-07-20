@@ -158,6 +158,14 @@ for (const r of await q(`SELECT id, "externalId" FROM customers WHERE "externalI
 for (const [ext, id] of mergedToPrimary) if (!custMap.has(ext)) custMap.set(ext, id);
 
 // ---- 2) Vehicles ----
+// syncTable's own dedup only matches by GA4 _ID, so it happily creates a SECOND vehicle
+// row for a plate that already exists under a different externalId (or none) whenever
+// the registration text differs by spacing/case — e.g. "PE59OFH" vs "PE59 OFH". The raw
+// UNIQUE(registration) constraint doesn't catch that either, since the strings differ.
+// Pre-load every existing registration (normalized), regardless of source, and skip any
+// GA4 row that would collide — never silently mint a duplicate vehicle for a known plate.
+const existingRegs = new Set<string>((await q(`SELECT registration FROM vehicles WHERE registration IS NOT NULL`)).map((r) => norm(r.registration).toUpperCase().replace(/\s+/g, "")));
+let vehiclesSkippedDupe = 0;
 const vehicles = load("Vehicles.csv");
 await syncTable({
   name: "Vehicles", table: "vehicles", rows: vehicles,
@@ -165,6 +173,9 @@ await syncTable({
   map: (r) => {
     const reg = norm(r.Registration).toUpperCase();
     if (!reg) return null;
+    const normReg = reg.replace(/\s+/g, "");
+    if (existingRegs.has(normReg)) { vehiclesSkippedDupe++; return null; }
+    existingRegs.add(normReg); // so two new GA4 rows for the same plate in one run don't both slip through
     return {
       externalId: norm(r._ID), registration: cap(reg, 20), make: cap(norm(r.Make), 100) || null, model: cap(norm(r.Model), 100) || null,
       colour: cap(norm(r.Colour), 50) || null, fuelType: cap(norm(r.FuelType), 50) || null, vin: cap(norm(r.VIN), 50) || null,
@@ -174,6 +185,7 @@ await syncTable({
   },
   insertOnly: true, // same as customers — don't overwrite existing vehicle records
 });
+if (vehiclesSkippedDupe) console.log(`  (skipped ${vehiclesSkippedDupe} GA4 vehicle row(s) already on file under a differently-spaced registration)`);
 
 const vehMap = new Map<string, number>();
 for (const r of await q(`SELECT id, "externalId" FROM vehicles WHERE "externalId" IS NOT NULL`)) vehMap.set(r.externalId, r.id);
