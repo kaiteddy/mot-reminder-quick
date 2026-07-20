@@ -1056,12 +1056,16 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     description: serviceHistory.description,
     mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
     accountNumber: serviceHistory.accountNumber,
-    customerName: serviceHistory.customerName,
+    // Same gap as globalSearch's documents query: the doc's own denormalized customerName
+    // text is blank on plenty of real GA4-synced rows even though customerId correctly
+    // links to a customer — fall back to the linked record's name.
+    customerName: sql<string>`COALESCE(${serviceHistory.customerName}, MIN(${customers.name}))`,
     paymentMethods: serviceHistory.paymentMethods,
     balance: serviceHistory.balance,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
+    .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .where(vehicleMatch)
     .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
