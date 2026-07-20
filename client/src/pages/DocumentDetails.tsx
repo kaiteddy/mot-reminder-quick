@@ -512,6 +512,16 @@ export default function DocumentDetails() {
     finally { setLooking(false); }
   }
 
+  // Auto-fire the same lookup() cascade (our records -> SWS -> DVLA) the moment a reg is
+  // entered, instead of making staff click "VRM Lookup" as a separate step. Guarded to the
+  // reg actually having changed since the last lookup, so tabbing through an unedited field
+  // (or the Enter-triggered call re-firing on blur right after) doesn't re-pay for SWS.
+  function autoLookupOnReg() {
+    if (!editing || looking) return;
+    const cur = (form.registration || "").toUpperCase().replace(/\s/g, "");
+    if (cur && cur !== regOnLoadRef.current) lookup();
+  }
+
   const liveTotals = useMemo(() => {
     const itemNet = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.subNet) ?? 0), 0);
     const itemTax = (t: string) => items.filter((i) => i.itemType === t).reduce((a, i) => a + (num(i.taxAmount) ?? 0), 0);
@@ -1053,12 +1063,14 @@ export default function DocumentDetails() {
                 {base ? (
                   <div className="js-combo-field">
                     <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                      onBlur={autoLookupOnReg} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); autoLookupOnReg(); } }}
                       className="bg-yellow-50 font-mono font-semibold" />
                     <span className="js-combo-arrow" aria-hidden="true">▾</span>
                     <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { set("registration", ""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
                   </div>
                 ) : (
                   <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                    onBlur={autoLookupOnReg} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); autoLookupOnReg(); } }}
                     className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
                 )}
                 {editing && (
