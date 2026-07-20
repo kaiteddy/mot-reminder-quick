@@ -1012,6 +1012,18 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
 
+  // The same physical car can end up as TWO `vehicles` rows when a document synced in with
+  // a differently-spaced registration ("PE59OFH" vs "PE59 OFH") — a strict vehicleId match
+  // then silently drops real history onto the "other" row. Also pull in any serviceHistory
+  // row whose own registration text normalizes to the same plate, regardless of which
+  // vehicleId it happens to be linked to (see "Reg format split matching" — this same
+  // DVLA-solid vs GA4-spaced split was already known to affect ~3,743 vehicles).
+  const thisVehicle = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+  const normReg = thisVehicle?.registration ? thisVehicle.registration.toUpperCase().replace(/\s+/g, "") : null;
+  const vehicleMatch = normReg
+    ? or(eq(serviceHistory.vehicleId, vehicleId), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') = ${normReg}`)
+    : eq(serviceHistory.vehicleId, vehicleId);
+
   // We join with line items to get a main description and a fallback total
   const rawDocs = await db.select({
     id: serviceHistory.id,
@@ -1037,7 +1049,7 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
-    .where(eq(serviceHistory.vehicleId, vehicleId))
+    .where(vehicleMatch)
     .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
 
