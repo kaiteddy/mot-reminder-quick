@@ -2015,7 +2015,12 @@ export async function globalSearch(query: string, full = false) {
       .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
       // ga4Number is what's actually printed/emailed on an issued invoice — search must match it
       // too, or looking up the number a customer was given finds nothing (or the wrong doc).
-      .where(allTokens((t) => { const l = likeOf(t); return [ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l)]; }))
+      // Also match a part description/number on any line item of the doc, so typing a part
+      // ("Oil Filter", "BP1234") surfaces the job sheets/invoices that used it.
+      .where(allTokens((t) => { const l = likeOf(t); return [
+        ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l),
+        sql`EXISTS (SELECT 1 FROM ${serviceLineItems} WHERE ${serviceLineItems.documentId} = ${serviceHistory.id} AND (${serviceLineItems.description} ILIKE ${l} OR ${serviceLineItems.partNumber} ILIKE ${l}))`,
+      ]; }))
       .orderBy(desc(serviceHistory.dateCreated)).limit(limD),
   ]);
 
