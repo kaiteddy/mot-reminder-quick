@@ -79,6 +79,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                       {[c.phone, c.postcode, c.address].filter(Boolean).length > 0 && (
                         <span className="block text-[11px] text-slate-500 truncate">{[c.phone, c.postcode, c.address].filter(Boolean).join(" · ")}</span>
                       )}
+                      {c.lastVisit && <span className="block text-[11px] text-slate-400 truncate">Last visit {fmtDate(c.lastVisit)}</span>}
                     </span>
                   </button>
                   {/* each plate → that vehicle's record */}

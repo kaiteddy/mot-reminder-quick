@@ -2105,6 +2105,47 @@ export async function globalSearch(query: string, full = false) {
   }
   const customersWithVehicles = cust.map((c) => ({ ...c, vehicles: (vehByCust.get(c.id) || []).slice(0, 6) }));
 
+  // The same person is very often duplicated across several `customers` rows — same phone,
+  // near-identical name/address formatting ("Mr A Miller" vs "Mr Miller") — which showed the
+  // same customer 2-3 times in results instead of once. Group by normalized phone (the same
+  // identity key already used for opt-out enforcement — see "duplicate-phone hazard") and merge
+  // into one entry with the combined vehicle list, keeping the fullest name/address on file.
+  const normPhoneKey = (p: any) => { let s = String(p || "").replace(/\D/g, ""); if (s.startsWith("44")) s = s.slice(2); else if (s.startsWith("0")) s = s.slice(1); return s; };
+  const byLen = (a: string | null | undefined, b: string | null | undefined) => (b?.length || 0) - (a?.length || 0);
+  const phoneGroups = new Map<string, typeof customersWithVehicles>();
+  const singles: typeof customersWithVehicles = [];
+  for (const c of customersWithVehicles) {
+    const key = normPhoneKey(c.phone);
+    if (!key || key.length < 6) { singles.push(c); continue; }
+    if (!phoneGroups.has(key)) phoneGroups.set(key, []);
+    phoneGroups.get(key)!.push(c);
+  }
+  const merged = [
+    ...Array.from(phoneGroups.values()).map((members) => {
+      const primary = [...members].sort((a, b) => byLen(a.name, b.name))[0];
+      const address = [...members].map((m) => m.address).sort(byLen)[0] || primary.address;
+      const postcode = members.find((m) => m.postcode)?.postcode || primary.postcode;
+      const vehMap = new Map<string, { registration: string; make: string | null; model: string | null }>();
+      for (const m of members) for (const v of m.vehicles) vehMap.set(v.registration.toUpperCase().replace(/\s+/g, ""), v);
+      return { ...primary, address, postcode, vehicles: Array.from(vehMap.values()).slice(0, 6), ids: members.map((m) => m.id) };
+    }),
+    ...singles.map((c) => ({ ...c, ids: [c.id] })),
+  ];
+
+  // Last visit across every merged customer id — so a duplicate-split customer still shows
+  // when they were actually last in, not just whichever split happened to have recent history.
+  const allMergedIds = merged.flatMap((c) => c.ids);
+  const lastVisitByCust = new Map<number, string>();
+  if (allMergedIds.length) {
+    const visits = await db.select({ customerId: serviceHistory.customerId, last: sql<string>`MAX(COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))` })
+      .from(serviceHistory).where(inArray(serviceHistory.customerId, allMergedIds)).groupBy(serviceHistory.customerId);
+    for (const r of visits) if (r.customerId != null && r.last) lastVisitByCust.set(r.customerId, r.last);
+  }
+  const customersMerged = merged.map((c) => ({
+    ...c,
+    lastVisit: c.ids.reduce((max: string | null, id) => { const v = lastVisitByCust.get(id); return v && (!max || v > max) ? v : max; }, null),
+  })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
   // Last visit per matched vehicle = the newest document (invoice/job sheet/etc.) for that car,
   // so the results show when the customer was last in.
   const vehIds = veh.map((v) => v.id).filter((id): id is number => id != null);
@@ -2116,7 +2157,7 @@ export async function globalSearch(query: string, full = false) {
   }
   const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: lastVisitByVeh.get(v.id) || null }));
 
-  return { customers: customersWithVehicles, vehicles: vehiclesWithVisit, documents: docs, documentsTotal };
+  return { customers: customersMerged, vehicles: vehiclesWithVisit, documents: docs, documentsTotal };
 }
 
 // Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.
