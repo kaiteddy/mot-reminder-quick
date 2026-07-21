@@ -3,21 +3,9 @@ import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Search, Loader2, User, Car, FileText, X } from "lucide-react";
 import { RegPlate } from "./RegPlate";
+import { DOC_TYPE_TAILWIND, DOC_TYPE_ICON_CLASS, groupByDocType } from "@/lib/docType";
 
-const DOC_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess", PA: "Purchase", VS: "Sale" };
-const DOC_TYPE_ORDER = ["JS", "ES", "SI", "CR", "XS", "VS", "PA"];
-const DOC_TYPE_PLURAL: Record<string, string> = { JS: "Job Sheets", ES: "Estimates", SI: "Invoices", CR: "Credit Notes", XS: "Excess", VS: "Vehicle Sales", PA: "Purchases" };
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "");
-
-// So a car's mixed history reads as "Job Sheets / Estimates / Invoices / …" instead of one
-// undifferentiated list — only types actually present get a subheading.
-function groupByDocType(docs: any[]) {
-  const byType = new Map<string, any[]>();
-  for (const d of docs) { const t = d.docType || "?"; if (!byType.has(t)) byType.set(t, []); byType.get(t)!.push(d); }
-  const ordered = DOC_TYPE_ORDER.filter((t) => byType.has(t)).map((t) => ({ type: t, label: DOC_TYPE_PLURAL[t] || t, docs: byType.get(t)! }));
-  for (const [t, docsForType] of byType) if (!DOC_TYPE_ORDER.includes(t)) ordered.push({ type: t, label: DOC_LABEL[t] || t, docs: docsForType });
-  return ordered;
-}
 
 // Multiple matching documents for the same car repeat its reg/make/customer on every row —
 // group them under one vehicle header (same pattern as the Customers group's plate chips) so
@@ -134,11 +122,13 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                   <div className="pb-1.5">
                     {groupByDocType(g.docs).map((tg) => (
                       <div key={tg.type}>
-                        <div className="pl-[30px] pr-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase text-slate-400">{tg.label}</div>
+                        <div className="pl-[30px] pr-3 pt-1 pb-1">
+                          <span className={`inline-block text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${DOC_TYPE_TAILWIND[tg.type] || "bg-slate-100 text-slate-500"}`}>{tg.label}</span>
+                        </div>
                         {tg.docs.map((d) => (
                           <button key={d.id} type="button" onClick={() => go(`/documents/${d.id}`)}
                             className="w-full flex items-center gap-2 pl-[30px] pr-3 py-1 text-left hover:bg-violet-50">
-                            <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <FileText className={`w-3.5 h-3.5 shrink-0 ${DOC_TYPE_ICON_CLASS[d.docType || ""] || "text-slate-400"}`} />
                             <span className="min-w-0 flex-1 text-[13px] text-slate-800 truncate">{d.ga4Number || d.docNo || ""}</span>
                             <span className="shrink-0 text-[11px] text-slate-400">{fmtDate(d.dateIssued || d.date)}</span>
                           </button>

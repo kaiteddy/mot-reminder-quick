@@ -13,15 +13,15 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { RegPlate } from "@/components/RegPlate";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { useClassicBase } from "@/lib/classicNav";
+import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
 };
-const TYPE_COLOR: Record<string, string> = {
-  SI: "bg-green-100 text-green-800", ES: "bg-blue-100 text-blue-800",
-  JS: "bg-amber-100 text-amber-800", CR: "bg-red-100 text-red-800",
-};
+// Same palette as UniversalSearch/Ga4QuickSearchModal and the Classic theme's panel colours
+// (job-sheet purple, invoice blue, estimate green) so a type reads the same everywhere.
+const TYPE_COLOR = DOC_TYPE_TAILWIND;
 const FILTERS = [
   { key: "JS", label: "Job Sheets" },
   { key: "all", label: "All" },

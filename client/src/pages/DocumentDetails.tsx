@@ -16,6 +16,7 @@ import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
+import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -1420,7 +1421,7 @@ export default function DocumentDetails() {
                               <TableBody>{history.map((h: any) => (
                                 <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
                                   <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
-                                  <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                                  <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                                   <TableCell>{h.docNo}</TableCell>
                                   <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
                                   <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
@@ -1437,7 +1438,7 @@ export default function DocumentDetails() {
                         <TableBody>{history.map((h: any) => (
                           <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
                             <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
-                            <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                            <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>{h.docNo}</TableCell>
                             <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
                             <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
