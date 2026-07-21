@@ -594,6 +594,7 @@
 .ga4-theme .qs-row:hover { background: #e8effc; }
 .ga4-theme .qs-row-empty { background: #fafafa; }
 .ga4-theme .qs-col-head { background: #ececec; border-bottom: 1px solid #ccc; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; color: #666; height: 22px; }
+.ga4-theme .qs-subsection-head { height: 20px; display: flex; align-items: center; padding: 0 10px; background: #f3f3f3; border-bottom: 1px solid #ddd; border-top: 1px solid #fff; font-size: 10.5px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: .03em; }
 .ga4-theme .qs-sort-toggle { display: flex; align-items: center; gap: 3px; background: none; border: 0; padding: 0; margin: 0; font: inherit; text-transform: inherit; letter-spacing: inherit; color: #333; cursor: pointer; }
 .ga4-theme .qs-sort-toggle:hover { color: #000; text-decoration: underline; }
 

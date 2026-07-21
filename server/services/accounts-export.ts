@@ -299,9 +299,12 @@ export async function getUnpaidInvoices() {
 export async function searchInvoices(term: string) {
   const db = await getDb(); if (!db) return [];
   const t = `%${term.trim()}%`;
+  // Registration normalized both sides — GA4-synced rows store the plate spaced ("FM13 KKB")
+  // or not ("FM13KKB"), and a plain ilike misses whichever way this doc wasn't stored.
+  const regT = `%${term.trim().toUpperCase().replace(/\s+/g, "")}%`;
   return db.select(invSel).from(serviceHistory).leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .where(and(inArray(serviceHistory.docType, ["SI", "XS"]),
-      sql`(${serviceHistory.docNo} ILIKE ${t} OR ${serviceHistory.customerName} ILIKE ${t} OR ${customers.name} ILIKE ${t} OR ${serviceHistory.registration} ILIKE ${t})`))
+      sql`(${serviceHistory.docNo} ILIKE ${t} OR ${serviceHistory.customerName} ILIKE ${t} OR ${customers.name} ILIKE ${t} OR REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regT})`))
     .orderBy(desc(serviceHistory.dateIssued)).limit(40);
 }
 

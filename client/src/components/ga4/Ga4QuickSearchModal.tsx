@@ -5,7 +5,20 @@ import { trpc } from "@/lib/trpc";
 import { ga4Spaced } from "@/components/RegPlate";
 
 const DOC_LABEL: Record<string, string> = { SI: "SI", ES: "ES", JS: "JS", CR: "CR", XS: "XS", VS: "VS" };
+const DOC_TYPE_ORDER = ["JS", "ES", "SI", "CR", "XS", "VS", "PA"];
+const DOC_TYPE_PLURAL: Record<string, string> = { JS: "Job Sheets", ES: "Estimates", SI: "Invoices", CR: "Credit Notes", XS: "Excess", VS: "Vehicle Sales", PA: "Purchases" };
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
+
+// A mixed match list ("brake pads" hits job sheets, estimates and invoices alike) reads as one
+// undifferentiated wall of rows — split it by doc type so it's clear which is which; a type with
+// no matches just doesn't get a subheading.
+function groupByDocType(docs: any[]) {
+  const byType = new Map<string, any[]>();
+  for (const d of docs) { const t = d.docType || "?"; if (!byType.has(t)) byType.set(t, []); byType.get(t)!.push(d); }
+  const ordered = DOC_TYPE_ORDER.filter((t) => byType.has(t)).map((t) => ({ type: t, label: DOC_TYPE_PLURAL[t] || t, docs: byType.get(t)! }));
+  for (const [t, docsForType] of byType) if (!DOC_TYPE_ORDER.includes(t)) ordered.push({ type: t, label: DOC_LABEL[t] || t, docs: docsForType });
+  return ordered;
+}
 
 // GA4 Classic's Quick Search results — a floating window (title bar, dark search
 // row, grouped results tables) matching the real app exactly, not the modern app's
@@ -70,20 +83,25 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
                   ? `showing most recent ${documents.length} of ${data.documentsTotal.toLocaleString()} — refine your search to narrow this down`
                   : `showing ${documents.length}`})</span>
               </div>
-              <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true">
-                <span>Doc No</span>
-                <button type="button" className="qs-sort-toggle" onClick={() => setDocsOldestFirst((v) => !v)} title={docsOldestFirst ? "Showing oldest first — click for most recent first" : "Showing most recent first — click for oldest first"}>
-                  Date {docsOldestFirst ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                </button>
-                <span>Customer</span><span>Vehicle</span>
-              </div>
-              {documents.map((d: any) => (
-                <button key={`d${d.id}`} type="button" className="qs-row qs-row-documents" onClick={() => go(`/classic/documents/${d.id}`)}>
-                  <span>{DOC_LABEL[d.docType] || d.docType} {d.ga4Number || d.docNo}</span>
-                  <span>{fmtDate(d.dateIssued || d.date)}</span>
-                  <span>{d.customerName || "—"}</span>
-                  <span>{[d.registration ? ga4Spaced(d.registration) : null, [d.make, d.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" - ") || "—"}</span>
-                </button>
+              {groupByDocType(documents).map((tg) => (
+                <div key={tg.type}>
+                  <div className="qs-subsection-head">{tg.label}</div>
+                  <div className="qs-row qs-col-head qs-row-documents" aria-hidden="true">
+                    <span>Doc No</span>
+                    <button type="button" className="qs-sort-toggle" onClick={() => setDocsOldestFirst((v) => !v)} title={docsOldestFirst ? "Showing oldest first — click for most recent first" : "Showing most recent first — click for oldest first"}>
+                      Date {docsOldestFirst ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    </button>
+                    <span>Customer</span><span>Vehicle</span>
+                  </div>
+                  {tg.docs.map((d: any) => (
+                    <button key={`d${d.id}`} type="button" className="qs-row qs-row-documents" onClick={() => go(`/classic/documents/${d.id}`)}>
+                      <span>{d.ga4Number || d.docNo}</span>
+                      <span>{fmtDate(d.dateIssued || d.date)}</span>
+                      <span>{d.customerName || "—"}</span>
+                      <span>{[d.registration ? ga4Spaced(d.registration) : null, [d.make, d.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" - ") || "—"}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
               <div className="qs-row qs-row-empty qs-row-documents" aria-hidden="true"><span /><span /><span /><span /></div>
             </>

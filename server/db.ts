@@ -442,7 +442,7 @@ export async function searchVehiclesByRegistration(query: string, limit = 10) {
   const normalized = query.replace(/\s/g, "").toUpperCase();
   return db.select()
     .from(vehicles)
-    .where(ilike(vehicles.registration, `${normalized}%`))
+    .where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${normalized + "%"}`)
     .limit(limit);
 }
 
@@ -1191,9 +1191,18 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   }
   if (opts.search && opts.search.trim()) {
     const s = `%${opts.search.trim()}%`;
+    const regNorm = `%${opts.search.trim().toUpperCase().replace(/\s+/g, "")}%`;
     // ga4Number is what's actually printed/emailed on an issued invoice — search must match it
     // too, or looking up the number a customer was given finds nothing (or the wrong doc).
-    conds.push(or(ilike(serviceHistory.docNo, s), ilike(serviceHistory.ga4Number, s), ilike(serviceHistory.registration, s), ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s)));
+    // Registration is normalized both sides — GA4-synced docs store the plate spaced ("FM13
+    // KKB") while others don't ("FM13KKB"), and a plain ilike misses whichever way the doc
+    // wasn't stored ("Reg format split matching").
+    conds.push(or(
+      ilike(serviceHistory.docNo, s), ilike(serviceHistory.ga4Number, s),
+      sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regNorm}`,
+      sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regNorm}`,
+      ilike(customers.name, s), ilike(vehicles.make, s), ilike(vehicles.model, s),
+    ));
   }
   const where = conds.length ? and(...conds) : undefined;
   // Best available customer name: the linked customer record, else the name stored ON the doc

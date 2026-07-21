@@ -966,6 +966,8 @@ export const appRouter = router({
         if (normalized.length === 0) return result;
 
         // 1. Find vehicles
+        // vehicles.registration may be stored spaced ("FM13 KKB") or not ("FM13KKB") — match
+        // against the same normalized form the batch was sent in, or spaced rows never match.
         const foundVehicles = await db
           .select({
             id: vehicles.id,
@@ -974,12 +976,12 @@ export const appRouter = router({
             model: vehicles.model,
           })
           .from(vehicles)
-          .where(inArray(vehicles.registration, normalized));
+          .where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, normalized));
 
         const vehicleMap = new Map();
         const vehicleIds: number[] = [];
         foundVehicles.forEach(v => {
-          vehicleMap.set(v.registration, v);
+          vehicleMap.set(String(v.registration || "").toUpperCase().replace(/\s+/g, ""), v);
           vehicleIds.push(v.id);
         });
 
