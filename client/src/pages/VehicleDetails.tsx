@@ -103,7 +103,7 @@ function SpecTile({ label, value, tone = "neutral" }: { label: string; value: Re
     return (
         <div className={`rounded-lg border px-3 py-2 ${SPEC_TONE_CLASS[tone]}`}>
             <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-            <div className="text-sm font-semibold mt-0.5 truncate">{value}</div>
+            <div className="text-sm font-semibold mt-0.5">{value}</div>
         </div>
     );
 }
@@ -266,6 +266,35 @@ export default function VehicleDetails() {
     const formatDate = (date: Date | string | null) => {
         if (!date) return "-";
         return new Date(date).toLocaleDateString("en-GB");
+    };
+    // Days between today and a date — negative once it's in the past. Shared by MOT expiry and
+    // tax due so both read "X days left" / "Overdue Xd" instead of just a bare date.
+    const daysFromToday = (date: Date | string | null): number | null => {
+        if (!date) return null;
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return null;
+        d.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return Math.round((d.getTime() - today.getTime()) / 86400000);
+    };
+    const relativeDays = (days: number | null): string => {
+        if (days == null) return "";
+        if (days < 0) return `Overdue ${Math.abs(days)}d`;
+        if (days === 0) return "Due today";
+        if (days === 1) return "Due tomorrow";
+        return `${days}d left`;
+    };
+    // Vehicle age in whole years from date of first registration, as of today.
+    const vehicleAge = (date: Date | string | null): string => {
+        if (!date) return "";
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return "";
+        const today = new Date();
+        let years = today.getFullYear() - d.getFullYear();
+        const hadBirthdayThisYear = today.getMonth() > d.getMonth() || (today.getMonth() === d.getMonth() && today.getDate() >= d.getDate());
+        if (!hadBirthdayThisYear) years--;
+        return years >= 0 ? `${years} yr${years === 1 ? "" : "s"} old` : "";
     };
 
     if (isLoading) {
@@ -711,8 +740,8 @@ export default function VehicleDetails() {
                                 return (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <SpecTile label="Make" value={vehicle.make as string || "Unknown"} />
-                                            <SpecTile label="Model" value={vehicle.model as string || "Unknown"} />
+                                            <SpecTile label="Make" value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
+                                            <SpecTile label="Model" value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
                                             <SpecTile label="Fuel Type" value={
                                                 <span className="flex items-center gap-1.5 uppercase">
                                                     <Fuel className="w-3.5 h-3.5 text-orange-500 shrink-0" />
@@ -724,10 +753,13 @@ export default function VehicleDetails() {
                                                 typeof motInfo === "string" ? (
                                                     <span className="font-normal text-muted-foreground">{motInfo}</span>
                                                 ) : (
-                                                    <span className="flex items-center gap-1.5 flex-wrap">
-                                                        {motInfo.date}
-                                                        <Badge variant={motBadge.variant} className={`text-[9px] px-1.5 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
-                                                    </span>
+                                                    <>
+                                                        <span className="flex items-center gap-1.5 flex-wrap">
+                                                            {motInfo.date}
+                                                            <Badge variant={motBadge.variant} className={`text-[9px] px-1.5 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
+                                                        </span>
+                                                        <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(motInfo.daysUntilExpiry)}</span>
+                                                    </>
                                                 )
                                             } />
                                             <SpecTile label="Tax Status" tone={taxed ? "green" : "red"} value={
@@ -735,8 +767,18 @@ export default function VehicleDetails() {
                                                     {vehicle.taxStatus as string || "Unknown"}
                                                 </Badge>
                                             } />
-                                            <SpecTile label="Tax Due" tone={taxed ? "green" : "red"} value={formatDate(vehicle.taxDueDate)} />
-                                            <SpecTile label="Reg Date" value={formatDate(vehicle.dateOfRegistration)} />
+                                            <SpecTile label="Tax Due" tone={taxed ? "green" : "red"} value={
+                                                <>
+                                                    {formatDate(vehicle.taxDueDate)}
+                                                    {vehicle.taxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(vehicle.taxDueDate))}</span>}
+                                                </>
+                                            } />
+                                            <SpecTile label="Reg Date" value={
+                                                <>
+                                                    {formatDate(vehicle.dateOfRegistration)}
+                                                    {vehicle.dateOfRegistration && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{vehicleAge(vehicle.dateOfRegistration)}</span>}
+                                                </>
+                                            } />
                                         </div>
                                         <div className="mt-3">
                                             <SpecTile label="VIN" value={
