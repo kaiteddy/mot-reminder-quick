@@ -870,11 +870,11 @@ export default function VehicleDetails() {
                                             </div>
                                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 {ukvd.imageUrl && (
-                                                    <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm flex items-center justify-center bg-white/50 bg-gray-50">
-                                                        <img 
-                                                            src={ukvd.imageUrl} 
-                                                            alt={`${vehicle.make} ${vehicle.model}`} 
-                                                            className="w-full h-auto max-h-[250px] object-contain"
+                                                    <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm flex items-center justify-center bg-white/50 bg-gray-50 p-4">
+                                                        <img
+                                                            src={ukvd.imageUrl}
+                                                            alt={`${vehicle.make} ${vehicle.model}`}
+                                                            className="max-w-full max-h-[130px] object-contain"
                                                         />
                                                     </div>
                                                 )}
