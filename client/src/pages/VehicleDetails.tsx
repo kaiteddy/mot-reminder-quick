@@ -609,14 +609,15 @@ export default function VehicleDetails() {
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         {(vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl ? (
-                            // The UKVD render has a lot of blank margin baked into the source image
-                            // itself — object-contain alone leaves a small car floating in a big box.
-                            // Scale up and clip the overflow so the car actually fills its frame.
-                            <div className="h-20 w-28 shrink-0 overflow-hidden flex items-center justify-center">
+                            // The UKVD render has blank margin baked into the source image itself —
+                            // plain object-contain leaves a small car floating in a big box. A
+                            // wider frame (matches the car's own aspect ratio) plus a light zoom
+                            // trims most of that margin without cropping the car itself.
+                            <div className="h-20 w-32 shrink-0 overflow-hidden flex items-center justify-center">
                                 <img
                                     src={(vehicle.comprehensiveTechnicalData as any).ukvd.imageUrl}
                                     alt={`${vehicle.make} ${vehicle.model}`}
-                                    className="h-full w-full object-contain scale-150"
+                                    className="h-full w-full object-contain scale-110"
                                 />
                             </div>
                         ) : (
