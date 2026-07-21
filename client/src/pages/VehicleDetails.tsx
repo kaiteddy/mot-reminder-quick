@@ -21,7 +21,6 @@ import {
     Copy,
     Check,
     ExternalLink,
-    Sparkles,
     Search,
     X,
     Tag,
@@ -52,47 +51,9 @@ import {
 import { Smartphone, QrCode } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// SWS returns engine oil as one row per ACEA/API/ILSAC standard (8+ rows that differ only by
-// grade). Condense to the distinct SAE grades (preferred first) + capacity; dedupe other fluids.
-function LubricantsSummary({ lubricants }: { lubricants: any[] }) {
-    const lubes = Array.isArray(lubricants) ? lubricants : [];
-    const fmtCap = (cap: any) => { const v = String(cap ?? "").replace(/\s*\(l\)\s*/i, "").trim(); return v ? `${v} L` : ""; };
-    const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
-    const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || String(s || "").trim();
-    const oils = lubes.filter(isOil);
-    const prefG = Array.from(new Set(oils.filter((o) => /PREFERRED/i.test(o?.description || "")).map((o) => gradeOf(o.specification)).filter(Boolean)));
-    const allG = Array.from(new Set(oils.map((o) => gradeOf(o.specification)).filter(Boolean)));
-    const oilGrades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
-    const oilCap = oils.find((o) => o?.capacity)?.capacity;
-    const seen = new Set<string>();
-    const others = lubes.filter((l) => !isOil(l)).filter((l) => { const k = `${l?.description}|${l?.specification}`; if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!lubes.length) return <p className="text-sm text-muted-foreground italic">Specifications available in technical documents</p>;
-    return (
-        <div className="space-y-3">
-            {oils.length > 0 && (
-                <div className="text-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Engine Oil</p>
-                    <p className="font-bold">
-                        {oilGrades.length ? oilGrades.map((g, i) => (
-                            <span key={i}>{i > 0 && <span className="text-muted-foreground font-normal"> · </span>}{g}{prefG.includes(g) && oilGrades.length > 1 && <span className="text-[10px] text-blue-600 font-medium"> (preferred)</span>}</span>
-                        )) : (oils[0]?.specification || "N/A")}
-                    </p>
-                    {oilCap && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(oilCap)}</p>}
-                </div>
-            )}
-            {others.map((l: any, i: number) => (
-                <div key={i} className="text-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">{String(l?.description || "Fluid").replace(/\s*\(LUBRICANT SPECIFICATION\)/i, "").trim()}</p>
-                    <p className="font-bold">{l?.specification || "N/A"}</p>
-                    {l?.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(l.capacity)}</p>}
-                </div>
-            ))}
-        </div>
-    );
-}
 
-// Same engine-oil grade/capacity extraction as LubricantsSummary, condensed to one line for the
-// Specifications & Status tile instead of the full breakdown further down the page.
+// SWS lubricant extraction, condensed to one line per fluid for the Specifications & Status
+// tiles (engine oil grade+capacity, coolant/brake fluid spec+capacity, gear oil spec).
 function engineOilInfo(lubricants: any): { grades: string; capacity: string } | null {
     const lubes = Array.isArray(lubricants) ? lubricants : [];
     const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
@@ -105,6 +66,20 @@ function engineOilInfo(lubricants: any): { grades: string; capacity: string } | 
     const cap = oils.find((o: any) => o?.capacity)?.capacity;
     const capStr = cap ? String(cap).replace(/\s*\(l\)\s*/i, "").trim() : "";
     return { grades: grades.length ? grades.slice(0, 2).join(" / ") : (oils[0]?.specification || "N/A"), capacity: capStr ? `${capStr} L` : "" };
+}
+function findLubricant(lubricants: any, matcher: RegExp): { spec: string; capacity: string } | null {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const item = lubes.find((l: any) => matcher.test(String(l?.description || "")));
+    if (!item) return null;
+    const capStr = item.capacity ? String(item.capacity).replace(/\s*\(l\)\s*/i, "").trim() : "";
+    return { spec: item.specification || "N/A", capacity: capStr ? `${capStr} L` : "" };
+}
+function gearOilInfo(lubricants: any): string | null {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const pref = lubes.find((l: any) => /GEAR OIL/i.test(l?.description || "") && /PREFERRED/i.test(l?.description || ""));
+    const alt = lubes.find((l: any) => /GEAR OIL/i.test(l?.description || "") && /ALTERNATIVE/i.test(l?.description || ""));
+    const parts = [pref?.specification, alt?.specification].filter(Boolean);
+    return parts.length ? parts.join(" / ") : null;
 }
 
 // One uniform tile per spec field — same size/shape whether it's plain text (Make, Model) or a
@@ -760,6 +735,9 @@ export default function VehicleDetails() {
                                 const taxed = vehicle.taxStatus?.toLowerCase() === "taxed";
                                 const ctd = vehicle.comprehensiveTechnicalData as any;
                                 const oilInfo = engineOilInfo(ctd?.lubricants);
+                                const coolant = findLubricant(ctd?.lubricants, /COOLANT/i);
+                                const brakeFluid = findLubricant(ctd?.lubricants, /BRAKE FLUID/i);
+                                const gearOil = gearOilInfo(ctd?.lubricants);
                                 const aircon = ctd?.aircon;
                                 return (
                                     <>
@@ -816,6 +794,25 @@ export default function VehicleDetails() {
                                                         {aircon.quantity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{String(aircon.quantity)}</span>}
                                                     </>
                                                 } />
+                                            )}
+                                            {coolant && (
+                                                <SpecTile label="Coolant" icon={<Droplet className="w-3 h-3" />} value={
+                                                    <>
+                                                        <span className="block truncate">{coolant.spec}</span>
+                                                        {coolant.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{coolant.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {brakeFluid && (
+                                                <SpecTile label="Brake Fluid" icon={<Droplet className="w-3 h-3" />} value={
+                                                    <>
+                                                        <span className="block truncate">{brakeFluid.spec}</span>
+                                                        {brakeFluid.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{brakeFluid.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {gearOil && (
+                                                <SpecTile label="Gear Oil" icon={<Cog className="w-3 h-3" />} value={<span className="block truncate">{gearOil}</span>} />
                                             )}
                                         </div>
                                         <div className="mt-3">
@@ -939,127 +936,6 @@ export default function VehicleDetails() {
                             )}
                         </CardContent>
                     </Card>
-
-                    {/* Rich Vehicle Intelligence */}
-                    {!!vehicle.comprehensiveTechnicalData && (
-                        <Card className="md:col-span-3 border-primary/20 bg-primary/5">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-primary">
-                                    <Zap className="w-5 h-5 fill-primary" />
-                                    Rich Vehicle Intelligence
-                                </CardTitle>
-                                <CardDescription>Data sourced from Premium UKVD and SWS Technical modules</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {/* UKVD Premium Render */}
-                                {(() => {
-                                    const ukvd = (vehicle.comprehensiveTechnicalData as any)?.ukvd;
-                                    if (!ukvd) return null;
-                                    return (
-                                        <div className="mb-8 border rounded-xl overflow-hidden shadow-sm bg-white border-blue-100">
-                                            <div className="bg-blue-50/50 p-4 border-b border-blue-100 flex items-center gap-2">
-                                                <Sparkles className="w-5 h-5 text-blue-600" />
-                                                <h3 className="font-bold text-blue-900">Premium Technical Data</h3>
-                                            </div>
-                                            {/* Car photo now lives in the page header next to the reg plate — no need to show it twice. */}
-                                            <div className="p-6">
-                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 place-content-start">
-                                                    {ukvd.transmission?.type && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Transmission</div>
-                                                            <div className="font-medium capitalize text-sm">{ukvd.transmission.type.toLowerCase()} {ukvd.transmission.gears ? `(${ukvd.transmission.gears} Speed)` : ''}</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.transmission?.driveType && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Drivetrain</div>
-                                                            <div className="font-medium text-sm">{ukvd.transmission.driveType}</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.fuelTankCapacity && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Fuel Tank</div>
-                                                            <div className="font-medium text-sm">{ukvd.fuelTankCapacity} Litres</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.dimensions?.length && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Length</div>
-                                                            <div className="font-medium text-sm">{ukvd.dimensions.length} mm</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.dimensions?.width && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Width</div>
-                                                            <div className="font-medium text-sm">{ukvd.dimensions.width} mm</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.weights?.kerb && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Kerb Weight</div>
-                                                            <div className="font-medium text-sm">{ukvd.weights.kerb} kg</div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                        </div>
-                                    );
-                                })()}
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {/* Lubricants Section */}
-                                    {(vehicle.comprehensiveTechnicalData as any).lubricants && (
-                                        <div className="space-y-4">
-                                            <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                                <Droplet className="w-4 h-4 text-blue-500" />
-                                                Lubricants & Fluids
-                                            </h3>
-                                            <LubricantsSummary lubricants={(vehicle.comprehensiveTechnicalData as any).lubricants} />
-                                        </div>
-                                    )}
-
-                                    {/* Aircon Section */}
-                                    {(vehicle.comprehensiveTechnicalData as any).aircon && (
-                                        <div className="space-y-4">
-                                            <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                                <Thermometer className="w-4 h-4 text-cyan-500" />
-                                                Air Conditioning
-                                            </h3>
-                                            <div className="space-y-3">
-                                                <div className="text-sm">
-                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Refrigerant Type</p>
-                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.type as string) || 'N/A'}</p>
-                                                </div>
-                                                <div className="text-sm">
-                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Gas Quantity</p>
-                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.quantity as string) || 'N/A'}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Specs / Generic */}
-                                    <div className="space-y-4">
-                                        <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                            <Wrench className="w-4 h-4 text-orange-500" />
-                                            Technical Specs
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="text-sm">
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Engine Code</p>
-                                                <p className="font-bold">{(vehicle.engineCode as string) || "-"}</p>
-                                            </div>
-                                            <div className="text-sm">
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Last Deep Scan</p>
-                                                <p className="text-xs font-bold">{vehicle.swsLastUpdated ? new Date(vehicle.swsLastUpdated).toLocaleString() : "Never"}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
 
                     {/* Service History */}
                     <Card className="md:col-span-3">
