@@ -2028,8 +2028,15 @@ export async function globalSearch(query: string, full = false) {
   // A part name ("brake pads") can hit thousands of documents over the years — cap what's
   // rendered but still report the true total, and sort by the SAME date shown in the UI
   // (issued, falling back to created) so the capped page is actually the most recent ones.
+  // A document's own registration text can be spaced/unspaced differently from how staff type
+  // it ("FM13KKB" vs "FM13 KKB" — the same "Reg format split matching" issue seen everywhere
+  // else) — a plain ilike misses every doc stored the other way. Normalize both sides, and also
+  // check the joined vehicle's registration so a doc whose own reg column is blank still matches.
   const docsWhere = allTokens((t) => { const l = likeOf(t); return [
-    ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l), ilike(serviceHistory.registration, l), ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l),
+    ilike(serviceHistory.docNo, l), ilike(serviceHistory.ga4Number, l),
+    sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') ILIKE ${regLikeOf(t)}`,
+    sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`,
+    ilike(serviceHistory.customerName, l), ilike(serviceHistory.accountNumber, l),
     sql`EXISTS (SELECT 1 FROM ${serviceLineItems} WHERE ${serviceLineItems.documentId} = ${serviceHistory.id} AND (${serviceLineItems.description} ILIKE ${l} OR ${serviceLineItems.partNumber} ILIKE ${l}))`,
   ]; });
   const docDateDesc = desc(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`);
