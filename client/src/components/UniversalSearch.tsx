@@ -11,15 +11,16 @@ const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString
 // group them under one vehicle header (same pattern as the Customers group's plate chips) so
 // the reg/owner reads once and each doc just adds its type/number/date underneath.
 function groupDocuments(docs: any[]) {
-  const groups: { key: string; registration: string | null; vehicleLabel: string; customerName: string; docs: any[] }[] = [];
+  const groups: { key: string; registration: string | null; vehicleLabel: string; customerName: string; customerPhone: string; docs: any[] }[] = [];
   const byKey = new Map<string, (typeof groups)[number]>();
   for (const d of docs) {
     const key = d.registration ? `r:${String(d.registration).toUpperCase().replace(/\s+/g, "")}` : `d:${d.id}`;
     let g = byKey.get(key);
     if (!g) {
-      g = { key, registration: d.registration || null, vehicleLabel: [d.make, d.model].filter(Boolean).join(" "), customerName: d.customerName || "", docs: [] };
+      g = { key, registration: d.registration || null, vehicleLabel: [d.make, d.model].filter(Boolean).join(" "), customerName: d.customerName || "", customerPhone: d.customerPhone || "", docs: [] };
       byKey.set(key, g); groups.push(g);
     }
+    if (!g.customerPhone && d.customerPhone) g.customerPhone = d.customerPhone;
     g.docs.push(d);
   }
   return groups;
@@ -103,7 +104,11 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                   main={<RegPlate reg={v.registration} />}
                   sub={<>
                     {(v.make || v.model) && <span className="block truncate">{[v.make, v.model].filter(Boolean).join(" ")}</span>}
-                    {v.ownerName && <span className="block truncate text-slate-400">{v.ownerName}</span>}
+                    {(v.ownerName || v.ownerPhone) && (
+                      <span className="block truncate text-slate-400">
+                        {[v.ownerName, v.ownerPhone].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </>} />
               ))}
             </Group>
@@ -117,7 +122,13 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                       {g.registration && <RegPlate reg={g.registration} size="xs" />}
                       {g.vehicleLabel && <span className="min-w-0 flex-1 text-[12px] text-slate-700 truncate">{g.vehicleLabel}</span>}
                     </div>
-                    {g.customerName && <div className="text-[11px] text-slate-400 truncate mt-0.5">{g.customerName}</div>}
+                    {(g.customerName || g.customerPhone) && (
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {g.customerName && <span className="font-medium text-slate-600">{g.customerName}</span>}
+                        {g.customerName && g.customerPhone && <span className="text-slate-300"> · </span>}
+                        {g.customerPhone && <span>{g.customerPhone}</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="pb-1.5">
                     {groupByDocType(g.docs).map((tg) => (

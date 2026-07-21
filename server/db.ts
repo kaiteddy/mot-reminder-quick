@@ -2073,6 +2073,7 @@ export async function globalSearch(query: string, full = false) {
         // record's name so the results don't show a blank "—" for a document that DOES have
         // an owner on file.
         customerName: sql<string>`COALESCE(${serviceHistory.customerName}, ${customers.name})`,
+        customerPhone: sql<string>`COALESCE(NULLIF(${serviceHistory.custMobile}, ''), NULLIF(${serviceHistory.custTelephone}, ''), ${customers.phone})`,
         accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued, make: vehicles.make, model: vehicles.model,
       })
       .from(serviceHistory)

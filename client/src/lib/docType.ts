@@ -8,7 +8,7 @@ export const DOC_TYPE_LABEL: Record<string, string> = {
 export const DOC_TYPE_PLURAL: Record<string, string> = {
   JS: "Job Sheets", ES: "Estimates", SI: "Invoices", CR: "Credit Notes", XS: "Excess", VS: "Vehicle Sales", PA: "Purchases",
 };
-export const DOC_TYPE_ORDER = ["JS", "ES", "SI", "CR", "XS", "VS", "PA"];
+export const DOC_TYPE_ORDER = ["JS", "SI", "ES", "CR", "XS", "VS", "PA"];
 export const DOC_TYPE_HEX: Record<string, string> = {
   JS: "#4a1f5e", SI: "#155263", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c", PA: "#57534e",
 };
@@ -24,7 +24,7 @@ export const DOC_TYPE_ICON_CLASS: Record<string, string> = {
 };
 
 /** Splits a list of docs (each with a `docType`) into type-labelled buckets in a fixed, sensible
- *  order (Job Sheets, Estimates, Invoices, …) — a type with no matches just isn't in the result. */
+ *  order (Job Sheets, Invoices, Estimates, …) — a type with no matches just isn't in the result. */
 export function groupByDocType<T extends { docType?: string | null }>(docs: T[]): { type: string; label: string; docs: T[] }[] {
   const byType = new Map<string, T[]>();
   for (const d of docs) { const t = d.docType || "?"; if (!byType.has(t)) byType.set(t, []); byType.get(t)!.push(d); }
