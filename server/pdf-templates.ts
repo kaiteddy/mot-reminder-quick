@@ -983,12 +983,10 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('No maintenance records found for this vehicle on the digital database.', PAGE_M, y + 20, { width: CW, align: 'center' });
   }
 
-  const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
-  const fmtQty = (q: any) => { const n = Number(q) || 0; return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(4))); };
-
-  // \u2500\u2500 Compact mode: a one-page overview table of every visit. Used when the full invoice
-  //    copies are attached after it, so the summary doesn't duplicate their detail. \u2500\u2500
-  if (data.compact) {
+  // \u2500\u2500 A one-row-per-visit overview table (date/ref/mileage/work/total). This is the ONLY
+  //    summary layout now \u2014 it's always cleaner as a scannable table than the older "full
+  //    itemised" per-visit breakdown was, whether or not full invoice copies also follow it. \u2500\u2500
+  {
     const colRef = PAGE_M + 82;
     const colMile = PAGE_M + 140;
     const colWork = PAGE_M + 208;
@@ -1026,100 +1024,10 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('Total invoiced', colWork - 60, y, { width: workW + 60, align: 'right' });
     doc.text(data.cumulative_spend || '', PAGE_M, y, { width: CW - 6, align: 'right' });
     y += 18;
-    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
-    doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
-  }
-
-  if (!data.compact) for (let idx = 0; idx < entries.length; idx++) {
-    const entry = entries[idx];
-    const headerH = 24;
-    const labelX = PAGE_M + 12;
-    const innerW = CW - 24;          // text width inside the box
-    const amtBoxW = CW - 12 - 4;     // amount right-aligned from labelX to the right edge
-    const rowTextW = innerW - 72;    // leave room on the right for the amount
-
-    // Build the section rows (GA4 order: MOT, Labour, Parts) with our prices.
-    const motRows = entry.mot ? [{ text: entry.mot.label, amount: entry.mot.amount > 0 ? entry.mot.amount : null }] : [];
-    const labourRows = (entry.labour || []).map((l: any) => ({ text: `${fmtQty(l.qty)}    ${l.label}`, amount: l.amount }));
-    const partRows = (entry.parts || []).map((p: any) => ({ text: `${fmtQty(p.qty)}    ${p.code ? p.code + '  ' : ''}${p.label}`, amount: p.amount }));
-
-    // \u2500\u2500 Measure (so the bordered box exactly fits, and page-breaks land cleanly) \u2500\u2500
-    const measureRow = (text: string) => { doc.font('Helvetica').fontSize(8.5); return Math.max(doc.heightOfString(text, { width: rowTextW }), 11) + 2; };
-    for (const r of [...motRows, ...labourRows, ...partRows] as any[]) r.h = measureRow(r.text);
-    const sectionH = (rows: any[]) => rows.length ? 13 + rows.reduce((s, r) => s + r.h, 0) + 4 : 0;
-
-    doc.font('Helvetica-Bold').fontSize(10);
-    const titleH = entry.title ? doc.heightOfString(entry.title, { width: innerW }) + 3 : 0;
-    doc.font('Helvetica').fontSize(9);
-    const narrH = entry.narrative ? doc.heightOfString(entry.narrative, { width: innerW }) + 6 : 0;
-    const totalsH = 8 + 13 * 3;
-    const boxH = headerH + 12 + titleH + narrH + sectionH(motRows) + sectionH(labourRows) + sectionH(partRows) + totalsH + 10;
-
-    y = checkBreak(boxH + 14);
-
-    // \u2500\u2500 Header bar (dark blue): doc ref \u00b7 date \u00b7 mileage \u00b7 value \u2500\u2500
-    doc.save().roundedRect(PAGE_M, y, CW, headerH, 3).fill(BRAND_BLUE).restore();
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff');
-    doc.text(entry.doc_ref || entry.invoice_number, PAGE_M + 10, y + 7);
-    doc.font('Helvetica').fontSize(10);
-    doc.text(`Date: ${entry.date}`, PAGE_M + 150, y + 7);
-    if (entry.mileage) doc.text(`Mileage: ${entry.mileage}`, PAGE_M + 300, y + 7);
-    doc.text(entry.total, PAGE_M, y + 7, { width: CW - 10, align: 'right' });
-
-    // \u2500\u2500 Body box border \u2500\u2500
-    doc.save().moveTo(PAGE_M, y + headerH).lineTo(PAGE_M, y + boxH - 3).quadraticCurveTo(PAGE_M, y + boxH, PAGE_M + 3, y + boxH)
-       .lineTo(PAGE_M + CW - 3, y + boxH).quadraticCurveTo(PAGE_M + CW, y + boxH, PAGE_M + CW, y + boxH - 3)
-       .lineTo(PAGE_M + CW, y + headerH).strokeColor(MID_GREY).lineWidth(1).stroke().restore();
-
-    let contentY = y + headerH + 12;
-
-    // Narrative: heading line + body, mirroring GA4.
-    if (entry.title) {
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
-      doc.text(entry.title, labelX, contentY, { width: innerW });
-      contentY = doc.y + 3;
+    if (data.invoicesFollow) {
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
+      doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
     }
-    if (entry.narrative) {
-      doc.font('Helvetica').fontSize(9).fillColor(DARK_TEXT);
-      doc.text(entry.narrative, labelX, contentY, { width: innerW });
-      contentY = doc.y + 6;
-    }
-
-    // MOT / Labour / Parts sections with prices.
-    const renderSection = (name: string, rows: any[]) => {
-      if (!rows.length) return;
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_BLUE);
-      doc.text(name, labelX, contentY);
-      contentY += 13;
-      for (const r of rows) {
-        doc.font('Helvetica').fontSize(8.5).fillColor('#374151');
-        doc.text(r.text, labelX + 4, contentY, { width: rowTextW });
-        if (r.amount != null) {
-          doc.fillColor('#111827').text(money(r.amount), labelX, contentY, { width: amtBoxW, align: 'right' });
-        }
-        contentY += r.h;
-      }
-      contentY += 4;
-    };
-    renderSection('MOT', motRows);
-    renderSection('Labour', labourRows);
-    renderSection('Parts', partRows);
-
-    // Totals.
-    addDividerLine(contentY, 0.5, '#cbd5e1');
-    contentY += 6;
-    const t = entry.totals || { net: 0, vat: 0, gross: 0 };
-    const totalLine = (label: string, amount: number, o: any = {}) => {
-      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 9).fillColor(o.color || '#374151');
-      doc.text(label, labelX, contentY, { width: innerW - 70, align: 'right' });
-      doc.text(money(amount), labelX, contentY, { width: amtBoxW, align: 'right' });
-      contentY += 13;
-    };
-    totalLine('Subtotal (excl. VAT)', t.net);
-    totalLine('VAT', t.vat);
-    totalLine('Total', t.gross, { bold: true, size: 10, color: BRAND_BLUE });
-
-    y += boxH + 14;
   }
 
   // Final Footer string on the last page

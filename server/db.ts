@@ -3377,9 +3377,12 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
     entries,
     total_records: entries.length,
     cumulative_spend: `£${cumulative.toFixed(2)}`,
-    // When the full invoices are appended, the summary is a brief one-page overview (the detail
-    // lives in the invoice copies); on its own it stays the full itemised report.
-    compact: !!opts?.includeInvoices,
+    // The one-row-per-visit table is always the summary now, whether or not full invoice copies
+    // are also attached — a "full itemised, one block per visit" mode used to render instead
+    // whenever invoices weren't attached, which is exactly backwards: that's the MORE common
+    // case (a quick overview, no attachments), and it read as a wall of text with no actual
+    // summary at the top of it.
+    invoicesFollow: !!opts?.includeInvoices,
   });
 
   if (!opts?.includeInvoices || docs.length === 0) return summary;
