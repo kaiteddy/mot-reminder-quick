@@ -5,6 +5,25 @@ import { Search, Loader2, User, Car, FileText, X } from "lucide-react";
 import { RegPlate } from "./RegPlate";
 
 const DOC_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess", PA: "Purchase", VS: "Sale" };
+const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "");
+
+// Multiple matching documents for the same car repeat its reg/make/customer on every row —
+// group them under one vehicle header (same pattern as the Customers group's plate chips) so
+// the reg/owner reads once and each doc just adds its type/number/date underneath.
+function groupDocuments(docs: any[]) {
+  const groups: { key: string; registration: string | null; vehicleLabel: string; customerName: string; docs: any[] }[] = [];
+  const byKey = new Map<string, (typeof groups)[number]>();
+  for (const d of docs) {
+    const key = d.registration ? `r:${String(d.registration).toUpperCase().replace(/\s+/g, "")}` : `d:${d.id}`;
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, registration: d.registration || null, vehicleLabel: [d.make, d.model].filter(Boolean).join(" "), customerName: d.customerName || "", docs: [] };
+      byKey.set(key, g); groups.push(g);
+    }
+    g.docs.push(d);
+  }
+  return groups;
+}
 
 // Omni-search across customers, vehicles and jobs. Type a name/surname, phone, address,
 // registration, make/model, doc number or account number → pick a result to view it.
@@ -87,10 +106,23 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
           )}
           {data?.documents?.length > 0 && (
             <Group title="Live Jobs">
-              {data.documents.map((d: any) => (
-                <Item key={"d" + d.id} icon={<FileText className="w-4 h-4 text-slate-500" />} onClick={() => go(`/documents/${d.id}`)}
-                  main={`${DOC_LABEL[d.docType] || d.docType || "Doc"} ${d.ga4Number || d.docNo || ""}`.trim()}
-                  sub={<span className="inline-flex items-center gap-1.5">{d.registration && <RegPlate reg={d.registration} size="xs" />}<span>{[d.customerName, d.accountNumber].filter(Boolean).join(" · ")}</span></span>} />
+              {groupDocuments(data.documents).map((g) => (
+                <div key={g.key} className="border-b border-slate-50 last:border-0">
+                  <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                    {g.registration && <RegPlate reg={g.registration} size="xs" />}
+                    <span className="min-w-0 flex-1 text-[11px] text-slate-500 truncate">{[g.vehicleLabel, g.customerName].filter(Boolean).join(" · ")}</span>
+                  </div>
+                  <div className="pb-1.5">
+                    {g.docs.map((d) => (
+                      <button key={d.id} type="button" onClick={() => go(`/documents/${d.id}`)}
+                        className="w-full flex items-center gap-2 pl-[30px] pr-3 py-1 text-left hover:bg-violet-50">
+                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="min-w-0 flex-1 text-[13px] text-slate-800 truncate">{`${DOC_LABEL[d.docType] || d.docType || "Doc"} ${d.ga4Number || d.docNo || ""}`.trim()}</span>
+                        <span className="shrink-0 text-[11px] text-slate-400">{fmtDate(d.dateIssued || d.date)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </Group>
           )}
