@@ -2092,16 +2092,28 @@ export async function globalSearch(query: string, full = false) {
 
   // Attach each matched customer's vehicles so they show next to the name.
   const custIds = cust.map((c) => c.id);
-  const vehByCust = new Map<number, { registration: string; make: string | null; model: string | null }[]>();
-  if (custIds.length) {
-    const cv = await db.select({ customerId: vehicles.customerId, registration: vehicles.registration, make: vehicles.make, model: vehicles.model })
-      .from(vehicles).where(inArray(vehicles.customerId, custIds)).orderBy(vehicles.registration);
-    for (const v of cv) {
-      if (v.customerId == null || !v.registration) continue;
-      const list = vehByCust.get(v.customerId) || [];
-      list.push({ registration: v.registration, make: v.make, model: v.model });
-      vehByCust.set(v.customerId, list);
-    }
+  const cv = custIds.length
+    ? await db.select({ id: vehicles.id, customerId: vehicles.customerId, registration: vehicles.registration, make: vehicles.make, model: vehicles.model })
+        .from(vehicles).where(inArray(vehicles.customerId, custIds)).orderBy(vehicles.registration)
+    : [];
+
+  // Last visit per vehicle = the newest document (invoice/job sheet/etc.) for that car — computed
+  // once for every vehicle id we might display (both the top-level Vehicles matches and each
+  // matched customer's attached cars) so both can show "last visited in this car".
+  const allVehIds = Array.from(new Set([...veh.map((v) => v.id), ...cv.map((v) => v.id)].filter((id): id is number => id != null)));
+  const lastVisitByVeh = new Map<number, string>();
+  if (allVehIds.length) {
+    const visits = await db.select({ vehicleId: serviceHistory.vehicleId, last: sql<string>`MAX(COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))` })
+      .from(serviceHistory).where(inArray(serviceHistory.vehicleId, allVehIds)).groupBy(serviceHistory.vehicleId);
+    for (const r of visits) if (r.vehicleId != null && r.last) lastVisitByVeh.set(r.vehicleId, r.last);
+  }
+
+  const vehByCust = new Map<number, { registration: string; make: string | null; model: string | null; lastVisit: string | null }[]>();
+  for (const v of cv) {
+    if (v.customerId == null || !v.registration) continue;
+    const list = vehByCust.get(v.customerId) || [];
+    list.push({ registration: v.registration, make: v.make, model: v.model, lastVisit: v.id != null ? lastVisitByVeh.get(v.id) || null : null });
+    vehByCust.set(v.customerId, list);
   }
   const customersWithVehicles = cust.map((c) => ({ ...c, vehicles: (vehByCust.get(c.id) || []).slice(0, 6) }));
 
@@ -2125,7 +2137,7 @@ export async function globalSearch(query: string, full = false) {
       const primary = [...members].sort((a, b) => byLen(a.name, b.name))[0];
       const address = [...members].map((m) => m.address).sort(byLen)[0] || primary.address;
       const postcode = members.find((m) => m.postcode)?.postcode || primary.postcode;
-      const vehMap = new Map<string, { registration: string; make: string | null; model: string | null }>();
+      const vehMap = new Map<string, { registration: string; make: string | null; model: string | null; lastVisit: string | null }>();
       for (const m of members) for (const v of m.vehicles) vehMap.set(v.registration.toUpperCase().replace(/\s+/g, ""), v);
       return { ...primary, address, postcode, vehicles: Array.from(vehMap.values()).slice(0, 6), ids: members.map((m) => m.id) };
     }),
@@ -2146,16 +2158,8 @@ export async function globalSearch(query: string, full = false) {
     lastVisit: c.ids.reduce((max: string | null, id) => { const v = lastVisitByCust.get(id); return v && (!max || v > max) ? v : max; }, null),
   })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-  // Last visit per matched vehicle = the newest document (invoice/job sheet/etc.) for that car,
-  // so the results show when the customer was last in.
-  const vehIds = veh.map((v) => v.id).filter((id): id is number => id != null);
-  const lastVisitByVeh = new Map<number, any>();
-  if (vehIds.length) {
-    const visits = await db.select({ vehicleId: serviceHistory.vehicleId, last: sql<string>`MAX(COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))` })
-      .from(serviceHistory).where(inArray(serviceHistory.vehicleId, vehIds)).groupBy(serviceHistory.vehicleId);
-    for (const r of visits) if (r.vehicleId != null) lastVisitByVeh.set(r.vehicleId, r.last);
-  }
-  const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: lastVisitByVeh.get(v.id) || null }));
+  // Last visit per matched vehicle (computed once, above, alongside every attached-customer car).
+  const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: (v.id != null && lastVisitByVeh.get(v.id)) || null }));
 
   return { customers: customersMerged, vehicles: vehiclesWithVisit, documents: docs, documentsTotal };
 }

@@ -82,15 +82,16 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                       {c.lastVisit && <span className="block text-[11px] text-slate-400 truncate">Last visit {fmtDate(c.lastVisit)}</span>}
                     </span>
                   </button>
-                  {/* each plate → that vehicle's record */}
+                  {/* one row per car — reg, make/model and when they were last in for it */}
                   {c.vehicles?.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 px-3 pb-2 pl-[30px]">
+                    <div className="pb-1.5 pl-[30px] pr-3">
                       {c.vehicles.map((v: any) => (
                         <button key={v.registration} type="button"
                           onClick={(e) => { e.stopPropagation(); go(`/view-vehicle/${encodeURIComponent(v.registration)}`); }}
-                          title={`Open ${v.registration}${[v.make, v.model].filter(Boolean).length ? ` — ${[v.make, v.model].filter(Boolean).join(" ")}` : ""}`}
-                          className="transition-transform hover:scale-105">
+                          className="w-full flex items-center gap-2 py-0.5 text-left hover:bg-violet-100 rounded">
                           <RegPlate reg={v.registration} size="xs" />
+                          <span className="min-w-0 flex-1 text-[11px] text-slate-600 truncate">{[v.make, v.model].filter(Boolean).join(" ") || "—"}</span>
+                          {v.lastVisit && <span className="shrink-0 text-[10px] text-slate-400">{fmtDate(v.lastVisit)}</span>}
                         </button>
                       ))}
                     </div>
@@ -111,6 +112,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                         {[v.ownerName, v.ownerPhone].filter(Boolean).join(" · ")}
                       </span>
                     )}
+                    {v.lastVisit && <span className="block truncate text-slate-400">Last visit {fmtDate(v.lastVisit)}</span>}
                   </>} />
               ))}
             </Group>
