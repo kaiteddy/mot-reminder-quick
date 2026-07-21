@@ -23,7 +23,13 @@ import {
     ExternalLink,
     Sparkles,
     Search,
-    X
+    X,
+    Tag,
+    Gauge,
+    Receipt,
+    CalendarClock,
+    Cog,
+    Hash
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
@@ -110,10 +116,13 @@ const SPEC_TONE_CLASS: Record<string, string> = {
     orange: "bg-orange-50 border-orange-200",
     neutral: "bg-muted/40 border-transparent",
 };
-function SpecTile({ label, value, tone = "neutral" }: { label: string; value: ReactNode; tone?: "green" | "red" | "orange" | "neutral" }) {
+function SpecTile({ label, value, tone = "neutral", icon }: { label: string; value: ReactNode; tone?: "green" | "red" | "orange" | "neutral"; icon?: ReactNode }) {
     return (
         <div className={`rounded-lg border px-3 py-2 ${SPEC_TONE_CLASS[tone]}`}>
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                {icon}
+                {label}
+            </p>
             <div className="text-sm font-semibold mt-0.5">{value}</div>
         </div>
     );
@@ -755,16 +764,13 @@ export default function VehicleDetails() {
                                 return (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <SpecTile label="Make" value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
-                                            <SpecTile label="Model" value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
-                                            <SpecTile label="Fuel Type" value={
-                                                <span className="flex items-center gap-1.5 uppercase">
-                                                    <Fuel className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                                                    {(vehicle.fuelType as string) || "-"}
-                                                </span>
+                                            <SpecTile label="Make" icon={<Car className="w-3 h-3" />} value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
+                                            <SpecTile label="Model" icon={<Tag className="w-3 h-3" />} value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
+                                            <SpecTile label="Fuel Type" icon={<Fuel className="w-3 h-3" />} value={
+                                                <span className="uppercase">{(vehicle.fuelType as string) || "-"}</span>
                                             } />
-                                            <SpecTile label="Engine CC" value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
-                                            <SpecTile label="MOT Expiry" tone={motTone} value={
+                                            <SpecTile label="Engine CC" icon={<Gauge className="w-3 h-3" />} value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
+                                            <SpecTile label="MOT Expiry" icon={<ShieldCheck className="w-3 h-3" />} tone={motTone} value={
                                                 typeof motInfo === "string" ? (
                                                     <span className="font-normal text-muted-foreground">{motInfo}</span>
                                                 ) : (
@@ -777,26 +783,26 @@ export default function VehicleDetails() {
                                                     </>
                                                 )
                                             } />
-                                            <SpecTile label="Tax Status" tone={taxed ? "green" : "red"} value={
+                                            <SpecTile label="Tax Status" icon={<Receipt className="w-3 h-3" />} tone={taxed ? "green" : "red"} value={
                                                 <Badge variant={taxed ? "default" : "destructive"} className="text-[9px] px-1.5 py-0">
                                                     {vehicle.taxStatus as string || "Unknown"}
                                                 </Badge>
                                             } />
-                                            <SpecTile label="Tax Due" tone={taxed ? "green" : "red"} value={
+                                            <SpecTile label="Tax Due" icon={<CalendarClock className="w-3 h-3" />} tone={taxed ? "green" : "red"} value={
                                                 <>
                                                     {formatDate(vehicle.taxDueDate)}
                                                     {vehicle.taxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(vehicle.taxDueDate))}</span>}
                                                 </>
                                             } />
-                                            <SpecTile label="Reg Date" value={
+                                            <SpecTile label="Reg Date" icon={<Calendar className="w-3 h-3" />} value={
                                                 <>
                                                     {formatDate(vehicle.dateOfRegistration)}
                                                     {vehicle.dateOfRegistration && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{vehicleAge(vehicle.dateOfRegistration)}</span>}
                                                 </>
                                             } />
-                                            <SpecTile label="Engine Code" value={(vehicle as any).engineCode || "-"} />
+                                            <SpecTile label="Engine Code" icon={<Cog className="w-3 h-3" />} value={(vehicle as any).engineCode || "-"} />
                                             {oilInfo && (
-                                                <SpecTile label="Engine Oil" value={
+                                                <SpecTile label="Engine Oil" icon={<Droplet className="w-3 h-3" />} value={
                                                     <>
                                                         <span className="block truncate">{oilInfo.grades}</span>
                                                         {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}</span>}
@@ -804,7 +810,7 @@ export default function VehicleDetails() {
                                                 } />
                                             )}
                                             {aircon?.type && (
-                                                <SpecTile label="Air Con" value={
+                                                <SpecTile label="Air Con" icon={<Thermometer className="w-3 h-3" />} value={
                                                     <>
                                                         <span className="block truncate">{aircon.type}</span>
                                                         {aircon.quantity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{String(aircon.quantity)}</span>}
@@ -813,7 +819,7 @@ export default function VehicleDetails() {
                                             )}
                                         </div>
                                         <div className="mt-3">
-                                            <SpecTile label="VIN" value={
+                                            <SpecTile label="VIN" icon={<Hash className="w-3 h-3" />} value={
                                                 <div className="flex items-center gap-1 group">
                                                     <span className="font-mono truncate" title={vehicle.vin || ""}>{vehicle.vin || "-"}</span>
                                                     {vehicle.vin && (
