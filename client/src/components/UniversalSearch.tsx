@@ -143,18 +143,17 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
                           const w = workSummary(d.description);
                           return (
                             <button key={d.id} type="button" onClick={() => go(`/documents/${d.id}`)}
-                              className="w-full flex flex-col gap-1 pl-[30px] pr-3 py-1.5 text-left hover:bg-violet-50">
-                              <span className="flex items-center gap-2">
+                              className="w-full grid items-center gap-2 pl-[30px] pr-3 py-1 text-left hover:bg-violet-50"
+                              style={{ gridTemplateColumns: "64px 1fr 60px" }}>
+                              <span className="flex items-center gap-1.5 min-w-0">
                                 <FileText className={`w-3.5 h-3.5 shrink-0 ${DOC_TYPE_ICON_CLASS[d.docType || ""] || "text-slate-400"}`} />
-                                <span className="min-w-0 flex-1 text-[13px] text-slate-800 truncate">{d.ga4Number || d.docNo || ""}</span>
-                                <span className="shrink-0 text-[11px] text-slate-400">{fmtDate(d.dateIssued || d.date)}</span>
+                                <span className="min-w-0 text-[13px] text-slate-800 truncate">{d.ga4Number || d.docNo || ""}</span>
                               </span>
-                              {w && (w.badges.length > 0 || w.summary) && (
-                                <span className="flex items-center gap-1 flex-wrap pl-[19px]">
-                                  {w.badges.map((b) => <span key={b.label} className={`text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span>)}
-                                  {w.summary && <span className="text-[11px] text-slate-400 truncate">{w.summary}</span>}
-                                </span>
-                              )}
+                              <span className="flex items-center gap-1 min-w-0 overflow-hidden">
+                                {w?.badges.map((b) => <span key={b.label} className={`text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span>)}
+                                {w?.summary && <span className="min-w-0 text-[11px] text-slate-400 truncate">{w.summary}</span>}
+                              </span>
+                              <span className="shrink-0 text-[11px] text-slate-400 text-right">{fmtDate(d.dateIssued || d.date)}</span>
                             </button>
                           );
                         })}
