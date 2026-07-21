@@ -579,7 +579,15 @@ export default function VehicleDetails() {
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <ManufacturerLogo make={vehicle.make as string} size="xl" />
+                        {(vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl ? (
+                            <img
+                                src={(vehicle.comprehensiveTechnicalData as any).ukvd.imageUrl}
+                                alt={`${vehicle.make} ${vehicle.model}`}
+                                className="h-20 w-28 object-contain shrink-0"
+                            />
+                        ) : (
+                            <ManufacturerLogo make={vehicle.make as string} size="xl" />
+                        )}
                         <div>
                             <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
                                 {vehicle.registration}
