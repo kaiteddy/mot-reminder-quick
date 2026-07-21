@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { Search, Loader2, User, Car, FileText, X } from "lucide-react";
+import { Search, Loader2, User, Car, FileText, X, ChevronDown, ChevronUp } from "lucide-react";
 import { RegPlate } from "./RegPlate";
 import { DOC_TYPE_TAILWIND, DOC_TYPE_ICON_CLASS, groupByDocType } from "@/lib/docType";
 import { workSummary } from "@/lib/workSummary";
@@ -34,6 +34,14 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
+  // A vehicle with a long history could dump dozens of rows straight into the dropdown — each
+  // vehicle's document list starts collapsed (just the reg/customer + a count) and expands on click.
+  const [expandedDocGroups, setExpandedDocGroups] = useState<Set<string>>(new Set());
+  const toggleDocGroup = (key: string) => setExpandedDocGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { const t = setTimeout(() => setDebounced(term.trim()), 220); return () => clearTimeout(t); }, [term]);
@@ -121,50 +129,61 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             // Not just "Live Jobs" — matches can be issued invoices, old credit notes, anything
             // — so this group is titled the same as Classic's Quick Search: Documents.
             <Group title="Documents">
-              {groupDocuments(data.documents).map((g) => (
-                <div key={g.key} className="border-b border-slate-50 last:border-0">
-                  <div className="px-3 pt-2 pb-1">
-                    <div className="flex items-center gap-2">
-                      {g.registration && <RegPlate reg={g.registration} size="xs" />}
-                      {g.vehicleLabel && <span className="min-w-0 flex-1 text-[12px] text-slate-700 truncate">{g.vehicleLabel}</span>}
-                    </div>
-                    {(g.customerName || g.customerPhone) && (
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {g.customerName && <span className="font-medium text-slate-600">{g.customerName}</span>}
-                        {g.customerName && g.customerPhone && <span className="text-slate-300"> · </span>}
-                        {g.customerPhone && <span>{g.customerPhone}</span>}
+              {groupDocuments(data.documents).map((g) => {
+                const expanded = expandedDocGroups.has(g.key);
+                return (
+                  <div key={g.key} className="border-b border-slate-50 last:border-0">
+                    <button type="button" onClick={() => toggleDocGroup(g.key)} className="w-full text-left px-3 pt-2 pb-1 hover:bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        {g.registration && (
+                          <span onClick={(e) => { e.stopPropagation(); go(`/view-vehicle/${encodeURIComponent(g.registration!)}`); }}>
+                            <RegPlate reg={g.registration} size="xs" />
+                          </span>
+                        )}
+                        {g.vehicleLabel && <span className="min-w-0 flex-1 text-[12px] text-slate-700 truncate">{g.vehicleLabel}</span>}
+                        <span className="shrink-0 text-[10px] text-slate-400">{g.docs.length} doc{g.docs.length === 1 ? "" : "s"}</span>
+                        {expanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                      </div>
+                      {(g.customerName || g.customerPhone) && (
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                          {g.customerName && <span className="font-medium text-slate-600">{g.customerName}</span>}
+                          {g.customerName && g.customerPhone && <span className="text-slate-300"> · </span>}
+                          {g.customerPhone && <span>{g.customerPhone}</span>}
+                        </div>
+                      )}
+                    </button>
+                    {expanded && (
+                      <div className="pb-1.5">
+                        {groupByDocType(g.docs).map((tg) => (
+                          <div key={tg.type}>
+                            <div className="pl-[30px] pr-3 pt-1 pb-1">
+                              <span className={`inline-block text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${DOC_TYPE_TAILWIND[tg.type] || "bg-slate-100 text-slate-500"}`}>{tg.label}</span>
+                            </div>
+                            {tg.docs.map((d) => {
+                              const w = workSummary(d.description);
+                              return (
+                                <button key={d.id} type="button" onClick={() => go(`/documents/${d.id}`)}
+                                  className="w-full grid items-center gap-2 pl-[30px] pr-3 py-1 text-left hover:bg-violet-50"
+                                  style={{ gridTemplateColumns: "64px 1fr 60px" }}>
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    <FileText className={`w-3.5 h-3.5 shrink-0 ${DOC_TYPE_ICON_CLASS[d.docType || ""] || "text-slate-400"}`} />
+                                    <span className="min-w-0 text-[13px] text-slate-800 truncate">{d.ga4Number || d.docNo || ""}</span>
+                                  </span>
+                                  <span className="flex items-center gap-1 min-w-0 overflow-hidden">
+                                    {w?.badges.map((b) => <span key={b.label} className={`text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span>)}
+                                    {w?.summary && <span className="min-w-0 text-[11px] text-slate-400 truncate">{w.summary}</span>}
+                                  </span>
+                                  <span className="shrink-0 text-[11px] text-slate-400 text-right">{fmtDate(d.dateIssued || d.date)}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
-                  <div className="pb-1.5">
-                    {groupByDocType(g.docs).map((tg) => (
-                      <div key={tg.type}>
-                        <div className="pl-[30px] pr-3 pt-1 pb-1">
-                          <span className={`inline-block text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${DOC_TYPE_TAILWIND[tg.type] || "bg-slate-100 text-slate-500"}`}>{tg.label}</span>
-                        </div>
-                        {tg.docs.map((d) => {
-                          const w = workSummary(d.description);
-                          return (
-                            <button key={d.id} type="button" onClick={() => go(`/documents/${d.id}`)}
-                              className="w-full grid items-center gap-2 pl-[30px] pr-3 py-1 text-left hover:bg-violet-50"
-                              style={{ gridTemplateColumns: "64px 1fr 60px" }}>
-                              <span className="flex items-center gap-1.5 min-w-0">
-                                <FileText className={`w-3.5 h-3.5 shrink-0 ${DOC_TYPE_ICON_CLASS[d.docType || ""] || "text-slate-400"}`} />
-                                <span className="min-w-0 text-[13px] text-slate-800 truncate">{d.ga4Number || d.docNo || ""}</span>
-                              </span>
-                              <span className="flex items-center gap-1 min-w-0 overflow-hidden">
-                                {w?.badges.map((b) => <span key={b.label} className={`text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 ${b.cls}`}>{b.label}</span>)}
-                                {w?.summary && <span className="min-w-0 text-[11px] text-slate-400 truncate">{w.summary}</span>}
-                              </span>
-                              <span className="shrink-0 text-[11px] text-slate-400 text-right">{fmtDate(d.dateIssued || d.date)}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </Group>
           )}
           {data && hasResults && (
