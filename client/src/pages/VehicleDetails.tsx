@@ -85,6 +85,22 @@ function LubricantsSummary({ lubricants }: { lubricants: any[] }) {
     );
 }
 
+// Same engine-oil grade/capacity extraction as LubricantsSummary, condensed to one line for the
+// Specifications & Status tile instead of the full breakdown further down the page.
+function engineOilInfo(lubricants: any): { grades: string; capacity: string } | null {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
+    const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || String(s || "").trim();
+    const oils = lubes.filter(isOil);
+    if (!oils.length) return null;
+    const prefG = Array.from(new Set(oils.filter((o: any) => /PREFERRED/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean)));
+    const allG = Array.from(new Set(oils.map((o: any) => gradeOf(o.specification)).filter(Boolean)));
+    const grades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    const cap = oils.find((o: any) => o?.capacity)?.capacity;
+    const capStr = cap ? String(cap).replace(/\s*\(l\)\s*/i, "").trim() : "";
+    return { grades: grades.length ? grades.slice(0, 2).join(" / ") : (oils[0]?.specification || "N/A"), capacity: capStr ? `${capStr} L` : "" };
+}
+
 // One uniform tile per spec field — same size/shape whether it's plain text (Make, Model) or a
 // status field (MOT Expiry, Tax Due), so the grid reads as one clean sheet instead of some
 // fields floating in oversized coloured boxes next to plain unboxed ones.
@@ -733,6 +749,9 @@ export default function VehicleDetails() {
                             {(() => {
                                 const motTone = typeof motInfo === "string" ? "neutral" : motInfo.isExpired ? "red" : motInfo.daysUntilExpiry <= 30 ? "orange" : "green";
                                 const taxed = vehicle.taxStatus?.toLowerCase() === "taxed";
+                                const ctd = vehicle.comprehensiveTechnicalData as any;
+                                const oilInfo = engineOilInfo(ctd?.lubricants);
+                                const aircon = ctd?.aircon;
                                 return (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -775,6 +794,23 @@ export default function VehicleDetails() {
                                                     {vehicle.dateOfRegistration && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{vehicleAge(vehicle.dateOfRegistration)}</span>}
                                                 </>
                                             } />
+                                            <SpecTile label="Engine Code" value={(vehicle as any).engineCode || "-"} />
+                                            {oilInfo && (
+                                                <SpecTile label="Engine Oil" value={
+                                                    <>
+                                                        <span className="block truncate">{oilInfo.grades}</span>
+                                                        {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {aircon?.type && (
+                                                <SpecTile label="Air Con" value={
+                                                    <>
+                                                        <span className="block truncate">{aircon.type}</span>
+                                                        {aircon.quantity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{String(aircon.quantity)}</span>}
+                                                    </>
+                                                } />
+                                            )}
                                         </div>
                                         <div className="mt-3">
                                             <SpecTile label="VIN" value={
