@@ -2972,7 +2972,7 @@ export async function updateServiceDocument(id: number, doc: any, items: any[]) 
   });
 }
 
-export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?: boolean }) {
+export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?: boolean; liveTech?: any }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -3074,8 +3074,14 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // Technical info for the boxed row. Use the SAME live source as the on-screen cards
   // (oil/aircon from the tech cache, MOT/tax live from DVLA) so the printed row matches what's
   // shown — the raw vehicle record often has no cached oil/aircon, which left the row blank.
-  let lt: any = null;
-  try { lt = vehicle?.registration ? await liveVehicleTech(vehicle.registration) : null; } catch { /* fall back to the record */ }
+  // A caller merging many invoices for the SAME vehicle (getServiceHistoryPDF) passes opts.liveTech
+  // pre-fetched once — the DVLA/tax lookup is identical for every one of that vehicle's invoices,
+  // and re-fetching it per invoice was making a 39-invoice history do 39 sequential live DVLA
+  // calls (the actual cause of the "stuck loading" preview for vehicles with a long history).
+  let lt: any = opts && "liveTech" in opts ? opts.liveTech : null;
+  if (lt == null && !(opts && "liveTech" in opts)) {
+    try { lt = vehicle?.registration ? await liveVehicleTech(vehicle.registration) : null; } catch { /* fall back to the record */ }
+  }
   const td = (vehicle?.comprehensiveTechnicalData as any) || {};
   const recOil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
   const oilSpec = lt?.oilSpec || recOil?.specification || "";
@@ -3384,8 +3390,13 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
     pages.forEach((p) => merged.addPage(p));
   };
   await append(summary.content);
+  // Fetch the live DVLA/tech lookup ONCE for this vehicle and reuse it across every invoice —
+  // it's the same registration on every one of them, so doing it per-invoice was turning a
+  // 39-invoice history into 39 sequential external DVLA calls (the actual cause of a preview
+  // that appeared to hang/stay blank for a vehicle with a long history).
+  const sharedLiveTech = await liveVehicleTech(vehicle.registration || "").catch(() => null);
   for (const d of docs) {
-    try { await append((await getRichPDF(d.id, { customerCopyOnly: true })).content); }
+    try { await append((await getRichPDF(d.id, { customerCopyOnly: true, liveTech: sharedLiveTech })).content); }
     catch (e) { console.error(`[history bundle] skipped invoice ${d.docNo}:`, (e as any)?.message); }
   }
   const content = Buffer.from(await merged.save()).toString("base64");

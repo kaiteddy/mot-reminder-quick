@@ -17,7 +17,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, ExternalLink, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
@@ -269,18 +269,29 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         <div className="flex items-center justify-between mb-1">
                             <span className="text-xs font-medium text-muted-foreground">Preview — this is exactly what will be attached</span>
                             {previewUrl && (
-                                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-700 hover:underline font-medium">Open full size ↗</a>
+                                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-violet-700 hover:underline font-medium">
+                                    <ExternalLink className="w-3 h-3" /> Open full size
+                                </a>
                             )}
                         </div>
                         <div className="rounded-md border bg-slate-50 h-[340px] overflow-hidden flex items-center justify-center">
                             {previewLoading ? (
                                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                             ) : previewUrl ? (
-                                <iframe src={previewUrl} title="Service history preview" className="w-full h-full" />
+                                // Some browsers' built-in PDF viewer silently fails to paint a blob: URL
+                                // inside an <iframe> (renders as a blank/black box, no error event) —
+                                // <embed> is the more reliable tag for this across Chrome/Edge/Firefox.
+                                // "Open full size" above is the guaranteed-to-work fallback either way.
+                                <embed key={previewUrl} src={previewUrl} type="application/pdf" className="w-full h-full" />
                             ) : (
                                 <span className="text-xs text-muted-foreground">No preview available.</span>
                             )}
                         </div>
+                        {previewUrl && (
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                                Nothing showing above? Some browsers can't preview a PDF this size inline — use "Open full size" instead; the file itself is fine.
+                            </p>
+                        )}
                     </div>
 
                     <div className="space-y-3">
