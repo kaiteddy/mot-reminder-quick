@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,6 +86,24 @@ function LubricantsSummary({ lubricants }: { lubricants: any[] }) {
                     {l?.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(l.capacity)}</p>}
                 </div>
             ))}
+        </div>
+    );
+}
+
+// One uniform tile per spec field — same size/shape whether it's plain text (Make, Model) or a
+// status field (MOT Expiry, Tax Due), so the grid reads as one clean sheet instead of some
+// fields floating in oversized coloured boxes next to plain unboxed ones.
+const SPEC_TONE_CLASS: Record<string, string> = {
+    green: "bg-green-50 border-green-200",
+    red: "bg-red-50 border-red-200",
+    orange: "bg-orange-50 border-orange-200",
+    neutral: "bg-muted/40 border-transparent",
+};
+function SpecTile({ label, value, tone = "neutral" }: { label: string; value: ReactNode; tone?: "green" | "red" | "orange" | "neutral" }) {
+    return (
+        <div className={`rounded-lg border px-3 py-2 ${SPEC_TONE_CLASS[tone]}`}>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+            <div className="text-sm font-semibold mt-0.5 truncate">{value}</div>
         </div>
     );
 }
@@ -674,96 +692,81 @@ export default function VehicleDetails() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Make</p>
-                                    <p className="text-sm font-bold">{vehicle.make as string || "Unknown"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Model</p>
-                                    <p className="text-sm font-bold">{vehicle.model as string || "Unknown"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Fuel Type</p>
-                                    <div className="flex items-center gap-2 text-sm font-bold uppercase">
-                                        <Fuel className="w-4 h-4 text-orange-500" />
-                                        {(vehicle.fuelType as string) || "-"}
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Engine CC</p>
-                                    <p className="text-sm font-bold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
-                                </div>
-                                <div className={`space-y-1 rounded-lg border p-2 ${
-                                    typeof motInfo !== "string" && motInfo.isExpired ? "bg-red-50 border-red-200" :
-                                    typeof motInfo !== "string" && motInfo.daysUntilExpiry <= 30 ? "bg-orange-50 border-orange-200" :
-                                    typeof motInfo !== "string" ? "bg-green-50 border-green-200" : "border-transparent"
-                                }`}>
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">MOT Expiry</p>
-                                    {typeof motInfo === "string" ? (
-                                        <p className="text-sm font-bold text-muted-foreground">{motInfo}</p>
-                                    ) : (
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-lg font-extrabold">{motInfo.date}</p>
-                                            <Badge variant={motBadge.variant} className={`text-[10px] px-2 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
+                            {(() => {
+                                const motTone = typeof motInfo === "string" ? "neutral" : motInfo.isExpired ? "red" : motInfo.daysUntilExpiry <= 30 ? "orange" : "green";
+                                const taxed = vehicle.taxStatus?.toLowerCase() === "taxed";
+                                return (
+                                    <>
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                            <SpecTile label="Make" value={vehicle.make as string || "Unknown"} />
+                                            <SpecTile label="Model" value={vehicle.model as string || "Unknown"} />
+                                            <SpecTile label="Fuel Type" value={
+                                                <span className="flex items-center gap-1.5 uppercase">
+                                                    <Fuel className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                                                    {(vehicle.fuelType as string) || "-"}
+                                                </span>
+                                            } />
+                                            <SpecTile label="Engine CC" value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
+                                            <SpecTile label="MOT Expiry" tone={motTone} value={
+                                                typeof motInfo === "string" ? (
+                                                    <span className="font-normal text-muted-foreground">{motInfo}</span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1.5 flex-wrap">
+                                                        {motInfo.date}
+                                                        <Badge variant={motBadge.variant} className={`text-[9px] px-1.5 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
+                                                    </span>
+                                                )
+                                            } />
+                                            <SpecTile label="Tax Status" tone={taxed ? "green" : "red"} value={
+                                                <Badge variant={taxed ? "default" : "destructive"} className="text-[9px] px-1.5 py-0">
+                                                    {vehicle.taxStatus as string || "Unknown"}
+                                                </Badge>
+                                            } />
+                                            <SpecTile label="Tax Due" tone={taxed ? "green" : "red"} value={formatDate(vehicle.taxDueDate)} />
+                                            <SpecTile label="Reg Date" value={formatDate(vehicle.dateOfRegistration)} />
                                         </div>
-                                    )}
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Tax Status</p>
-                                    <Badge variant={vehicle.taxStatus?.toLowerCase() === 'taxed' ? 'default' : 'destructive'} className="text-[10px] px-2 py-0">
-                                        {vehicle.taxStatus as string || "Unknown"}
-                                    </Badge>
-                                </div>
-                                <div className={`space-y-1 rounded-lg border p-2 ${
-                                    vehicle.taxStatus?.toLowerCase() === 'taxed' ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
-                                }`}>
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Tax Due</p>
-                                    <p className="text-lg font-extrabold">{formatDate(vehicle.taxDueDate)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Reg Date</p>
-                                    <p className="text-sm font-bold">{formatDate(vehicle.dateOfRegistration)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">VIN</p>
-                                    <div className="flex items-center gap-1 group">
-                                        <p className="font-mono text-xs font-bold truncate max-w-[120px]" title={vehicle.vin || ""}>{vehicle.vin || "-"}</p>
-                                        {vehicle.vin && (
-                                            <>
-                                                <button
-                                                    onClick={() => {
-                                                        if (vehicle.vin) {
-                                                            navigator.clipboard.writeText(vehicle.vin);
-                                                            toast.success("VIN copied to clipboard");
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Copy VIN"
-                                                >
-                                                    <Copy className="w-3 h-3" />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (vehicle.vin) {
-                                                            navigator.clipboard.writeText(vehicle.vin);
-                                                            toast.success("VIN copied and opening PartSouq...");
-                                                            // Small delay to allow toast to render before opening tab
-                                                            setTimeout(() => {
-                                                                window.open(`https://partsouq.com/en/search/all?q=${vehicle.vin}`, "_blank");
-                                                            }, 300);
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-muted rounded text-blue-500 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Search on PartSouq"
-                                                >
-                                                    <ExternalLink className="w-3 h-3" />
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                                        <div className="mt-3">
+                                            <SpecTile label="VIN" value={
+                                                <div className="flex items-center gap-1 group">
+                                                    <span className="font-mono truncate" title={vehicle.vin || ""}>{vehicle.vin || "-"}</span>
+                                                    {vehicle.vin && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (vehicle.vin) {
+                                                                        navigator.clipboard.writeText(vehicle.vin);
+                                                                        toast.success("VIN copied to clipboard");
+                                                                    }
+                                                                }}
+                                                                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Copy VIN"
+                                                            >
+                                                                <Copy className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (vehicle.vin) {
+                                                                        navigator.clipboard.writeText(vehicle.vin);
+                                                                        toast.success("VIN copied and opening PartSouq...");
+                                                                        // Small delay to allow toast to render before opening tab
+                                                                        setTimeout(() => {
+                                                                            window.open(`https://partsouq.com/en/search/all?q=${vehicle.vin}`, "_blank");
+                                                                        }, 300);
+                                                                    }
+                                                                }}
+                                                                className="p-1 hover:bg-muted rounded text-blue-500 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Search on PartSouq"
+                                                            >
+                                                                <ExternalLink className="w-3 h-3" />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            } />
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </CardContent>
                     </Card>
 
