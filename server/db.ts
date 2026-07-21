@@ -2075,6 +2075,7 @@ export async function globalSearch(query: string, full = false) {
         customerName: sql<string>`COALESCE(${serviceHistory.customerName}, ${customers.name})`,
         customerPhone: sql<string>`COALESCE(NULLIF(${serviceHistory.custMobile}, ''), NULLIF(${serviceHistory.custTelephone}, ''), ${customers.phone})`,
         accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued, make: vehicles.make, model: vehicles.model,
+        description: serviceHistory.description, // job-sheet work notes → at-a-glance summary/badges
       })
       .from(serviceHistory)
       .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
