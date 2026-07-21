@@ -17,7 +17,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, ExternalLink, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
@@ -140,6 +140,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
     const [includeInvoices, setIncludeInvoices] = useState(true);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewSize, setPreviewSize] = useState<number | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
 
     // Build the exact PDF that will be attached, so it can be previewed before sending.
@@ -152,6 +153,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
             const arr = new Uint8Array(bytes.length);
             for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
             const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+            setPreviewSize(arr.length);
             setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
         } catch (e: any) {
             toast.error("Couldn't generate preview: " + (e.message || ""));
@@ -161,7 +163,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     };
     const closeEmail = (open: boolean) => {
         setEmailOpen(open);
-        if (!open) setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; });
+        if (!open) { setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; }); setPreviewSize(null); }
     };
     const openEmail = () => {
         setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
@@ -266,32 +268,30 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </label>
 
                     <div className="mb-3">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-muted-foreground">Preview — this is exactly what will be attached</span>
-                            {previewUrl && (
-                                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-violet-700 hover:underline font-medium">
-                                    <ExternalLink className="w-3 h-3" /> Open full size
-                                </a>
-                            )}
-                        </div>
-                        <div className="rounded-md border bg-slate-50 h-[340px] overflow-hidden flex items-center justify-center">
+                        <span className="text-xs font-medium text-muted-foreground block mb-1">Preview — this is exactly what will be attached</span>
+                        {/* Deliberately NOT an <iframe>/<embed> here — both silently render a blank/black
+                            box (and embed can hang the tab outright) for a blob: PDF this size on plenty of
+                            real browsers, with no error to detect or recover from. A direct link the browser
+                            handles itself (its normal full PDF viewer, or a download) always works. */}
+                        <div className="rounded-md border bg-slate-50 min-h-[120px] flex flex-col items-center justify-center gap-2 py-8">
                             {previewLoading ? (
                                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                             ) : previewUrl ? (
-                                // Some browsers' built-in PDF viewer silently fails to paint a blob: URL
-                                // inside an <iframe> (renders as a blank/black box, no error event) —
-                                // <embed> is the more reliable tag for this across Chrome/Edge/Firefox.
-                                // "Open full size" above is the guaranteed-to-work fallback either way.
-                                <embed key={previewUrl} src={previewUrl} type="application/pdf" className="w-full h-full" />
+                                <>
+                                    <FileText className="w-8 h-8 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">
+                                        {previewSize != null ? `PDF ready · ${(previewSize / 1024 / 1024).toFixed(1)} MB` : "PDF ready"}
+                                    </span>
+                                    <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                                        <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                                            <ExternalLink className="w-3 h-3" /> Open PDF
+                                        </Button>
+                                    </a>
+                                </>
                             ) : (
                                 <span className="text-xs text-muted-foreground">No preview available.</span>
                             )}
                         </div>
-                        {previewUrl && (
-                            <p className="text-[11px] text-muted-foreground mt-1">
-                                Nothing showing above? Some browsers can't preview a PDF this size inline — use "Open full size" instead; the file itself is fine.
-                            </p>
-                        )}
                     </div>
 
                     <div className="space-y-3">
