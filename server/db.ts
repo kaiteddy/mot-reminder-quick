@@ -1551,7 +1551,9 @@ export async function getDocumentDetail(id: number) {
   if (doc.customerId) customer = (await db.select().from(customers).where(eq(customers.id, doc.customerId)).limit(1))[0] ?? null;
   if (doc.vehicleId) {
     vehicle = (await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId)).limit(1))[0] ?? null;
-    history = (await getServiceHistoryByVehicleId(doc.vehicleId)).filter((h) => h.id !== id);
+    // Real GA4 lists the open document alongside its siblings in its own History tab (it's the
+    // vehicle's full record set, not "everything but this one") — don't filter it out.
+    history = await getServiceHistoryByVehicleId(doc.vehicleId);
   }
   const lineItems = await getServiceLineItemsByDocumentId(id);
   let accBalance = 0, custLastInvoiced: any = null, vehLastInvoiced: any = null;

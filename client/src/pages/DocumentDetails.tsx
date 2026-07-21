@@ -1413,7 +1413,7 @@ export default function DocumentDetails() {
                         </aside>
                         <div className="js-history-table-panel">
                           {history.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p>
+                            <p className="text-sm text-muted-foreground py-6 text-center">No documents for this vehicle.</p>
                           ) : (
                             <Table>
                               <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
@@ -1431,7 +1431,7 @@ export default function DocumentDetails() {
                           )}
                         </div>
                       </div>
-                    ) : history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
+                    ) : history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No documents for this vehicle.</p> : (
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
