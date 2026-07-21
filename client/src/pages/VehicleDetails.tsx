@@ -788,6 +788,12 @@ export default function VehicleDetails() {
                                                 </>
                                             } />
                                             <SpecTile label="Engine Code" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={(vehicle as any).engineCode || "-"} />
+                                            {(oilInfo || aircon?.type || coolant || brakeFluid || gearOil) && (
+                                                <div className="col-span-full mt-1 pt-2 border-t flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                    <Droplet className="w-3.5 h-3.5" />
+                                                    Lubricants & Fluids
+                                                </div>
+                                            )}
                                             {oilInfo && (
                                                 <SpecTile label="Engine Oil" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
                                                     <>
