@@ -89,9 +89,18 @@ const SPEC_TONE_CLASS: Record<string, string> = {
     green: "bg-green-50 border-green-200",
     red: "bg-red-50 border-red-200",
     orange: "bg-orange-50 border-orange-200",
+    blue: "bg-blue-50 border-blue-200",
+    cyan: "bg-cyan-50 border-cyan-200",
     neutral: "bg-muted/40 border-transparent",
 };
-function SpecTile({ label, value, tone = "neutral", icon }: { label: string; value: ReactNode; tone?: "green" | "red" | "orange" | "neutral"; icon?: ReactNode }) {
+type SpecTone = "green" | "red" | "orange" | "blue" | "cyan" | "neutral";
+// Matching icon colour per tone, so a tile's icon reinforces its background instead of sitting
+// grey regardless of context (a red Tax Due tile with a grey receipt icon reads as less urgent).
+const SPEC_TONE_ICON: Record<SpecTone, string> = {
+    green: "text-green-500", red: "text-red-500", orange: "text-orange-500",
+    blue: "text-blue-500", cyan: "text-cyan-500", neutral: "text-muted-foreground",
+};
+function SpecTile({ label, value, tone = "neutral", icon }: { label: string; value: ReactNode; tone?: SpecTone; icon?: ReactNode }) {
     return (
         <div className={`rounded-lg border px-3 py-2 ${SPEC_TONE_CLASS[tone]}`}>
             <p className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -742,13 +751,13 @@ export default function VehicleDetails() {
                                 return (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <SpecTile label="Make" icon={<Car className="w-3 h-3" />} value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
-                                            <SpecTile label="Model" icon={<Tag className="w-3 h-3" />} value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
-                                            <SpecTile label="Fuel Type" icon={<Fuel className="w-3 h-3" />} value={
+                                            <SpecTile label="Make" icon={<Car className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
+                                            <SpecTile label="Model" icon={<Tag className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
+                                            <SpecTile label="Fuel Type" icon={<Fuel className="w-3 h-3 text-orange-500" />} value={
                                                 <span className="uppercase">{(vehicle.fuelType as string) || "-"}</span>
                                             } />
-                                            <SpecTile label="Engine CC" icon={<Gauge className="w-3 h-3" />} value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
-                                            <SpecTile label="MOT Expiry" icon={<ShieldCheck className="w-3 h-3" />} tone={motTone} value={
+                                            <SpecTile label="Engine CC" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
+                                            <SpecTile label="MOT Expiry" icon={<ShieldCheck className={`w-3 h-3 ${SPEC_TONE_ICON[motTone]}`} />} tone={motTone} value={
                                                 typeof motInfo === "string" ? (
                                                     <span className="font-normal text-muted-foreground">{motInfo}</span>
                                                 ) : (
@@ -761,26 +770,26 @@ export default function VehicleDetails() {
                                                     </>
                                                 )
                                             } />
-                                            <SpecTile label="Tax Status" icon={<Receipt className="w-3 h-3" />} tone={taxed ? "green" : "red"} value={
+                                            <SpecTile label="Tax Status" icon={<Receipt className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
                                                 <Badge variant={taxed ? "default" : "destructive"} className="text-[9px] px-1.5 py-0">
                                                     {vehicle.taxStatus as string || "Unknown"}
                                                 </Badge>
                                             } />
-                                            <SpecTile label="Tax Due" icon={<CalendarClock className="w-3 h-3" />} tone={taxed ? "green" : "red"} value={
+                                            <SpecTile label="Tax Due" icon={<CalendarClock className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
                                                 <>
                                                     {formatDate(vehicle.taxDueDate)}
                                                     {vehicle.taxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(vehicle.taxDueDate))}</span>}
                                                 </>
                                             } />
-                                            <SpecTile label="Reg Date" icon={<Calendar className="w-3 h-3" />} value={
+                                            <SpecTile label="Reg Date" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
                                                 <>
                                                     {formatDate(vehicle.dateOfRegistration)}
                                                     {vehicle.dateOfRegistration && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{vehicleAge(vehicle.dateOfRegistration)}</span>}
                                                 </>
                                             } />
-                                            <SpecTile label="Engine Code" icon={<Cog className="w-3 h-3" />} value={(vehicle as any).engineCode || "-"} />
+                                            <SpecTile label="Engine Code" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={(vehicle as any).engineCode || "-"} />
                                             {oilInfo && (
-                                                <SpecTile label="Engine Oil" icon={<Droplet className="w-3 h-3" />} value={
+                                                <SpecTile label="Engine Oil" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
                                                     <>
                                                         <span className="block truncate">{oilInfo.grades}</span>
                                                         {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}</span>}
@@ -788,7 +797,7 @@ export default function VehicleDetails() {
                                                 } />
                                             )}
                                             {aircon?.type && (
-                                                <SpecTile label="Air Con" icon={<Thermometer className="w-3 h-3" />} value={
+                                                <SpecTile label="Air Con" tone="cyan" icon={<Thermometer className={`w-3 h-3 ${SPEC_TONE_ICON.cyan}`} />} value={
                                                     <>
                                                         <span className="block truncate">{aircon.type}</span>
                                                         {aircon.quantity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{String(aircon.quantity)}</span>}
@@ -796,7 +805,7 @@ export default function VehicleDetails() {
                                                 } />
                                             )}
                                             {coolant && (
-                                                <SpecTile label="Coolant" icon={<Droplet className="w-3 h-3" />} value={
+                                                <SpecTile label="Coolant" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
                                                     <>
                                                         <span className="block truncate">{coolant.spec}</span>
                                                         {coolant.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{coolant.capacity}</span>}
@@ -804,7 +813,7 @@ export default function VehicleDetails() {
                                                 } />
                                             )}
                                             {brakeFluid && (
-                                                <SpecTile label="Brake Fluid" icon={<Droplet className="w-3 h-3" />} value={
+                                                <SpecTile label="Brake Fluid" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
                                                     <>
                                                         <span className="block truncate">{brakeFluid.spec}</span>
                                                         {brakeFluid.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{brakeFluid.capacity}</span>}
@@ -812,11 +821,11 @@ export default function VehicleDetails() {
                                                 } />
                                             )}
                                             {gearOil && (
-                                                <SpecTile label="Gear Oil" icon={<Cog className="w-3 h-3" />} value={<span className="block truncate">{gearOil}</span>} />
+                                                <SpecTile label="Gear Oil" tone="blue" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={<span className="block truncate">{gearOil}</span>} />
                                             )}
                                         </div>
                                         <div className="mt-3">
-                                            <SpecTile label="VIN" icon={<Hash className="w-3 h-3" />} value={
+                                            <SpecTile label="VIN" icon={<Hash className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
                                                 <div className="flex items-center gap-1 group">
                                                     <span className="font-mono truncate" title={vehicle.vin || ""}>{vehicle.vin || "-"}</span>
                                                     {vehicle.vin && (
