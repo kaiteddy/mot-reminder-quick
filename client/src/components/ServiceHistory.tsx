@@ -138,7 +138,10 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const emailHistoryMut = trpc.email.sendVehicleHistory.useMutation();
     const [emailOpen, setEmailOpen] = useState(false);
     const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
-    const [includeInvoices, setIncludeInvoices] = useState(true);
+    // Off by default — the 1-2 page summary table already covers date/ref/mileage/work/total for
+    // every visit; attaching a full copy of every invoice (dozens of extra pages for a long
+    // history) is useful sometimes but shouldn't be the default weight of every email sent.
+    const [includeInvoices, setIncludeInvoices] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [previewSize, setPreviewSize] = useState<number | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -167,9 +170,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     };
     const openEmail = () => {
         setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
-        setIncludeInvoices(true);
+        setIncludeInvoices(false);
         setEmailOpen(true);
-        loadPreview(true);
+        loadPreview(false);
     };
     const toggleInvoices = (on: boolean) => { setIncludeInvoices(on); loadPreview(on); };
     const sendHistoryEmail = async () => {

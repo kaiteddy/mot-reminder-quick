@@ -3007,7 +3007,11 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   const docName = [d2.custTitle, d2.custForename, d2.custSurname].filter(Boolean).join(" ").trim();
   // Street lines WITHOUT the postcode — otherwise a doc that only has a postcode makes docStreet
   // truthy and blocks the fallback to the linked customer's full address. Postcode appended below.
-  const docStreet = [d2.custHouseNo, d2.custRoad, d2.custLocality, d2.custTown, d2.custCounty].filter(Boolean).join(", ");
+  // House number + road are ONE address line ("19 Grosvenor Gardens") — join them with a space
+  // first, or the comma-join below (needed to separate locality/town/county) gets split back
+  // apart a few lines down and prints "19" and "Grosvenor Gardens" as two separate lines.
+  const houseAndRoad = [d2.custHouseNo, d2.custRoad].filter(Boolean).join(" ");
+  const docStreet = [houseAndRoad, d2.custLocality, d2.custTown, d2.custCounty].filter(Boolean).join(", ");
   const docPostcode = String(d2.custPostcode || customer?.postcode || "").trim();
   // Some imported records have the whole address (town, postcode and all) crammed into a single
   // free-text field like custRoad — splitting that on commas can repeat the town or the postcode
