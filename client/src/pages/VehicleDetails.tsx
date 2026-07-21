@@ -580,11 +580,16 @@ export default function VehicleDetails() {
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         {(vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl ? (
-                            <img
-                                src={(vehicle.comprehensiveTechnicalData as any).ukvd.imageUrl}
-                                alt={`${vehicle.make} ${vehicle.model}`}
-                                className="h-20 w-28 object-contain shrink-0"
-                            />
+                            // The UKVD render has a lot of blank margin baked into the source image
+                            // itself — object-contain alone leaves a small car floating in a big box.
+                            // Scale up and clip the overflow so the car actually fills its frame.
+                            <div className="h-20 w-28 shrink-0 overflow-hidden flex items-center justify-center">
+                                <img
+                                    src={(vehicle.comprehensiveTechnicalData as any).ukvd.imageUrl}
+                                    alt={`${vehicle.make} ${vehicle.model}`}
+                                    className="h-full w-full object-contain scale-150"
+                                />
+                            </div>
                         ) : (
                             <ManufacturerLogo make={vehicle.make as string} size="xl" />
                         )}
@@ -876,17 +881,9 @@ export default function VehicleDetails() {
                                                 <Sparkles className="w-5 h-5 text-blue-600" />
                                                 <h3 className="font-bold text-blue-900">Premium Technical Data</h3>
                                             </div>
-                                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {ukvd.imageUrl && (
-                                                    <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm flex items-center justify-center bg-white/50 bg-gray-50 p-4">
-                                                        <img
-                                                            src={ukvd.imageUrl}
-                                                            alt={`${vehicle.make} ${vehicle.model}`}
-                                                            className="max-w-full max-h-[130px] object-contain"
-                                                        />
-                                                    </div>
-                                                )}
-                                                <div className="grid grid-cols-2 gap-4 place-content-start">
+                                            {/* Car photo now lives in the page header next to the reg plate — no need to show it twice. */}
+                                            <div className="p-6">
+                                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 place-content-start">
                                                     {ukvd.transmission?.type && (
                                                         <div>
                                                             <div className="text-xs text-slate-500 uppercase tracking-wide">Transmission</div>
