@@ -100,7 +100,11 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Vehicles">
               {data.vehicles.map((v: any) => (
                 <Item key={"v" + v.id} icon={<Car className="w-4 h-4 text-sky-600" />} onClick={() => go(`/view-vehicle/${encodeURIComponent(v.registration)}`)}
-                  main={<RegPlate reg={v.registration} />} sub={[[v.make, v.model].filter(Boolean).join(" "), v.ownerName].filter(Boolean).join(" · ")} />
+                  main={<RegPlate reg={v.registration} />}
+                  sub={<>
+                    {(v.make || v.model) && <span className="block truncate">{[v.make, v.model].filter(Boolean).join(" ")}</span>}
+                    {v.ownerName && <span className="block truncate text-slate-400">{v.ownerName}</span>}
+                  </>} />
               ))}
             </Group>
           )}
@@ -108,9 +112,12 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
             <Group title="Live Jobs">
               {groupDocuments(data.documents).map((g) => (
                 <div key={g.key} className="border-b border-slate-50 last:border-0">
-                  <div className="flex items-center gap-2 px-3 pt-2 pb-1">
-                    {g.registration && <RegPlate reg={g.registration} size="xs" />}
-                    <span className="min-w-0 flex-1 text-[11px] text-slate-500 truncate">{[g.vehicleLabel, g.customerName].filter(Boolean).join(" · ")}</span>
+                  <div className="px-3 pt-2 pb-1">
+                    <div className="flex items-center gap-2">
+                      {g.registration && <RegPlate reg={g.registration} size="xs" />}
+                      {g.vehicleLabel && <span className="min-w-0 flex-1 text-[12px] text-slate-700 truncate">{g.vehicleLabel}</span>}
+                    </div>
+                    {g.customerName && <div className="text-[11px] text-slate-400 truncate mt-0.5">{g.customerName}</div>}
                   </div>
                   <div className="pb-1.5">
                     {g.docs.map((d) => (
@@ -148,7 +155,7 @@ function Item({ icon, main, sub, extra, onClick }: { icon: ReactNode; main: Reac
       <span className="shrink-0 mt-0.5">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-slate-800 truncate">{main}</span>
-        {sub && <span className="block text-[11px] text-slate-500 truncate">{sub}</span>}
+        {sub && <span className="block text-[11px] text-slate-500 mt-0.5">{sub}</span>}
         {extra}
       </span>
     </button>
