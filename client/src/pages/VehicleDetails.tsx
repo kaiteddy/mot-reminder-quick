@@ -145,7 +145,7 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                         <TableBody>
                             {parts.data!.map((p: any) => (
                                 <TableRow key={p.id}>
-                                    <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateIssued || p.dateCreated)}</TableCell>
+                                    <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateCreated || p.dateIssued)}</TableCell>
                                     <TableCell className="text-sm">{p.description}</TableCell>
                                     <TableCell className="font-mono text-xs text-muted-foreground">{p.partNumber || "-"}</TableCell>
                                     <TableCell className="text-xs text-muted-foreground">{p.docNo}</TableCell>
@@ -555,7 +555,7 @@ export default function VehicleDetails() {
                                     </div>
                                     {history.map((d: any) => (
                                         <button key={d.id} type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
-                                            <span>{formatDate(d.dateIssued || d.dateCreated)}</span>
+                                            <span>{formatDate(d.dateCreated || d.dateIssued)}</span>
                                             <span>{d.docType} {d.docNo}</span>
                                             <span>{d.accountNumber || ""}</span>
                                             <span>{d.customerName || ""}</span>
@@ -579,7 +579,7 @@ export default function VehicleDetails() {
                                     </div>
                                     {partsHistory.data!.map((p: any) => (
                                         <div key={p.id} className="vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px", height: 23, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
-                                            <span>{formatDate(p.dateIssued || p.dateCreated)}</span>
+                                            <span>{formatDate(p.dateCreated || p.dateIssued)}</span>
                                             <span>{p.description}</span>
                                             <span>{p.partNumber || ""}</span>
                                             <span>{p.docNo}</span>

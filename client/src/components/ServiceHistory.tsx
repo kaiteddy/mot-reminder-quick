@@ -361,7 +361,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         <div key={doc.id} onClick={() => setLocation(`${base}/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
-                                <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
+                                <span className="text-sm text-slate-600">{(doc.dateCreated || doc.dateIssued) ? format(new Date(doc.dateCreated || doc.dateIssued), "dd/MM/yyyy") : "-"}</span>
                                 <span className="ml-auto font-bold text-slate-900">£{Number(doc.totalGross).toFixed(2)}</span>
                             </div>
                             {summary && <div className="text-sm text-slate-700 mt-2 break-words line-clamp-2">{summary}</div>}
@@ -397,7 +397,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             onClick={() => setLocation(`${base}/documents/${doc.id}`)}
                         >
                             <TableCell>
-                                {(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}
+                                {(doc.dateCreated || doc.dateIssued) ? format(new Date(doc.dateCreated || doc.dateIssued), "dd/MM/yyyy") : "-"}
                             </TableCell>
                             <TableCell>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>

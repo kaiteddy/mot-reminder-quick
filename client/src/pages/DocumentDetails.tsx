@@ -1420,7 +1420,7 @@ export default function DocumentDetails() {
                               <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                               <TableBody>{history.map((h: any) => (
                                 <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
-                                  <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
+                                  <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                                   <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                                   <TableCell>{h.docNo}</TableCell>
                                   <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
@@ -1437,7 +1437,7 @@ export default function DocumentDetails() {
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
                           <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
-                            <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
+                            <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                             <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>{h.docNo}</TableCell>
                             <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
@@ -2341,7 +2341,7 @@ function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (
             <TableBody>
               {filtered.map((p) => (
                 <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onOpen(p.docId)}>
-                  <TableCell>{fmtDate(p.dateIssued || p.dateCreated)}</TableCell>
+                  <TableCell>{fmtDate(p.dateCreated || p.dateIssued)}</TableCell>
                   <TableCell>{p.docNo}</TableCell>
                   <TableCell className="font-mono text-xs">{p.partNumber || "—"}</TableCell>
                   <TableCell className="max-w-[300px] truncate">{p.description || "—"}</TableCell>

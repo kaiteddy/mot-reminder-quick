@@ -1984,8 +1984,11 @@ export async function refreshVehicleMotTax(registration: string) {
 export async function getNextDocNo(docType: string) {
   const db = await getDb();
   if (!db) return "1";
+  // Only GA4-sourced rows count toward dbMax — web-native placeholders (externalId LIKE 'WEB-%')
+  // are themselves guesses-ahead, so including them would compound the gap on every call instead
+  // of tracking GA4's real pace.
   const r = await db.select({ m: sql<number>`MAX((NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::bigint)` })
-    .from(serviceHistory).where(eq(serviceHistory.docType, docType));
+    .from(serviceHistory).where(and(eq(serviceHistory.docType, docType), sql`(${serviceHistory.externalId} IS NULL OR ${serviceHistory.externalId} NOT LIKE 'WEB-%')`));
   const dbMax = Number(r[0]?.m) || 0;
   const clearance = Number(await getAppSetting("docNoClearance")) || 20;
   const key = `docNoNext:${docType}`;

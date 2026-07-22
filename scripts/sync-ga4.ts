@@ -24,6 +24,7 @@ import { mapGA4Document, buildCustomerName, buildAddress, getCustomerEmail, pars
 import { buildCustomerContacts } from "../server/services/contactCleanup";
 import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
 import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
+import { renumberCollidingWebDrafts } from "./renumber-colliding-web-drafts";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -303,6 +304,9 @@ await retireInvoicedJobSheets(c, GO, path.join(process.cwd(), "scripts", ".clean
 
 // ---- 6) Retire web invoices whose real GA4 invoice has now been imported (same ga4Number+reg+total) ----
 await retireSupersededWebInvoices(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 7) Renumber any web draft left holding a docNo a GA4 doc just synced in under (unrelated jobs) ----
+await renumberCollidingWebDrafts(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
