@@ -9,6 +9,10 @@ export const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDat
 export const money = (v: string | number | null) =>
   v == null ? "-" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const isToday = (d: string | Date | null) => { if (!d) return false; const x = new Date(d), n = new Date(); return x.toDateString() === n.toDateString(); };
+// GA4 shows Make & Model in Title Case regardless of source casing — our `make` column is
+// stored shouting-uppercase ("VOLKSWAGEN"), which reads as a mismatch next to the reference
+// screens. Lowercase the whole string, then capitalize the letter after every word boundary.
+export const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s\-/])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
 export const soon = (label: string) => () => toast.message(`${label} isn't wired up in Classic view yet.`);
 
 const tableColumns = [
@@ -47,7 +51,7 @@ export function DataTable({ rows, loading, onOpen }: { rows: any[]; loading: boo
               <td className="col-doc">{d.docNo || "-"}</td>
               <td className="col-date">{fmtDate(d.dateIssued || d.dateCreated || d.createdAt)}</td>
               <td className="col-reg">{d.registration || "—"}</td>
-              <td className="col-model">{[d.make, d.model].filter(Boolean).join(" ") || "—"}</td>
+              <td className="col-model">{[d.make, d.model].filter(Boolean).join(" ") ? titleCase([d.make, d.model].filter(Boolean).join(" ")) : "—"}</td>
               <td className="col-customer">{d.customerName || "—"}</td>
               <td className="col-lab">~</td>
               <td className="col-total">{money(d.totalGross)}</td>
