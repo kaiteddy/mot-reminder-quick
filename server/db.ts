@@ -1939,6 +1939,35 @@ export async function liveVehicleTech(registration: string) {
   return out;
 }
 
+/** Free, time-sensitive DVLA refresh for MOT expiry + tax — the vehicle page called this
+ *  automatically before this fix; it only ever read the cached vehicles row, which could be
+ *  weeks stale (a renewed MOT still showed "Expired"). SWS/UKVD spec data stays cached/manual
+ *  ("Fetch Premium Data") since that costs money per call; DVLA is free, so there's no reason
+ *  not to refresh it on every view. Persists the fresh values back so the cache catches up too. */
+export async function refreshVehicleMotTax(registration: string) {
+  const reg = normReg(registration);
+  if (!reg) return null;
+  try {
+    const { getVehicleDetails } = await import("./dvlaApi");
+    const d = await getVehicleDetails(reg);
+    if (!d) return null;
+    const patch: any = {};
+    if (d.motExpiryDate) patch.motExpiryDate = new Date(d.motExpiryDate);
+    if (d.taxStatus) patch.taxStatus = d.taxStatus;
+    if (d.taxDueDate) patch.taxDueDate = new Date(d.taxDueDate);
+    if (Object.keys(patch).length) {
+      const db = await getDb();
+      if (db) {
+        await db.update(vehicles).set({ ...patch, lastChecked: new Date() })
+          .where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`);
+      }
+    }
+    return { motExpiryDate: patch.motExpiryDate ?? null, taxStatus: patch.taxStatus ?? null, taxDueDate: patch.taxDueDate ?? null };
+  } catch {
+    return null; // DVLA unavailable — page keeps showing the cached value
+  }
+}
+
 /**
  * Next document number for a given doc type — always allocated AHEAD of GA4.
  *

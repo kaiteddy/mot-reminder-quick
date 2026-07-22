@@ -573,6 +573,15 @@ export const appRouter = router({
         return { ok: true };
       }),
 
+    // Free, time-sensitive DVLA refresh — called automatically when a vehicle page loads so
+    // MOT/tax never shows a stale cached status (see refreshVehicleMotTax in db.ts).
+    refreshMotTax: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { refreshVehicleMotTax } = await import("./db");
+        return refreshVehicleMotTax(input.registration);
+      }),
+
     getByRegistration: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {

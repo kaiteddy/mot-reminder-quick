@@ -217,6 +217,22 @@ export default function VehicleDetails() {
     const reminders = result?.reminders || [];
     const history = result?.history || [];
 
+    // MOT/tax are free at DVLA and can change any time a test happens — the cached vehicles row
+    // (last refreshed whenever it was last looked up) can be weeks stale, showing "Expired" for a
+    // car that's since had its MOT renewed. Refresh live on every view; SWS/UKVD spec data stays
+    // cached/manual ("Fetch Premium Data") since that one costs money per call.
+    const motTaxLive = trpc.vehicles.refreshMotTax.useQuery(
+        { registration: registration || "" },
+        { enabled: !!registration, staleTime: 5 * 60_000 }
+    );
+    const liveMotExpiry = motTaxLive.data?.motExpiryDate ?? vehicle?.motExpiryDate ?? null;
+    const liveTaxStatus = motTaxLive.data?.taxStatus ?? vehicle?.taxStatus ?? null;
+    const liveTaxDueDate = motTaxLive.data?.taxDueDate ?? vehicle?.taxDueDate ?? null;
+    // The UKVD header photo is a third-party hotlinked image — it can 404/expire independently
+    // of our own data. Track the specific URL that failed so a broken link falls back to the
+    // manufacturer logo instead of showing a broken-image icon.
+    const [failedImgUrl, setFailedImgUrl] = useState<string | null>(null);
+
     const [rightTab, setRightTab] = useState<"General" | "Specs" | "Extra" | "Features" | "Notes">("General");
     const [historyTab, setHistoryTab] = useState<"issued" | "parts" | "reminders">("issued");
     const partsHistory = trpc.documents.partsHistory.useQuery({ vehicleId: vehicle?.id as number }, { enabled: !!vehicle?.id && historyTab === "parts", staleTime: 60_000 });
@@ -332,7 +348,7 @@ export default function VehicleDetails() {
         );
     }
 
-    const motInfo = formatMOTDate(vehicle.motExpiryDate);
+    const motInfo = formatMOTDate(liveMotExpiry);
     const motBadge = getMOTStatusBadge(motInfo);
 
     const jobSummaryUrl = `${window.location.protocol}//${window.location.host}/mobile/job/${vehicle.id}`;
@@ -612,21 +628,25 @@ export default function VehicleDetails() {
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        {(vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl ? (
-                            // The UKVD render has blank margin baked into the source image itself —
-                            // plain object-contain leaves a small car floating in a big box. A
-                            // wider frame (matches the car's own aspect ratio) plus a light zoom
-                            // trims most of that margin without cropping the car itself.
-                            <div className="h-20 w-32 shrink-0 overflow-hidden flex items-center justify-center">
-                                <img
-                                    src={(vehicle.comprehensiveTechnicalData as any).ukvd.imageUrl}
-                                    alt={`${vehicle.make} ${vehicle.model}`}
-                                    className="h-full w-full object-contain scale-110"
-                                />
-                            </div>
-                        ) : (
-                            <ManufacturerLogo make={vehicle.make as string} size="xl" />
-                        )}
+                        {(() => {
+                            const ukvdImageUrl = (vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl;
+                            return ukvdImageUrl && ukvdImageUrl !== failedImgUrl ? (
+                                // The UKVD render has blank margin baked into the source image itself —
+                                // plain object-contain leaves a small car floating in a big box. A
+                                // wider frame (matches the car's own aspect ratio) plus a light zoom
+                                // trims most of that margin without cropping the car itself.
+                                <div className="h-20 w-32 shrink-0 overflow-hidden flex items-center justify-center">
+                                    <img
+                                        src={ukvdImageUrl}
+                                        alt={`${vehicle.make} ${vehicle.model}`}
+                                        className="h-full w-full object-contain scale-110"
+                                        onError={() => setFailedImgUrl(ukvdImageUrl)}
+                                    />
+                                </div>
+                            ) : (
+                                <ManufacturerLogo make={vehicle.make as string} size="xl" />
+                            );
+                        })()}
                         <div>
                             <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
                                 {vehicle.registration}
@@ -741,7 +761,7 @@ export default function VehicleDetails() {
                         <CardContent>
                             {(() => {
                                 const motTone = typeof motInfo === "string" ? "neutral" : motInfo.isExpired ? "red" : motInfo.daysUntilExpiry <= 30 ? "orange" : "green";
-                                const taxed = vehicle.taxStatus?.toLowerCase() === "taxed";
+                                const taxed = liveTaxStatus?.toLowerCase() === "taxed";
                                 const ctd = vehicle.comprehensiveTechnicalData as any;
                                 const oilInfo = engineOilInfo(ctd?.lubricants);
                                 const coolant = findLubricant(ctd?.lubricants, /COOLANT/i);
@@ -772,13 +792,13 @@ export default function VehicleDetails() {
                                             } />
                                             <SpecTile label="Tax Status" icon={<Receipt className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
                                                 <Badge variant={taxed ? "default" : "destructive"} className="text-[9px] px-1.5 py-0">
-                                                    {vehicle.taxStatus as string || "Unknown"}
+                                                    {liveTaxStatus || "Unknown"}
                                                 </Badge>
                                             } />
                                             <SpecTile label="Tax Due" icon={<CalendarClock className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
                                                 <>
-                                                    {formatDate(vehicle.taxDueDate)}
-                                                    {vehicle.taxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(vehicle.taxDueDate))}</span>}
+                                                    {formatDate(liveTaxDueDate)}
+                                                    {liveTaxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(liveTaxDueDate))}</span>}
                                                 </>
                                             } />
                                             <SpecTile label="Reg Date" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
