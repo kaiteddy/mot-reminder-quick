@@ -166,6 +166,7 @@ export default function DocumentDetails() {
   const editing = true;
   const [newCust, setNewCust] = useState(false);
   const [looking, setLooking] = useState(false);
+  const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
   const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean; searchedPc?: string }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
@@ -177,6 +178,11 @@ export default function DocumentDetails() {
   const initRef = useRef<number | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const regOnLoadRef = useRef<string>(""); // the reg when the doc loaded — used to force a full refresh if it's changed
+  // Live matches for whatever's typed in the Registration field itself — lets staff pick an
+  // already-known car straight from that field (no paid VRM lookup) instead of needing the
+  // separate "Find vehicle" box above it.
+  const regQueryText = (form.registration || "").trim();
+  const { data: regMatches } = trpc.vehicles.searchForJob.useQuery({ query: regQueryText }, { enabled: editing && regFocused && regQueryText.length >= 2, staleTime: 30_000 });
   // customer details as loaded — so the "update record?" prompt only fires on a real edit,
   // not when the doc's stored name merely differs from the (e.g. title-less) master record.
   const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
@@ -1070,9 +1076,32 @@ export default function DocumentDetails() {
                     <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { set("registration", ""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
                   </div>
                 ) : (
-                  <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                    onBlur={autoLookupOnReg} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); autoLookupOnReg(); } }}
-                    className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                  <div className="relative flex-1 min-w-0">
+                    <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                      onFocus={() => setRegFocused(true)}
+                      onBlur={() => { setTimeout(() => setRegFocused(false), 150); autoLookupOnReg(); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setRegFocused(false); autoLookupOnReg(); } }}
+                      className="w-full bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                    {regFocused && regQueryText.length >= 2 && regMatches && regMatches.length > 0 && (
+                      <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg max-h-60 overflow-auto">
+                        {regMatches.map((v: any) => (
+                          <button key={v.id} type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              set("registration", v.registration);
+                              regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, "");
+                              lookup(v.registration);
+                              setRegFocused(false);
+                            }}
+                            className="flex w-full items-center gap-2 text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 border-b last:border-0">
+                            <span className="font-mono font-semibold rounded bg-yellow-300 px-1.5 py-0.5 text-[12px] text-black ring-1 ring-yellow-500/60 shrink-0">{v.registration}</span>
+                            <span className="truncate">{[v.make, v.model].filter(Boolean).join(" ")}</span>
+                            {v.ownerName && <span className="text-muted-foreground ml-auto truncate max-w-[40%]">{v.ownerName}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {editing && (
                   <button onClick={() => lookup()} disabled={looking} className={base ? "js-search-button" : "inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50"}>
