@@ -1727,6 +1727,10 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       // Treat a blank OR the literal string "null"/"NULL" (a GA4 import artifact) as empty, so a
       // record showing "NULL" for make/model/derivative gets backfilled instead of looking filled.
       const empty = (s: any) => { const t = String(s ?? "").trim(); return !t || /^null$/i.test(t); };
+      // Set by either enrichment source below if a forced lookup's fresh make conflicts with what's
+      // already stored — see the long comment further down for why that blocks the overwrite.
+      let identityConflict = false;
+      let reassignWarning: string | null = null;
       // Free self-heal: if the derivative is blank but the SWS data we already stored has it,
       // fill it from cache (no API call). Covers vehicles enriched before the derivative was saved.
       if (empty(v.derivative)) {
@@ -1747,10 +1751,25 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           const clean = (s: any) => { const t = String(s ?? "").trim(); return /^(null|undefined)(\s+(null|undefined))*$/i.test(t) ? "" : t; };
           const fn = clean(sp.fullName);
           const updates: any = {};
-          // force = an explicit lookup after the reg was changed → OVERWRITE the identity fields
-          // with the fresh data (clears stale data from a previous, wrong reg). Otherwise fill blanks.
-          const want = (field: string) => force || empty(v[field]);
           const swsMake = clean(u.make) || (fn ? fn.trim().split(/\s+/)[0] : "");
+          // force = an explicit lookup after the reg was changed → OVERWRITE the identity fields
+          // with the fresh data (clears stale data from a previous, wrong reg). BUT a registration
+          // can also be reused/transferred onto a genuinely different physical vehicle (private
+          // plates move with the owner, not the car — see [[registration-reuse-across-vehicles]]),
+          // and this existing row can be that OLDER vehicle's real, GA4-synced record. If the
+          // fresh make doesn't match what's already stored, treat it as a reassigned plate, not a
+          // typo correction: don't touch this row's identity, and warn instead of overwriting a
+          // different vehicle's history in place.
+          const storedMake = String(v.make || "").trim().toUpperCase();
+          const freshMake = String(swsMake || "").trim().toUpperCase();
+          if (force && storedMake && freshMake && storedMake !== freshMake
+              && !storedMake.startsWith(freshMake) && !freshMake.startsWith(storedMake)) {
+            identityConflict = true;
+            reassignWarning = `${reg} is already on file as a ${v.make} ${v.model || ""}`.trim()
+              + ` — the fresh lookup found a ${swsMake}, which looks like a different vehicle now carrying this plate. Nothing was overwritten; use "New Vehicle" if this is a different car.`;
+          }
+          const effectiveForce = force && !identityConflict;
+          const want = (field: string) => effectiveForce || empty(v[field]);
           if (want("make") && swsMake) v.make = updates.make = String(swsMake).toUpperCase();
           const newMake = updates.make ?? v.make;
           const stripMake = (s: string) => { const p = s.trim().split(/\s+/); if (p[0] && String(newMake || "").toUpperCase().startsWith(p[0].toUpperCase())) p.shift(); return p.join(" "); };
@@ -1761,7 +1780,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (want("colour") && clean(u.colour)) v.colour = updates.colour = clean(u.colour);
           if (want("vin") && clean(u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = clean(u.vin || sp.vin || sws?.raw?.vinNumber);
           if (want("engineCC") && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
-          if (force) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
+          if (effectiveForce) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
           updates.swsLastUpdated = new Date(); // mark "SWS/UKVD attempted" so we never re-pay for this vehicle
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
@@ -1785,12 +1804,26 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (d) {
             if (d.taxStatus) { v.taxStatus = d.taxStatus; du.taxStatus = d.taxStatus; }
             const tdd = toDate(d.taxDueDate); if (tdd) { v.taxDueDate = tdd; du.taxDueDate = tdd; }
+            // DVLA is free and authoritative for UK plates — but that also makes it the most
+            // reliable place to catch a reassigned plate (see the identityConflict comment above):
+            // if DVLA's make doesn't match what's already stored, this row is the OLD vehicle that
+            // used to hold this reg, not a typo to correct.
+            if (force && !identityConflict && d.make) {
+              const dvlaMake = String(d.make).trim().toUpperCase();
+              const storedMake2 = String(v.make || "").trim().toUpperCase();
+              if (storedMake2 && dvlaMake !== storedMake2 && !storedMake2.startsWith(dvlaMake) && !dvlaMake.startsWith(storedMake2)) {
+                identityConflict = true;
+                reassignWarning = reassignWarning || (`${reg} is already on file as a ${v.make} ${v.model || ""}`.trim()
+                  + ` — DVLA now returns a ${d.make}, which looks like a different vehicle now carrying this plate. Nothing was overwritten; use "New Vehicle" if this is a different car.`);
+              }
+            }
+            const effectiveForce2 = force && !identityConflict;
             // DVLA make is authoritative for UK plates — fill it when UKVD couldn't (e.g. grey imports
             // where UKVD returns no/"NULL" make), so the record never shows a blank or "NULL" make.
-            if ((force || empty(v.make)) && d.make) { v.make = du.make = String(d.make).toUpperCase(); }
-            if ((force || empty(v.colour)) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
+            if ((effectiveForce2 || empty(v.make)) && d.make) { v.make = du.make = String(d.make).toUpperCase(); }
+            if ((effectiveForce2 || empty(v.colour)) && d.colour) { v.colour = d.colour; du.colour = d.colour; }
             // date of first registration — prefer DVLA's month, else the year of manufacture
-            if ((force || empty(v.dateOfRegistration)) && (d.monthOfFirstRegistration || d.yearOfManufacture)) {
+            if ((effectiveForce2 || empty(v.dateOfRegistration)) && (d.monthOfFirstRegistration || d.yearOfManufacture)) {
               const dor = d.monthOfFirstRegistration ? new Date(d.monthOfFirstRegistration + "-01") : new Date(d.yearOfManufacture, 0, 1);
               if (!isNaN(dor.getTime())) { v.dateOfRegistration = dor; du.dateOfRegistration = dor; }
             }
@@ -1820,11 +1853,11 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           .limit(1))[0];
         if (prior?.customerId) {
           const linked = (await db.select().from(customers).where(eq(customers.id, prior.customerId)).limit(1))[0];
-          if (linked) return { found: true, source: "database", vehicle: v, customer: linked, warning: await ukvdWarning() };
+          if (linked) return { found: true, source: "database", vehicle: v, customer: linked, warning: reassignWarning || await ukvdWarning() };
         }
         if (prior && (prior.customerName || prior.custSurname || prior.company)) lastCustomer = prior;
       }
-      return { found: true, source: "database", vehicle: v, customer: cust, lastCustomer, warning: await ukvdWarning() };
+      return { found: true, source: "database", vehicle: v, customer: cust, lastCustomer, warning: reassignWarning || await ukvdWarning() };
     }
   }
   // Not in our DB — do a live VRM lookup like GA4: SWS (rich: make/model/colour/
