@@ -1963,11 +1963,16 @@ export async function liveVehicleTech(registration: string) {
   } catch { /* tech cache/fetch unavailable */ }
 
   // --- MOT & tax: free (DVLA) and time-sensitive → always live. ---
+  // MOT expiry comes from the DVSA MOT History API, not DVLA VES's own motExpiryDate field —
+  // VES lags behind a freshly-completed test (same distinction lookupVehicleForReg already
+  // makes), so a job sheet reopened right after a renewal would otherwise keep showing "Expired".
   try {
     const { getVehicleDetails } = await import("./dvlaApi");
-    const d: any = await getVehicleDetails(reg);
-    if (d) { out.motExpiry = d.motExpiryDate ?? null; out.taxStatus = d.taxStatus ?? null; out.taxDueDate = d.taxDueDate ?? null; }
-  } catch { /* DVLA unavailable */ }
+    const { getCurrentMotExpiry } = await import("./motApi");
+    const [d, motExp]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg).catch(() => null)]);
+    if (d) { out.taxStatus = d.taxStatus ?? null; out.taxDueDate = d.taxDueDate ?? null; }
+    out.motExpiry = motExp ?? d?.motExpiryDate ?? null;
+  } catch { /* DVLA/DVSA unavailable */ }
 
   return out;
 }
@@ -1982,12 +1987,18 @@ export async function refreshVehicleMotTax(registration: string) {
   if (!reg) return null;
   try {
     const { getVehicleDetails } = await import("./dvlaApi");
-    const d = await getVehicleDetails(reg);
-    if (!d) return null;
+    const { getCurrentMotExpiry } = await import("./motApi");
+    // MOT expiry from the DVSA MOT History API, not DVLA VES's own motExpiryDate — VES lags
+    // behind a just-completed test, so a car reopened right after its MOT would still read
+    // "Expired" if this only trusted VES (same distinction lookupVehicleForReg/liveVehicleTech
+    // already make).
+    const [d, motExp] = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg).catch(() => null)]);
+    if (!d && !motExp) return null;
     const patch: any = {};
-    if (d.motExpiryDate) patch.motExpiryDate = new Date(d.motExpiryDate);
-    if (d.taxStatus) patch.taxStatus = d.taxStatus;
-    if (d.taxDueDate) patch.taxDueDate = new Date(d.taxDueDate);
+    if (motExp) patch.motExpiryDate = motExp;
+    else if (d?.motExpiryDate) patch.motExpiryDate = new Date(d.motExpiryDate);
+    if (d?.taxStatus) patch.taxStatus = d.taxStatus;
+    if (d?.taxDueDate) patch.taxDueDate = new Date(d.taxDueDate);
     if (Object.keys(patch).length) {
       const db = await getDb();
       if (db) {
