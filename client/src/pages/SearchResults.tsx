@@ -96,6 +96,14 @@ export default function SearchResults() {
     { key: "type", label: "Type", sortable: true, sortVal: (d) => DOC_LABEL[d.docType] || d.docType || "", cell: (d) => <span className="font-medium text-slate-700">{DOC_LABEL[d.docType] || d.docType || "Doc"}</span> },
     { key: "no", label: "No.", sortable: true, sortVal: (d) => d.ga4Number || d.docNo || "", cell: (d) => <span className="font-mono text-[12px] text-slate-600">{d.ga4Number || d.docNo || "—"}</span> },
     { key: "reg", label: "Reg", sortable: true, sortVal: (d) => d.registration || "", cell: (d) => d.registration ? <RegPlate reg={d.registration} size="xs" /> : <span className="text-slate-400">—</span> },
+    // A registration can be reused/transferred onto a different vehicle over the years (the same
+    // customer's plate can outlive several cars), so the reg alone doesn't say which car a job was
+    // actually for — show the linked vehicle's make/model next to it, and call out the ones whose
+    // vehicle record no longer exists rather than silently leaving the column blank.
+    { key: "vehicle", label: "Vehicle", sortable: true, sortVal: (d) => [d.make, d.model].filter(Boolean).join(" "), cell: (d) => {
+        const label = [d.make, d.model].filter(Boolean).join(" ");
+        return label ? <span className="text-slate-700 whitespace-nowrap">{label}</span> : <span className="text-slate-400 italic whitespace-nowrap">Unknown vehicle</span>;
+      } },
     { key: "customer", label: "Customer", sortable: true, sortVal: (d) => d.customerName || "", cell: (d) => <span className="text-slate-700">{d.customerName || "—"}</span> },
     { key: "date", label: "Date", sortable: true, sortVal: (d) => d.date ? new Date(d.date).getTime() : 0, cell: (d) => <span className="text-slate-600 whitespace-nowrap">{d.date ? new Date(d.date).toLocaleDateString("en-GB") : "—"}</span> },
   ];
