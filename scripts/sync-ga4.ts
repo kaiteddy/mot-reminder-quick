@@ -25,6 +25,7 @@ import { buildCustomerContacts } from "../server/services/contactCleanup";
 import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
 import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
 import { renumberCollidingWebDrafts } from "./renumber-colliding-web-drafts";
+import { archiveStaleVehicleOwners } from "./archive-stale-vehicle-owners";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -307,6 +308,9 @@ await retireSupersededWebInvoices(c, GO, path.join(process.cwd(), "scripts", ".c
 
 // ---- 7) Renumber any web draft left holding a docNo a GA4 doc just synced in under (unrelated jobs) ----
 await renumberCollidingWebDrafts(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 8) Archive the customer link on vehicles nobody's invoiced in 5+ years (stops stale MOT reminders) ----
+await archiveStaleVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
