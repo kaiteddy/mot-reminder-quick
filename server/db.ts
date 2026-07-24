@@ -3497,14 +3497,24 @@ export async function deleteDocuments(ids: number[]) {
   const clean = (ids || []).filter((n) => Number.isFinite(n));
   if (!clean.length) return { success: true, deleted: 0 };
 
+  // Deleting a policy-excess invoice must also clear the excess amount it mirrored onto the
+  // main insurance invoice (see updateExcessInvoice) — otherwise the main invoice keeps
+  // showing an "Excess (to customer)" deduction for an excess invoice that no longer exists,
+  // with no way to remove it short of re-editing the excess to zero first.
+  const referencing = await db.select({ id: serviceHistory.id }).from(serviceHistory).where(inArray(serviceHistory.relatedDocId, clean));
+
   await db.transaction(async (tx) => {
     await tx.delete(serviceLineItems).where(inArray(serviceLineItems.documentId, clean));
     await tx.delete(payments).where(inArray(payments.documentId, clean));
-    // remove dangling links from any document that referenced a deleted one (e.g. an
-    // insurance invoice ↔ its policy-excess invoice)
-    await tx.update(serviceHistory).set({ relatedDocId: null, relatedDocNo: null }).where(inArray(serviceHistory.relatedDocId, clean));
+    // remove dangling links + the mirrored excess amount from any document that referenced a
+    // deleted one (e.g. an insurance invoice ↔ its policy-excess invoice)
+    await tx.update(serviceHistory).set({
+      relatedDocId: null, relatedDocNo: null,
+      excessNet: null, excessTax: null, excessGross: null,
+    }).where(inArray(serviceHistory.relatedDocId, clean));
     await tx.delete(serviceHistory).where(inArray(serviceHistory.id, clean));
   });
+  for (const r of referencing) await recomputeDocBalance(r.id);
   return { success: true, deleted: clean.length };
 }
 
