@@ -1130,8 +1130,12 @@ export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {
 }
 
 export async function getServiceHistoryByCustomerId(customerId: number) {
+  return getServiceHistoryByCustomerIds([customerId]);
+}
+
+async function getServiceHistoryByCustomerIds(customerIds: number[]) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db || !customerIds.length) return [];
   const rawDocs = await db.select({
     id: serviceHistory.id,
     externalId: serviceHistory.externalId,
@@ -1145,6 +1149,7 @@ export async function getServiceHistoryByCustomerId(customerId: number) {
     totalNet: serviceHistory.totalNet,
     totalTax: serviceHistory.totalTax,
     totalGross: sql<string>`COALESCE(NULLIF(CAST(${serviceHistory.totalGross} AS DECIMAL(10,2)), 0), SUM(${serviceLineItems.subNet}))`,
+    balance: serviceHistory.balance,
     mileage: serviceHistory.mileage,
     createdAt: serviceHistory.createdAt,
     description: serviceHistory.description,
@@ -1154,7 +1159,7 @@ export async function getServiceHistoryByCustomerId(customerId: number) {
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
     .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
-    .where(eq(serviceHistory.customerId, customerId))
+    .where(inArray(serviceHistory.customerId, customerIds))
     .groupBy(serviceHistory.id, vehicles.registration)
     .orderBy(desc(serviceHistory.dateCreated));
 
@@ -1173,6 +1178,34 @@ export async function getServiceHistoryByCustomerId(customerId: number) {
     }
   }
   return deduplicated;
+}
+
+/** Same idea as getVehiclesForCustomerAcrossLinkedAccounts — a person can be split across
+ * more than one `customers` row sharing a phone (fresh GA4 account created for a later car
+ * instead of reusing the old one), and the Duplicates page won't merge accounts with different
+ * account numbers since that's its signal two different people might share a phone. Without
+ * this, a customer's own invoices could be invisible from their OTHER account's page — exactly
+ * how two real unpaid invoices for "Hakkimian" went unfound (accounts HAK002 and HAK006, same
+ * phone, one invoice each). Read-only: no records are touched or merged. */
+export async function getServiceHistoryForCustomerAcrossLinkedAccounts(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const self = (await db.select({ id: customers.id, phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  if (!self) return [];
+  const phoneKey = normPhoneKey(self.phone);
+  if (!phoneKey) return (await getServiceHistoryByCustomerIds([customerId])).map((h) => ({ ...h, viaAccountId: customerId, viaAccountNumber: null as string | null, viaAccountSame: true }));
+
+  const allCust = await db.select({ id: customers.id, phone: customers.phone, accountNumber: customers.accountNumber }).from(customers);
+  const linkedIds = allCust.filter((c) => c.id === customerId || normPhoneKey(c.phone) === phoneKey).map((c) => c.id);
+  const acctById = new Map(allCust.map((c) => [c.id, c.accountNumber] as const));
+
+  const docs = await getServiceHistoryByCustomerIds(linkedIds);
+  return docs.map((h) => ({
+    ...h,
+    viaAccountId: h.customerId ?? customerId,
+    viaAccountNumber: h.customerId != null ? (acctById.get(h.customerId) ?? null) : null,
+    viaAccountSame: h.customerId === customerId,
+  }));
 }
 
 export async function getServiceLineItemsByDocumentId(documentId: number) {

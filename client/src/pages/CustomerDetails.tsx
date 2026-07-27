@@ -93,6 +93,8 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
                         <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
                             {h.docType === 'SI' ? 'Invoice' : 'Estimate'} #{h.docNo || h.id}
                             {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
+                            {Number(h.balance || 0) > 0 && <span className="bg-red-50 text-red-700 text-[10px] px-1.5 py-0.5 rounded border border-red-200 font-medium">Unpaid £{Number(h.balance).toFixed(2)}</span>}
+                            {!h.viaAccountSame && <span className="bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
                         </div>
                         <div className="text-xs text-muted-foreground line-clamp-1">
                             {h.mainDescription || "No job description"}
