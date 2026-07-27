@@ -2088,7 +2088,7 @@ export async function searchCustomers(query: string, limit = 10) {
   let core = q.replace(/\D/g, "");
   if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
   if (core.length >= 6) conds.push(ilike(customers.phone, `%${core}%`));
-  return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address })
+  return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address, accountNumber: customers.accountNumber })
     .from(customers)
     .where(or(...conds))
     .orderBy(customers.name)

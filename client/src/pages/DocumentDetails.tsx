@@ -1190,6 +1190,9 @@ export default function DocumentDetails() {
                     custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
                     custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
                     custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
+                    // Re-linking to a different customer must also refresh their account number —
+                    // otherwise the doc keeps showing whichever customer it was linked to before.
+                    accountNumber: c.accountNumber || f.accountNumber,
                   })); markDirty(); }} />
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
