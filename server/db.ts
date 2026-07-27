@@ -409,6 +409,20 @@ export async function getVehiclesByCustomerId(customerId: number) {
  * Vehicles" list would otherwise only ever show whichever account you happened to open. This
  * pulls in vehicles from every customer record sharing the same phone, each tagged with which
  * account it actually belongs to — a read-only view, no records are touched or merged. */
+/** The other customer records sharing this one's phone number — same signal used by
+ * getVehiclesForCustomerAcrossLinkedAccounts/getServiceHistoryForCustomerAcrossLinkedAccounts,
+ * exposed directly so the customer page can offer an explicit, human-confirmed "merge these
+ * into this profile" action instead of just a read-only cross-reference. */
+export async function getLinkedCustomerAccounts(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const self = (await db.select({ id: customers.id, phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  const phoneKey = self ? normPhoneKey(self.phone) : null;
+  if (!phoneKey) return [];
+  const all = await db.select({ id: customers.id, name: customers.name, phone: customers.phone, accountNumber: customers.accountNumber }).from(customers);
+  return all.filter((c) => c.id !== customerId && normPhoneKey(c.phone) === phoneKey);
+}
+
 export async function getVehiclesForCustomerAcrossLinkedAccounts(customerId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2423,7 +2437,7 @@ export async function getDuplicateGroups() {
 }
 
 /** Merge secondary customer records into a primary (re-points all refs, unions contacts, records aliases). */
-export async function mergeCustomerRecords(primaryId: number, secondaryIds: number[]) {
+export async function mergeCustomerRecords(primaryId: number, secondaryIds: number[], force = false) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   secondaryIds = secondaryIds.filter((id) => id && id !== primaryId);
@@ -2436,8 +2450,11 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   // Account-number guard (Layer B): records with DIFFERENT non-empty GA4 account numbers are
   // genuinely different accounts and must never be fused, even on a shared phone — this is the
   // exact Shah/Rosenfelder-class mis-merge (ROS013 ≠ SHA019) that motivated the safeguard.
+  // `force` (only set by an explicit, human-reviewed "merge linked accounts" action on the
+  // customer page — never the default /duplicates flow) skips this specifically because that
+  // flow already showed the user exactly which accounts/vehicles/invoices are involved.
   const distinctAccts = Array.from(new Set([primary, ...secs].map((r: any) => String(r.accountNumber || "").trim().toUpperCase()).filter(Boolean)));
-  if (distinctAccts.length > 1)
+  if (!force && distinctAccts.length > 1)
     throw new Error(`Won't merge across different GA4 account numbers (${distinctAccts.join(" ≠ ")}). These are distinct accounts — use "Not duplicates" if they really are separate.`);
   let moved = 0;
   for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }

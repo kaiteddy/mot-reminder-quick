@@ -263,6 +263,18 @@ export default function CustomerDetails() {
         { enabled: !!id }
     );
 
+    // Merging linked accounts (same phone, different GA4 account number — the Duplicates page
+    // won't auto-merge these, so this is a deliberate, explicitly-confirmed override).
+    const [mergeOpen, setMergeOpen] = useState(false);
+    const mergeMutation = trpc.customers.merge.useMutation({
+        onSuccess: (r: any) => {
+            toast.success(`Merged into "${r.name}"`);
+            setMergeOpen(false);
+            refetch();
+        },
+        onError: (e: any) => toast.error(e.message || "Merge failed"),
+    });
+
     // Edit State
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editForm, setEditForm] = useState({
@@ -349,6 +361,7 @@ export default function CustomerDetails() {
     }
 
     const { customer, vehicles, reminders } = data;
+    const linkedAccounts: any[] = (data as any).linkedAccounts || [];
     const parsedContacts = parseContacts(customer.email as string | null, customer.phone as string | null);
 
     return (
@@ -381,6 +394,53 @@ export default function CustomerDetails() {
                         </Button>
                     </div>
                 </div>
+
+                {linkedAccounts.length > 0 && (
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-sm text-amber-900">
+                            <span className="font-medium">{linkedAccounts.length} other account{linkedAccounts.length > 1 ? "s" : ""} share this phone number</span>
+                            {" — "}
+                            {linkedAccounts.map((a) => `${a.name || "Unnamed"} (${a.accountNumber || `#${a.id}`})`).join(", ")}.
+                            {" "}Their vehicles and invoices are already shown below — merge if this is really the same person.
+                        </p>
+                        <Button size="sm" variant="outline" className="shrink-0 text-amber-800 border-amber-300 bg-white hover:bg-amber-100" onClick={() => setMergeOpen(true)}>
+                            Merge into this profile
+                        </Button>
+                    </div>
+                )}
+
+                <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Merge linked accounts into {customer.name}</DialogTitle>
+                            <DialogDescription>
+                                This is normally blocked because different GA4 account numbers can mean different people sharing a phone. Confirm these are all the same person.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-2 py-2">
+                            {linkedAccounts.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                                    <span>{a.name || "Unnamed"}</span>
+                                    <span className="text-muted-foreground font-mono text-xs">{a.accountNumber || `#${a.id}`}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Their vehicles, invoices, reminders and messages move onto <b>{customer.name}</b> (account {customer.accountNumber || `#${customer.id}`}); the accounts listed above are then deleted. Their vehicles/invoices keep their own history — nothing is lost, only which account holds it changes.
+                        </p>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setMergeOpen(false)}>Cancel</Button>
+                            <Button
+                                disabled={mergeMutation.isPending}
+                                onClick={() => mergeMutation.mutate({ primaryId: customer.id as number, secondaryIds: linkedAccounts.map((a) => a.id), force: true })}
+                                className="bg-amber-700 hover:bg-amber-800"
+                            >
+                                {mergeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                                Yes, merge into {customer.name}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Stats Grid */}
                 <div className="grid gap-4 md:grid-cols-4">
