@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -113,6 +113,12 @@ export default function Conversations() {
   }, [selectedCustomerId]);
 
   const selectedThread = threads?.find(t => t.customerId === selectedCustomerId);
+
+  // WhatsApp only allows freeform replies within 24h of the customer's last inbound message —
+  // outside that window Meta silently rejects them and Twilio reports back "undelivered".
+  const lastInboundAt = selectedThread?.lastInboundAt ? new Date(selectedThread.lastInboundAt) : null;
+  const hoursSinceInbound = lastInboundAt ? (Date.now() - lastInboundAt.getTime()) / 36e5 : null;
+  const outsideReplyWindow = hoursSinceInbound === null || hoursSinceInbound > 24;
 
   // Pulls the car's spec + its full job history so staff can answer "is it due for a service"
   // (or similar) type questions without leaving the conversation to go dig it up elsewhere.
@@ -394,6 +400,16 @@ export default function Conversations() {
 
                 {/* Reply Input */}
                 <div className="bg-white border-t p-4">
+                  {outsideReplyWindow && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-md px-3 py-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        {lastInboundAt
+                          ? `${selectedThread?.customerName} last messaged ${formatTime(lastInboundAt)} — WhatsApp only allows free-text replies within 24h of a customer's last message. This reply will likely fail to deliver; call/text them directly instead, or resend an approved template (MOT/Service reminder) to reopen the window.`
+                          : `${selectedThread?.customerName} hasn't messaged you — WhatsApp only allows free-text replies within 24h of a customer's last message. This reply will likely fail to deliver; call/text them directly instead, or send an approved template (MOT/Service reminder) to open the window.`}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       placeholder="Type a message..."
