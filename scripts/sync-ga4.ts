@@ -26,6 +26,7 @@ import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
 import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
 import { renumberCollidingWebDrafts } from "./renumber-colliding-web-drafts";
 import { archiveStaleVehicleOwners } from "./archive-stale-vehicle-owners";
+import { decodeRegChangeAnnotations } from "./decode-reg-change-annotations";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -311,6 +312,9 @@ await renumberCollidingWebDrafts(c, GO, path.join(process.cwd(), "scripts", ".cl
 
 // ---- 8) Archive the customer link on vehicles nobody's invoiced in 5+ years (stops stale MOT reminders) ----
 await archiveStaleVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 9) Decode GA4's embedded reg-change annotations ("M10HAK*(date)") into a clean registration ----
+await decodeRegChangeAnnotations(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
