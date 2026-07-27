@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ const FILTERS = [
   { key: "SI", label: "Invoices" },
   { key: "ES", label: "Estimates" },
   { key: "CR", label: "Credit Notes" },
+  { key: "archive", label: "Archive" },
 ];
 
 const DATE_FILTERS = [
@@ -132,6 +133,7 @@ export default function Documents() {
   const { data: docs, isLoading } = trpc.documents.list.useQuery({ search, docType, limit: 200, sortKey, sortDir, dateFrom, dateTo });
   const { data: addrStats } = trpc.documents.addressLookupStats.useQuery();
   const del = trpc.documents.delete.useMutation();
+  const unarchive = trpc.documents.unarchive.useMutation();
 
   const typeCount = (code: string) => stats?.byType.find((t) => t.docType === code)?.n ?? 0;
 
@@ -153,8 +155,20 @@ export default function Documents() {
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
 
+  async function restoreSelected() {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    try {
+      await unarchive.mutateAsync({ ids });
+      await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
+      clearSel();
+      toast.success(`Restored ${ids.length} document${ids.length === 1 ? "" : "s"}`);
+    } catch (e: any) { toast.error("Restore failed: " + (e.message || "")); }
+  }
+
   // "Type" is redundant once filtered to a single doc type — every row would say the same thing.
-  const visibleColumns = columnOrder.filter((k) => k !== "type" || docType === "all");
+  // (the Archive tab mixes types, so it stays visible there too.)
+  const visibleColumns = columnOrder.filter((k) => k !== "type" || docType === "all" || docType === "archive");
 
   function renderCell(key: ColKey, d: any) {
     switch (key) {
@@ -226,7 +240,13 @@ export default function Documents() {
           </TableCell>
         );
       case "status":
-        return <TableCell><span className="text-xs text-muted-foreground">{d.docStatus || "-"}</span></TableCell>;
+        return (
+          <TableCell>
+            <span className="text-xs text-muted-foreground">
+              {docType === "archive" ? `Archived ${fmtDate(d.archivedAt)}` : d.docStatus || "-"}
+            </span>
+          </TableCell>
+        );
     }
   }
 
@@ -253,12 +273,13 @@ export default function Documents() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <StatCard label="Total" value={stats?.total} />
           <StatCard label="Invoices" value={typeCount("SI")} />
           <StatCard label="Estimates" value={typeCount("ES")} />
           <StatCard label="Job Sheets" value={typeCount("JS")} />
           <StatCard label="Credit Notes" value={typeCount("CR")} />
+          <StatCard label="Archived" value={stats?.archived} />
         </div>
 
         <Card>
@@ -305,9 +326,15 @@ export default function Documents() {
                 <span className="text-sm font-medium text-red-800">{selected.size} selected</span>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={clearSel}><X className="w-4 h-4 mr-1" /> Clear</Button>
-                  <Button variant="destructive" size="sm" onClick={deleteSelected} disabled={del.isPending}>
-                    {del.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />} Delete{selected.size > 1 ? ` (${selected.size})` : ""}
-                  </Button>
+                  {docType === "archive" ? (
+                    <Button variant="outline" size="sm" onClick={restoreSelected} disabled={unarchive.isPending}>
+                      {unarchive.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />} Restore{selected.size > 1 ? ` (${selected.size})` : ""}
+                    </Button>
+                  ) : (
+                    <Button variant="destructive" size="sm" onClick={deleteSelected} disabled={del.isPending}>
+                      {del.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />} Delete{selected.size > 1 ? ` (${selected.size})` : ""}
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

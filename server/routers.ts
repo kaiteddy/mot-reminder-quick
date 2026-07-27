@@ -418,6 +418,18 @@ export const appRouter = router({
         const { deleteDocuments } = await import("./db");
         return deleteDocuments(input.ids);
       }),
+    archive: publicProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { archiveDocuments } = await import("./db");
+        return archiveDocuments(input.ids);
+      }),
+    unarchive: publicProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { unarchiveDocuments } = await import("./db");
+        return unarchiveDocuments(input.ids);
+      }),
     updateExcess: publicProcedure
       .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
       .mutation(async ({ input }) => {

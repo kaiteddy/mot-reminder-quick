@@ -1241,7 +1241,14 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
   // Same "effective date" as the Date column/sort: issued date if set, else created date.
   if (opts.dateFrom) conds.push(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}) >= ${opts.dateFrom}::date`);
   if (opts.dateTo) conds.push(sql`COALESCE(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}) < (${opts.dateTo}::date + interval '1 day')`);
-  if (opts.docType && opts.docType !== "all") {
+  // "Archive" is orthogonal to doc type — it shows whatever's been archived (any type), while
+  // every other tab hides archived docs so an archived estimate doesn't linger in "Estimates"/"All".
+  if (opts.docType === "archive") {
+    conds.push(sql`${serviceHistory.archived} = 1`);
+  } else {
+    conds.push(sql`(${serviceHistory.archived} IS NULL OR ${serviceHistory.archived} = 0)`);
+  }
+  if (opts.docType && opts.docType !== "all" && opts.docType !== "archive") {
     conds.push(eq(serviceHistory.docType, opts.docType));
     if (opts.docType === "JS") {
       // GA4 never deletes a job sheet once it's converted to an invoice there — it just leaves the
@@ -1329,6 +1336,7 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     make: vehicles.make,
     model: vehicles.model,
     description: serviceHistory.description, // job-sheet work notes → at-a-glance summary/badges
+    archivedAt: serviceHistory.archivedAt,
   })
     .from(serviceHistory)
     .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
@@ -1339,16 +1347,20 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     .offset(offset);
 }
 
-/** Document counts by type for the list header. */
+/** Document counts by type for the list header. Archived docs are excluded from every type's
+ *  count (they're not shown on that type's tab any more) and totalled separately. */
 export async function getDocumentStats() {
   const db = await getDb();
-  if (!db) return { total: 0, byType: [] as { docType: string | null; n: number }[] };
+  if (!db) return { total: 0, byType: [] as { docType: string | null; n: number }[], archived: 0 };
   const rows = await db.select({
     docType: serviceHistory.docType,
     n: sql<number>`COUNT(*)`,
-  }).from(serviceHistory).groupBy(serviceHistory.docType);
+  }).from(serviceHistory)
+    .where(sql`(${serviceHistory.archived} IS NULL OR ${serviceHistory.archived} = 0)`)
+    .groupBy(serviceHistory.docType);
+  const archived = Number((await db.select({ n: sql<number>`COUNT(*)` }).from(serviceHistory).where(sql`${serviceHistory.archived} = 1`))[0]?.n ?? 0);
   const total = rows.reduce((a, r) => a + Number(r.n), 0);
-  return { total, byType: rows.map(r => ({ docType: r.docType, n: Number(r.n) })) };
+  return { total, byType: rows.map(r => ({ docType: r.docType, n: Number(r.n) })), archived };
 }
 
 // --- Business reports ---------------------------------------------------------
@@ -3599,6 +3611,26 @@ export async function deleteDocuments(ids: number[]) {
   });
   for (const r of referencing) await recomputeDocBalance(r.id);
   return { success: true, deleted: clean.length };
+}
+
+/** Soft-hide documents from their normal doc-type tab into the Archive tab. Reversible — see unarchiveDocuments. */
+export async function archiveDocuments(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const clean = (ids || []).filter((n) => Number.isFinite(n));
+  if (!clean.length) return { success: true, archived: 0 };
+  await db.update(serviceHistory).set({ archived: 1, archivedAt: new Date() }).where(inArray(serviceHistory.id, clean));
+  return { success: true, archived: clean.length };
+}
+
+/** Restore documents from the Archive tab back to their normal doc-type tab. */
+export async function unarchiveDocuments(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const clean = (ids || []).filter((n) => Number.isFinite(n));
+  if (!clean.length) return { success: true, unarchived: 0 };
+  await db.update(serviceHistory).set({ archived: 0, archivedAt: null }).where(inArray(serviceHistory.id, clean));
+  return { success: true, unarchived: clean.length };
 }
 
 export async function getAppSetting(keyName: string) {

@@ -274,6 +274,8 @@ export const serviceHistory = pgTable("serviceHistory", {
   accountsExportedAt: timestamp("accountsExportedAt", { mode: "date" }), // set when exported to the accounts package (Sage CSV); prevents re-export
   accountsUnpaid: integer("accountsUnpaid"), // 1 = manually flagged as not-yet-paid; invoices are treated as paid on issue date otherwise (GA4 doesn't register receipts). Not touched by GA4 sync.
   ga4Number: varchar("ga4Number", { length: 50 }), // GA4's authoritative invoice number (from the pool / write-back). Web docNo is a guess-ahead; display/print should prefer this when present.
+  archived: integer("archived"), // 1 = hidden from its normal doc-type tab, shown only in the Archive tab (soft, reversible — see documents.archive/unarchive)
+  archivedAt: timestamp("archivedAt", { mode: "date" }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
