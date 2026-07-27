@@ -310,6 +310,7 @@ export const appRouter = router({
         terms: z.string().optional(),
         description: z.string().optional(),
         insuranceCompany: z.string().optional(),
+        insurerAddress: z.string().optional(),
         staffSalesPerson: z.string().optional(),
         staffTechnician: z.string().optional(),
         staffRoadTester: z.string().optional(),
@@ -407,7 +408,7 @@ export const appRouter = router({
 
     // --- policy-excess insurance split ---
     createExcess: publicProcedure
-      .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { createExcessInvoice } = await import("./db");
         return createExcessInvoice(input);
@@ -431,7 +432,7 @@ export const appRouter = router({
         return unarchiveDocuments(input.ids);
       }),
     updateExcess: publicProcedure
-      .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { updateExcessInvoice } = await import("./db");
         return updateExcessInvoice(input);

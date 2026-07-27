@@ -276,6 +276,8 @@ export const serviceHistory = pgTable("serviceHistory", {
   ga4Number: varchar("ga4Number", { length: 50 }), // GA4's authoritative invoice number (from the pool / write-back). Web docNo is a guess-ahead; display/print should prefer this when present.
   archived: integer("archived"), // 1 = hidden from its normal doc-type tab, shown only in the Archive tab (soft, reversible — see documents.archive/unarchive)
   archivedAt: timestamp("archivedAt", { mode: "date" }),
+  insurerAddress: text("insurerAddress"), // free-text claims/bill-to address for insuranceCompany — printed on the main invoice instead of the customer's own address
+  excessFullVatToCustomer: integer("excessFullVatToCustomer"), // 1 = this job's excess has no VAT of its own; the FULL job VAT is charged on the excess (customer) invoice instead, and the main (insurer) invoice prints net-of-VAT — the standard commercial/fleet arrangement where the VAT-registered policyholder reclaims VAT in full and the insurer settles net
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),

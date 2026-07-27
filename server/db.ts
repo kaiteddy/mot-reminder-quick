@@ -2609,7 +2609,7 @@ export interface SaveDocInput {
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
   custTelephone?: string; custMobile?: string; custEmail?: string;
   mileage?: number | null; dateCreated?: any; dateIssued?: any;
-  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string; insuranceCompany?: string;
+  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string; insuranceCompany?: string; insurerAddress?: string;
   staffSalesPerson?: string; staffTechnician?: string; staffRoadTester?: string; staffMotTester?: string;
   motClass?: string; motStatus?: string;
   lineItems?: Array<Record<string, any>>;
@@ -2727,6 +2727,7 @@ export async function saveDocument(input: SaveDocInput) {
     mileage: input.mileage, dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
     dateIssued: input.dateIssued ? new Date(input.dateIssued) : undefined,
     docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms, insuranceCompany: input.insuranceCompany,
+    insurerAddress: input.insurerAddress,
     description: input.description, staffSalesPerson: input.staffSalesPerson, staffTechnician: input.staffTechnician,
     staffRoadTester: input.staffRoadTester, staffMotTester: input.staffMotTester, motClass: input.motClass, motStatus: input.motStatus,
     totalNet: String(totalNet.toFixed(2)), totalTax: String(totalTax.toFixed(2)), totalGross: String(totalGross.toFixed(2)),
@@ -2785,7 +2786,7 @@ export async function convertDocument(id: number, toType: string) {
     custMobile: doc.custMobile, custEmail: doc.custEmail,
     mileage: doc.mileage, description: doc.description, orderRef: doc.orderRef, department: doc.department, terms: doc.terms,
     staffSalesPerson: doc.staffSalesPerson, staffTechnician: doc.staffTechnician, staffRoadTester: doc.staffRoadTester,
-    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, insuranceCompany: doc.insuranceCompany, docStatus: "New",
+    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, insuranceCompany: doc.insuranceCompany, insurerAddress: (doc as any).insurerAddress, docStatus: "New",
     lineItems: (lineItems || []).map((li: any) => ({
       itemType: li.itemType, description: li.description, partNumber: li.partNumber, nominalCode: li.nominalCode,
       quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
@@ -2828,8 +2829,14 @@ async function recomputeDocBalance(documentId: number) {
   const r = await db.select({ sum: sql<number>`COALESCE(SUM(${payments.amount}),0)` }).from(payments).where(eq(payments.documentId, documentId));
   const receipts = Number(r[0]?.sum) || 0;
   const gross = Number(doc.totalGross) || 0;
-  // a main insurance invoice has its excess paid on the separate XS invoice, so deduct it here
-  const excess = doc.docType === "XS" ? 0 : (Number(doc.excessGross) || 0);
+  // a main insurance invoice has its excess paid on the separate XS invoice, so deduct it here.
+  // "Full VAT to customer" jobs (see createExcessInvoice) move the WHOLE job's VAT onto the
+  // customer's excess invoice, not just VAT on the excess itself — excessGross on the main doc is
+  // deliberately just the bare excess amount (for correct display), so the deduction here has to
+  // separately add the job's own VAT back in to land on the true insurer balance.
+  const excess = doc.docType === "XS" ? 0
+    : (doc as any).excessFullVatToCustomer ? (Number(doc.excessNet) || 0) + (Number(doc.totalTax) || 0)
+    : (Number(doc.excessGross) || 0);
   const balance = +(gross - excess - receipts).toFixed(2);
   const methods = await db.selectDistinct({ m: payments.method }).from(payments).where(eq(payments.documentId, documentId));
   const set: any = {
@@ -2979,7 +2986,7 @@ export async function issueDocument(documentId: number) {
  * billed to the customer for their excess, and deduct that excess from the main invoice
  * (which the insurer pays). Returns the new excess invoice id.
  */
-export async function createExcessInvoice(input: { mainDocId: number; excessNet: number; discount?: number; vatRegistered?: boolean }) {
+export async function createExcessInvoice(input: { mainDocId: number; excessNet: number; discount?: number; vatRegistered?: boolean; fullVatToCustomer?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const main = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.mainDocId)).limit(1))[0];
@@ -3002,8 +3009,13 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
 
   const discount = Math.max(0, Number(input.discount) || 0);
   const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
-  const vatRate = input.vatRegistered ? 20 : 0;
-  const tax = round2(net * vatRate / 100);
+  // "Full VAT to customer" (commercial/fleet arrangement): the excess itself carries no VAT — the
+  // ENTIRE job's VAT is charged on this excess invoice instead, so a VAT-registered policyholder
+  // can reclaim it in full, while the insurer's invoice (below) prints net-of-VAT with no VAT at
+  // all. Otherwise (the standard case), VAT applies to the excess amount itself at 20%/0%.
+  const fullVat = !!input.fullVatToCustomer;
+  const vatRate = fullVat ? 0 : (input.vatRegistered ? 20 : 0);
+  const tax = fullVat ? round2(Number(main.totalTax) || 0) : round2(net * vatRate / 100);
   const gross = round2(net + tax);
 
   // 1) create the excess invoice (XS) for the customer
@@ -3019,10 +3031,11 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     custTelephone: main.custTelephone, custMobile: main.custMobile,
     mileage: main.mileage, dateCreated: new Date(), docStatus: "New",
     relatedDocId: main.id, relatedDocNo: main.docNo,
-    excessDiscount: String(discount.toFixed(2)), custVatRegistered: input.vatRegistered ? 1 : 0,
+    excessDiscount: String(discount.toFixed(2)), custVatRegistered: (fullVat || input.vatRegistered) ? 1 : 0,
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
     totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
-    balance: String(gross.toFixed(2)), description: `Policy excess re. Invoice ${main.docNo}`,
+    balance: String(gross.toFixed(2)), excessFullVatToCustomer: fullVat ? 1 : 0,
+    description: fullVat ? `Policy excess re. Invoice ${main.docNo} (VAT charged in full — insurer invoice is net of VAT)` : `Policy excess re. Invoice ${main.docNo}`,
   });
   const [{ id: xsId }] = await db.insert(serviceHistory).values(xsFields).returning({ id: serviceHistory.id });
   await db.insert(serviceLineItems).values({
@@ -3033,10 +3046,20 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   } as any);
 
   // 2) record the excess on the main invoice and deduct it (insurer pays the reduced amount),
-  //    and stamp the insurer as the main invoice's bill-to so it prints/bills to the insurer
+  //    and stamp the insurer as the main invoice's bill-to so it prints/bills to the insurer.
+  // The excess itself never carries VAT in "full VAT to customer" mode (per the user: "no VAT on
+  // the excess") — `tax`/`gross` above are the XS/customer invoice's OWN figures (excess + the
+  // whole job's VAT); the main doc's excess fields must stay just the bare excess amount, or
+  // "Excess (gross)" on the main invoice's side panel would misleadingly show excess+full-VAT.
+  // totalNet/totalTax/totalGross on the main doc are deliberately left untouched — they remain the
+  // true full job value for accounting/VAT-return purposes; the "full VAT to customer" net-of-VAT
+  // presentation for the insurer is applied at print time only (see getRichPDF).
+  const mainExcessTax = fullVat ? 0 : tax;
+  const mainExcessGross = fullVat ? net : gross;
   await db.update(serviceHistory).set({
     relatedDocId: xsId, relatedDocNo: docNo, insuranceCompany: insurer,
-    excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+    excessNet: String(net.toFixed(2)), excessTax: String(mainExcessTax.toFixed(2)), excessGross: String(mainExcessGross.toFixed(2)),
+    excessFullVatToCustomer: fullVat ? 1 : 0,
   }).where(eq(serviceHistory.id, main.id));
   await recomputeDocBalance(main.id);
 
@@ -3045,22 +3068,25 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
 }
 
 /** Recompute an existing XS excess invoice's figures (and its main invoice's excess) after editing. */
-export async function updateExcessInvoice(input: { docId: number; excessNet: number; discount?: number; vatRegistered?: boolean }) {
+export async function updateExcessInvoice(input: { docId: number; excessNet: number; discount?: number; vatRegistered?: boolean; fullVatToCustomer?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const xs = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.docId)).limit(1))[0];
   if (!xs) throw new Error("Excess invoice not found");
+  const main = xs.relatedDocId ? (await db.select().from(serviceHistory).where(eq(serviceHistory.id, xs.relatedDocId)).limit(1))[0] : null;
   const discount = Math.max(0, Number(input.discount) || 0);
   const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
-  const vatRate = input.vatRegistered ? 20 : 0;
-  const tax = round2(net * vatRate / 100);
+  const fullVat = !!input.fullVatToCustomer;
+  const vatRate = fullVat ? 0 : (input.vatRegistered ? 20 : 0);
+  const tax = fullVat ? round2(Number(main?.totalTax) || 0) : round2(net * vatRate / 100);
   const gross = round2(net + tax);
 
   await db.update(serviceHistory).set({
-    excessDiscount: String(discount.toFixed(2)), custVatRegistered: input.vatRegistered ? 1 : 0,
+    excessDiscount: String(discount.toFixed(2)), custVatRegistered: (fullVat || input.vatRegistered) ? 1 : 0,
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
     totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
-    balance: String(gross.toFixed(2)),
+    balance: String(gross.toFixed(2)), excessFullVatToCustomer: fullVat ? 1 : 0,
+    description: fullVat ? `Policy excess re. Invoice ${xs.relatedDocNo} (VAT charged in full — insurer invoice is net of VAT)` : `Policy excess re. Invoice ${xs.relatedDocNo}`,
   }).where(eq(serviceHistory.id, input.docId));
 
   // refresh the single excess line item
@@ -3072,10 +3098,16 @@ export async function updateExcessInvoice(input: { docId: number; excessNet: num
     taxAmount: String(tax.toFixed(2)), vatRate: String(vatRate.toFixed(2)),
   } as any);
 
-  // mirror the excess onto the main insurance invoice
+  // mirror the excess onto the main insurance invoice — same net-tax split as createExcessInvoice:
+  // the excess itself never carries VAT in "full VAT to customer" mode, so the main doc's own
+  // excess fields stay the bare excess amount (recomputeDocBalance separately adds the job's VAT
+  // back in for the actual balance deduction).
   if (xs.relatedDocId) {
+    const mainExcessTax = fullVat ? 0 : tax;
+    const mainExcessGross = fullVat ? net : gross;
     await db.update(serviceHistory).set({
-      excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
+      excessNet: String(net.toFixed(2)), excessTax: String(mainExcessTax.toFixed(2)), excessGross: String(mainExcessGross.toFixed(2)),
+      excessFullVatToCustomer: fullVat ? 1 : 0,
     }).where(eq(serviceHistory.id, xs.relatedDocId));
     await recomputeDocBalance(xs.relatedDocId);
   }
@@ -3237,10 +3269,16 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   }
   if (docPostcode && !seenAddrParts.has(normAddrPart(docPostcode))) addressLines.push(docPostcode);
 
+  // On a main insurance invoice, print the INSURER's claims address (not the policyholder's home
+  // address) under "Invoice to: {insurer}" — falls back to the customer's own address lines above
+  // if no insurer address has been recorded yet.
+  const insurerAddressLines = String((d2 as any).insurerAddress || '').split('\n').map((s: string) => s.trim()).filter(Boolean);
+  const billToAddressLines = billTo && insurerAddressLines.length ? insurerAddressLines : addressLines;
+
   const customerData = {
     name: docName || d2.customerName || customer?.name || 'Unknown Client',
     company: String(d2.company || '').trim(),
-    address_lines: addressLines,
+    address_lines: billTo ? billToAddressLines : addressLines,
     mobile: d2.custMobile || d2.custTelephone || customer?.phone || '',
     phones,
     billTo,
@@ -3350,19 +3388,34 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     return a + Math.max(0, base - (Number(i.subNet) || 0));
   }, 0).toFixed(2);
 
-  const totals = {
+  // "Full VAT to customer" jobs (commercial/fleet excess arrangement, see createExcessInvoice):
+  // the insurer's main invoice prints net-of-VAT with the excess already folded out of the total
+  // (no separate VAT or Excess line — DB totalNet/totalTax/totalGross stay the true job value for
+  // accounting; only this printed presentation differs). The excess (XS) invoice, conversely,
+  // carries the whole job's VAT — doc.totalTax on it IS that full amount already (see
+  // createExcessInvoice) — so its VAT % label would misleadingly look wrong against just the
+  // excess subtotal; give it a plain-English label instead of a percentage.
+  const fullVatMain = doc.docType === 'SI' && !!(doc as any).excessFullVatToCustomer && excess > 0;
+  const fullVatExcess = doc.docType === 'XS' && !!(doc as any).excessFullVatToCustomer;
+  const excessNetOnly = Number(doc.excessNet) || 0;
+  const baseSubtotal = +((Number(doc.totalNet) || 0) - motNet).toFixed(2);
+
+  const totals: any = {
     labour: labour.reduce((acc, i) => acc + i.subtotal, 0),
     parts: parts.reduce((acc, i) => acc + i.subtotal, 0),
     sundries, lubricants, paint,
     discount: discountTotal > 0 ? discountTotal : null,
-    subtotal: +((Number(doc.totalNet) || 0) - motNet).toFixed(2), // SubTotal excludes the MOT fee (shown separately, 0% VAT)
-    vat_rate: 20,
-    vat: Number(doc.totalTax) || 0,
+    subtotal: fullVatMain ? +(baseSubtotal - excessNetOnly).toFixed(2) : baseSubtotal, // SubTotal excludes the MOT fee (shown separately, 0% VAT)
+    vat_rate: fullVatMain ? 0 : 20,
+    vat: fullVatMain ? 0 : (Number(doc.totalTax) || 0),
+    vat_label: fullVatExcess ? `VAT (full, re. Inv ${(doc as any).relatedDocNo || ''})`.trim() : undefined,
     mot: motNet > 0 ? motNet : null,
-    total: totalGross,
-    excess: excess > 0 ? excess : null,
+    total: fullVatMain ? +(baseSubtotal - excessNetOnly + (motNet > 0 ? motNet : 0)).toFixed(2) : totalGross,
+    excess: (!fullVatMain && excess > 0) ? excess : null,
     receipts: (isInvoice || receipts > 0) ? receipts : null,
-    balance: isInvoice ? +(totalGross - excess - receipts).toFixed(2) : totalGross,
+    balance: fullVatMain
+      ? +(baseSubtotal - excessNetOnly + (motNet > 0 ? motNet : 0) - receipts).toFixed(2)
+      : (isInvoice ? +(totalGross - excess - receipts).toFixed(2) : totalGross),
   };
 
   // Split description into title + work items

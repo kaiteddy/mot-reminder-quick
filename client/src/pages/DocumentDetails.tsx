@@ -296,7 +296,7 @@ export default function DocumentDetails() {
       if (after === "email" || after === "both") openEmail();
     } catch (e: any) { toast.error("Issue failed: " + (e.message || "")); }
   }
-  async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean }) {
+  async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean; fullVatToCustomer?: boolean }) {
     try {
       await flushPending();
       const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
@@ -352,7 +352,7 @@ export default function DocumentDetails() {
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
       staffSalesPerson: doc.staffSalesPerson || "", staffTechnician: doc.staffTechnician || "", staffRoadTester: doc.staffRoadTester || "",
       staffMotTester: doc.staffMotTester || "", motClass: doc.motClass || "", motStatus: doc.motStatus || "",
-      insuranceCompany: doc.insuranceCompany || "",
+      insuranceCompany: doc.insuranceCompany || "", insurerAddress: (doc as any).insurerAddress || "",
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
@@ -614,7 +614,7 @@ export default function DocumentDetails() {
       dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
-      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany,
+      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany, insurerAddress: form.insurerAddress,
       lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount), discount: num(i.discount) ?? null, discountType: i.discountType ?? null })),
     };
   }
@@ -725,7 +725,14 @@ export default function DocumentDetails() {
   const insurerName = String(form.insuranceCompany ?? "").trim() || (billTo?.isInsurer ? String(billTo.company || "") : "");
   const insurerDetected = !!insurerName && !String(form.insuranceCompany ?? "").trim(); // detected from bill-to, not yet recorded
   const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
-  const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
+  // "Full VAT to customer" (commercial/fleet excess, see createExcessInvoice): the insurer owes the
+  // job's net value minus the (VAT-free) excess, no VAT at all — matches the printed invoice. The
+  // on-screen deduction shown against "Total" (which stays the full job value) bundles in the
+  // whole job VAT too, so Total − deduction − Receipts reconciles to Balance on screen exactly as
+  // it prints — not just the bare excess amount, which would otherwise look like the sums don't add up.
+  const fullVatToCustomer = !isExcess && !!(data as any)?.doc?.excessFullVatToCustomer;
+  const excessNetOnly = Number((data as any)?.doc?.excessNet) || 0;
+  const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
@@ -755,6 +762,17 @@ export default function DocumentDetails() {
               Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
             </button>
           )}
+          <div className="mt-1">
+            <label className="text-[11px] text-slate-500">Insurer claims address (printed on the invoice to them)</label>
+            <textarea
+              value={form.insurerAddress ?? ""}
+              onChange={(e) => set("insurerAddress", e.target.value)}
+              readOnly={!editing}
+              rows={3}
+              placeholder={"e.g.\nAllianz Insurance plc\nClaims Dept, PO Box 123\nGuildford, GU1 1AB"}
+              className="w-full border rounded px-2 py-1 text-[12px] mt-0.5 resize-y outline-none focus:border-violet-500 disabled:bg-slate-50"
+            />
+          </div>
         </Panel>
       )}
       {!isExcess && (
@@ -793,7 +811,7 @@ export default function DocumentDetails() {
           <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
         </Panel>
       )}
-      {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
+      {isExcess && <ExcessPanel doc={(data as any)?.doc} mainDocTax={Number(relatedDoc?.totalTax) || 0} onSaved={() => utils.documents.getById.invalidate({ id })} />}
       {isExcess && relatedDoc && (
         <Panel title="Insurance Invoice">
           <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
@@ -810,7 +828,11 @@ export default function DocumentDetails() {
             <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
           </button>
           <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
-          <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
+          <p className="text-[10.5px] text-slate-500 mt-1">
+            {fullVatToCustomer
+              ? "Excess + this job's full VAT are both deducted from the amount payable by the insurer (net of VAT)."
+              : "Deducted from the amount payable by the insurer."}
+          </p>
         </Panel>
       )}
       {/* Classic view puts this in the History tab's left-hand column instead (see
@@ -840,7 +862,7 @@ export default function DocumentDetails() {
             <div className="border-t mt-1 pt-1 space-y-1.5">
               {!isExcess && excessDeduction > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                  <span className="flex-1 text-[12px] font-medium text-fuchsia-700">{fullVatToCustomer ? "Excess + VAT (to customer)" : "Excess (to customer)"}</span>
                   <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
                 </div>
               )}
@@ -1515,7 +1537,7 @@ export default function DocumentDetails() {
                       {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
                       {!isExcess && excessDeduction > 0 && (
                         <div className="flex items-center gap-2">
-                          <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
+                          <span className="flex-1 text-[12px] font-medium text-fuchsia-700">{fullVatToCustomer ? "Excess + VAT (to customer)" : "Excess (to customer)"}</span>
                           <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
                         </div>
                       )}
@@ -1586,7 +1608,7 @@ export default function DocumentDetails() {
 
         {/* raise policy excess dialog */}
         {excessOpen && (
-          <ExcessCreateDialog mainDocNo={docNo} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
+          <ExcessCreateDialog mainDocNo={docNo} mainDocTax={Number((data as any)?.doc?.totalTax) || 0} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
         )}
 
       </div>
@@ -1701,12 +1723,13 @@ function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onCl
   );
 }
 
-function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDocNo?: string; pending: boolean; onClose: () => void; onCreate: (a: { excessNet: number; discount: number; vatRegistered: boolean }) => void }) {
+function ExcessCreateDialog({ mainDocNo, mainDocTax, pending, onClose, onCreate }: { mainDocNo?: string; mainDocTax: number; pending: boolean; onClose: () => void; onCreate: (a: { excessNet: number; discount: number; vatRegistered: boolean; fullVatToCustomer: boolean }) => void }) {
   const [vatReg, setVatReg] = useState(false);
+  const [fullVatToCustomer, setFullVatToCustomer] = useState(false);
   const [excess, setExcess] = useState("");
   const [discount, setDiscount] = useState("");
   const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
-  const vat = vatReg ? round2(net * 0.2) : 0;
+  const vat = fullVatToCustomer ? round2(mainDocTax) : (vatReg ? round2(net * 0.2) : 0);
   const gross = round2(net + vat);
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -1717,13 +1740,21 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
         </div>
         <div className="p-5 space-y-4">
           <p className="text-center text-[14px] font-semibold text-fuchsia-900">This excess invoice will relate to: Invoice {mainDocNo || "—"}</p>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-700">Is the customer VAT registered?</span>
-            <div className="flex rounded overflow-hidden border">
-              <button onClick={() => setVatReg(true)} className={`px-4 py-1 text-sm ${vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>Y</button>
-              <button onClick={() => setVatReg(false)} className={`px-4 py-1 text-sm ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>N</button>
+          <label className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded p-2.5 cursor-pointer">
+            <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
+            <span className="text-[12.5px] text-sky-900">
+              <b>Commercial/fleet claim:</b> no VAT on the excess itself — charge the FULL job VAT (£{money(mainDocTax)}) on this invoice instead, so the customer's VAT-registered company can reclaim it. The insurer's invoice will print net of VAT, with the excess already removed.
+            </span>
+          </label>
+          {!fullVatToCustomer && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-700">Is the customer VAT registered?</span>
+              <div className="flex rounded overflow-hidden border">
+                <button onClick={() => setVatReg(true)} className={`px-4 py-1 text-sm ${vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>Y</button>
+                <button onClick={() => setVatReg(false)} className={`px-4 py-1 text-sm ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>N</button>
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-700">Insurance Policy Excess</span>
             <MoneyInput value={excess} onChange={setExcess} w="w-32" big />
@@ -1735,13 +1766,17 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
           <p className="text-[12px] italic text-slate-500">This discount only applies to the policy excess NET figure. It will discount the excess invoice, without it showing a discount on the insurance invoice.</p>
           <div className="bg-slate-50 border rounded p-3 text-[13px] space-y-1">
             <div className="flex justify-between"><span className="text-slate-600">Excess NET</span><span>£{money(net)}</span></div>
-            <div className="flex justify-between"><span className="text-slate-600">VAT {vatReg ? "(20%)" : "(0%)"}</span><span>£{money(vat)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-600">VAT {fullVatToCustomer ? "(full job VAT)" : vatReg ? "(20%)" : "(0%)"}</span><span>£{money(vat)}</span></div>
             <div className="flex justify-between font-semibold border-t pt-1"><span>Excess invoice total</span><span>£{money(gross)}</span></div>
           </div>
-          <p className="text-[12px] text-slate-500 border-t pt-2">The excess amount will automatically be deducted from the main invoice to the insurance company.</p>
+          <p className="text-[12px] text-slate-500 border-t pt-2">
+            {fullVatToCustomer
+              ? `The insurer will be invoiced £${money(net)} (net of VAT, excess already removed) — no VAT line on their invoice.`
+              : "The excess amount will automatically be deducted from the main invoice to the insurance company."}
+          </p>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
-            <button onClick={() => onCreate({ excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg })} disabled={pending || net <= 0} className="bg-fuchsia-700 text-white rounded px-4 py-1.5 text-sm hover:bg-fuchsia-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+            <button onClick={() => onCreate({ excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg, fullVatToCustomer })} disabled={pending || net <= 0} className="bg-fuchsia-700 text-white rounded px-4 py-1.5 text-sm hover:bg-fuchsia-800 disabled:opacity-50 inline-flex items-center gap-1.5">
               {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Create Excess Invoice
             </button>
           </div>
@@ -1751,34 +1786,41 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
   );
 }
 
-function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
+function ExcessPanel({ doc, mainDocTax, onSaved }: { doc: any; mainDocTax: number; onSaved: () => void }) {
   const upd = trpc.documents.updateExcess.useMutation();
   const [vatReg, setVatReg] = useState(!!doc?.custVatRegistered);
+  const [fullVatToCustomer, setFullVatToCustomer] = useState(!!doc?.excessFullVatToCustomer);
   const [excess, setExcess] = useState(String((((Number(doc?.excessNet) || 0) + (Number(doc?.excessDiscount) || 0))).toFixed(2)));
   const [discount, setDiscount] = useState(String((Number(doc?.excessDiscount) || 0).toFixed(2)));
   const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
-  const vat = vatReg ? round2(net * 0.2) : 0;
+  const vat = fullVatToCustomer ? round2(mainDocTax) : (vatReg ? round2(net * 0.2) : 0);
   const gross = round2(net + vat);
   async function apply() {
-    try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg }); onSaved(); toast.success("Excess updated"); }
+    try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg, fullVatToCustomer }); onSaved(); toast.success("Excess updated"); }
     catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
   }
   return (
     <Panel title="Policy Excess">
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] text-slate-600">Customer VAT registered?</span>
-        <div className="flex rounded overflow-hidden border text-[12px]">
-          <button onClick={() => setVatReg(true)} className={`px-3 py-0.5 ${vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>Y</button>
-          <button onClick={() => setVatReg(false)} className={`px-3 py-0.5 ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>N</button>
+      <label className="flex items-start gap-1.5 bg-sky-50 border border-sky-200 rounded p-2 cursor-pointer">
+        <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
+        <span className="text-[11px] text-sky-900">Commercial/fleet claim — no VAT on the excess, full job VAT (£{money(mainDocTax)}) charged here instead; insurer's invoice prints net of VAT.</span>
+      </label>
+      {!fullVatToCustomer && (
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-slate-600">Customer VAT registered?</span>
+          <div className="flex rounded overflow-hidden border text-[12px]">
+            <button onClick={() => setVatReg(true)} className={`px-3 py-0.5 ${vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>Y</button>
+            <button onClick={() => setVatReg(false)} className={`px-3 py-0.5 ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>N</button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Policy Excess</span>
         <MoneyInput value={excess} onChange={setExcess} /></div>
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Discount</span>
         <MoneyInput value={discount} onChange={setDiscount} /></div>
       <div className="border-t pt-1 mt-1 space-y-0.5">
         <div className="flex justify-between text-[12px]"><span className="text-slate-600">NET</span><span>£{money(net)}</span></div>
-        <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT</span><span>£{money(vat)}</span></div>
+        <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT{fullVatToCustomer ? " (full job)" : ""}</span><span>£{money(vat)}</span></div>
         <div className="flex justify-between text-[13px] font-semibold"><span>Total</span><span>£{money(gross)}</span></div>
       </div>
       <button onClick={apply} disabled={upd.isPending} className="w-full mt-1 bg-fuchsia-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 inline-flex items-center justify-center gap-1.5">{upd.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Apply</button>
