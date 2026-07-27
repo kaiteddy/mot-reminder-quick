@@ -28,7 +28,6 @@ const FILTERS = [
   { key: "all", label: "All" },
   { key: "SI", label: "Invoices" },
   { key: "ES", label: "Estimates" },
-  { key: "CR", label: "Credit Notes" },
   { key: "archive", label: "Archive" },
 ];
 
@@ -273,12 +272,11 @@ export default function Documents() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="Total" value={stats?.total} />
           <StatCard label="Invoices" value={typeCount("SI")} />
           <StatCard label="Estimates" value={typeCount("ES")} />
           <StatCard label="Job Sheets" value={typeCount("JS")} />
-          <StatCard label="Credit Notes" value={typeCount("CR")} />
           <StatCard label="Archived" value={stats?.archived} />
         </div>
 
