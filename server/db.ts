@@ -2813,6 +2813,28 @@ export async function convertDocument(id: number, toType: string) {
     })),
   });
 
+  // A converted/copied doc doesn't carry its own policy-excess link across via saveDocument (those
+  // fields aren't part of the normal save form) — copy them onto the new doc directly, and if a
+  // customer excess invoice (XS) is linked, re-point IT at the new doc too. Otherwise deleting the
+  // source below (deleteDocuments) would clear the XS invoice's link as a "dangling reference" to
+  // a doc that no longer exists, orphaning the very invoice this was created for.
+  if ((doc as any).relatedDocId || Number((doc as any).excessNet) > 0) {
+    const db = await getDb();
+    if (db && created?.id) {
+      await db.update(serviceHistory).set({
+        relatedDocId: (doc as any).relatedDocId, relatedDocNo: (doc as any).relatedDocNo,
+        excessNet: (doc as any).excessNet, excessTax: (doc as any).excessTax, excessGross: (doc as any).excessGross,
+        excessFullVatToCustomer: (doc as any).excessFullVatToCustomer,
+      }).where(eq(serviceHistory.id, created.id));
+      if ((doc as any).relatedDocId) {
+        const newDocNo = (await db.select({ docNo: serviceHistory.docNo }).from(serviceHistory).where(eq(serviceHistory.id, created.id)).limit(1))[0]?.docNo;
+        await db.update(serviceHistory).set({
+          relatedDocId: created.id, relatedDocNo: newDocNo,
+        }).where(eq(serviceHistory.id, (doc as any).relatedDocId));
+      }
+    }
+  }
+
   // "Convert to Invoice/Job Sheet" supersedes the original; "Copy to Estimate/Credit Note" keeps it.
   // On a convert, remove the source so it isn't left behind as a duplicate — but only a web-created
   // working doc (job sheet / estimate). Never auto-delete invoices/credit notes, and never a
