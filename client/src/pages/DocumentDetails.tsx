@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight } from "lucide-react";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
@@ -1134,6 +1135,19 @@ export default function DocumentDetails() {
                   </button>
                 )}
               </div>
+              {!base && !isNew && (data as any)?.doc?.vehicleId && (
+                <div className="flex justify-end -mt-0.5">
+                  <AssignCustomerDialog
+                    vehicleId={(data as any).doc.vehicleId}
+                    onAssigned={() => utils.documents.getById.invalidate({ id })}
+                    triggerButton={
+                      <button type="button" className="text-[11px] text-violet-700 hover:underline inline-flex items-center gap-1">
+                        <ArrowLeftRight className="w-3 h-3" /> Transfer vehicle to a different owner
+                      </button>
+                    }
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                 <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
                 <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
