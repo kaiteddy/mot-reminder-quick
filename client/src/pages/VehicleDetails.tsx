@@ -746,6 +746,14 @@ export default function VehicleDetails() {
                                 MOT Check & Estimates
                             </Button>
                         </Link>
+                        <Button
+                            variant="outline"
+                            className="bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100"
+                            onClick={() => setLocation(`/appointments?reg=${encodeURIComponent(vehicle.registration as string)}`)}
+                        >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Book Appointment
+                        </Button>
                     </div>
                 </div>
 
