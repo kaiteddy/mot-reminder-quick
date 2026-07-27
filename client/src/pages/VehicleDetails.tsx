@@ -28,7 +28,8 @@ import {
     Receipt,
     CalendarClock,
     Cog,
-    Hash
+    Hash,
+    ArrowLeftRight
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
@@ -40,6 +41,7 @@ import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
 import { AutodataQRDialog } from "@/components/AutodataQRDialog";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import {
     Dialog,
     DialogContent,
@@ -955,7 +957,21 @@ export default function VehicleDetails() {
                                             Opted Out
                                         </Badge>
                                     )}
-                                    <div className="pt-2 border-t">
+                                    <div className="pt-2 border-t space-y-2">
+                                        <AssignCustomerDialog
+                                            vehicleId={vehicle.id as number}
+                                            onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                            triggerButton={
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                                >
+                                                    <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                                    Transfer Vehicle
+                                                </Button>
+                                            }
+                                        />
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -973,8 +989,18 @@ export default function VehicleDetails() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-6 text-muted-foreground italic text-sm">
-                                    No customer assigned
+                                <div className="text-center py-6 text-muted-foreground italic text-sm space-y-3">
+                                    <p>No customer assigned</p>
+                                    <AssignCustomerDialog
+                                        vehicleId={vehicle.id as number}
+                                        onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                        triggerButton={
+                                            <Button variant="outline" size="sm" className="text-xs">
+                                                <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                                Assign Owner
+                                            </Button>
+                                        }
+                                    />
                                 </div>
                             )}
                         </CardContent>

@@ -8,19 +8,20 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 
-function AssignCustomerDialog({ vehicleId, triggerButton }: { vehicleId: number; triggerButton: React.ReactNode }) {
+export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: { vehicleId: number; triggerButton: React.ReactNode; onAssigned?: () => void }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const { data: customers = [], isLoading } = trpc.customers.list.useQuery(undefined, {
     enabled: open
   });
-  
+
   const assignMutation = trpc.reminders.assignVehicle.useMutation({
     onSuccess: () => {
       toast.success("Vehicle successfully assigned to customer.");
       setOpen(false);
-      setTimeout(() => window.location.reload(), 1000);
+      if (onAssigned) onAssigned();
+      else setTimeout(() => window.location.reload(), 1000);
     },
     onError: (err) => {
       toast.error("Failed to assign customer: " + err.message);
