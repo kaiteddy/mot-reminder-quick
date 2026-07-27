@@ -2738,6 +2738,25 @@ export async function saveDocument(input: SaveDocInput) {
   let docId = input.id;
   if (docId) {
     await db.update(serviceHistory).set(docFields).where(eq(serviceHistory.id, docId));
+    // "Full VAT to customer" excess jobs (see createExcessInvoice): the customer's excess invoice
+    // carries the WHOLE job's VAT, captured at the time the excess was raised. If the job's own
+    // work/parts are edited afterwards (changing its true VAT), the linked excess invoice would
+    // otherwise go stale — re-sync it here so it always reflects the job's current VAT, not a
+    // frozen snapshot from whenever the excess was first created.
+    if (docType !== "XS") {
+      const row = (await db.select({ excessFullVatToCustomer: serviceHistory.excessFullVatToCustomer, relatedDocId: serviceHistory.relatedDocId, excessNet: serviceHistory.excessNet })
+        .from(serviceHistory).where(eq(serviceHistory.id, docId)).limit(1))[0];
+      if (row?.excessFullVatToCustomer && row.relatedDocId) {
+        const xsNet = round2(Number(row.excessNet) || 0);
+        const xsGross = round2(xsNet + totalTax);
+        const xsReceipts = Number((await db.select({ totalReceipts: serviceHistory.totalReceipts }).from(serviceHistory).where(eq(serviceHistory.id, row.relatedDocId)).limit(1))[0]?.totalReceipts) || 0;
+        await db.update(serviceHistory).set({
+          totalTax: String(totalTax.toFixed(2)), totalGross: String(xsGross.toFixed(2)),
+          balance: String((xsGross - xsReceipts).toFixed(2)),
+        }).where(eq(serviceHistory.id, row.relatedDocId));
+      }
+      if (row?.relatedDocId) await recomputeDocBalance(docId); // refresh this doc's own stored balance too (list views/reports read it directly)
+    }
   } else {
     const docNo = docFields.docNo || await getNextDocNo(docType);
     const externalId = `WEB-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
