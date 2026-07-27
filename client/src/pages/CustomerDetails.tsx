@@ -538,6 +538,11 @@ export default function CustomerDetails() {
                                                         <TableCell className="py-2">
                                                             <div className="text-sm font-bold">{v.make || "Unknown"}</div>
                                                             <div className="text-[10px] text-muted-foreground uppercase opacity-70">{v.model || ""}</div>
+                                                            {!v.viaAccountSame && (
+                                                                <div className="text-[10px] text-amber-700 mt-0.5" title="Same person, different GA4 account — shown here because it shares this customer's phone number">
+                                                                    Via linked account {v.viaAccountNumber || `#${v.viaAccountId}`}
+                                                                </div>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="py-2">
                                                             {expiry ? (

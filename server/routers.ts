@@ -157,11 +157,11 @@ export const appRouter = router({
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const { getCustomerById, getVehiclesByCustomerId, getRemindersByCustomerId, getServiceHistoryByCustomerId } = await import("./db");
+        const { getCustomerById, getVehiclesForCustomerAcrossLinkedAccounts, getRemindersByCustomerId, getServiceHistoryByCustomerId } = await import("./db");
         const customer = await getCustomerById(input.id);
         if (!customer) return null;
 
-        const vehicles = await getVehiclesByCustomerId(input.id);
+        const vehicles = await getVehiclesForCustomerAcrossLinkedAccounts(input.id);
         const reminders = await getRemindersByCustomerId(input.id);
         const history = await getServiceHistoryByCustomerId(input.id);
 

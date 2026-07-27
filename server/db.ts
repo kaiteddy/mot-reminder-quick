@@ -402,6 +402,39 @@ export async function getVehiclesByCustomerId(customerId: number) {
   return db.select().from(vehicles).where(eq(vehicles.customerId, customerId));
 }
 
+/** Same person can exist as more than one `customers` row sharing a phone (see the Duplicates
+ * page) — e.g. a fresh GA4 account number was created for a later car instead of reusing the
+ * old one. The Duplicates merge tool deliberately refuses to merge those (different account
+ * numbers could genuinely mean different people sharing a phone), so a customer's "Linked
+ * Vehicles" list would otherwise only ever show whichever account you happened to open. This
+ * pulls in vehicles from every customer record sharing the same phone, each tagged with which
+ * account it actually belongs to — a read-only view, no records are touched or merged. */
+export async function getVehiclesForCustomerAcrossLinkedAccounts(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const self = (await db.select({ id: customers.id, phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  if (!self) return [];
+  const own = await db.select().from(vehicles).where(eq(vehicles.customerId, customerId));
+  const phoneKey = normPhoneKey(self.phone);
+  if (!phoneKey) return own.map((v) => ({ ...v, viaAccountId: customerId, viaAccountNumber: null as string | null, viaAccountSame: true }));
+
+  const allCust = await db.select({ id: customers.id, phone: customers.phone, accountNumber: customers.accountNumber }).from(customers);
+  const linkedIds = allCust.filter((c) => c.id !== customerId && normPhoneKey(c.phone) === phoneKey).map((c) => c.id);
+  const acctById = new Map(allCust.map((c) => [c.id, c.accountNumber] as const));
+
+  const tagged = own.map((v) => ({ ...v, viaAccountId: customerId, viaAccountNumber: acctById.get(customerId) ?? null, viaAccountSame: true }));
+  if (!linkedIds.length) return tagged;
+
+  const linkedVehicles = await db.select().from(vehicles).where(inArray(vehicles.customerId, linkedIds));
+  const seen = new Set(tagged.map((v) => v.id));
+  for (const v of linkedVehicles) {
+    if (seen.has(v.id)) continue;
+    seen.add(v.id);
+    tagged.push({ ...v, viaAccountId: v.customerId!, viaAccountNumber: acctById.get(v.customerId!) ?? null, viaAccountSame: false });
+  }
+  return tagged;
+}
+
 export async function getRemindersByCustomerId(customerId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2291,7 +2324,7 @@ export async function saveCustomerContacts(customerId: number, contacts: { name?
 }
 
 // ─── Duplicate customer review ───────────────────────────────────────────────
-function normPhoneKey(raw: any): string | null {
+export function normPhoneKey(raw: any): string | null {
   if (!raw) return null;
   const s = String(raw).replace(/\s+/g, "");
   const m = s.match(/(?:\+?44|0)\d{9,10}/) || s.match(/\d{10,11}/);
