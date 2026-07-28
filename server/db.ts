@@ -1249,7 +1249,10 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
     conds.push(sql`(${serviceHistory.archived} IS NULL OR ${serviceHistory.archived} = 0)`);
   }
   if (opts.docType && opts.docType !== "all" && opts.docType !== "archive") {
-    conds.push(eq(serviceHistory.docType, opts.docType));
+    // A policy-excess invoice (XS) is a real invoice sent to a real customer for real money — it
+    // belongs in the "Invoices" tab alongside the main SI it's linked to, not hidden from it.
+    if (opts.docType === "SI") conds.push(inArray(serviceHistory.docType, ["SI", "XS"]));
+    else conds.push(eq(serviceHistory.docType, opts.docType));
     if (opts.docType === "JS") {
       // GA4 never deletes a job sheet once it's converted to an invoice there — it just leaves the
       // old JS record sitting alongside the new SI, and our one-way mirror faithfully copies both.

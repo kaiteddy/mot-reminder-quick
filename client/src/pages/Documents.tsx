@@ -135,6 +135,8 @@ export default function Documents() {
   const unarchive = trpc.documents.unarchive.useMutation();
 
   const typeCount = (code: string) => stats?.byType.find((t) => t.docType === code)?.n ?? 0;
+  // "Invoices" (tab + stat) includes XS (policy-excess invoices) alongside SI — see getDocuments.
+  const invoicesCount = typeCount("SI") + typeCount("XS");
 
   const rows: any[] = docs ?? [];
   const allSelected = rows.length > 0 && rows.every((d) => selected.has(d.id));
@@ -166,8 +168,8 @@ export default function Documents() {
   }
 
   // "Type" is redundant once filtered to a single doc type — every row would say the same thing.
-  // (the Archive tab mixes types, so it stays visible there too.)
-  const visibleColumns = columnOrder.filter((k) => k !== "type" || docType === "all" || docType === "archive");
+  // (Archive mixes types, and Invoices mixes SI/XS — see getDocuments — so it stays visible there too.)
+  const visibleColumns = columnOrder.filter((k) => k !== "type" || docType === "all" || docType === "archive" || docType === "SI");
 
   function renderCell(key: ColKey, d: any) {
     switch (key) {
@@ -274,7 +276,7 @@ export default function Documents() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="Total" value={stats?.total} />
-          <StatCard label="Invoices" value={typeCount("SI")} />
+          <StatCard label="Invoices" value={invoicesCount} />
           <StatCard label="Estimates" value={typeCount("ES")} />
           <StatCard label="Job Sheets" value={typeCount("JS")} />
           <StatCard label="Archived" value={stats?.archived} />
