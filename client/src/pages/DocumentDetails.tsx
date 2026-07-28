@@ -8,8 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
+import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
@@ -213,41 +215,55 @@ export default function DocumentDetails() {
     return false;
   }
   // Print the SAME server-rendered PDF that gets emailed (print & email always match),
-  // and open the browser print dialog directly via a hidden iframe.
+  // and open the browser print dialog directly via a hidden iframe. Shared by the main Print
+  // button (the doc currently open/being edited) and the history-preview drawer's Print button
+  // (any past job in this vehicle's history, without navigating away to open it first).
+  async function printDocById(documentId: number) {
+    const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId });
+    if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+    const bytes = atob(res.content);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+    // Chrome paints the embedded PDF asynchronously AFTER the iframe's load event fires.
+    // Calling print() the instant onload runs prints blank pages on a cold render (the
+    // "blank first time, works on the second click" bug), so wait for the viewer to paint.
+    // We keep the spinner up until print actually fires (await below) to block double-clicks.
+    await new Promise<void>((resolve) => {
+      let fired = false;
+      const fire = () => {
+        if (fired) return; fired = true;
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
+        catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
+        resolve();
+      };
+      iframe.onload = () => setTimeout(fire, 800);
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      setTimeout(fire, 5000); // safety: never hang if onload never arrives
+    });
+    setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
+  }
   async function handlePrint() {
     if (isNew || !id) return;
     if (blockIfIncomplete("print")) return;
     setPrinting(true);
     try {
       await flushPending(); // make sure the latest edits are in the PDF
-      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
-      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
-      const bytes = atob(res.content);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      // Chrome paints the embedded PDF asynchronously AFTER the iframe's load event fires.
-      // Calling print() the instant onload runs prints blank pages on a cold render (the
-      // "blank first time, works on the second click" bug), so wait for the viewer to paint.
-      // We keep the spinner up until print actually fires (await below) to block double-clicks.
-      await new Promise<void>((resolve) => {
-        let fired = false;
-        const fire = () => {
-          if (fired) return; fired = true;
-          try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
-          catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
-          resolve();
-        };
-        iframe.onload = () => setTimeout(fire, 800);
-        iframe.src = url;
-        document.body.appendChild(iframe);
-        setTimeout(fire, 5000); // safety: never hang if onload never arrives
-      });
-      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
+      await printDocById(id);
     } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
     finally { setPrinting(false); }
+  }
+  const [historyPreviewId, setHistoryPreviewId] = useState<number | null>(null);
+  const [historyPrinting, setHistoryPrinting] = useState(false);
+  async function printHistoryPreview() {
+    if (!historyPreviewId) return;
+    setHistoryPrinting(true);
+    try { await printDocById(historyPreviewId); }
+    catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
+    finally { setHistoryPrinting(false); }
   }
   const convert = trpc.documents.convert.useMutation();
   const [convertOpen, setConvertOpen] = useState(false);
@@ -1496,7 +1512,7 @@ export default function DocumentDetails() {
                             <Table>
                               <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                               <TableBody>{history.map((h: any) => (
-                                <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
+                                <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setHistoryPreviewId(h.id)}>
                                   <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                                   <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                                   <TableCell>{h.docNo}</TableCell>
@@ -1513,7 +1529,7 @@ export default function DocumentDetails() {
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
-                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`${base}/documents/${h.id}`)}>
+                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setHistoryPreviewId(h.id)}>
                             <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                             <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>{h.docNo}</TableCell>
@@ -1619,6 +1635,49 @@ export default function DocumentDetails() {
         {excessOpen && (
           <ExcessCreateDialog mainDocNo={docNo} mainDocTax={Number((data as any)?.doc?.totalTax) || 0} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
         )}
+
+        {/* History row click opens a quick-view slide-over instead of navigating away, so you can
+            flick through past jobs on this vehicle without losing your place on the current one. */}
+        <Sheet open={historyPreviewId != null} onOpenChange={(open) => { if (!open) setHistoryPreviewId(null); }}>
+          <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto p-0">
+            {historyPreviewId != null && (() => {
+              const idx = history.findIndex((h: any) => h.id === historyPreviewId);
+              const h = idx >= 0 ? history[idx] : null;
+              const goPrev = () => { if (idx > 0) setHistoryPreviewId(history[idx - 1].id); };
+              const goNext = () => { if (idx >= 0 && idx < history.length - 1) setHistoryPreviewId(history[idx + 1].id); };
+              return (
+                <>
+                  <SheetHeader className="border-b sticky top-0 bg-background z-10">
+                    <div className="flex items-center justify-between gap-2 pr-8">
+                      <div className="min-w-0">
+                        <SheetTitle className="flex items-center gap-2 flex-wrap">
+                          {h && <Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge>}
+                          <span className="truncate">{h?.docNo || h?.externalId}</span>
+                        </SheetTitle>
+                        <SheetDescription className="sr-only">Quick view of a past job on this vehicle, with its full description, labour and parts.</SheetDescription>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={idx <= 0} onClick={goPrev} title="Previous job"><ChevronLeft className="w-4 h-4" /></Button>
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={idx < 0 || idx >= history.length - 1} onClick={goNext} title="Next job"><ChevronRight className="w-4 h-4" /></Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button variant="outline" size="sm" onClick={printHistoryPreview} disabled={historyPrinting}>
+                        {historyPrinting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Printer className="w-4 h-4 mr-1.5" />} Print
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => { const openId = historyPreviewId; setHistoryPreviewId(null); setLocation(`${base}/documents/${openId}`); }}>
+                        <ExternalLink className="w-4 h-4 mr-1.5" /> Open Full Record
+                      </Button>
+                    </div>
+                  </SheetHeader>
+                  <div className="p-4">
+                    <LineItemsView documentId={historyPreviewId} history={history} />
+                  </div>
+                </>
+              );
+            })()}
+          </SheetContent>
+        </Sheet>
 
       </div>
     </DashboardLayout>
