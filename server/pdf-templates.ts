@@ -324,7 +324,12 @@ function tcAndTotals(
   const totalsX = PW - M - totalsW;
   const halfW = totalsW / 2;
   const tcW = CW * tcWidthRatio;
-  const totalsH = tRows.length * rowH;
+  // A long label (e.g. "Excess + VAT (customer)") can wrap to two lines at this column width —
+  // give each row at least enough height for its own label, or the wrapped second line bleeds
+  // into the row below it. Measured once up front so cell backgrounds/dividers/y-advance all agree.
+  doc.font('Helvetica').fontSize(9);
+  const rowHeights = tRows.map(([label]) => Math.max(rowH, doc.heightOfString(label, { width: halfW - 12 }) + 8));
+  const totalsH = rowHeights.reduce((a, h) => a + h, 0);
 
   // Pre-calculate TC height
   doc.font('Helvetica').fontSize(7);
@@ -349,21 +354,22 @@ function tcAndTotals(
 
   // ── Totals (right) ──
   let ty = footerY;
-  for (const [label, value, bold, bg] of tRows) {
+  tRows.forEach(([label, value, bold, bg], i) => {
+    const h = rowHeights[i];
     if (bg) {
-      filledCell(doc, totalsX, ty, totalsW, rowH, '#e8e8e8');
+      filledCell(doc, totalsX, ty, totalsW, h, '#e8e8e8');
     } else {
-      strokedCell(doc, totalsX, ty, totalsW, rowH);
+      strokedCell(doc, totalsX, ty, totalsW, h);
     }
     // Divider
-    doc.save().moveTo(totalsX + halfW, ty).lineTo(totalsX + halfW, ty + rowH).stroke(BORDER).restore();
+    doc.save().moveTo(totalsX + halfW, ty).lineTo(totalsX + halfW, ty + h).stroke(BORDER).restore();
 
     doc.font(bold ? 'Helvetica' : 'Helvetica').fontSize(9).fillColor('black');
     doc.text(label, totalsX + 6, ty + 4, { width: halfW - 12, align: 'left' });
     const display = value ? (value.startsWith('-') ? '-£' + value.slice(1) : '£' + value) : '';
-    doc.text(display, totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
-    ty += rowH;
-  }
+    doc.text(display, totalsX + halfW + 6, ty + (h - 11) / 2, { width: halfW - 12, align: 'right' });
+    ty += h;
+  });
 
   return Math.max(ty, afterRegular + tcBoldH + 25) + 10;
 }
