@@ -1648,7 +1648,7 @@ export default function DocumentDetails() {
               return (
                 <>
                   <SheetHeader className="border-b sticky top-0 bg-background z-10">
-                    <div className="flex items-center justify-between gap-2 pr-8">
+                    <div className="flex items-center justify-between gap-2 pr-8 min-h-8">
                       <div className="min-w-0">
                         <SheetTitle className="flex items-center gap-2 flex-wrap">
                           {h && <Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge>}
@@ -1661,7 +1661,7 @@ export default function DocumentDetails() {
                         <Button variant="outline" size="icon" className="h-8 w-8" disabled={idx < 0 || idx >= history.length - 1} onClick={goNext} title="Next job"><ChevronRight className="w-4 h-4" /></Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1 min-h-9">
                       <Button variant="outline" size="sm" onClick={printHistoryPreview} disabled={historyPrinting}>
                         {historyPrinting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Printer className="w-4 h-4 mr-1.5" />} Print
                       </Button>
