@@ -455,6 +455,52 @@ export async function getRemindersByCustomerId(customerId: number) {
   return db.select().from(reminders).where(eq(reminders.customerId, customerId));
 }
 
+/** Unified reminder timeline for a customer's profile page. Two sources merged:
+ *  - reminderLogs: actual messages sent by this app (WhatsApp/SMS) — real timestamps, delivery
+ *    status, and the message text. Matched by customerId OR recipient phone, since MOT-batch
+ *    sends often carry only a vehicleId (see the Mr Tony case).
+ *  - reminders: the GA4-imported legacy queue — print/SMS-era reminders with only a DUE date
+ *    (sentAt was never recorded), and duplicated wholesale by a historical double import, so
+ *    they're deduped on type+dueDate+registration. Without this distinction the profile page
+ *    was rendering their null sentAt as "01/01/70". */
+export async function getCustomerReminderTimeline(customerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const cust = (await db.select({ phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  const last9 = String(cust?.phone ?? "").replace(/\D/g, "").slice(-9);
+
+  const logs = await db.select().from(reminderLogs)
+    .where(last9
+      ? or(eq(reminderLogs.customerId, customerId), sql`RIGHT(regexp_replace(${reminderLogs.recipient}, '\\D', '', 'g'), 9) = ${last9}`)
+      : eq(reminderLogs.customerId, customerId))
+    .orderBy(desc(reminderLogs.sentAt)).limit(200);
+
+  const legacy = await db.select().from(reminders).where(eq(reminders.customerId, customerId));
+  const seen = new Set<string>();
+  const legacyDeduped = legacy.filter((r) => {
+    const k = `${r.type}|${r.dueDate ? new Date(r.dueDate).toISOString().slice(0, 10) : ""}|${(r.registration || "").toUpperCase().replace(/\s+/g, "")}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  const timeline = [
+    ...logs.map((l) => ({
+      kind: "message" as const, id: `log-${l.id}`, date: l.sentAt, type: l.messageType,
+      registration: l.registration, method: "whatsapp", status: l.status,
+      preview: l.messageContent ? String(l.messageContent).replace(/\s+/g, " ").slice(0, 160) : null,
+      errorMessage: l.errorMessage,
+    })),
+    ...legacyDeduped.map((r) => ({
+      kind: "legacy" as const, id: `rem-${r.id}`, date: r.dueDate, type: r.type,
+      registration: r.registration, method: r.sentMethod || null, status: r.status,
+      preview: null as string | null, errorMessage: null as string | null,
+    })),
+  ];
+  timeline.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  return timeline;
+}
+
 /** All vehicle ids that represent the SAME physical car as `vehicleId` — the same plate can
  * end up as two `vehicles` rows split by registration spacing/case (e.g. "PE59OFH" vs
  * "PE59 OFH" — see "Reg format split matching"), so a bare vehicleId match on a dependent

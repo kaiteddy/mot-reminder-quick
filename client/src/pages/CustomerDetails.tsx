@@ -784,18 +784,45 @@ export default function CustomerDetails() {
                                     </TabsContent>
                                     <TabsContent value="reminders">
                                         {reminders && reminders.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {reminders.map((r: any) => (
-                                                    <div key={r.id} className="flex items-center justify-between p-2 rounded border text-xs">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                                                            <span className="font-medium">{format(new Date(r.sentAt), "dd/MM/yy HH:mm")}</span>
-                                                            <span className="text-muted-foreground truncate max-w-[100px]">{r.registration}</span>
-                                                        </div>
-                                                        <Badge variant="outline" className="text-[10px] scale-90 capitalize">{r.status}</Badge>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                            <Table className="[&_th]:h-8 [&_td]:py-1.5">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Date</TableHead>
+                                                        <TableHead>Type</TableHead>
+                                                        <TableHead>Reg</TableHead>
+                                                        <TableHead>Via</TableHead>
+                                                        <TableHead>Status</TableHead>
+                                                        <TableHead>Message</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {reminders.map((r: any) => (
+                                                        <TableRow key={r.id}>
+                                                            <TableCell className="whitespace-nowrap text-[13px] font-semibold text-slate-800">
+                                                                {r.date ? format(new Date(r.date), r.kind === "message" ? "dd/MM/yy HH:mm" : "dd/MM/yy") : "—"}
+                                                                {r.kind === "legacy" && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(due)</span>}
+                                                            </TableCell>
+                                                            <TableCell><Badge variant="outline" className="text-[10px]">{r.type}</Badge></TableCell>
+                                                            <TableCell>{r.registration ? <RegPlate reg={r.registration} size="xs" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+                                                            <TableCell className="text-xs text-muted-foreground capitalize whitespace-nowrap">{r.method || "—"}</TableCell>
+                                                            <TableCell>
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium capitalize whitespace-nowrap ${
+                                                                    r.status === "read" ? "bg-green-50 text-green-700 border-green-200"
+                                                                    : r.status === "delivered" ? "bg-sky-50 text-sky-700 border-sky-200"
+                                                                    : r.status === "failed" || r.status === "undelivered" ? "bg-red-50 text-red-700 border-red-200"
+                                                                    : r.status === "pending" ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                                    : "bg-slate-50 text-slate-600 border-slate-200"
+                                                                }`} title={r.errorMessage || undefined}>{r.status}</span>
+                                                            </TableCell>
+                                                            <TableCell className="max-w-[300px]">
+                                                                <span className="block truncate text-xs text-muted-foreground" title={r.preview || undefined}>
+                                                                    {r.preview || (r.kind === "legacy" ? "GA4-era reminder (no message stored)" : "—")}
+                                                                </span>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm italic">
                                                 No reminders sent to this customer.
