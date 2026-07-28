@@ -278,9 +278,13 @@ export default function CustomerDetails() {
 
     // "No Longer Owned" — clears the vehicle's current-owner link (same mutation as Vehicle
     // Details' "Remove Owner") so MOT reminders for that car stop going to this customer.
-    // History is untouched: every past invoice keeps its own customer link.
+    // History is untouched: every past invoice keeps its own customer link. Confirmation is an
+    // in-app dialog, NOT window.confirm — Chrome silently suppresses native dialogs once a user
+    // ever ticks "prevent this page from creating additional dialogs", which makes the button
+    // look completely dead.
+    const [unlinkTarget, setUnlinkTarget] = useState<{ id: number; registration: string } | null>(null);
     const unlinkVehicle = trpc.reminders.unlinkVehicle.useMutation({
-        onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); refetch(); },
+        onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); setUnlinkTarget(null); refetch(); },
         onError: (e: any) => toast.error(e.message || "Failed to remove owner link"),
     });
 
@@ -670,11 +674,7 @@ export default function CustomerDetails() {
                                                                     className="h-7 w-7 text-red-600"
                                                                     title="No longer owned — stop MOT reminders to this customer for this vehicle"
                                                                     disabled={unlinkVehicle.isPending}
-                                                                    onClick={() => {
-                                                                        if (window.confirm(`${customer.name} no longer owns ${v.registration}?\n\nThis removes the owner link so they stop getting MOT reminders for it. Past invoices are not affected.`)) {
-                                                                            unlinkVehicle.mutate({ vehicleId: v.id });
-                                                                        }
-                                                                    }}
+                                                                    onClick={() => setUnlinkTarget({ id: v.id, registration: v.registration })}
                                                                 >
                                                                     <UserX className="w-3.5 h-3.5" />
                                                                 </Button>
@@ -693,6 +693,27 @@ export default function CustomerDetails() {
                                 )}
                             </CardContent>
                         </Card>
+
+                        {/* "No Longer Owned" confirmation — in-app dialog (see unlinkVehicle above for why not window.confirm) */}
+                        <Dialog open={unlinkTarget != null} onOpenChange={(open) => { if (!open) setUnlinkTarget(null); }}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>No longer owns {unlinkTarget?.registration}?</DialogTitle>
+                                    <DialogDescription>
+                                        This removes the owner link so {customer.name} stops getting MOT reminders for this vehicle.
+                                        Past invoices and service history are not affected.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setUnlinkTarget(null)}>Cancel</Button>
+                                    <Button variant="destructive" disabled={unlinkVehicle.isPending}
+                                        onClick={() => unlinkTarget && unlinkVehicle.mutate({ vehicleId: unlinkTarget.id })}>
+                                        {unlinkVehicle.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <UserX className="w-4 h-4 mr-1.5" />}
+                                        Yes, no longer owned
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
 
                         <Card>
                             <CardHeader className="pb-2">
