@@ -1647,7 +1647,12 @@ export default function DocumentDetails() {
               const goNext = () => { if (idx >= 0 && idx < history.length - 1) setHistoryPreviewId(history[idx + 1].id); };
               return (
                 <>
-                  <SheetHeader className="border-b sticky top-0 bg-background z-10">
+                  {/* This flex-col header's auto-height computation has proven unreliable (its rows
+                      collapsing to ~0 despite real content, reproduced via direct DOM measurement) —
+                      an explicit min-height via inline style (not a Tailwind class, so it can't be
+                      skipped by any JIT/build timing) guarantees the sticky header always reserves
+                      enough room and never lets the body content underneath render on top of it. */}
+                  <SheetHeader className="border-b sticky top-0 bg-background z-10" style={{ minHeight: 110 }}>
                     <div className="flex items-center justify-between gap-2 pr-8 min-h-8">
                       <div className="min-w-0">
                         <SheetTitle className="flex items-center gap-2 flex-wrap">
