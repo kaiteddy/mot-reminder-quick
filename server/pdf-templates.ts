@@ -315,7 +315,7 @@ function tcAndTotals(
   tRows.push([totals.vat_label || `VAT (${totals.vat_rate}%)`, Number(totals.vat).toFixed(2), false, false]);
   if (totals.mot != null) tRows.push(['MOT', Number(totals.mot).toFixed(2), false, false]);
   tRows.push([totalLabel, Number(totals.total).toFixed(2), true, true]);
-  if (totals.excess != null && Number(totals.excess) > 0) tRows.push(['Excess', Number(totals.excess).toFixed(2), false, false]);
+  if (totals.excess != null && Number(totals.excess) > 0) tRows.push([totals.excess_label || 'Excess', Number(totals.excess).toFixed(2), false, false]);
   if (totals.receipts != null) tRows.push(['Receipts', Number(totals.receipts).toFixed(2), false, false]);
   if (totals.balance != null) tRows.push(['Balance', Number(totals.balance).toFixed(2), true, false]);
 

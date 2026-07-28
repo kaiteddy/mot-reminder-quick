@@ -839,7 +839,7 @@ export default function DocumentDetails() {
           <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
           <p className="text-[10.5px] text-slate-500 mt-1">
             {fullVatToCustomer
-              ? "Excess + this job's full VAT are both deducted from the amount payable by the insurer (net of VAT)."
+              ? "Excess + this job's full VAT are both deducted from the balance due from the insurer. The invoice itself is made out to the customer, per the insurer's approved-repairer scheme rules."
               : "Deducted from the amount payable by the insurer."}
           </p>
         </Panel>
@@ -1752,7 +1752,7 @@ function ExcessCreateDialog({ mainDocNo, mainDocTax, pending, onClose, onCreate 
           <label className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded p-2.5 cursor-pointer">
             <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
             <span className="text-[12.5px] text-sky-900">
-              <b>Commercial/fleet claim:</b> no VAT on the excess itself — charge the FULL job VAT (£{money(mainDocTax)}) on this invoice instead, so the customer's VAT-registered company can reclaim it. The insurer's invoice will print net of VAT, with the excess already removed.
+              <b>Commercial/fleet claim:</b> no VAT on the excess itself — charge the FULL job VAT (£{money(mainDocTax)}) on this invoice instead, so the customer's VAT-registered company can reclaim it. The insurer's invoice is made out to the customer (per the insurer's approved-repairer scheme rules) and shows the excess+VAT collected from them alongside the balance due from the insurer.
             </span>
           </label>
           {!fullVatToCustomer && (
@@ -1780,7 +1780,7 @@ function ExcessCreateDialog({ mainDocNo, mainDocTax, pending, onClose, onCreate 
           </div>
           <p className="text-[12px] text-slate-500 border-t pt-2">
             {fullVatToCustomer
-              ? `The insurer will be invoiced £${money(net)} (net of VAT, excess already removed) — no VAT line on their invoice.`
+              ? `The main invoice — made out to the customer, showing the £${money(gross)} collected from them and the balance due — is what gets sent to the insurer.`
               : "The excess amount will automatically be deducted from the main invoice to the insurance company."}
           </p>
           <div className="flex justify-end gap-2">
@@ -1812,7 +1812,7 @@ function ExcessPanel({ doc, mainDocTax, onSaved }: { doc: any; mainDocTax: numbe
     <Panel title="Policy Excess">
       <label className="flex items-start gap-1.5 bg-sky-50 border border-sky-200 rounded p-2 cursor-pointer">
         <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
-        <span className="text-[11px] text-sky-900">Commercial/fleet claim — no VAT on the excess, full job VAT (£{money(mainDocTax)}) charged here instead; insurer's invoice prints net of VAT.</span>
+        <span className="text-[11px] text-sky-900">Commercial/fleet claim — no VAT on the excess, full job VAT (£{money(mainDocTax)}) charged here instead; insurer's invoice is made out to the customer, showing the excess+VAT collected and balance due.</span>
       </label>
       {!fullVatToCustomer && (
         <div className="flex items-center justify-between">

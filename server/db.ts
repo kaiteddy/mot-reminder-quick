@@ -3065,8 +3065,10 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   const net = round2(Math.max(0, Number(input.excessNet) || 0) - discount);
   // "Full VAT to customer" (commercial/fleet arrangement): the excess itself carries no VAT — the
   // ENTIRE job's VAT is charged on this excess invoice instead, so a VAT-registered policyholder
-  // can reclaim it in full, while the insurer's invoice (below) prints net-of-VAT with no VAT at
-  // all. Otherwise (the standard case), VAT applies to the excess amount itself at 20%/0%.
+  // can reclaim it in full. Per the insurer's approved-repairer scheme rules (e.g. Allianz), the
+  // main invoice (below) is made out to the CUSTOMER — never the insurer — and shows the full job
+  // total, the excess+VAT collected from the customer, and the balance due from the insurer.
+  // Otherwise (the standard case), VAT applies to the excess amount itself at 20%/0%.
   const fullVat = !!input.fullVatToCustomer;
   const vatRate = fullVat ? 0 : (input.vatRegistered ? 20 : 0);
   const tax = fullVat ? round2(Number(main.totalTax) || 0) : round2(net * vatRate / 100);
@@ -3089,7 +3091,7 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
     totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
     balance: String(gross.toFixed(2)), excessFullVatToCustomer: fullVat ? 1 : 0,
-    description: fullVat ? `Policy excess re. Invoice ${main.docNo} (VAT charged in full — insurer invoice is net of VAT)` : `Policy excess re. Invoice ${main.docNo}`,
+    description: fullVat ? `Policy excess re. Invoice ${main.docNo} (VAT charged in full on this invoice)` : `Policy excess re. Invoice ${main.docNo}`,
   });
   const [{ id: xsId }] = await db.insert(serviceHistory).values(xsFields).returning({ id: serviceHistory.id });
   await db.insert(serviceLineItems).values({
@@ -3100,14 +3102,16 @@ export async function createExcessInvoice(input: { mainDocId: number; excessNet:
   } as any);
 
   // 2) record the excess on the main invoice and deduct it (insurer pays the reduced amount),
-  //    and stamp the insurer as the main invoice's bill-to so it prints/bills to the insurer.
+  //    and record the insurer for reference (Insurance panel) — the main invoice itself is NEVER
+  //    addressed to the insurer when fullVat is set (see getRichPDF's billTo), per the insurer's
+  //    approved-repairer scheme rules.
   // The excess itself never carries VAT in "full VAT to customer" mode (per the user: "no VAT on
   // the excess") — `tax`/`gross` above are the XS/customer invoice's OWN figures (excess + the
   // whole job's VAT); the main doc's excess fields must stay just the bare excess amount, or
   // "Excess (gross)" on the main invoice's side panel would misleadingly show excess+full-VAT.
   // totalNet/totalTax/totalGross on the main doc are deliberately left untouched — they remain the
-  // true full job value for accounting/VAT-return purposes; the "full VAT to customer" net-of-VAT
-  // presentation for the insurer is applied at print time only (see getRichPDF).
+  // true full job value for accounting/VAT-return purposes, and the print output shows that same
+  // full value (see getRichPDF) — nothing is hidden from the invoice sent to the insurer.
   const mainExcessTax = fullVat ? 0 : tax;
   const mainExcessGross = fullVat ? net : gross;
   await db.update(serviceHistory).set({
@@ -3140,7 +3144,7 @@ export async function updateExcessInvoice(input: { docId: number; excessNet: num
     excessNet: String(net.toFixed(2)), excessTax: String(tax.toFixed(2)), excessGross: String(gross.toFixed(2)),
     totalNet: String(net.toFixed(2)), totalTax: String(tax.toFixed(2)), totalGross: String(gross.toFixed(2)),
     balance: String(gross.toFixed(2)), excessFullVatToCustomer: fullVat ? 1 : 0,
-    description: fullVat ? `Policy excess re. Invoice ${xs.relatedDocNo} (VAT charged in full — insurer invoice is net of VAT)` : `Policy excess re. Invoice ${xs.relatedDocNo}`,
+    description: fullVat ? `Policy excess re. Invoice ${xs.relatedDocNo} (VAT charged in full on this invoice)` : `Policy excess re. Invoice ${xs.relatedDocNo}`,
   }).where(eq(serviceHistory.id, input.docId));
 
   // refresh the single excess line item
@@ -3255,8 +3259,14 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     vat: '330 9339 65',
   };
 
-  // who the invoice is addressed to: the insurer on a main insurance invoice, else the customer
-  const billTo = (doc.docType !== 'XS' && (doc as any).insuranceCompany) ? String((doc as any).insuranceCompany) : null;
+  // Who the invoice is addressed to. Insurance Approved Repairer Scheme rule (e.g. Allianz): the
+  // invoice sent to the insurer must be made out to the CUSTOMER, never the insurer — "Invoices
+  // made out to Allianz Insurance will be returned unpaid for correction." A "full VAT to customer"
+  // job (see createExcessInvoice) is exactly this scheme's arrangement, so it never addresses the
+  // insurer here even though insuranceCompany is recorded (for internal reference/the Insurance
+  // panel) — the customer/company block below is used instead, same as any ordinary invoice.
+  const billTo = (doc.docType !== 'XS' && (doc as any).insuranceCompany && !(doc as any).excessFullVatToCustomer)
+    ? String((doc as any).insuranceCompany) : null;
   // Use the details stored ON the document (what the form shows) first — a walk-in typed straight
   // onto a job sheet has no linked customer record but still has a name/address/phone — then fall
   // back to the linked customer. Prevents "Unknown Client" on a sheet that clearly has a customer.
@@ -3433,7 +3443,13 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // fall back to the document-level Sub MOT Net (synced invoices keep it there, not as a line).
   const motNet = sumNet('MOT') || Number((doc as any).subMotNet) || 0;
   const isInvoice = doc.docType === 'SI' || doc.docType === 'XS';
-  const excess = doc.docType === 'XS' ? 0 : (Number(doc.excessGross) || 0); // deducted from a main insurance invoice
+  // Deducted from a main insurance invoice. "Full VAT to customer" jobs (see createExcessInvoice)
+  // move the WHOLE job's VAT onto the customer's excess invoice, not just VAT on the excess itself
+  // — excessGross on the main doc is deliberately just the bare excess amount (for correct display
+  // elsewhere), so the deduction here has to separately add the job's own VAT back in.
+  const excess = doc.docType === 'XS' ? 0
+    : (doc as any).excessFullVatToCustomer ? (Number(doc.excessNet) || 0) + (Number(doc.totalTax) || 0)
+    : (Number(doc.excessGross) || 0);
   const receipts = Number(doc.totalReceipts) || 0;
   const totalGross = Number(doc.totalGross) || 0;
   // Total £ knocked off across all discounted lines (subNet is already net of the line discount).
@@ -3442,16 +3458,17 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     return a + Math.max(0, base - (Number(i.subNet) || 0));
   }, 0).toFixed(2);
 
-  // "Full VAT to customer" jobs (commercial/fleet excess arrangement, see createExcessInvoice):
-  // the insurer's main invoice prints net-of-VAT with the excess already folded out of the total
-  // (no separate VAT or Excess line — DB totalNet/totalTax/totalGross stay the true job value for
-  // accounting; only this printed presentation differs). The excess (XS) invoice, conversely,
-  // carries the whole job's VAT — doc.totalTax on it IS that full amount already (see
-  // createExcessInvoice) — so its VAT % label would misleadingly look wrong against just the
-  // excess subtotal; give it a plain-English label instead of a percentage.
-  const fullVatMain = doc.docType === 'SI' && !!(doc as any).excessFullVatToCustomer && excess > 0;
+  // Insurance Approved Repairer Scheme rule (e.g. Allianz): the invoice sent to the insurer must be
+  // made out to the CUSTOMER (never the insurer — that gets returned unpaid for correction) and
+  // must show the FULL job value, the amount collected from the customer (excess + VAT for a
+  // VAT-registered customer), and the balance due from the insurer — never a net-only figure with
+  // the breakdown hidden. See getRichPDF's billTo, just above, which never addresses this doc to
+  // the insurer for exactly this reason. "Full VAT to customer" jobs (see createExcessInvoice)
+  // still move the whole job's VAT onto the customer's separate excess invoice — doc.totalTax on
+  // THAT document IS the full amount already — so its own VAT % label would misleadingly look
+  // wrong against just the excess subtotal; give it a plain-English label instead of a percentage.
   const fullVatExcess = doc.docType === 'XS' && !!(doc as any).excessFullVatToCustomer;
-  const excessNetOnly = Number(doc.excessNet) || 0;
+  const fullVatMain = doc.docType === 'SI' && !!(doc as any).excessFullVatToCustomer && excess > 0;
   const baseSubtotal = +((Number(doc.totalNet) || 0) - motNet).toFixed(2);
 
   const totals: any = {
@@ -3459,17 +3476,16 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     parts: parts.reduce((acc, i) => acc + i.subtotal, 0),
     sundries, lubricants, paint,
     discount: discountTotal > 0 ? discountTotal : null,
-    subtotal: fullVatMain ? +(baseSubtotal - excessNetOnly).toFixed(2) : baseSubtotal, // SubTotal excludes the MOT fee (shown separately, 0% VAT)
-    vat_rate: fullVatMain ? 0 : 20,
-    vat: fullVatMain ? 0 : (Number(doc.totalTax) || 0),
+    subtotal: baseSubtotal, // SubTotal excludes the MOT fee (shown separately, 0% VAT)
+    vat_rate: 20,
+    vat: Number(doc.totalTax) || 0,
     vat_label: fullVatExcess ? `VAT (full, re. Inv ${(doc as any).relatedDocNo || ''})`.trim() : undefined,
     mot: motNet > 0 ? motNet : null,
-    total: fullVatMain ? +(baseSubtotal - excessNetOnly + (motNet > 0 ? motNet : 0)).toFixed(2) : totalGross,
-    excess: (!fullVatMain && excess > 0) ? excess : null,
+    total: totalGross,
+    excess: excess > 0 ? excess : null,
+    excess_label: fullVatMain ? "Excess + VAT (customer)" : undefined,
     receipts: (isInvoice || receipts > 0) ? receipts : null,
-    balance: fullVatMain
-      ? +(baseSubtotal - excessNetOnly + (motNet > 0 ? motNet : 0) - receipts).toFixed(2)
-      : (isInvoice ? +(totalGross - excess - receipts).toFixed(2) : totalGross),
+    balance: isInvoice ? +(totalGross - excess - receipts).toFixed(2) : totalGross,
   };
 
   // Split description into title + work items
