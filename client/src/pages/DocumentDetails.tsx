@@ -1434,7 +1434,7 @@ export default function DocumentDetails() {
                         <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
                       </button>
                     )}
-                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} />
+                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} />
                   </TabsContent>
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
@@ -2734,7 +2734,7 @@ function CustomerLog({ customerId, vehicleId, documentId }: { customerId?: numbe
 // menu the browser positions itself (and which the table's overflow can clip) — this one always
 // drops straight below the input via a body portal anchored to the input's position.
 const LABOUR_TYPES = ["Mechanical Labour", "Diagnostic Check"];
-function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v: string) => void; inp: string }) {
+function LabourDescInput({ value, onChange, inp, make, model, onUseRate }: { value: string; onChange: (v: string) => void; inp: string; make?: string; model?: string; onUseRate?: (rate: number) => void }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2748,17 +2748,54 @@ function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v
   }, [open]);
   const q = (value || "").toLowerCase().trim();
   const opts = LABOUR_TYPES.filter((t) => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+
+  // Inline "charged before" hint: once the description is a real repair (not one of the generic
+  // presets), look up what this labour historically cost — tightest scope first (same model, then
+  // same make, then all cars) — right under the input, so pricing a job never means leaving it.
+  // Same live repairPricing query the Repair Pricing page runs; new completed jobs (web or GA4
+  // sync) show up here automatically.
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDebounced(value), 350); return () => clearTimeout(t); }, [value]);
+  const meaningful = (debounced || "").trim().length >= 4 && !LABOUR_TYPES.some((t) => t.toLowerCase() === (debounced || "").toLowerCase().trim());
+  const { data: pricing } = trpc.documents.repairPricing.useQuery(
+    { query: debounced || "", make: make || undefined, model: model || undefined },
+    { enabled: open && meaningful, staleTime: 60_000 }
+  );
+  const hint = (() => {
+    const sc: any = (pricing as any)?.scopes;
+    if (!sc) return null;
+    for (const [key, label] of [["model", "same model"], ["make", `same make`], ["all", "all cars"]] as const) {
+      const s = sc[key];
+      if (s && s.labour?.n > 0) return { label, ...s.labour };
+    }
+    return null;
+  })();
+
+  const showDropdown = open && rect && (opts.length > 0 || !!hint);
   return (
     <>
       <input ref={inputRef} className={inp} placeholder="Mechanical Labour / Diagnostic Check…" value={value ?? ""}
         onChange={(e) => onChange(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} />
-      {open && rect && opts.length > 0 && createPortal(
+      {showDropdown && createPortal(
         <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 190), zIndex: 60 }}
           className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px]">
           {opts.map((t) => (
             <button key={t} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(t); setOpen(false); }}
               className="block w-full text-left px-2.5 py-1.5 hover:bg-violet-50">{t}</button>
           ))}
+          {hint && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onUseRate?.(hint.avg); setOpen(false); }}
+              title="Set this line's rate to the historical average"
+              className={`block w-full text-left px-2.5 py-1.5 hover:bg-violet-50 ${opts.length ? "border-t border-slate-100" : ""}`}>
+              <span className="text-[11px] uppercase font-semibold text-violet-700">Charged before</span>
+              <span className="block text-[12px] text-slate-600">
+                {hint.label}: avg <b className="text-slate-800">£{money(hint.avg)}</b>
+                {hint.n > 1 && <span className="text-slate-400"> · £{money(hint.min)}–£{money(hint.max)} · ×{hint.n}</span>}
+                {onUseRate && <span className="text-violet-700"> — use</span>}
+              </span>
+            </button>
+          )}
         </div>, document.body)}
     </>
   );
@@ -2797,7 +2834,11 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
             <button key={i} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onPick(o); setOpen(false); }}
               className="flex w-full items-baseline gap-2 text-left px-2.5 py-1.5 hover:bg-violet-50">
               {o.partNumber ? <span className="font-mono text-[11px] text-violet-700 shrink-0">{o.partNumber}</span> : null}
-              <span className="truncate">{o.description}</span>
+              <span className="truncate flex-1">{o.description}</span>
+              {/* what you'd be charging — the maintained price-list figure or the historical average
+                  (exactly what picking fills in) plus how often it's been used, so the choice isn't blind */}
+              {o.unitPrice != null && <span className="shrink-0 font-semibold text-slate-700">£{money(o.unitPrice)}</span>}
+              {o.count > 0 && <span className="shrink-0 text-[10px] text-slate-400">×{o.count}</span>}
             </button>
           ))}
         </div>, document.body)}
@@ -2805,7 +2846,7 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   );
 }
 
-function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
+function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string } }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
   const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20, _k: nextItemKey() })]);
@@ -2854,7 +2895,8 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
         : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
       <TableCell>{editing ? (
         kind === "Labour"
-          ? <LabourDescInput inp={inp} value={it.description ?? ""}
+          ? <LabourDescInput inp={inp} value={it.description ?? ""} make={vehicle?.make} model={vehicle?.model}
+              onUseRate={(rate) => update(idx, { unitPrice: rate.toFixed(2) })}
               onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
           : showPartNo
             ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
