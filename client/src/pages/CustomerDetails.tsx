@@ -70,6 +70,20 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 // what was done and which parts were fitted on each visit.
 const HISTORY_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", XS: "Excess", CR: "Credit Note" };
 
+// Clickable column header for the service-history table — click to sort, click again to flip.
+function HistSortHead({ label, k, sort, onSort, align }: { label: string; k: string; sort: { key: string; dir: "asc" | "desc" }; onSort: (k: string) => void; align?: "right" }) {
+    const active = sort.key === k;
+    return (
+        <TableHead className={`h-8 ${align === "right" ? "text-right" : ""}`}>
+            <button type="button" onClick={() => onSort(k)}
+                className={`inline-flex items-center gap-0.5 select-none hover:text-foreground ${active ? "text-foreground font-semibold" : ""}`}>
+                {label}
+                <ChevronDown className={`w-3 h-3 transition-transform ${active ? (sort.dir === "asc" ? "rotate-180" : "") : "opacity-30"}`} />
+            </button>
+        </TableHead>
+    );
+}
+
 function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void }) {
     const [open, setOpen] = useState(false);
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
@@ -85,43 +99,50 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
     const w = workSummary(h.mainDescription || h.description);
 
     return (
-        <div className="rounded-lg border bg-card overflow-hidden">
-            {/* Date-first single-line layout: scanning history is scanning time, so the date leads
-                in its own fixed column; the job reads as coloured type/reg/work badges plus one
-                truncated summary line instead of a wall of same-grey text. */}
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-            >
-                <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-[52px] shrink-0 text-center leading-tight">
-                        <div className="text-[13px] font-bold text-slate-800">{format(new Date(h.dateCreated), "dd MMM")}</div>
-                        <div className="text-[11px] text-muted-foreground">{format(new Date(h.dateCreated), "yyyy")}</div>
+        <>
+            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setOpen((o) => !o)}>
+                <TableCell className="py-1.5 whitespace-nowrap text-[13px]">
+                    <span className="font-semibold text-slate-800">{format(new Date(h.dateCreated), "dd/MM/yy")}</span>
+                </TableCell>
+                <TableCell className="py-1.5">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${DOC_TYPE_TAILWIND[h.docType] || "bg-slate-100 text-slate-700"}`}>{HISTORY_TYPE_LABEL[h.docType] || h.docType}</span>
+                </TableCell>
+                <TableCell className="py-1.5 text-[13px] font-semibold text-slate-800 whitespace-nowrap">
+                    {h.docNo || h.id}
+                    {!h.viaAccountSame && <span className="ml-1.5 bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
+                </TableCell>
+                <TableCell className="py-1.5">
+                    {h.registration ? <RegPlate reg={h.registration} size="xs" /> : <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="py-1.5 max-w-[320px]">
+                    <div className="flex flex-nowrap items-center gap-1 overflow-hidden">
+                        {(w?.badges || []).map((b: any) => (
+                            <span key={b.label} className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                        ))}
+                        <span className="truncate text-xs text-muted-foreground" title={fullDescription || undefined}>{w?.summary || h.mainDescription || "—"}</span>
                     </div>
-                    <div className="min-w-0">
-                        <div className="text-[13px] flex items-center gap-1.5 flex-wrap">
-                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${DOC_TYPE_TAILWIND[h.docType] || "bg-slate-100 text-slate-700"}`}>{HISTORY_TYPE_LABEL[h.docType] || h.docType}</span>
-                            <span className="font-semibold text-slate-800">#{h.docNo || h.id}</span>
-                            {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
-                            {Number(h.balance || 0) > 0 && <span className="bg-red-50 text-red-700 text-[10px] px-1.5 py-0.5 rounded border border-red-200 font-medium">Unpaid £{Number(h.balance).toFixed(2)}</span>}
-                            {!h.viaAccountSame && <span className="bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
-                        </div>
-                        <div className="mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden">
-                            {(w?.badges || []).map((b: any) => (
-                                <span key={b.label} className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
-                            ))}
-                            <span className="truncate text-xs text-muted-foreground">{w?.summary || h.mainDescription || "No job description"}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 pl-2">
-                    <div className="text-sm font-bold tabular-nums">£{Number(h.totalGross || 0).toFixed(2)}</div>
+                </TableCell>
+                <TableCell className="py-1.5 text-right whitespace-nowrap">
+                    {Number(h.balance || 0) > 0
+                        ? <span className="bg-red-50 text-red-700 text-[11px] px-1.5 py-0.5 rounded border border-red-200 font-semibold tabular-nums">£{Number(h.balance).toFixed(2)}</span>
+                        : <span className="text-muted-foreground text-xs">—</span>}
+                </TableCell>
+                <TableCell className="py-1.5 text-right text-[13px] font-bold tabular-nums whitespace-nowrap">£{Number(h.totalGross || 0).toFixed(2)}</TableCell>
+                <TableCell className="py-1.5 w-6">
                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-                </div>
-            </button>
-
+                </TableCell>
+            </TableRow>
             {open && (
+                <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={8} className="p-0">{renderDetails()}</TableCell>
+                </TableRow>
+            )}
+        </>
+    );
+
+    function renderDetails() {
+        return (
+
                 <div className="border-t bg-muted/20 px-4 py-3">
                     {isLoading ? (
                         <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
@@ -187,9 +208,8 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
                         </div>
                     )}
                 </div>
-            )}
-        </div>
-    );
+        );
+    }
 }
 
 // Extra phone numbers kept on the customer record (altContacts: [{ name, phone }]).
@@ -292,6 +312,10 @@ export default function CustomerDetails() {
     // in-app dialog, NOT window.confirm — Chrome silently suppresses native dialogs once a user
     // ever ticks "prevent this page from creating additional dialogs", which makes the button
     // look completely dead.
+    // Service-history table sort (client-side — the full history is already loaded)
+    const [histSort, setHistSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
+    const histSortBy = (key: string) => setHistSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" || key === "total" || key === "unpaid" ? "desc" : "asc" }));
+
     const [unlinkTarget, setUnlinkTarget] = useState<{ id: number; registration: string } | null>(null);
     const unlinkVehicle = trpc.reminders.unlinkVehicle.useMutation({
         onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); setUnlinkTarget(null); refetch(); },
@@ -712,35 +736,46 @@ export default function CustomerDetails() {
                                     </TabsList>
                                     <TabsContent value="history">
                                         {data.history && data.history.length > 0 ? (
-                                            <div className="space-y-1.5">
-                                                {(() => {
-                                                    // Year dividers so a long history reads as a timeline you can skim,
-                                                    // not one undifferentiated list.
-                                                    let lastYear: number | null = null;
-                                                    return data.history.map((h: any) => {
-                                                        const y = new Date(h.dateCreated).getFullYear();
-                                                        const showYear = y !== lastYear;
-                                                        lastYear = y;
-                                                        return (
-                                                            <Fragment key={h.id}>
-                                                                {showYear && (
-                                                                    <div className="flex items-center gap-2 pt-2 first:pt-0">
-                                                                        <span className="text-[11px] font-bold text-slate-400">{y}</span>
-                                                                        <div className="h-px flex-1 bg-slate-100" />
-                                                                    </div>
-                                                                )}
-                                                                <HistoryActivityRow
-                                                                    h={h}
-                                                                    onOpenFull={() => {
-                                                                        setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
-                                                                        setHistoryOpen(true);
-                                                                    }}
-                                                                />
-                                                            </Fragment>
-                                                        );
-                                                    });
-                                                })()}
-                                            </div>
+                                            <Table className="[&_th]:h-8">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <HistSortHead label="Date" k="date" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Type" k="type" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Doc No" k="docNo" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Reg" k="reg" sort={histSort} onSort={histSortBy} />
+                                                        <TableHead className="h-8">Job</TableHead>
+                                                        <HistSortHead label="Unpaid" k="unpaid" sort={histSort} onSort={histSortBy} align="right" />
+                                                        <HistSortHead label="Total" k="total" sort={histSort} onSort={histSortBy} align="right" />
+                                                        <TableHead className="h-8 w-6" />
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {[...data.history].sort((a: any, b: any) => {
+                                                        const dir = histSort.dir === "asc" ? 1 : -1;
+                                                        const val = (h: any) => {
+                                                            switch (histSort.key) {
+                                                                case "type": return h.docType || "";
+                                                                case "docNo": return Number(String(h.docNo || 0).replace(/\D/g, "")) || 0;
+                                                                case "reg": return (h.registration || "").toUpperCase();
+                                                                case "unpaid": return Number(h.balance) || 0;
+                                                                case "total": return Number(h.totalGross) || 0;
+                                                                default: return new Date(h.dateCreated || 0).getTime();
+                                                            }
+                                                        };
+                                                        const av = val(a), bv = val(b);
+                                                        return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+                                                    }).map((h: any) => (
+                                                        <HistoryActivityRow
+                                                            key={h.id}
+                                                            h={h}
+                                                            onOpenFull={() => {
+                                                                setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
+                                                                setHistoryOpen(true);
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm italic">
                                                 No service history recorded for this customer.
