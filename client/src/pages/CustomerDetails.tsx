@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown, ArrowLeftRight, UserX } from "lucide-react";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { RegPlate } from "@/components/RegPlate";
@@ -273,6 +274,14 @@ export default function CustomerDetails() {
             refetch();
         },
         onError: (e: any) => toast.error(e.message || "Merge failed"),
+    });
+
+    // "No Longer Owned" — clears the vehicle's current-owner link (same mutation as Vehicle
+    // Details' "Remove Owner") so MOT reminders for that car stop going to this customer.
+    // History is untouched: every past invoice keeps its own customer link.
+    const unlinkVehicle = trpc.reminders.unlinkVehicle.useMutation({
+        onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); refetch(); },
+        onError: (e: any) => toast.error(e.message || "Failed to remove owner link"),
     });
 
     // Edit State
@@ -643,6 +652,29 @@ export default function CustomerDetails() {
                                                                     onClick={() => window.location.href = `${base}/documents/new?reg=${encodeURIComponent(v.registration)}`}
                                                                 >
                                                                     <Plus className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                                <AssignCustomerDialog
+                                                                    vehicleId={v.id}
+                                                                    onAssigned={() => refetch()}
+                                                                    triggerButton={
+                                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Transfer to a different owner">
+                                                                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                                                                        </Button>
+                                                                    }
+                                                                />
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-red-600"
+                                                                    title="No longer owned — stop MOT reminders to this customer for this vehicle"
+                                                                    disabled={unlinkVehicle.isPending}
+                                                                    onClick={() => {
+                                                                        if (window.confirm(`${customer.name} no longer owns ${v.registration}?\n\nThis removes the owner link so they stop getting MOT reminders for it. Past invoices are not affected.`)) {
+                                                                            unlinkVehicle.mutate({ vehicleId: v.id });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <UserX className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </div>
                                                         </TableCell>
