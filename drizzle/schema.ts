@@ -407,6 +407,11 @@ export const partsPriceList = pgTable("partsPriceList", {
   vatRate: numeric("vatRate", { precision: 5, scale: 2 }).default("20"),
   quantity: numeric("quantity", { precision: 10, scale: 2 }), // typical qty for this part; blank = default to 1
   nominalCode: varchar("nominalCode", { length: 50 }),
+  // Price FLOOR rule: when set, ANY part/lubricant whose description contains this row's
+  // description (whole-word match, most-specific rule wins) must never be priced below this —
+  // historical-average suggestions get clamped up, and the job-sheet editor warns on a manual
+  // price below it (e.g. "Oil Filter" min £11.95, "Oil" min £12.95). See applyPriceFloors.
+  minPrice: numeric("minPrice", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({

@@ -612,7 +612,46 @@ export async function suggestParts(query: string, limit = 8) {
       unitPrice: Number(p.unitPrice), vatRate: p.vatRate != null ? Number(p.vatRate) : null, quantity: p.quantity != null ? Number(p.quantity) : null,
     });
   }
+  // Business price floors override history: a historical average can sit well below today's
+  // minimum charge (e.g. "OIL FILTER" avg £6.47 across 4,000+ old jobs vs the £11.95 minimum),
+  // and the exact-key price-list override above misses the many description variants ("OIL
+  // FILTER", "CASTROL 5W/30 ENGINE OIL", …). Clamp every suggestion up to its matching floor.
+  const floorRules = await getPriceFloorRules();
+  for (const o of out) {
+    const floor = matchPriceFloor(o.description, floorRules);
+    if (floor != null && (o.unitPrice == null || o.unitPrice < floor)) o.unitPrice = floor;
+  }
   return out.slice(0, limit);
+}
+
+/** Price-floor rules: parts-price-list rows with a minPrice set. Kept small (the list is
+ *  maintained by hand), so callers fetch all rules and match in JS. */
+export async function getPriceFloorRules() {
+  const db = await getDb();
+  if (!db) return [] as { description: string; minPrice: number }[];
+  const rows = await db.select({ description: partsPriceList.description, minPrice: partsPriceList.minPrice })
+    .from(partsPriceList).where(isNotNull(partsPriceList.minPrice));
+  return rows.map((r) => ({ description: r.description, minPrice: Number(r.minPrice) })).filter((r) => r.minPrice > 0);
+}
+
+/** The floor (if any) that applies to a line description. Whole-word phrase match, case-
+ *  insensitive — so an "Oil" rule catches "CASTROL 5W/30 ENGINE OIL" but NOT "COIL SPRING" or
+ *  "SPOILER" — and when several rules match, the most specific (longest phrase) wins, so an
+ *  "Oil Filter" £11.95 rule beats the general "Oil" £12.95 one for filters.
+ *  NOTE: mirrored client-side in DocumentDetails.tsx (matchPriceFloor) for the live job-sheet
+ *  warning — keep the two in sync if the matching semantics ever change. */
+export function matchPriceFloor(description: string | null | undefined, rules: { description: string; minPrice: number }[]): number | null {
+  const d = String(description ?? "");
+  if (!d.trim() || !rules.length) return null;
+  let best: { len: number; min: number } | null = null;
+  for (const r of rules) {
+    const phrase = r.description.trim();
+    if (!phrase) continue;
+    const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(`\\b${esc}\\b`, "i").test(d)) continue;
+    if (!best || phrase.length > best.len) best = { len: phrase.length, min: r.minPrice };
+  }
+  return best ? best.min : null;
 }
 
 /** List the maintained parts price list, optionally filtered by a search term. */
@@ -627,7 +666,7 @@ export async function listPartsPriceList(search?: string) {
 }
 
 /** Create or (if `id` given) update a parts price list entry. */
-export async function upsertPartsPriceListEntry(input: { id?: number; partNumber?: string; description: string; unitPrice: number; vatRate?: number; quantity?: number; nominalCode?: string }) {
+export async function upsertPartsPriceListEntry(input: { id?: number; partNumber?: string; description: string; unitPrice: number; vatRate?: number; quantity?: number; nominalCode?: string; minPrice?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const values = {
@@ -637,6 +676,7 @@ export async function upsertPartsPriceListEntry(input: { id?: number; partNumber
     vatRate: input.vatRate != null ? String(input.vatRate) : "20",
     quantity: input.quantity != null ? String(input.quantity) : null,
     nominalCode: input.nominalCode?.trim() || null,
+    minPrice: input.minPrice != null ? String(input.minPrice) : null,
   };
   if (input.id) {
     const [row] = await db.update(partsPriceList).set(values).where(eq(partsPriceList.id, input.id)).returning();

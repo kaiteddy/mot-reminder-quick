@@ -2846,6 +2846,23 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   );
 }
 
+// Client mirror of server/db.ts matchPriceFloor (keep in sync): the floor rule (if any) that
+// applies to a line description. Whole-word phrase match so "Oil" can't catch "Coil Spring";
+// the most specific (longest) matching rule wins ("Oil Filter" £11.95 beats "Oil" £12.95).
+function matchPriceFloor(description: string | null | undefined, rules: { description: string; minPrice: number }[]): number | null {
+  const d = String(description ?? "");
+  if (!d.trim() || !rules.length) return null;
+  let best: { len: number; min: number } | null = null;
+  for (const r of rules) {
+    const phrase = r.description.trim();
+    if (!phrase) continue;
+    const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(`\\b${esc}\\b`, "i").test(d)) continue;
+    if (!best || phrase.length > best.len) best = { len: phrase.length, min: r.minPrice };
+  }
+  return best ? best.min : null;
+}
+
 function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string } }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
@@ -2855,6 +2872,14 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
   const KIND_NOUN: Record<string, string> = { Part: "parts", Labour: "labour", Sundries: "sundries", Paint: "paint & materials", Lubricant: "lubricants", Other: "advisories" };
   const noun = KIND_NOUN[kind] || "lines";
   const showPartNo = kind === "Part" || kind === "Lubricant";
+
+  // Business price floors (Parts Price List "Min £" rules) — warn live when a part/lubricant is
+  // priced below its minimum (e.g. any oil filter under £11.95). Deliberately a warning, not a
+  // hard block: a genuine goodwill/warranty discount stays possible, it just can't happen unnoticed.
+  const { data: priceListRows } = trpc.partsPriceList.list.useQuery({}, { enabled: editing && showPartNo, staleTime: 60_000 });
+  const floorRules = ((priceListRows as any[]) || [])
+    .filter((r) => r.minPrice != null && Number(r.minPrice) > 0)
+    .map((r) => ({ description: String(r.description), minPrice: Number(r.minPrice) }));
 
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
 
@@ -2877,6 +2902,8 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
   // The data cells for one row (everything except the drag-handle column).
   const rowCells = (it: Item, idx: number) => {
     const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
+    const floor = showPartNo && floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
+    const belowFloor = floor != null && (num(it.unitPrice) ?? 0) > 0 && (num(it.unitPrice) ?? 0) < floor;
     // Picking a suggestion fills description/part no AND, when known (a price-list entry or the
     // part's average historical price), quantity/price/VAT too — not just left at the £0 default.
     const pickPart = (o: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) =>
@@ -2905,7 +2932,16 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
             : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
       ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
       <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
-      <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
+      <TableCell className="text-right">
+        {editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}
+        {belowFloor && (
+          <button type="button" onClick={editing ? () => update(idx, { unitPrice: floor!.toFixed(2) }) : undefined}
+            title={editing ? `Minimum for this item is £${money(floor)} — click to apply` : `Below the £${money(floor)} minimum`}
+            className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap hover:underline">
+            min £{money(floor)}
+          </button>
+        )}
+      </TableCell>
       <TableCell className="text-right">{editing
         ? <input className={inp + " text-right"} placeholder="0" title="Discount % off this line — e.g. 10 for 10% off" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
         : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>

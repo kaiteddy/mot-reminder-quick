@@ -490,6 +490,7 @@ export const appRouter = router({
       .input(z.object({
         id: z.number().optional(), partNumber: z.string().optional(), description: z.string().min(1),
         unitPrice: z.number(), vatRate: z.number().optional(), quantity: z.number().optional(), nominalCode: z.string().optional(),
+        minPrice: z.number().nullable().optional(),
       }))
       .mutation(async ({ input }) => {
         const { upsertPartsPriceListEntry } = await import("./db");

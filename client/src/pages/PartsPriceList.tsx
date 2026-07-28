@@ -14,10 +14,11 @@ type Row = {
   vatRate: string | null;
   quantity: string | null;
   nominalCode: string | null;
+  minPrice: string | null;
 };
 
-type Draft = { partNumber: string; description: string; unitPrice: string; vatRate: string; quantity: string; nominalCode: string };
-const emptyDraft: Draft = { partNumber: "", description: "", unitPrice: "", vatRate: "20", quantity: "", nominalCode: "" };
+type Draft = { partNumber: string; description: string; unitPrice: string; vatRate: string; quantity: string; nominalCode: string; minPrice: string };
+const emptyDraft: Draft = { partNumber: "", description: "", unitPrice: "", vatRate: "20", quantity: "", nominalCode: "", minPrice: "" };
 
 export default function PartsPriceList() {
   const [search, setSearch] = useState("");
@@ -49,6 +50,7 @@ export default function PartsPriceList() {
       vatRate: d.vatRate.trim() ? Number(d.vatRate) : undefined,
       quantity: d.quantity.trim() ? Number(d.quantity) : undefined,
       nominalCode: d.nominalCode.trim() || undefined,
+      minPrice: d.minPrice.trim() ? Number(d.minPrice) : null,
     };
   }
 
@@ -66,6 +68,7 @@ export default function PartsPriceList() {
     setEditDraft({
       partNumber: r.partNumber ?? "", description: r.description, unitPrice: r.unitPrice,
       vatRate: r.vatRate ?? "20", quantity: r.quantity ?? "", nominalCode: r.nominalCode ?? "",
+      minPrice: r.minPrice ?? "",
     });
   }
 
@@ -92,6 +95,7 @@ export default function PartsPriceList() {
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2"><Package className="w-5 h-5 text-violet-600" /> Parts Price List</h1>
           <p className="text-sm text-slate-500">Keep prices current here so picking a part on a job sheet auto-fills its quantity and price. A part not yet listed still gets a price suggested from its average historical cost.</p>
+          <p className="text-sm text-slate-500 mt-1"><b className="text-slate-600">Min £</b> makes an entry a price-floor rule: anything on a job matching that description (whole words — an “Oil” rule can't catch “Coil Spring”) is never suggested below it, and the job sheet warns if it's priced lower. The most specific rule wins, so “Oil Filter” £11.95 beats a general “Oil” £12.95.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -114,6 +118,7 @@ export default function PartsPriceList() {
                 <th className="px-3 py-2">Description</th>
                 <th className="px-3 py-2 w-24 text-right">Qty</th>
                 <th className="px-3 py-2 w-28 text-right">Price</th>
+                <th className="px-3 py-2 w-24 text-right" title="Price floor — nothing matching this description is ever priced below it">Min £</th>
                 <th className="px-3 py-2 w-20 text-right">VAT %</th>
                 <th className="px-3 py-2 w-28">Nominal</th>
                 <th className="px-3 py-2 w-20"></th>
@@ -126,6 +131,7 @@ export default function PartsPriceList() {
                   <td className="px-3 py-1.5"><input className={inp} placeholder="Description" autoFocus value={addDraft.description} onChange={(e) => setAddDraft((d) => ({ ...d, description: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="1" value={addDraft.quantity} onChange={(e) => setAddDraft((d) => ({ ...d, quantity: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="0.00" value={addDraft.unitPrice} onChange={(e) => setAddDraft((d) => ({ ...d, unitPrice: e.target.value }))} /></td>
+                  <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="—" title="Price floor for anything matching this description" value={addDraft.minPrice} onChange={(e) => setAddDraft((d) => ({ ...d, minPrice: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="20" value={addDraft.vatRate} onChange={(e) => setAddDraft((d) => ({ ...d, vatRate: e.target.value }))} /></td>
                   <td className="px-3 py-1.5"><input className={inp} placeholder="Nominal" value={addDraft.nominalCode} onChange={(e) => setAddDraft((d) => ({ ...d, nominalCode: e.target.value }))} /></td>
                   <td className="px-3 py-1.5">
@@ -139,10 +145,10 @@ export default function PartsPriceList() {
                 </tr>
               )}
               {isLoading && (
-                <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</td></tr>
               )}
               {!isLoading && rows.length === 0 && !adding && (
-                <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">No parts in the price list yet{search ? " matching your search" : ""}.</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">No parts in the price list yet{search ? " matching your search" : ""}.</td></tr>
               )}
               {rows.map((r) => {
                 const isEditing = editingId === r.id;
@@ -153,6 +159,7 @@ export default function PartsPriceList() {
                       <td className="px-3 py-1.5"><input className={inp} value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp + " text-right"} value={editDraft.quantity} onChange={(e) => setEditDraft((d) => ({ ...d, quantity: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp + " text-right"} value={editDraft.unitPrice} onChange={(e) => setEditDraft((d) => ({ ...d, unitPrice: e.target.value }))} /></td>
+                      <td className="px-3 py-1.5"><input className={inp + " text-right"} placeholder="—" title="Price floor for anything matching this description" value={editDraft.minPrice} onChange={(e) => setEditDraft((d) => ({ ...d, minPrice: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp + " text-right"} value={editDraft.vatRate} onChange={(e) => setEditDraft((d) => ({ ...d, vatRate: e.target.value }))} /></td>
                       <td className="px-3 py-1.5"><input className={inp} value={editDraft.nominalCode} onChange={(e) => setEditDraft((d) => ({ ...d, nominalCode: e.target.value }))} /></td>
                       <td className="px-3 py-1.5">
@@ -172,6 +179,7 @@ export default function PartsPriceList() {
                     <td className="px-3 py-1.5">{r.description}</td>
                     <td className="px-3 py-1.5 text-right">{r.quantity ? Number(r.quantity) : 1}</td>
                     <td className="px-3 py-1.5 text-right font-medium">£{money(r.unitPrice)}</td>
+                    <td className="px-3 py-1.5 text-right">{r.minPrice != null ? <span className="font-medium text-amber-700" title={`Floor: anything matching “${r.description}” is never priced below £${money(r.minPrice)}`}>£{money(r.minPrice)}</span> : <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-1.5 text-right text-slate-500">{r.vatRate != null ? Number(r.vatRate) : 20}%</td>
                     <td className="px-3 py-1.5 text-slate-500">{r.nominalCode || "—"}</td>
                     <td className="px-3 py-1.5">
