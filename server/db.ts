@@ -1109,6 +1109,28 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     customerName: sql<string>`COALESCE(${serviceHistory.customerName}, MIN(${customers.name}))`,
     paymentMethods: serviceHistory.paymentMethods,
     balance: serviceHistory.balance,
+    // History deliberately shows every document, converted or not — same as real GA4, which
+    // never deletes a job sheet once it's invoiced, it just leaves the old JS record sitting
+    // alongside the new SI (see "Job Sheets" tab's own filter, getDocuments, for the same
+    // origJobSheetNo/description-fingerprint match reused here). Rather than hide a converted
+    // job sheet from this full audit trail, flag which invoice it became so the UI can label it
+    // instead of showing what looks like a separate, still-outstanding job. vehicleId is REQUIRED
+    // on BOTH branches — GA4 job-sheet numbers get reused over a long history, so matching by
+    // origJobSheetNo alone can false-positive against an unrelated invoice for a different car.
+    convertedToDocNo: sql<string | null>`CASE WHEN ${serviceHistory.docType} = 'JS' THEN (
+      SELECT si."docNo" FROM "serviceHistory" si
+      WHERE si."docType" = 'SI'
+        AND si."vehicleId" = ${serviceHistory.vehicleId}
+        AND (
+          si."origJobSheetNo" = (NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::int
+          OR (
+            si."dateCreated" >= ${serviceHistory.dateCreated}
+            AND si.description = ${serviceHistory.description}
+            AND length(${serviceHistory.description}) >= 15
+          )
+        )
+      ORDER BY si."dateCreated" ASC LIMIT 1
+    ) ELSE NULL END`,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
@@ -1259,9 +1281,14 @@ export async function getDocuments(opts: { search?: string; docType?: string; li
       // Job sheets already invoiced (tracked via the invoice's origJobSheetNo) are done — keep them
       // out of the working Job Sheets queue so it isn't cluttered with stale, already-closed jobs.
       // Still fully visible under "All" — nothing here is deleted or hidden from the record.
+      // vehicleId is REQUIRED here, not just docNo/origJobSheetNo — GA4 job-sheet numbers get
+      // reused over a long enough history, so matching by number alone can false-positive against
+      // a totally unrelated invoice for a different car that happens to share that old number
+      // (found via ET23VRE job sheet 93156 numerically colliding with an unrelated BW72AGV invoice).
       conds.push(sql`NOT EXISTS (
         SELECT 1 FROM "serviceHistory" si
         WHERE si."docType" = 'SI'
+          AND si."vehicleId" = ${serviceHistory.vehicleId}
           AND si."origJobSheetNo" = (NULLIF(regexp_replace(${serviceHistory.docNo}, '[^0-9]', '', 'g'), ''))::int
       )`);
       // The web app's own "Convert" button doesn't stamp origJobSheetNo (only the GA4 sync does),
