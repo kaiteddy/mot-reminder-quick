@@ -631,7 +631,9 @@ export default function CustomerDetails() {
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="text-right py-2">
-                                                            <div className="flex justify-end gap-1 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {/* Always visible (softly, full-strength on hover) — the old reveal-on-hover
+                                                                pattern made the actions effectively undiscoverable. */}
+                                                            <div className="flex justify-end gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
