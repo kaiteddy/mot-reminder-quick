@@ -48,7 +48,7 @@ export default function UniversalSearch({ placeholder = "Search customers, vehic
 
   const res = trpc.documents.globalSearch.useQuery({ query: debounced }, { enabled: debounced.length >= 2, staleTime: 30_000 });
   const data = res.data as any;
-  const hasResults = data && (data.customers.length || data.vehicles.length || data.documents.length);
+  const hasResults = !!(data && (data.customers.length || data.vehicles.length || data.documents.length));
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };

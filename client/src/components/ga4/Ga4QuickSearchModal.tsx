@@ -29,7 +29,7 @@ export default function Ga4QuickSearchModal({ query, onClose }: { query: string;
 
   const res = trpc.documents.globalSearch.useQuery({ query: debounced }, { enabled: debounced.length >= 2, staleTime: 15_000 });
   const data = res.data as any;
-  const hasResults = data && (data.documents?.length || data.vehicles?.length || data.customers?.length);
+  const hasResults = !!(data && (data.documents?.length || data.vehicles?.length || data.customers?.length));
 
   // Server already returns documents most-recent-first (issued, falling back to created) — this
   // just lets staff flip to oldest-first without a round trip, since the page is already fetched.
