@@ -2668,6 +2668,7 @@ export async function saveDocument(input: SaveDocInput) {
       vehicleId = id;
     }
   }
+  const vehicleHadOwner = customerId != null; // captured before 1b/1c can reassign customerId
 
   // 1b) create a new customer from entered details when requested
   let accountNumber = input.accountNumber;
@@ -2700,6 +2701,15 @@ export async function saveDocument(input: SaveDocInput) {
       address: address || undefined,
     });
     if (Object.keys(cu).length) await db.update(customers).set(cu).where(eq(customers.id, cid));
+  }
+
+  // 1d) if this doc links an EXISTING customer to a vehicle that has no owner yet (a brand-new
+  // vehicle, or one nobody had claimed), adopt it — otherwise every future lookup for that vehicle
+  // (MOT reminders, the appointment-booking dialog, VehicleDetails) comes back "no customer" despite
+  // this very document's own clear customer link. Never overwrites a vehicle with a different owner.
+  const finalCustomerId = input.customerId ?? customerId;
+  if (vehicleId && finalCustomerId && !vehicleHadOwner) {
+    await db.update(vehicles).set({ customerId: finalCustomerId }).where(eq(vehicles.id, vehicleId));
   }
 
   // 2) recompute totals from line items

@@ -29,6 +29,7 @@ import { archiveStaleVehicleOwners } from "./archive-stale-vehicle-owners";
 import { decodeRegChangeAnnotations } from "./decode-reg-change-annotations";
 import { archiveOldEstimates } from "./archive-old-estimates";
 import { archiveCreditNotes } from "./archive-credit-notes";
+import { linkOrphanedVehicleOwners } from "./link-orphaned-vehicle-owners";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -323,6 +324,9 @@ await archiveOldEstimates(c, GO, path.join(process.cwd(), "scripts", ".cleanup-b
 
 // ---- 11) Archive credit notes unconditionally (unused doc type — soft, Documents.tsx Archive tab) ----
 await archiveCreditNotes(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 12) Link a vehicle to its owner when history names exactly one customer but the vehicle itself has none ----
+await linkOrphanedVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
