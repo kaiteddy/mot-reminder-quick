@@ -513,19 +513,22 @@ export default function CustomerDetails() {
                     </div>
                 </div>
 
-                {/* Info Cards Grid */}
-                <div className="grid gap-6 md:grid-cols-3">
-                    <Card className="md:col-span-1 h-fit">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-lg">
-                                <User className="w-5 h-5 text-blue-500" />
-                                Contact Details
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {parsedContacts.length > 0 ? (
-                                <div className="space-y-4">
-                                    {parsedContacts.map((contact, idx) => (
+                {/* Contact strip — full width, directly under the customer's name so it reads as
+                    part of who they are (it used to sit in a side column, visually orphaned).
+                    Three zones: how to reach them, where they are, and a live map of the address
+                    with one-click Google Maps directions for collections/deliveries. */}
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <User className="w-5 h-5 text-blue-500" />
+                            Contact Details
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-6 md:grid-cols-3">
+                            <div className="space-y-2.5">
+                                {parsedContacts.length > 0 ? (
+                                    parsedContacts.map((contact, idx) => (
                                         <div key={idx} className="flex items-center gap-3 text-sm flex-wrap bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                                             {contact.type === 'email' ? (
                                                 <div className="bg-blue-100 p-1.5 rounded-md text-blue-600 shrink-0">
@@ -536,7 +539,6 @@ export default function CustomerDetails() {
                                                     <Phone className="w-4 h-4" />
                                                 </div>
                                             )}
-
                                             <a
                                                 href={contact.type === 'email'
                                                     ? `mailto:${contact.value}`
@@ -546,38 +548,58 @@ export default function CustomerDetails() {
                                             >
                                                 {contact.value}
                                             </a>
-
                                             {contact.tag && (
                                                 <Badge variant="secondary" className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200/50 ml-auto">
                                                     {contact.tag}
                                                 </Badge>
                                             )}
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground italic">No contact information available</div>
-                            )}
-                            <AdditionalNumbers customerId={customer.id as number} />
-                            {(customer.address || customer.postcode) && (
-                                <div className="flex items-start gap-2 text-sm">
-                                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                    <div>
-                                        {customer.address && <div>{customer.address}</div>}
-                                        {customer.postcode && <div className="font-medium text-blue-700 uppercase">{customer.postcode}</div>}
+                                    ))
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic">No contact information available</div>
+                                )}
+                                <AdditionalNumbers customerId={customer.id as number} />
+                            </div>
+                            <div className="space-y-3">
+                                {(customer.address || customer.postcode) ? (
+                                    <div className="flex items-start gap-2.5">
+                                        <MapPin className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+                                        <div>
+                                            {customer.address && <div className="text-[15px] leading-snug text-slate-800">{customer.address}</div>}
+                                            {customer.postcode && <div className="text-lg font-bold text-blue-700 uppercase tracking-wide">{customer.postcode}</div>}
+                                            <a
+                                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}`}
+                                                target="_blank" rel="noreferrer"
+                                                className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[13px] font-medium text-blue-700 hover:bg-blue-100"
+                                            >
+                                                <MapPin className="w-3.5 h-3.5" /> Directions in Google Maps
+                                            </a>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic">No address on file</div>
+                                )}
+                                {customer.notes && (
+                                    <div className="border-t pt-3">
+                                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5">Internal Notes</p>
+                                        <p className="text-sm bg-yellow-50/50 p-2.5 rounded-md border border-yellow-100 whitespace-pre-wrap">{customer.notes}</p>
+                                    </div>
+                                )}
+                            </div>
+                            {(customer.address || customer.postcode) && (
+                                <iframe
+                                    title="Customer address map"
+                                    className="w-full h-44 md:h-full min-h-[140px] rounded-lg border"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer-when-downgrade"
+                                    src={`https://maps.google.com/maps?q=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}&z=15&output=embed`}
+                                />
                             )}
-                            {customer.notes && (
-                                <div className="border-t pt-4 mt-4">
-                                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">Internal Notes</p>
-                                    <p className="text-sm bg-yellow-50/50 p-3 rounded-md border border-yellow-100 whitespace-pre-wrap">{customer.notes}</p>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                    <div className="md:col-span-2 space-y-6">
+                <div className="space-y-6">
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -832,7 +854,6 @@ export default function CustomerDetails() {
                                 </Tabs>
                             </CardContent>
                         </Card>
-                    </div>
                 </div>
             </div>
 
