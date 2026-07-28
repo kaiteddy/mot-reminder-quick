@@ -10,7 +10,7 @@ import { omnipartRouter } from "./routers/omnipart";
 import { accountsExportRouter } from "./routers/accountsExport";
 import { expenditureRouter } from "./routers/expenditure";
 
-import { desc, eq, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
+import { desc, eq, ne, or, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
 import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
 
 export const appRouter = router({
@@ -2860,21 +2860,41 @@ export const appRouter = router({
         const { createReminderLog } = await import("./db");
         const { getDb } = await import("./db");
 
-
-        // Find the vehicle for this customer (use latest)
+        // A reply continues whatever conversation the customer replied to — WhatsApp's 24h
+        // window means we messaged them first, so the most recent reminder log to this
+        // number/customer identifies the actual vehicle under discussion. Only if no prior
+        // message exists at all do we fall back to the customer's latest vehicle (the old
+        // behavior, which mis-tagged replies with whichever car happened to have the highest
+        // id — e.g. Mrs Kagan's FH54JVM MOT thread logged against FA17NHD).
         const db = await getDb();
         let vehicleId: number | null = null;
+        let registration: string | null = null;
 
         if (db) {
-          const results = await db
-            .select({ id: vehicles.id })
-            .from(vehicles)
-            .where(eq(vehicles.customerId, input.customerId))
-            .orderBy(desc(vehicles.id))
-            .limit(1);
+          const last9 = input.phoneNumber.replace(/\D/g, "").slice(-9);
+          const lastLog = (await db.select({ vehicleId: reminderLogs.vehicleId, registration: reminderLogs.registration })
+            .from(reminderLogs)
+            .where(and(
+              ne(reminderLogs.messageType, "Other"),
+              last9
+                ? or(eq(reminderLogs.customerId, input.customerId), sql`RIGHT(regexp_replace(${reminderLogs.recipient}, '\\D', '', 'g'), 9) = ${last9}`)
+                : eq(reminderLogs.customerId, input.customerId),
+            ))
+            .orderBy(desc(reminderLogs.sentAt)).limit(1))[0];
 
-          if (results.length > 0) {
-            vehicleId = results[0].id;
+          if (lastLog) {
+            vehicleId = lastLog.vehicleId ?? null;
+            registration = lastLog.registration ?? null;
+          }
+          if (vehicleId == null) {
+            const results = await db.select({ id: vehicles.id, registration: vehicles.registration })
+              .from(vehicles).where(eq(vehicles.customerId, input.customerId))
+              .orderBy(desc(vehicles.id)).limit(1);
+            if (results.length > 0) { vehicleId = results[0].id; registration = registration ?? results[0].registration; }
+          }
+          if (registration == null && vehicleId != null) {
+            const v = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+            registration = v?.registration ?? null;
           }
         }
 
@@ -2887,11 +2907,13 @@ export const appRouter = router({
           throw new Error(result.error || "Failed to send message");
         }
 
-        // Log the sent message
+        // Log the sent message — registration recorded explicitly so the log is
+        // self-describing instead of relying on the vehicleId guess at read time.
         await createReminderLog({
           reminderId: null,
           customerId: input.customerId,
           vehicleId: vehicleId,
+          registration,
           messageType: "Other",
           recipient: input.phoneNumber,
           messageSid: result.messageId,

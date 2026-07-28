@@ -469,7 +469,16 @@ export async function getCustomerReminderTimeline(customerId: number) {
   const cust = (await db.select({ phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1))[0];
   const last9 = String(cust?.phone ?? "").replace(/\D/g, "").slice(-9);
 
-  const logs = await db.select().from(reminderLogs)
+  // registration falls back to the linked vehicle's plate — manual replies sent from the
+  // Conversations page (messageType "Other") log a vehicleId but no registration text, yet
+  // they're always part of a conversation about that car (WhatsApp's 24h window means the
+  // customer messaged us about something — usually the reminder that started the thread).
+  const logs = await db.select({
+    id: reminderLogs.id, sentAt: reminderLogs.sentAt, messageType: reminderLogs.messageType,
+    status: reminderLogs.status, messageContent: reminderLogs.messageContent, errorMessage: reminderLogs.errorMessage,
+    registration: sql<string | null>`COALESCE(NULLIF(${reminderLogs.registration}, ''), ${vehicles.registration})`,
+  }).from(reminderLogs)
+    .leftJoin(vehicles, eq(reminderLogs.vehicleId, vehicles.id))
     .where(last9
       ? or(eq(reminderLogs.customerId, customerId), sql`RIGHT(regexp_replace(${reminderLogs.recipient}, '\\D', '', 'g'), 9) = ${last9}`)
       : eq(reminderLogs.customerId, customerId))
@@ -484,10 +493,23 @@ export async function getCustomerReminderTimeline(customerId: number) {
     return true;
   });
 
+  // A manual reply ("Other") is part of whatever conversation the customer replied to — almost
+  // always the last reminder we sent them (WhatsApp's 24h window guarantees a preceding message).
+  // Its stored vehicleId is only sendReply's newest-vehicle-by-id GUESS, so when the log has no
+  // registration of its own, attribute it to the closest preceding reminder's car instead
+  // (e.g. Mrs Kagan's booking replies belong to FH54JVM's MOT thread, not FA17NHD).
+  const asc = [...logs].sort((a, b) => new Date(a.sentAt as any).getTime() - new Date(b.sentAt as any).getTime());
+  let lastReminderReg: string | null = null;
+  const threadRegByLogId = new Map<number, string | null>();
+  for (const l of asc) {
+    if (l.messageType !== "Other") lastReminderReg = l.registration ?? lastReminderReg;
+    threadRegByLogId.set(l.id, l.messageType === "Other" ? (lastReminderReg ?? l.registration) : l.registration);
+  }
+
   const timeline = [
     ...logs.map((l) => ({
       kind: "message" as const, id: `log-${l.id}`, date: l.sentAt, type: l.messageType,
-      registration: l.registration, method: "whatsapp", status: l.status,
+      registration: threadRegByLogId.get(l.id) ?? l.registration, method: "whatsapp", status: l.status,
       preview: l.messageContent ? String(l.messageContent).replace(/\s+/g, " ").slice(0, 160) : null,
       errorMessage: l.errorMessage,
     })),
