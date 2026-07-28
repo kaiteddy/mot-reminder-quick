@@ -11,7 +11,9 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
 import { RegPlate } from "@/components/RegPlate";
 import { format } from "date-fns";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
+import { DOC_TYPE_TAILWIND } from "@/lib/docType";
+import { workSummary } from "@/lib/workSummary";
 import {
     Dialog,
     DialogContent,
@@ -66,6 +68,8 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 // expanded it lazily loads the document's line items and lays them out like a job
 // card — Labour and Parts & Consumables broken out — so it's easy to see exactly
 // what was done and which parts were fitted on each visit.
+const HISTORY_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", XS: "Excess", CR: "Credit Note" };
+
 function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void }) {
     const [open, setOpen] = useState(false);
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
@@ -78,35 +82,41 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
     const parts = (items || []).filter((i: any) => i.itemType === "Part");
     const others = (items || []).filter((i: any) => i.itemType !== "Labour" && i.itemType !== "Part");
     const fullDescription = h.description || h.mainDescription;
+    const w = workSummary(h.mainDescription || h.description);
 
     return (
         <div className="rounded-lg border bg-card overflow-hidden">
+            {/* Date-first single-line layout: scanning history is scanning time, so the date leads
+                in its own fixed column; the job reads as coloured type/reg/work badges plus one
+                truncated summary line instead of a wall of same-grey text. */}
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 transition-colors"
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
             >
                 <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${h.docType === 'SI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-600'}`}>
-                        {h.docType === 'SI' ? <FileText className="w-5 h-5" /> : <History className="w-5 h-5" />}
+                    <div className="w-[52px] shrink-0 text-center leading-tight">
+                        <div className="text-[13px] font-bold text-slate-800">{format(new Date(h.dateCreated), "dd MMM")}</div>
+                        <div className="text-[11px] text-muted-foreground">{format(new Date(h.dateCreated), "yyyy")}</div>
                     </div>
                     <div className="min-w-0">
-                        <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
-                            {h.docType === 'SI' ? 'Invoice' : 'Estimate'} #{h.docNo || h.id}
+                        <div className="text-[13px] flex items-center gap-1.5 flex-wrap">
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${DOC_TYPE_TAILWIND[h.docType] || "bg-slate-100 text-slate-700"}`}>{HISTORY_TYPE_LABEL[h.docType] || h.docType}</span>
+                            <span className="font-semibold text-slate-800">#{h.docNo || h.id}</span>
                             {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
                             {Number(h.balance || 0) > 0 && <span className="bg-red-50 text-red-700 text-[10px] px-1.5 py-0.5 rounded border border-red-200 font-medium">Unpaid £{Number(h.balance).toFixed(2)}</span>}
                             {!h.viaAccountSame && <span className="bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
                         </div>
-                        <div className="text-xs text-muted-foreground line-clamp-1">
-                            {h.mainDescription || "No job description"}
+                        <div className="mt-0.5 flex flex-nowrap items-center gap-1 overflow-hidden">
+                            {(w?.badges || []).map((b: any) => (
+                                <span key={b.label} className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                            ))}
+                            <span className="truncate text-xs text-muted-foreground">{w?.summary || h.mainDescription || "No job description"}</span>
                         </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 pl-2">
-                    <div className="text-right">
-                        <div className="text-sm font-bold">£{Number(h.totalGross || 0).toFixed(2)}</div>
-                        <div className="text-[10px] text-muted-foreground">{format(new Date(h.dateCreated), "dd MMM yyyy")}</div>
-                    </div>
+                    <div className="text-sm font-bold tabular-nums">£{Number(h.totalGross || 0).toFixed(2)}</div>
                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
                 </div>
             </button>
@@ -455,56 +465,28 @@ export default function CustomerDetails() {
                     </DialogContent>
                 </Dialog>
 
-                {/* Stats Grid */}
-                <div className="grid gap-4 md:grid-cols-4">
-                    <Card className="bg-blue-50/50 border-blue-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-blue-600 uppercase tracking-wider flex items-center justify-between">
-                                Total Jobs
-                                <FileText className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{data.stats?.totalJobs || 0}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-blue-400">Recorded sessions</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-green-50/50 border-green-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-green-600 uppercase tracking-wider flex items-center justify-between">
-                                Total Spent
-                                <DollarSign className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">£{(data.stats?.totalSpent || 0).toFixed(2)}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-green-400">Total revenue</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-orange-50/50 border-orange-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-orange-600 uppercase tracking-wider flex items-center justify-between">
-                                Vehicles
-                                <Car className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{vehicles.length}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-orange-400">Currently active</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-purple-50/50 border-purple-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-purple-600 uppercase tracking-wider flex items-center justify-between">
-                                Reminders
-                                <Send className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{reminders.length}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-purple-400">Messages sent</p>
-                        </CardContent>
-                    </Card>
+                {/* Compact stats strip — one glanceable line instead of four tall cards */}
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-white px-4 py-2.5">
+                    <div className="flex items-center gap-2 text-sm">
+                        <FileText className="w-4 h-4 text-blue-500" />
+                        <span className="font-bold text-slate-900">{data.stats?.totalJobs || 0}</span>
+                        <span className="text-muted-foreground">jobs</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <DollarSign className="w-4 h-4 text-green-600" />
+                        <span className="font-bold text-slate-900">£{(data.stats?.totalSpent || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-muted-foreground">spent</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Car className="w-4 h-4 text-orange-500" />
+                        <span className="font-bold text-slate-900">{vehicles.length}</span>
+                        <span className="text-muted-foreground">vehicle{vehicles.length === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Send className="w-4 h-4 text-purple-500" />
+                        <span className="font-bold text-slate-900">{reminders.length}</span>
+                        <span className="text-muted-foreground">reminders sent</span>
+                    </div>
                 </div>
 
                 {/* Info Cards Grid */}
@@ -730,17 +712,34 @@ export default function CustomerDetails() {
                                     </TabsList>
                                     <TabsContent value="history">
                                         {data.history && data.history.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {data.history.map((h: any) => (
-                                                    <HistoryActivityRow
-                                                        key={h.id}
-                                                        h={h}
-                                                        onOpenFull={() => {
-                                                            setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
-                                                            setHistoryOpen(true);
-                                                        }}
-                                                    />
-                                                ))}
+                                            <div className="space-y-1.5">
+                                                {(() => {
+                                                    // Year dividers so a long history reads as a timeline you can skim,
+                                                    // not one undifferentiated list.
+                                                    let lastYear: number | null = null;
+                                                    return data.history.map((h: any) => {
+                                                        const y = new Date(h.dateCreated).getFullYear();
+                                                        const showYear = y !== lastYear;
+                                                        lastYear = y;
+                                                        return (
+                                                            <Fragment key={h.id}>
+                                                                {showYear && (
+                                                                    <div className="flex items-center gap-2 pt-2 first:pt-0">
+                                                                        <span className="text-[11px] font-bold text-slate-400">{y}</span>
+                                                                        <div className="h-px flex-1 bg-slate-100" />
+                                                                    </div>
+                                                                )}
+                                                                <HistoryActivityRow
+                                                                    h={h}
+                                                                    onOpenFull={() => {
+                                                                        setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
+                                                                        setHistoryOpen(true);
+                                                                    }}
+                                                                />
+                                                            </Fragment>
+                                                        );
+                                                    });
+                                                })()}
                                             </div>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm italic">
