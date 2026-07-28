@@ -70,6 +70,24 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 // what was done and which parts were fitted on each visit.
 const HISTORY_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", XS: "Excess", CR: "Credit Note" };
 
+// The garage's own address — origin for the route map, directions link and drive-time lookup.
+const GARAGE_ADDRESS = "49 Victoria Road, Hendon, London NW4 2RP";
+
+// "3.1 mi · ~7 min drive from the garage" — server-computed (postcodes.io + OSRM, no keys).
+function DriveFromGarage({ postcode }: { postcode?: string | null }) {
+    const { data } = trpc.customers.driveFromGarage.useQuery(
+        { postcode: postcode || "" },
+        { enabled: !!postcode, staleTime: Infinity }
+    );
+    if (!data) return null;
+    return (
+        <div className="flex items-center gap-1.5 text-[13px] text-slate-600">
+            <Car className="w-4 h-4 text-slate-400" />
+            <span><b className="text-slate-800">{data.miles} mi</b> · ~<b className="text-slate-800">{data.minutes} min</b> drive from the garage</span>
+        </div>
+    );
+}
+
 // Clickable column header for the service-history table — click to sort, click again to flip.
 function HistSortHead({ label, k, sort, onSort, align }: { label: string; k: string; sort: { key: string; dir: "asc" | "desc" }; onSort: (k: string) => void; align?: "right" }) {
     const active = sort.key === k;
@@ -564,13 +582,14 @@ export default function CustomerDetails() {
                                 {(customer.address || customer.postcode) ? (
                                     <div className="flex items-start gap-2.5">
                                         <MapPin className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
-                                        <div>
+                                        <div className="space-y-1">
                                             {customer.address && <div className="text-[15px] leading-snug text-slate-800">{customer.address}</div>}
                                             {customer.postcode && <div className="text-lg font-bold text-blue-700 uppercase tracking-wide">{customer.postcode}</div>}
+                                            <DriveFromGarage postcode={customer.postcode} />
                                             <a
-                                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}`}
+                                                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(GARAGE_ADDRESS)}&destination=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}`}
                                                 target="_blank" rel="noreferrer"
-                                                className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[13px] font-medium text-blue-700 hover:bg-blue-100"
+                                                className="mt-0.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[13px] font-medium text-blue-700 hover:bg-blue-100"
                                             >
                                                 <MapPin className="w-3.5 h-3.5" /> Directions in Google Maps
                                             </a>
@@ -592,7 +611,7 @@ export default function CustomerDetails() {
                                     className="w-full h-44 md:h-full min-h-[140px] rounded-lg border"
                                     loading="lazy"
                                     referrerPolicy="no-referrer-when-downgrade"
-                                    src={`https://maps.google.com/maps?q=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}&z=15&output=embed`}
+                                    src={`https://maps.google.com/maps?saddr=${encodeURIComponent(GARAGE_ADDRESS)}&daddr=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}&output=embed`}
                                 />
                             )}
                         </div>

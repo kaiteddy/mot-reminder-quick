@@ -154,6 +154,13 @@ export const appRouter = router({
         return dismissDuplicateGroup(input.phone);
       }),
 
+    driveFromGarage: publicProcedure
+      .input(z.object({ postcode: z.string() }))
+      .query(async ({ input }) => {
+        const { getDriveFromGarage } = await import("./db");
+        return getDriveFromGarage(input.postcode);
+      }),
+
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {

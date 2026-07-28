@@ -455,6 +455,29 @@ export async function getRemindersByCustomerId(customerId: number) {
   return db.select().from(reminders).where(eq(reminders.customerId, customerId));
 }
 
+// Drive distance/time from the garage (49 Victoria Road, Hendon NW4 2RP) to a customer's
+// postcode — no API keys: postcodes.io geocodes the UK postcode, OSRM's public router gives
+// the driving route. Time is free-flowing (no live traffic), so the UI labels it "~".
+// Cached per postcode for the process lifetime — addresses don't move.
+const GARAGE_LATLNG = { lat: 51.58854, lng: -0.218356 }; // NW4 2RP, geocoded via postcodes.io
+const driveCache = new Map<string, { miles: number; minutes: number } | null>();
+export async function getDriveFromGarage(postcode: string) {
+  const pc = String(postcode || "").toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(pc)) return null;
+  if (driveCache.has(pc)) return driveCache.get(pc) ?? null;
+  try {
+    const geo: any = await fetch(`https://api.postcodes.io/postcodes/${pc}`).then((r) => r.json());
+    const lat = geo?.result?.latitude, lng = geo?.result?.longitude;
+    if (typeof lat !== "number" || typeof lng !== "number") { driveCache.set(pc, null); return null; }
+    const route: any = await fetch(`https://router.project-osrm.org/route/v1/driving/${GARAGE_LATLNG.lng},${GARAGE_LATLNG.lat};${lng},${lat}?overview=false`).then((r) => r.json());
+    const r0 = route?.routes?.[0];
+    if (!r0) { driveCache.set(pc, null); return null; }
+    const out = { miles: Math.round((r0.distance / 1609.34) * 10) / 10, minutes: Math.max(1, Math.round(r0.duration / 60)) };
+    driveCache.set(pc, out);
+    return out;
+  } catch { return null; } // third-party hiccup — just omit the drive line rather than error the page
+}
+
 /** Unified reminder timeline for a customer's profile page. Two sources merged:
  *  - reminderLogs: actual messages sent by this app (WhatsApp/SMS) — real timestamps, delivery
  *    status, and the message text. Matched by customerId OR recipient phone, since MOT-batch
