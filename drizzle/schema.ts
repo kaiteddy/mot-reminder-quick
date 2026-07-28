@@ -277,6 +277,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   archived: integer("archived"), // 1 = hidden from its normal doc-type tab, shown only in the Archive tab (soft, reversible — see documents.archive/unarchive)
   archivedAt: timestamp("archivedAt", { mode: "date" }),
   insurerAddress: text("insurerAddress"), // free-text claims/bill-to address for insuranceCompany — printed on the main invoice instead of the customer's own address
+  insurerEmail: varchar("insurerEmail", { length: 320 }), // insurer's claims email — Email dialog defaults to this on the insurer-billed invoice instead of the customer's own email
   excessFullVatToCustomer: integer("excessFullVatToCustomer"), // 1 = this job's excess has no VAT of its own; the FULL job VAT is charged on the excess (customer) invoice instead, and the main (insurer) invoice prints net-of-VAT — the standard commercial/fleet arrangement where the VAT-registered policyholder reclaims VAT in full and the insurer settles net
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({

@@ -91,6 +91,7 @@ function InfoCard({ icon, label, main, sub, tone }: { icon: ReactNode; label: st
 }
 
 const EMAIL_TEMPLATES: { name: string; types?: string[]; subject: string; body: string }[] = [
+  { name: "Insurance Invoice", subject: "Invoice {docNo} — ELI Motors Limited (re. {customer})", body: "Dear Claims Team,\n\nPlease find attached our invoice {docNo} for the repair to {reg}, total £{total}, re. your policyholder {customer}.\n\nIf you have any questions please reply to this email or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Invoice", types: ["SI"], subject: "Invoice {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nThank you for choosing ELI Motors. Please find attached your invoice {docNo} for {reg}, total £{total}.\n\nIf you have any questions please reply to this email or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Estimate", types: ["ES"], subject: "Estimate {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached our estimate {docNo} for {reg}, total £{total}.\n\nTo go ahead, or if you have any questions, just reply or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Job Sheet", types: ["JS"], subject: "Job Sheet {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached the job sheet {docNo} for {reg}.\n\nKind regards,\nELI Motors Limited" },
@@ -314,8 +315,14 @@ export default function DocumentDetails() {
   function openEmail() {
     if (blockIfIncomplete("email")) return;
     const d = (data as any)?.doc; const cust = (data as any)?.customer;
-    const t = EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
-    setEmailForm({ to: d?.custEmail || cust?.email || "", ...applyTemplate(t, emailCtx()) });
+    // A main insurance invoice (billed to the insurer, not the policyholder) must never default to
+    // the customer's own email/greeting — that's a different invoice going to the wrong party.
+    // Prefer the recorded insurer email; if none is on file yet, leave it blank rather than guess wrong.
+    const billedToInsurer = d?.docType !== "XS" && !!String(d?.insuranceCompany || "").trim();
+    const t = (billedToInsurer && EMAIL_TEMPLATES.find((x) => x.name === "Insurance Invoice"))
+      || EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
+    const to = billedToInsurer ? (d?.insurerEmail || "") : (d?.custEmail || cust?.email || "");
+    setEmailForm({ to, ...applyTemplate(t, emailCtx()) });
     setEmailOpen(true);
   }
   async function sendEmail() {
@@ -352,7 +359,7 @@ export default function DocumentDetails() {
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
       staffSalesPerson: doc.staffSalesPerson || "", staffTechnician: doc.staffTechnician || "", staffRoadTester: doc.staffRoadTester || "",
       staffMotTester: doc.staffMotTester || "", motClass: doc.motClass || "", motStatus: doc.motStatus || "",
-      insuranceCompany: doc.insuranceCompany || "", insurerAddress: (doc as any).insurerAddress || "",
+      insuranceCompany: doc.insuranceCompany || "", insurerAddress: (doc as any).insurerAddress || "", insurerEmail: (doc as any).insurerEmail || "",
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
@@ -614,7 +621,7 @@ export default function DocumentDetails() {
       dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
-      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany, insurerAddress: form.insurerAddress,
+      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany, insurerAddress: form.insurerAddress, insurerEmail: form.insurerEmail,
       lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount), discount: num(i.discount) ?? null, discountType: i.discountType ?? null })),
     };
   }
@@ -773,6 +780,8 @@ export default function DocumentDetails() {
               className="w-full border rounded px-2 py-1 text-[12px] mt-0.5 resize-y outline-none focus:border-violet-500 disabled:bg-slate-50"
             />
           </div>
+          <EF label="Insurer Email" field="insurerEmail" w="w-24" grow {...{ form, set, editing }} />
+          <p className="text-[10.5px] text-slate-500 mt-0.5">The Email button defaults to this on this invoice, instead of the customer's own email.</p>
         </Panel>
       )}
       {!isExcess && (

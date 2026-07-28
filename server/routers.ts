@@ -311,6 +311,7 @@ export const appRouter = router({
         description: z.string().optional(),
         insuranceCompany: z.string().optional(),
         insurerAddress: z.string().optional(),
+        insurerEmail: z.string().optional(),
         staffSalesPerson: z.string().optional(),
         staffTechnician: z.string().optional(),
         staffRoadTester: z.string().optional(),

@@ -2609,7 +2609,7 @@ export interface SaveDocInput {
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
   custTelephone?: string; custMobile?: string; custEmail?: string;
   mileage?: number | null; dateCreated?: any; dateIssued?: any;
-  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string; insuranceCompany?: string; insurerAddress?: string;
+  docStatus?: string; orderRef?: string; department?: string; terms?: string; description?: string; insuranceCompany?: string; insurerAddress?: string; insurerEmail?: string;
   staffSalesPerson?: string; staffTechnician?: string; staffRoadTester?: string; staffMotTester?: string;
   motClass?: string; motStatus?: string;
   lineItems?: Array<Record<string, any>>;
@@ -2737,7 +2737,7 @@ export async function saveDocument(input: SaveDocInput) {
     mileage: input.mileage, dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
     dateIssued: input.dateIssued ? new Date(input.dateIssued) : undefined,
     docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms, insuranceCompany: input.insuranceCompany,
-    insurerAddress: input.insurerAddress,
+    insurerAddress: input.insurerAddress, insurerEmail: input.insurerEmail,
     description: input.description, staffSalesPerson: input.staffSalesPerson, staffTechnician: input.staffTechnician,
     staffRoadTester: input.staffRoadTester, staffMotTester: input.staffMotTester, motClass: input.motClass, motStatus: input.motStatus,
     totalNet: String(totalNet.toFixed(2)), totalTax: String(totalTax.toFixed(2)), totalGross: String(totalGross.toFixed(2)),
@@ -2815,7 +2815,7 @@ export async function convertDocument(id: number, toType: string) {
     custMobile: doc.custMobile, custEmail: doc.custEmail,
     mileage: doc.mileage, description: doc.description, orderRef: doc.orderRef, department: doc.department, terms: doc.terms,
     staffSalesPerson: doc.staffSalesPerson, staffTechnician: doc.staffTechnician, staffRoadTester: doc.staffRoadTester,
-    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, insuranceCompany: doc.insuranceCompany, insurerAddress: (doc as any).insurerAddress, docStatus: "New",
+    staffMotTester: doc.staffMotTester, motClass: doc.motClass, motStatus: doc.motStatus, insuranceCompany: doc.insuranceCompany, insurerAddress: (doc as any).insurerAddress, insurerEmail: (doc as any).insurerEmail, docStatus: "New",
     lineItems: (lineItems || []).map((li: any) => ({
       itemType: li.itemType, description: li.description, partNumber: li.partNumber, nominalCode: li.nominalCode,
       quantity: li.quantity, unitPrice: li.unitPrice, vatRate: li.vatRate, subNet: li.subNet, taxAmount: li.taxAmount,
