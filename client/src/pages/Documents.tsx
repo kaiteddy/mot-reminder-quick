@@ -58,9 +58,12 @@ function dateFilterRange(key: string): { dateFrom?: string; dateTo?: string } {
 
 // Drag-to-reorder columns — "type" only ever shows on the "All" tab (see docType checks below),
 // but stays in the saved order so it lands back where you put it when All is selected again.
-type ColKey = "docNo" | "type" | "date" | "customer" | "reg" | "vehicle" | "job" | "total" | "balance" | "status";
-const DEFAULT_COLUMN_ORDER: ColKey[] = ["docNo", "type", "date", "customer", "reg", "vehicle", "job", "total", "balance", "status"];
-const COLUMN_ORDER_KEY = "eli.docColumnOrder";
+type ColKey = "docNo" | "type" | "date" | "customer" | "phone" | "reg" | "vehicle" | "job" | "total" | "balance" | "status";
+const DEFAULT_COLUMN_ORDER: ColKey[] = ["docNo", "type", "date", "customer", "phone", "reg", "vehicle", "job", "total", "balance", "status"];
+// v2: phone split out of the Customer cell into its own column (rows are single-line now) —
+// bumping the storage key resets everyone's saved order once so phone lands beside Customer
+// instead of being appended at the far end of a stale saved order.
+const COLUMN_ORDER_KEY = "eli.docColumnOrder.v2";
 function loadColumnOrder(): ColKey[] {
   try {
     const saved = JSON.parse(localStorage.getItem(COLUMN_ORDER_KEY) || "null");
@@ -82,6 +85,7 @@ const COLUMN_META: Record<ColKey, { label: string; align?: "right"; sortCol?: st
   type: { label: "Type", sortCol: "type" },
   date: { label: "Date", sortCol: "date" },
   customer: { label: "Customer", sortCol: "customer" },
+  phone: { label: "Phone" },
   reg: { label: "Reg", sortCol: "registration" },
   vehicle: { label: "Vehicle", sortCol: "vehicle" },
   job: { label: "Job" },
@@ -189,15 +193,20 @@ export default function Documents() {
         return (
           <TableCell className="max-w-[200px]">
             <div className="truncate uppercase">{d.customerName || <span className="text-muted-foreground">—</span>}</div>
-            {d.phone && (
+          </TableCell>
+        );
+      case "phone":
+        return (
+          <TableCell className="max-w-[130px] whitespace-nowrap">
+            {d.phone ? (
               <div
                 title={d.phone}
                 onClick={(e) => e.stopPropagation()}
-                className="w-fit max-w-full origin-bottom-left cursor-text truncate rounded text-[11px] text-muted-foreground transition-transform duration-150 hover:relative hover:z-40 hover:-translate-y-2 hover:scale-[1.9] hover:cursor-none hover:rounded-md hover:border hover:bg-white hover:px-1.5 hover:py-0.5 hover:font-semibold hover:text-slate-900 hover:shadow-lg"
+                className="w-fit max-w-full origin-bottom-left cursor-text truncate rounded text-[12px] text-muted-foreground transition-transform duration-150 hover:relative hover:z-40 hover:-translate-y-2 hover:scale-[1.9] hover:cursor-none hover:rounded-md hover:border hover:bg-white hover:px-1.5 hover:py-0.5 hover:font-semibold hover:text-slate-900 hover:shadow-lg"
               >
                 {d.phone}
               </div>
-            )}
+            ) : <span className="text-muted-foreground">—</span>}
           </TableCell>
         );
       case "reg":
@@ -220,9 +229,11 @@ export default function Documents() {
               const w = workSummary(d.description);
               if (!w || (w.badges.length === 0 && !w.summary)) return <span className="text-muted-foreground">—</span>;
               return (
-                <div className="flex flex-wrap items-center gap-1" title={d.description || undefined}>
+                // Single line (badges then a truncated summary) so the row never grows taller —
+                // the full description is still on the hover title.
+                <div className="flex flex-nowrap items-center gap-1 overflow-hidden" title={d.description || undefined}>
                   {w.badges.map((b) => (
-                    <span key={b.label} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                    <span key={b.label} className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
                   ))}
                   {w.summary && <span className="truncate text-[11px] text-slate-500">{w.summary}</span>}
                 </div>
@@ -339,7 +350,9 @@ export default function Documents() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <Table>
+              {/* [&_td]:py-1.5: compact rows — with phone in its own column every cell is a
+                  single line, so the default cell padding is the only thing left adding height. */}
+              <Table className="[&_td]:py-1.5">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">
