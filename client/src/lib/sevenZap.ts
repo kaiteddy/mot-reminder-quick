@@ -67,6 +67,52 @@ export function sevenZapPartUrl(partNumber?: string | null, make?: string | null
     return `https://7zap.com/en/part/${slug}/${pn.toLowerCase().replace(/-/g, "")}/`;
 }
 
+// "Find this part": 7zap's catalogue hash accepts &section={slug} (verified 29/07/2026 on
+// the Cayenne — both top-level "chassis-systems" and second-level "lubrication-system"
+// open with that branch expanded and its diagram cards on screen). The classifier is
+// 7zap's own and identical across brands, so a part description can be keyword-mapped to
+// a section and the popup lands one click from the exploded diagram.
+const SECTION_RULES: [RegExp, string][] = [
+    [/\boil (filter|pump|cooler|pressure|seal)|sump\b/i, "lubrication-system"],
+    [/coolant|radiator|water pump|thermostat|expansion tank|cooling fan|heater hose/i, "cooling-system"],
+    [/fuel (pump|filter|rail|tank)|injector/i, "fuel-system"],
+    [/air filter|turbo|intercooler|throttle|intake|boost/i, "intake-turbocharging"],
+    [/exhaust|catalytic|\bcat\b|\bdpf\b|lambda|\begr\b|silencer|muffler|back box/i, "exhaust-emission-control"],
+    [/head gasket|camshaft|valve cover|rocker|tappet|spark plug|glow plug|ignition coil/i, "cylinder-head"],
+    [/piston|crankshaft|timing (chain|belt)|conrod|engine mount|flywheel/i, "engine-block"],
+    [/clutch|gearbox|driveshaft|drive shaft|cv (joint|boot)|differential|transfer box|axle|propshaft/i, "transmission-drivetrain"],
+    [/shock|absorber|coil spring|strut|control arm|wishbone|ball joint|bush|stabilis|stabiliz|anti.?roll|\barb\b|top mount|air suspension/i, "suspension"],
+    [/steering|track rod|tie rod|\brack\b|\beps\b/i, "steering"],
+    [/brake|disc|\bpad|caliper|\babs\b|handbrake|master cylinder/i, "brake-system"],
+    [/wheel bearing|\bhub\b|wheel (bolt|nut|stud)/i, "wheels-hubs-fasteners"],
+    [/battery|alternator|starter|wiper|washer pump|horn|\becu\b|\bsensor\b|switch|loom|wiring/i, "electrical-electronic"],
+    [/bumper|\bwing\b|bonnet|\bdoor\b|mirror|headlight|headlamp|\blamp\b|\bbulb\b|grille|windscreen|window|tailgate|boot lid/i, "body-exterior"],
+    [/\bseat|seatbelt|airbag|dashboard|trim|carpet|headliner|console/i, "interior-safety"],
+];
+
+export function sevenZapSectionFor(description?: string | null): string | null {
+    const d = (description || "").trim();
+    if (!d) return null;
+    for (const [re, slug] of SECTION_RULES) if (re.test(d)) return slug;
+    return null;
+}
+
+/** "Find" a part: popup into the vehicle's VIN catalogue with the right section expanded. */
+export function findPartOn7zap(description?: string | null, vin?: string | null, make?: string | null) {
+    const cleanVin = (vin || "").trim().toUpperCase();
+    const slug = brandSlug(make);
+    if (!cleanVin || !slug || !VIN_DECODER_BRANDS.has(slug)) {
+        // No VIN (or unsupported brand) — fall back to the standard catalogue open.
+        openSevenZap(vin, make);
+        return;
+    }
+    const section = sevenZapSectionFor(description);
+    toast.success(section
+        ? `Finding "${(description || "").trim()}" — opening the ${section.replace(/-/g, " ")} diagrams…`
+        : "Opening the vehicle's catalogue — pick the system for this part");
+    openSevenZapPopup(`https://7zap.com/en/catalog/cars/${slug}/vin-decoder/#vin=${encodeURIComponent(cleanVin)}${section ? `&section=${section}` : ""}`);
+}
+
 // 7zap sends x-frame-options: SAMEORIGIN, so it can't be shown in an in-app iframe/modal.
 // The next best thing is a floating popup window over the app — big enough for the exploded
 // diagrams, reused on every click (same window name), and it shares the user's 7zap login.

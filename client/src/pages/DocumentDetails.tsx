@@ -19,7 +19,7 @@ import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
-import { openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
+import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -1449,7 +1449,7 @@ export default function DocumentDetails() {
                     )}
                     <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} />
                   </TabsContent>
-                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
+                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={(data as any)?.doc?.vehicleId}
@@ -2956,7 +2956,7 @@ function matchPriceFloor(description: string | null | undefined, rules: { descri
   return best ? best.min : null;
 }
 
-function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string } }) {
+function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string; vin?: string } }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
   const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20, _k: nextItemKey() })]);
@@ -3022,17 +3022,30 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
                 </a>
               : <span className="font-mono text-xs">{it.partNumber || "—"}</span>;
           })()}</TableCell>}
-      <TableCell>{editing ? (
-        kind === "Labour"
-          ? <LabourDescInput inp={inp} value={it.description ?? ""} make={vehicle?.make} model={vehicle?.model}
-              onUseRate={(rate) => update(idx, { unitPrice: rate.toFixed(2) })}
-              onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
-          : showPartNo
-            ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
-                onType={(v) => update(idx, { description: v })}
-                onPick={pickPart} />
-            : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
-      ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1 min-w-0">
+            {editing ? (
+              kind === "Labour"
+                ? <LabourDescInput inp={inp} value={it.description ?? ""} make={vehicle?.make} model={vehicle?.model}
+                    onUseRate={(rate) => update(idx, { unitPrice: rate.toFixed(2) })}
+                    onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
+                : showPartNo
+                  ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
+                      onType={(v) => update(idx, { description: v })}
+                      onPick={pickPart} />
+                  : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
+            ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}
+          </div>
+          {showPartNo && (it.description || "").trim() && (
+            <button type="button" title="Find this part on 7zap — opens the exploded diagram for its system"
+              onClick={() => findPartOn7zap(it.description, vehicle?.vin, vehicle?.make)}
+              className="shrink-0 inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-1.5 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-100">
+              <Search className="w-3 h-3" /> Find
+            </button>
+          )}
+        </div>
+      </TableCell>
       <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
       <TableCell className="text-right">
         {editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}
