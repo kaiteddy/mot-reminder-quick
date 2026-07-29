@@ -252,6 +252,54 @@ export const appRouter = router({
         return getDocumentDetail(input.id);
       }),
 
+    // Images pasted onto a job (e.g. a screenshot of the 7zap exploded diagram for a part).
+    // list omits the base64 payload; getAttachment fetches one image on demand.
+    listAttachments: publicProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return [];
+        return db.select({ id: docAttachments.id, name: docAttachments.name, mime: docAttachments.mime, size: docAttachments.size, createdAt: docAttachments.createdAt })
+          .from(docAttachments).where(eq(docAttachments.documentId, input.documentId)).orderBy(desc(docAttachments.createdAt));
+      }),
+    getAttachment: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+        return (await db.select().from(docAttachments).where(eq(docAttachments.id, input.id)).limit(1))[0] ?? null;
+      }),
+    addAttachment: publicProcedure
+      // data = base64 without the data: prefix. 4MB decoded cap keeps Neon rows sane.
+      .input(z.object({ documentId: z.number(), name: z.string().min(1).max(200), mime: z.string().regex(/^image\//), data: z.string().min(10) }))
+      .mutation(async ({ input }) => {
+        const size = Math.floor(input.data.length * 3 / 4);
+        if (size > 4 * 1024 * 1024) throw new Error("Image too large — keep it under 4MB (crop the screenshot to the diagram)");
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new Error("Database error");
+        const [row] = await db.insert(docAttachments).values({ documentId: input.documentId, name: input.name, mime: input.mime, size, data: input.data }).returning({ id: docAttachments.id });
+        return { id: row.id, size };
+      }),
+    removeAttachment: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database error");
+        await db.delete(docAttachments).where(eq(docAttachments.id, input.id));
+        return { success: true };
+      }),
+
     lookupVehicle: publicProcedure
       .input(z.object({ registration: z.string(), force: z.boolean().optional() }))
       .query(async ({ input }) => {

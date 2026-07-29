@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
@@ -1439,6 +1440,7 @@ export default function DocumentDetails() {
                         description={form.description ?? ""}
                         onSaved={() => utils.documents.getById.invalidate({ id })} />
                     )}
+                    {!base && !isNew && <JobImages docId={id} />}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0">
                     {!base && editing && (form.make || form.model) && (
@@ -2296,6 +2298,97 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
       )}
     </div>
   );
+}
+
+// Images pasted/dropped onto the job — the workshop use-case is a screenshot of the 7zap
+// exploded diagram showing where a part sits (7zap's own images are blob: URLs locked to
+// their page, so a screenshot pasted here is how the picture stays with the job).
+function JobImages({ docId }: { docId: number }) {
+  const utils = trpc.useUtils();
+  const { data: list } = trpc.documents.listAttachments.useQuery({ documentId: docId });
+  const add = trpc.documents.addAttachment.useMutation();
+  const remove = trpc.documents.removeAttachment.useMutation();
+  const [viewId, setViewId] = useState<number | null>(null);
+  const { data: viewImg } = trpc.documents.getAttachment.useQuery({ id: viewId! }, { enabled: viewId != null });
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  async function ingest(files: FileList | File[]) {
+    for (const f of Array.from(files)) {
+      if (!f.type.startsWith("image/")) continue;
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] || "");
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      try {
+        await add.mutateAsync({ documentId: docId, name: f.name || `Pasted image ${new Date().toLocaleDateString("en-GB")}`, mime: f.type, data: b64 });
+        toast.success("Image saved to the job");
+      } catch (e: any) { toast.error(e.message || "Failed to save the image"); }
+    }
+    utils.documents.listAttachments.invalidate({ documentId: docId });
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-slate-200"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) ingest(e.dataTransfer.files); }}>
+      <div className="flex items-center gap-2 p-2">
+        <Paperclip className="w-4 h-4 text-slate-600 shrink-0" />
+        <span className="text-[13px] font-semibold text-slate-800">Job Images {list?.length ? `(${list.length})` : ""}</span>
+        <span className="text-[12px] text-muted-foreground">— paste a screenshot here (e.g. the 7zap diagram) or drop an image file</span>
+      </div>
+      <div tabIndex={0}
+        onPaste={(e) => { const files = Array.from(e.clipboardData.items).map((i) => i.getAsFile()).filter(Boolean) as File[]; if (files.length) { e.preventDefault(); ingest(files); } }}
+        className="mx-2 mb-2 rounded border border-dashed border-slate-300 bg-slate-50/60 px-3 py-2 text-[12px] text-slate-500 outline-none focus:border-violet-400 focus:bg-violet-50/40 cursor-text"
+      >
+        {add.isPending ? <span className="inline-flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving image…</span>
+          : "Click here, then press Cmd+V / Ctrl+V to paste"}
+      </div>
+      {(list || []).length > 0 && (
+        <div className="flex flex-wrap gap-2 px-2 pb-2">
+          {(list || []).map((a: any) => (
+            <div key={a.id} className="relative group border rounded-md p-1.5 bg-white">
+              <button type="button" onClick={() => setViewId(a.id)} className="block text-left" title={`${a.name} — click to view`}>
+                <AttachmentThumb id={a.id} name={a.name} />
+                <span className="block max-w-[120px] truncate text-[10px] text-slate-500 mt-0.5">{a.name}</span>
+              </button>
+              <button type="button" onClick={() => setDeleteId(a.id)} title="Delete image"
+                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <Dialog open={viewId != null} onOpenChange={(o) => { if (!o) setViewId(null); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader><DialogTitle className="text-sm">{(viewImg as any)?.name || "Image"}</DialogTitle></DialogHeader>
+          {viewImg ? <img src={`data:${(viewImg as any).mime};base64,${(viewImg as any).data}`} alt={(viewImg as any).name} className="max-h-[75vh] w-auto mx-auto rounded border" />
+            : <div className="py-10 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteId != null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-sm">Delete this image?</DialogTitle></DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" size="sm" disabled={remove.isPending}
+              onClick={async () => { try { await remove.mutateAsync({ id: deleteId! }); setDeleteId(null); utils.documents.listAttachments.invalidate({ documentId: docId }); toast.success("Image deleted"); } catch (e: any) { toast.error(e.message); } }}>
+              {remove.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Thumbnail that lazily loads its image data only when rendered.
+function AttachmentThumb({ id, name }: { id: number; name: string }) {
+  const { data } = trpc.documents.getAttachment.useQuery({ id });
+  if (!data) return <div className="w-[120px] h-[80px] rounded bg-slate-100 animate-pulse" />;
+  return <img src={`data:${(data as any).mime};base64,${(data as any).data}`} alt={name} className="w-[120px] h-[80px] object-cover rounded" />;
 }
 
 function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (text: string) => void }) {

@@ -449,6 +449,22 @@ export type InsertCustomerLog = typeof customerLogs.$inferInsert;
 /**
  * Payments / receipts recorded against a document when it is issued.
  */
+// Images pasted/dropped onto a job document — e.g. a screenshot of a 7zap exploded diagram
+// showing where a part sits (their diagrams are blob-URLs locked to their page, so a manual
+// screenshot pasted here is the way to keep the picture with the job). Stored as base64 in
+// Neon; kept small via a size cap at the API layer.
+export const docAttachments = pgTable("docAttachments", {
+  id: serial("id").primaryKey(),
+  documentId: integer("documentId").notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  mime: varchar("mime", { length: 100 }).notNull(),
+  size: integer("size").notNull(), // bytes of the decoded image
+  data: text("data").notNull(), // base64 (no data: prefix)
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+  documentIdIdx: index("doc_attachments_document_id_idx").on(table.documentId),
+}));
+
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   documentId: integer("documentId").notNull(),

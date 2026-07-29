@@ -3013,6 +3013,16 @@ export async function convertDocument(id: number, toType: string) {
     if (db) await db.update(serviceHistory).set({ jobGuide: (doc as any).jobGuide }).where(eq(serviceHistory.id, created.id));
   }
 
+  // Pasted images (diagram screenshots etc.) belong to the job — re-point them at the new doc.
+  // The source is usually deleted below on a convert, so move rather than copy.
+  if (created?.id && created.id !== id) {
+    const db = await getDb();
+    if (db) {
+      const { docAttachments } = await import("../drizzle/schema");
+      await db.update(docAttachments).set({ documentId: created.id }).where(eq(docAttachments.documentId, id));
+    }
+  }
+
   // "Convert to Invoice/Job Sheet" supersedes the original; "Copy to Estimate/Credit Note" keeps it.
   // On a convert, remove the source so it isn't left behind as a duplicate — but only a web-created
   // working doc (job sheet / estimate). Never auto-delete invoices/credit notes, and never a
