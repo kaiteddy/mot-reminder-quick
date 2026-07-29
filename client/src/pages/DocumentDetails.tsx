@@ -1395,6 +1395,7 @@ export default function DocumentDetails() {
                 <DialogHeader><DialogTitle className="text-sm">Service Reset &amp; OBD — {form.registration}</DialogTitle></DialogHeader>
                 <ServiceResetCard vehicleId={(data as any).vehicle.id} info={(data as any).vehicle.serviceResetInfo}
                   vehicleDesc={[form.make, form.model].filter(Boolean).join(" ")}
+                  vin={form.vin} make={form.make}
                   onSaved={() => utils.documents.getById.invalidate({ id })} />
               </DialogContent>
             </Dialog>

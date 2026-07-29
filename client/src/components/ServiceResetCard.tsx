@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Sparkles, Gauge, Usb, Copy, Image as ImageIcon } from "lucide-react";
+import { Loader2, Sparkles, Gauge, Usb, Copy, Image as ImageIcon, Wrench } from "lucide-react";
+import { findPartOn7zap } from "@/lib/sevenZap";
 
 // Per-vehicle quick-reference: how to reset the service light + where the OBD port is.
 // Generated once per vehicle (cached on vehicles.serviceResetInfo) and reused on every job.
-export function ServiceResetCard({ vehicleId, info, onSaved, vehicleDesc }: {
+export function ServiceResetCard({ vehicleId, info, onSaved, vehicleDesc, vin, make }: {
     vehicleId: number;
     info: any; // vehicles.serviceResetInfo
     onSaved: () => void;
     vehicleDesc?: string; // "2023 PORSCHE Cayenne" — used for the OBD photo lookup
+    vin?: string | null; // enables the 7zap-drawings lookup (VIN-filtered catalogue)
+    make?: string | null;
 }) {
     const gen = trpc.ai.generateServiceReset.useMutation();
     const [local, setLocal] = useState<any>(null);
@@ -65,6 +68,13 @@ export function ServiceResetCard({ vehicleId, info, onSaved, vehicleDesc }: {
                                 className="inline-flex items-center gap-1 text-[12px] text-emerald-800 hover:underline">
                                 <ImageIcon className="w-3.5 h-3.5" /> OBD photos
                             </button>
+                            {vin && (
+                                <button type="button" onClick={() => findPartOn7zap("OBD diagnostic socket", vin, make)}
+                                    title="This car's own drawings on 7zap — the diagnostic socket sits in the Electrical section's dash-wiring diagrams"
+                                    className="inline-flex items-center gap-1 text-[12px] text-emerald-800 hover:underline">
+                                    <Wrench className="w-3.5 h-3.5" /> 7zap drawings
+                                </button>
+                            )}
                         </>
                     )}
                     <button type="button" onClick={generate} disabled={gen.isPending}

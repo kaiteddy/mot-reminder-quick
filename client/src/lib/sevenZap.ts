@@ -87,7 +87,7 @@ const SECTION_RULES: [RegExp, string][] = [
     [/steering|track rod|tie rod|\brack\b|\beps\b/i, "steering"],
     [/brake|disc|\bpad|caliper|\babs\b|handbrake|master cylinder/i, "brake-system"],
     [/wheel bearing|\bhub\b|wheel (bolt|nut|stud)/i, "wheels-hubs-fasteners"],
-    [/battery|alternator|starter|wiper|washer pump|horn|\becu\b|\bsensor\b|switch|loom|wiring/i, "electrical-electronic"],
+    [/diagnostic|\bobd\b|data link|battery|alternator|starter|wiper|washer pump|horn|\becu\b|\bsensor\b|switch|loom|wiring/i, "electrical-electronic"],
     [/bumper|\bwing\b|bonnet|\bdoor\b|mirror|headlight|headlamp|\blamp\b|\bbulb\b|grille|windscreen|window|tailgate|boot lid/i, "body-exterior"],
     [/\bseat|seatbelt|airbag|dashboard|trim|carpet|headliner|console/i, "interior-safety"],
 ];
