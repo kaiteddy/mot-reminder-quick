@@ -19,6 +19,7 @@ import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
+import { openSevenZap } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -1203,11 +1204,18 @@ export default function DocumentDetails() {
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
                 {!base && form.vin && (
-                  <button type="button" title="Search this VIN on PartSouq"
-                    onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
-                    className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
-                    <ExternalLink className="w-3.5 h-3.5" /> PartSouq
-                  </button>
+                  <>
+                    <button type="button" title="Search this VIN on PartSouq"
+                      onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
+                      className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
+                      <ExternalLink className="w-3.5 h-3.5" /> PartSouq
+                    </button>
+                    <button type="button" title="Copies the VIN and opens the 7zap OEM catalogue"
+                      onClick={() => openSevenZap(form.vin, form.make)}
+                      className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-2 text-[11px] font-medium text-orange-600 hover:bg-orange-100">
+                      <ExternalLink className="w-3.5 h-3.5" /> 7zap
+                    </button>
+                  </>
                 )}
               </div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>

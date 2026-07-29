@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
+import { openSevenZap } from "@/lib/sevenZap";
 import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
@@ -689,6 +690,15 @@ export default function VehicleDetails() {
                             {fetchTechData.isPending || syncUKVDMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 text-yellow-500 fill-yellow-500" />}
                             Fetch Premium Data
                         </Button>
+                        <Button
+                            variant="outline"
+                            className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                            onClick={() => openSevenZap(vehicle.vin, vehicle.make)}
+                            title={vehicle.vin ? "Copies the VIN and opens the 7zap VIN decoder" : "Opens the brand catalogue on 7zap"}
+                        >
+                            <Wrench className="w-4 h-4 mr-2" />
+                            OEM Parts (7zap)
+                        </Button>
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <Dialog>
@@ -893,6 +903,13 @@ export default function VehicleDetails() {
                                                                 title="Search on PartSouq"
                                                             >
                                                                 <ExternalLink className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => openSevenZap(vehicle.vin, vehicle.make)}
+                                                                className="p-1 hover:bg-muted rounded text-orange-500 hover:text-orange-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="OEM catalogue on 7zap"
+                                                            >
+                                                                <Wrench className="w-3 h-3" />
                                                             </button>
                                                         </>
                                                     )}
