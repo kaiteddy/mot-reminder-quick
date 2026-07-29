@@ -24,7 +24,8 @@ const BRAND_PATHS: Record<string, string> = {
     daewoo: "daewoo/europe", datsun: "datsun/europe", dodge: "dodge/global",
     fiat: "fiat/global", ford: "ford/europe", genesis: "genesis/europe",
     honda: "honda/europe", hyundai: "hyundai/europe", infiniti: "infiniti/europe",
-    jeep: "jeep/global", kia: "kia/europe", lancia: "lancia/global",
+    jaguar: "jaguar", jeep: "jeep/global", kia: "kia/europe", lancia: "lancia/global",
+    "land-rover": "land-rover", mitsubishi: "mitsubishi",
     lexus: "lexus/europe", maybach: "maybach/europe", mazda: "mazda/europe",
     mercedes: "mercedes/europe", mini: "mini/europe",
     nissan: "nissan/europe", opel: "opel/global", peugeot: "peugeot/global",
@@ -51,6 +52,19 @@ export function sevenZapCatalogUrl(make?: string | null): string {
     const slug = brandSlug(make);
     const path = slug ? BRAND_PATHS[slug] : null;
     return path ? `https://7zap.com/en/catalog/cars/${path}/` : "https://7zap.com/en/catalog/cars/";
+}
+
+// Part pages are directly linkable too (verified logged-in 29/07/2026):
+// /en/part/{brand}/{partnumber}/ resolves the OEM number to its name, offers and
+// aftermarket cross-references. Only link strings that look like real OEM numbers —
+// most historical GA4 "part numbers" are free text ("STARTER MOTOR", "TYRE").
+export function sevenZapPartUrl(partNumber?: string | null, make?: string | null): string | null {
+    const pn = (partNumber || "").trim();
+    // CR#### coin batteries and R1234yf refrigerant look like OEM numbers but aren't.
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{5,}$/.test(pn) || !/\d{3,}/.test(pn) || /^CR\d{4}$/i.test(pn) || /^R1234YF$/i.test(pn)) return null;
+    const slug = brandSlug(make);
+    if (!slug || !BRAND_PATHS[slug]) return null;
+    return `https://7zap.com/en/part/${slug}/${pn.toLowerCase().replace(/-/g, "")}/`;
 }
 
 /** Open the most useful 7zap page for this vehicle in a new tab. */
