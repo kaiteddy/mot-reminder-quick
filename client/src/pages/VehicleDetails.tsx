@@ -34,6 +34,7 @@ import {
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
 import { openSevenZap } from "@/lib/sevenZap";
+import { ServiceResetCard } from "@/components/ServiceResetCard";
 import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
@@ -921,6 +922,9 @@ export default function VehicleDetails() {
                             })()}
                         </CardContent>
                     </Card>
+
+                    <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
+                        onSaved={() => utils.vehicles.getByRegistration.invalidate()} />
 
                     {/* Customer Info */}
                     <Card>

@@ -88,6 +88,7 @@ export const vehicles = pgTable("vehicles", {
   comprehensiveTechnicalData: jsonb("comprehensiveTechnicalData"),
   swsLastUpdated: timestamp("swsLastUpdated", { mode: "date" }),
   autodataMid: varchar("autodataMid", { length: 64 }), // Autodata vehicle/model id for /w1/vehicles/{mid}
+  serviceResetInfo: jsonb("serviceResetInfo"), // AI-generated per-vehicle workshop card: { obdLocation, resetSteps[], alternatives[], cautions[], generatedAt } — service-light reset procedure + OBD port location; cached here because it's vehicle knowledge, reused across jobs
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
