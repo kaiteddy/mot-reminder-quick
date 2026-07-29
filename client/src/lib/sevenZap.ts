@@ -67,22 +67,31 @@ export function sevenZapPartUrl(partNumber?: string | null, make?: string | null
     return `https://7zap.com/en/part/${slug}/${pn.toLowerCase().replace(/-/g, "")}/`;
 }
 
-/** Open the most useful 7zap page for this vehicle in a new tab. */
+// 7zap sends x-frame-options: SAMEORIGIN, so it can't be shown in an in-app iframe/modal.
+// The next best thing is a floating popup window over the app — big enough for the exploded
+// diagrams, reused on every click (same window name), and it shares the user's 7zap login.
+export function openSevenZapPopup(url: string) {
+    const w = Math.min(1200, window.screen.availWidth - 80);
+    const h = Math.min(880, window.screen.availHeight - 80);
+    const left = Math.max(0, (window.screen.availWidth - w) / 2);
+    const top = Math.max(0, (window.screen.availHeight - h) / 2);
+    const win = window.open(url, "sevenZapPopup", `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    win?.focus();
+}
+
+/** Open the most useful 7zap page for this vehicle in a floating popup. */
 export function openSevenZap(vin?: string | null, make?: string | null) {
     const cleanVin = (vin || "").trim().toUpperCase();
     const slug = brandSlug(make);
     if (cleanVin && slug && VIN_DECODER_BRANDS.has(slug)) {
         toast.success(`Opening the ${make} OEM catalogue for this VIN…`);
-        setTimeout(() => window.open(
-            `https://7zap.com/en/catalog/cars/${slug}/vin-decoder/#vin=${encodeURIComponent(cleanVin)}`,
-            "_blank",
-        ), 300);
+        openSevenZapPopup(`https://7zap.com/en/catalog/cars/${slug}/vin-decoder/#vin=${encodeURIComponent(cleanVin)}`);
     } else if (cleanVin) {
         navigator.clipboard?.writeText(cleanVin).catch(() => {});
         toast.success("VIN copied — paste it into the 7zap search box");
-        setTimeout(() => window.open("https://7zap.com/en/vin-decoder/", "_blank"), 300);
+        openSevenZapPopup("https://7zap.com/en/vin-decoder/");
     } else {
         toast.info(`Opening the ${make || "7zap"} parts catalogue (no VIN on record)`);
-        setTimeout(() => window.open(sevenZapCatalogUrl(make), "_blank"), 300);
+        openSevenZapPopup(sevenZapCatalogUrl(make));
     }
 }

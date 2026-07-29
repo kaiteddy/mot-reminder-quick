@@ -19,7 +19,7 @@ import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
-import { openSevenZap, sevenZapPartUrl } from "@/lib/sevenZap";
+import { openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -3015,7 +3015,8 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
         : (() => {
             const zapUrl = sevenZapPartUrl(it.partNumber, vehicle?.make);
             return zapUrl
-              ? <a href={zapUrl} target="_blank" rel="noopener noreferrer" title="Look up this OEM number on 7zap"
+              ? <a href={zapUrl} title="Look up this OEM number on 7zap"
+                  onClick={(e) => { e.preventDefault(); openSevenZapPopup(zapUrl); }}
                   className="font-mono text-xs text-orange-700 underline decoration-dotted underline-offset-2 hover:text-orange-800">
                   {it.partNumber}
                 </a>
