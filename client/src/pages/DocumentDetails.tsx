@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
@@ -1394,6 +1394,7 @@ export default function DocumentDetails() {
               <DialogContent className="max-w-lg">
                 <DialogHeader><DialogTitle className="text-sm">Service Reset &amp; OBD — {form.registration}</DialogTitle></DialogHeader>
                 <ServiceResetCard vehicleId={(data as any).vehicle.id} info={(data as any).vehicle.serviceResetInfo}
+                  vehicleDesc={[form.make, form.model].filter(Boolean).join(" ")}
                   onSaved={() => utils.documents.getById.invalidate({ id })} />
               </DialogContent>
             </Dialog>
@@ -2288,6 +2289,23 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
           Job Guide {guide ? "" : "— not generated yet"}
         </button>
         <div className="ml-auto flex items-center gap-2">
+          {guide && (
+            <button type="button" title="Copy the whole guide as text"
+              onClick={() => {
+                const text = [
+                  guide.overview || "",
+                  "",
+                  "How the job is done:",
+                  ...(guide.steps || []).map((s: string, i: number) => `${i + 1}. ${s}`),
+                  ...((guide.partsToCheck || []).length ? ["", "Parts to check together:", ...guide.partsToCheck.map((s: string) => `- ${s}`)] : []),
+                  ...((guide.cautions || []).length ? ["", "Cautions:", ...guide.cautions.map((s: string) => `- ${s}`)] : []),
+                ].join("\n");
+                navigator.clipboard.writeText(text)
+                  .then(() => toast.success("Guide copied to clipboard"))
+                  .catch(() => toast.error("Couldn't copy — select the text manually"));
+              }}
+              className="inline-flex items-center gap-1 text-[12px] text-sky-800 hover:underline"><Copy className="w-3.5 h-3.5" /> Copy</button>
+          )}
           {guide && <button type="button" onClick={printGuide} className="inline-flex items-center gap-1 text-[12px] text-sky-800 hover:underline"><Printer className="w-3.5 h-3.5" /> Print</button>}
           <button type="button" onClick={generate} disabled={gen.isPending}
             className="inline-flex items-center gap-1.5 bg-sky-700 text-white rounded px-2.5 py-1 text-[12px] disabled:opacity-50 hover:bg-sky-800">

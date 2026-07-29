@@ -924,6 +924,7 @@ export default function VehicleDetails() {
                     </Card>
 
                     <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
+                        vehicleDesc={[vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration as any).getFullYear() : null, vehicle.make, vehicle.model].filter(Boolean).join(" ")}
                         onSaved={() => utils.vehicles.getByRegistration.invalidate()} />
 
                     {/* Customer Info */}
