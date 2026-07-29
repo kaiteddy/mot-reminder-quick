@@ -59,7 +59,9 @@ export function sevenZapCatalogUrl(make?: string | null): string {
 // aftermarket cross-references. Only link strings that look like real OEM numbers —
 // most historical GA4 "part numbers" are free text ("STARTER MOTOR", "TYRE").
 export function sevenZapPartUrl(partNumber?: string | null, make?: string | null): string | null {
-    const pn = (partNumber || "").trim();
+    // 7zap displays numbers with grouping spaces ("9A 71 9840500") — collapse before testing,
+    // so both compact and display-formatted values linkify.
+    const pn = (partNumber || "").trim().replace(/\s+/g, "");
     // CR#### coin batteries and R1234yf refrigerant look like OEM numbers but aren't.
     if (!/^[A-Za-z0-9][A-Za-z0-9-]{5,}$/.test(pn) || !/\d{3,}/.test(pn) || /^CR\d{4}$/i.test(pn) || /^R1234YF$/i.test(pn)) return null;
     const slug = brandSlug(make);

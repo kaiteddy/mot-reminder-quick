@@ -3012,7 +3012,17 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   return (
     <>
       <input ref={inputRef} className={inp} placeholder={placeholder} value={value ?? ""}
-        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 130)} />
+        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 130)}
+        onPaste={(e) => {
+          // OEM numbers copied from 7zap arrive display-formatted ("9A 71 9840500") —
+          // collapse the spaces so the number saves, links and matches history cleanly.
+          const t = e.clipboardData.getData("text").trim();
+          const compact = t.replace(/\s+/g, "").toUpperCase();
+          if (/\s/.test(t) && /^[A-Z0-9-]{6,}$/.test(compact) && /\d{3,}/.test(compact)) {
+            e.preventDefault();
+            onType(compact);
+          }
+        }} />
       {open && rect && opts.length > 0 && createPortal(
         <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 300), zIndex: 60 }}
           className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px] max-h-64 overflow-auto">
