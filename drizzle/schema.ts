@@ -279,6 +279,7 @@ export const serviceHistory = pgTable("serviceHistory", {
   insurerAddress: text("insurerAddress"), // free-text claims/bill-to address for insuranceCompany — printed on the main invoice instead of the customer's own address
   insurerEmail: varchar("insurerEmail", { length: 320 }), // insurer's claims email — Email dialog defaults to this on the insurer-billed invoice instead of the customer's own email
   excessFullVatToCustomer: integer("excessFullVatToCustomer"), // 1 = this job's excess has no VAT of its own; the FULL job VAT is charged on the excess (customer) invoice instead, and the main (insurer) invoice prints net-of-VAT — the standard commercial/fleet arrangement where the VAT-registered policyholder reclaims VAT in full and the insurer settles net
+  jobGuide: jsonb("jobGuide"), // AI-generated repair guide for THIS job on THIS vehicle: { overview, steps[], partsToCheck[], cautions[], generatedAt } — workshop reference shown on the job card and printable; copied across on convert
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
@@ -1434,6 +1434,11 @@ export default function DocumentDetails() {
                           className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
                       </>
                     ) : <DescriptionView text={form.description ?? ""} />}
+                    {!base && !isNew && (
+                      <JobGuidePanel docId={id} guide={(data as any)?.doc?.jobGuide}
+                        description={form.description ?? ""}
+                        onSaved={() => utils.documents.getById.invalidate({ id })} />
+                    )}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0">
                     {!base && editing && (form.make || form.model) && (
@@ -2209,6 +2214,86 @@ function DescriptionView({ text }: { text: string }) {
         if (b) return <div key={i} style={{ paddingLeft: "1.1em", textIndent: "-1.1em" }}>– {b[2]}</div>;
         return <div key={i}>{raw}</div>;
       })}
+    </div>
+  );
+}
+
+// Workshop "Job Guide" — a 7zap-AI-Mechanic-style briefing for THIS job on THIS vehicle
+// (overview, how it's done, parts to check together, cautions). Persisted on the document
+// (serviceHistory.jobGuide) so it survives reloads and follows the job through convert.
+// Generated from the description as typed (parts usually aren't on the job yet).
+function JobGuidePanel({ docId, guide, description, onSaved }: {
+  docId: number; guide: any; description: string; onSaved: () => void;
+}) {
+  const gen = trpc.ai.generateJobGuide.useMutation();
+  const [open, setOpen] = useState(!!guide);
+  async function generate() {
+    if (!description.trim()) { toast.error("Type the job description first — the guide is generated from it"); return; }
+    try {
+      await gen.mutateAsync({ docId, description });
+      onSaved();
+      setOpen(true);
+      toast.success("Job guide generated");
+    } catch (e: any) { toast.error(e.message || "Failed to generate the job guide"); }
+  }
+  function printGuide() {
+    if (!guide) return;
+    const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const w = window.open("", "_blank", "width=760,height=900");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>Job Guide</title><style>
+      body{font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:13px;color:#111;margin:28px;line-height:1.5}
+      h1{font-size:17px;margin:0 0 2px} .sub{color:#555;margin-bottom:14px;font-size:12px}
+      h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #ccc;padding-bottom:2px;margin:16px 0 6px}
+      ol,ul{margin:4px 0;padding-left:22px} li{margin:2px 0}
+    </style></head><body>
+      <h1>Job Guide</h1><div class="sub">Workshop reference — generated ${guide.generatedAt ? new Date(guide.generatedAt).toLocaleDateString("en-GB") : ""}</div>
+      <h2>Overview</h2><p>${esc(guide.overview || "")}</p>
+      <h2>How the job is done</h2><ol>${(guide.steps || []).map((s: string) => `<li>${esc(s)}</li>`).join("")}</ol>
+      ${(guide.partsToCheck || []).length ? `<h2>Parts to check together</h2><ul>${guide.partsToCheck.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+      ${(guide.cautions || []).length ? `<h2>Cautions</h2><ul>${guide.cautions.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 250);
+  }
+  return (
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50/50">
+      <div className="flex items-center gap-2 p-2">
+        <BookOpen className="w-4 h-4 text-sky-700 shrink-0" />
+        <button type="button" onClick={() => setOpen((o) => !o)} className="text-[13px] font-semibold text-sky-900 hover:underline">
+          Job Guide {guide ? "" : "— not generated yet"}
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {guide && <button type="button" onClick={printGuide} className="inline-flex items-center gap-1 text-[12px] text-sky-800 hover:underline"><Printer className="w-3.5 h-3.5" /> Print</button>}
+          <button type="button" onClick={generate} disabled={gen.isPending}
+            className="inline-flex items-center gap-1.5 bg-sky-700 text-white rounded px-2.5 py-1 text-[12px] disabled:opacity-50 hover:bg-sky-800">
+            {gen.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {guide ? "Regenerate" : "Generate guide"}
+          </button>
+        </div>
+      </div>
+      {open && guide && (
+        <div className="px-3 pb-3 text-[13px] leading-relaxed text-slate-800 space-y-2">
+          <p>{guide.overview}</p>
+          <div>
+            <p className="font-semibold text-[12px] uppercase tracking-wide text-sky-900 mb-1">How the job is done</p>
+            <ol className="list-decimal pl-5 space-y-0.5">{(guide.steps || []).map((s: string, i: number) => <li key={i}>{s}</li>)}</ol>
+          </div>
+          {(guide.partsToCheck || []).length > 0 && (
+            <div>
+              <p className="font-semibold text-[12px] uppercase tracking-wide text-sky-900 mb-1">Parts to check together</p>
+              <ul className="list-disc pl-5 space-y-0.5">{guide.partsToCheck.map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
+            </div>
+          )}
+          {(guide.cautions || []).length > 0 && (
+            <div>
+              <p className="font-semibold text-[12px] uppercase tracking-wide text-amber-800 mb-1">Cautions</p>
+              <ul className="list-disc pl-5 space-y-0.5 text-amber-900">{guide.cautions.map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

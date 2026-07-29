@@ -3006,6 +3006,13 @@ export async function convertDocument(id: number, toType: string) {
     }
   }
 
+  // Carry the AI job guide across too — it describes the same work, and the invoice is
+  // where the technician/customer conversation usually happens.
+  if ((doc as any).jobGuide && created?.id) {
+    const db = await getDb();
+    if (db) await db.update(serviceHistory).set({ jobGuide: (doc as any).jobGuide }).where(eq(serviceHistory.id, created.id));
+  }
+
   // "Convert to Invoice/Job Sheet" supersedes the original; "Copy to Estimate/Credit Note" keeps it.
   // On a convert, remove the source so it isn't left behind as a duplicate — but only a web-created
   // working doc (job sheet / estimate). Never auto-delete invoices/credit notes, and never a

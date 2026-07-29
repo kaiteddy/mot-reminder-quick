@@ -10,6 +10,9 @@ import { eq, like, desc } from "drizzle-orm";
 // Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
 // Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
 const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-nano";
+// The Job Guide is technical reference content (steps/specs/cautions) where nano-tier
+// quality visibly disappoints — default it to the higher-quality mini tier instead.
+const AI_MODEL_GUIDE = process.env.AI_MODEL_GUIDE || "gpt-5.4-mini";
 
 // AI is usable when an OpenAI key (OPENAI_API_KEY) or the Forge fallback (BUILT_IN_FORGE_API_KEY)
 // is configured in the environment — Vercel in production, .env locally.
@@ -319,6 +322,86 @@ List the parts or consumables a garage would replace to put these right (e.g. bu
       } catch (e: any) {
         console.error("AI partsForDefects error:", e);
         throw new Error("Failed to work out parts: " + e.message);
+      }
+    }),
+
+  // Workshop "Job Guide" (inspired by 7zap's AI Mechanic, which is paywalled in-page and
+  // can't be embedded): for the job on a document, generate a structured guide — what the
+  // job is, how it's done on THIS vehicle, parts to check/replace together, and cautions.
+  // Saved onto the document (serviceHistory.jobGuide) so it persists, prints, and follows
+  // the job through convert (JS → SI).
+  generateJobGuide: publicProcedure
+    // description override: the guide is usually generated straight after typing the
+    // description, BEFORE parts are added or the doc is saved — use what's on screen,
+    // not the stale saved copy.
+    .input(z.object({ docId: z.number(), description: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      if (!hasAIKey()) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+      }
+      const db = await getDb();
+      if (!db) throw new Error("Database error");
+      const [doc] = await db.select().from(serviceHistory).where(eq(serviceHistory.id, input.docId)).limit(1);
+      if (!doc) throw new Error("Document not found");
+      const items = await db.select().from(serviceLineItems).where(eq(serviceLineItems.documentId, input.docId));
+      const veh = doc.vehicleId
+        ? (await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId)).limit(1))[0]
+        : null;
+
+      const regYear = veh?.dateOfRegistration ? new Date(veh.dateOfRegistration).getFullYear() : null;
+      const vehDesc = [regYear, veh?.make, veh?.model, veh?.derivative]
+        .filter(Boolean).join(" ") || "the vehicle";
+      const vehDetail = [
+        veh?.engineCode ? `engine ${veh.engineCode}` : null,
+        veh?.engineCC ? `${veh.engineCC}cc` : null,
+        veh?.fuelType,
+      ].filter(Boolean).join(", ");
+      const labour = items.filter((i) => i.itemType === "Labour" && i.description).map((i) => i.description);
+      const parts = items.filter((i) => i.itemType === "Part" && i.description).map((i) => i.description);
+      const jobText = [input.description?.trim() || doc.description, labour.length ? `Labour lines:\n${labour.join("\n")}` : null,
+        parts.length ? `Parts on the job:\n${parts.join("\n")}` : null].filter(Boolean).join("\n\n");
+      if (!jobText.trim()) throw new Error("Add a description or some labour/parts lines first — the guide is generated from the job's content.");
+
+      // Ground the guide in the vehicle's stored technical data (oil specs, capacities,
+      // service data) so specs come from real data, not the model's guesswork.
+      let techBlock = "";
+      const tech = (veh as any)?.comprehensiveTechnicalData;
+      if (tech) {
+        try { techBlock = `\n\nKnown technical data for this exact vehicle (authoritative — use these over your own recall):\n${JSON.stringify(tech).slice(0, 4000)}`; } catch {}
+      }
+
+      const prompt = `Vehicle: ${vehDesc}${vehDetail ? ` (${vehDetail})` : ""}
+Job on the card:
+
+${jobText}${techBlock}`;
+
+      try {
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider(AI_MODEL_GUIDE),
+          system: `You are a UK master technician writing a workshop reference guide for a specific job on a specific vehicle — the kind of briefing a foreman gives an apprentice before they start. Practical, UK terms, no prices.
+
+Sections to return:
+- overview: 2-3 sentences — what this job is and why it's done.
+- steps: how the job is done ON THIS VEHICLE, in order, each step one short imperative sentence. Include access/removal steps where this vehicle needs them, fluid capacities/specs where relevant, and any reset/relearn/calibration at the end. 4-14 steps.
+- partsToCheck: parts/consumables to check or replace TOGETHER with this job (the "while you're in there" items — e.g. discs with pads, sump washer with an oil change, aux belt while the front end is stripped). 0-8 short entries; empty if nothing applies.
+- cautions: warnings specific to this job/vehicle — torque-critical fasteners, one-time-use bolts, coding/battery/TPMS/steering-angle resets, common mistakes. 0-6 short entries.
+
+Be honest about vehicle-specific facts: where a spec (capacity, torque) varies by exact variant and you are not certain for this one, say "check data for this variant" rather than guessing a number.`,
+          prompt,
+          schema: z.object({
+            overview: z.string(),
+            steps: z.array(z.string()).min(3).max(14),
+            partsToCheck: z.array(z.string()).max(8),
+            cautions: z.array(z.string()).max(6),
+          }),
+        });
+        const guide = { ...object, generatedAt: new Date().toISOString() };
+        await db.update(serviceHistory).set({ jobGuide: guide }).where(eq(serviceHistory.id, input.docId));
+        return guide;
+      } catch (e: any) {
+        console.error("AI generateJobGuide error:", e);
+        throw new Error("Failed to generate job guide: " + e.message);
       }
     }),
 
