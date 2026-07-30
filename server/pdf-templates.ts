@@ -790,6 +790,11 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   // service-light reset procedure. See getRichPDF for when service_reset is populated.
   const sr = data.service_reset;
   if (sr) {
+    // Ask the printer for double-sided (long-edge flip) so the reset sheet lands on the
+    // BACK of the job card — one piece of paper. This is a PDF viewer preference: Adobe
+    // and most print servers honour it; browsers' print dialogs follow the printer's own
+    // default instead, so the office printer should also default to duplex.
+    try { (doc as any)._root.data.ViewerPreferences = (doc as any).ref({ Duplex: 'DuplexFlipLongEdge' }); } catch { /* cosmetic */ }
     doc.addPage();
     y = M;
     doc.font('Helvetica-Bold').fontSize(15).fillColor('black');
