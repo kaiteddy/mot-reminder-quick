@@ -259,10 +259,15 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
         const { docAttachments } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
+        const { eq, desc, sql } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) return [];
-        return db.select({ id: docAttachments.id, name: docAttachments.name, mime: docAttachments.mime, size: docAttachments.size, createdAt: docAttachments.createdAt })
+        // Link rows carry their (tiny) payload in the list so a click can open the URL
+        // synchronously; image payloads stay list-omitted and load per-thumbnail.
+        return db.select({
+          id: docAttachments.id, name: docAttachments.name, mime: docAttachments.mime, size: docAttachments.size, createdAt: docAttachments.createdAt,
+          data: sql<string | null>`CASE WHEN ${docAttachments.mime} = 'text/uri-list' THEN ${docAttachments.data} ELSE NULL END`,
+        })
           .from(docAttachments).where(eq(docAttachments.documentId, input.documentId)).orderBy(desc(docAttachments.createdAt));
       }),
     getAttachment: publicProcedure
@@ -277,7 +282,8 @@ export const appRouter = router({
       }),
     addAttachment: publicProcedure
       // data = base64 without the data: prefix. 4MB decoded cap keeps Neon rows sane.
-      .input(z.object({ documentId: z.number(), name: z.string().min(1).max(200), mime: z.string().regex(/^image\//), data: z.string().min(10) }))
+      // mime text/uri-list = a saved LINK (e.g. the 7zap diagram deep link) — data is the base64'd URL.
+      .input(z.object({ documentId: z.number(), name: z.string().min(1).max(200), mime: z.string().regex(/^image\/|^text\/uri-list$/), data: z.string().min(10) }))
       .mutation(async ({ input }) => {
         const size = Math.floor(input.data.length * 3 / 4);
         if (size > 4 * 1024 * 1024) throw new Error("Image too large — keep it under 4MB (crop the screenshot to the diagram)");

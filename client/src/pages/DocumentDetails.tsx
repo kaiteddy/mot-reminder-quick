@@ -2403,25 +2403,62 @@ function JobImages({ docId }: { docId: number }) {
     utils.documents.listAttachments.invalidate({ documentId: docId });
   }
 
+  // Paste a URL instead of an image (e.g. the 7zap popup's address — it carries the VIN and
+  // diagram section) and it's saved as a clickable link chip on the job.
+  async function ingestLink(url: string) {
+    const u = url.trim();
+    let label = "Link";
+    try {
+      const parsed = new URL(u);
+      if (/7zap\.com$/i.test(parsed.hostname.replace(/^www\./, ""))) {
+        const section = /[#&]section=([a-z0-9-]+)/i.exec(u)?.[1];
+        const part = /\/part\/[a-z-]+\/([a-z0-9-]+)/i.exec(parsed.pathname);
+        label = part ? `7zap part ${part[1].toUpperCase()}` : `7zap diagram${section ? ` — ${section.replace(/-/g, " ")}` : ""}`;
+      } else label = parsed.hostname.replace(/^www\./, "");
+    } catch { toast.error("That doesn't look like a link"); return; }
+    try {
+      await add.mutateAsync({ documentId: docId, name: label, mime: "text/uri-list", data: btoa(unescape(encodeURIComponent(u))) });
+      toast.success(`Link saved to the job — ${label}`);
+      utils.documents.listAttachments.invalidate({ documentId: docId });
+    } catch (e: any) { toast.error(e.message || "Failed to save the link"); }
+  }
+
   return (
     <div className="mt-3 rounded-md border border-slate-200"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) ingest(e.dataTransfer.files); }}>
       <div className="flex items-center gap-2 p-2">
         <Paperclip className="w-4 h-4 text-slate-600 shrink-0" />
-        <span className="text-[13px] font-semibold text-slate-800">Job Images {list?.length ? `(${list.length})` : ""}</span>
-        <span className="text-[12px] text-muted-foreground">— paste a screenshot here (e.g. the 7zap diagram) or drop an image file</span>
+        <span className="text-[13px] font-semibold text-slate-800">Job Images &amp; Links {list?.length ? `(${list.length})` : ""}</span>
+        <span className="text-[12px] text-muted-foreground">— paste a screenshot OR a 7zap link here (copy the popup's address bar), or drop an image file</span>
       </div>
       <div tabIndex={0}
-        onPaste={(e) => { const files = Array.from(e.clipboardData.items).map((i) => i.getAsFile()).filter(Boolean) as File[]; if (files.length) { e.preventDefault(); ingest(files); } }}
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData.items).map((i) => i.getAsFile()).filter(Boolean) as File[];
+          if (files.length) { e.preventDefault(); ingest(files); return; }
+          const text = e.clipboardData.getData("text").trim();
+          if (/^https?:\/\//i.test(text)) { e.preventDefault(); ingestLink(text); }
+        }}
         className="mx-2 mb-2 rounded border border-dashed border-slate-300 bg-slate-50/60 px-3 py-2 text-[12px] text-slate-500 outline-none focus:border-violet-400 focus:bg-violet-50/40 cursor-text"
       >
-        {add.isPending ? <span className="inline-flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving image…</span>
-          : "Click here, then press Cmd+V / Ctrl+V to paste"}
+        {add.isPending ? <span className="inline-flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+          : "Click here, then press Cmd+V / Ctrl+V — an image or a link"}
       </div>
       {(list || []).length > 0 && (
-        <div className="flex flex-wrap gap-2 px-2 pb-2">
-          {(list || []).map((a: any) => (
+        <div className="flex flex-wrap items-start gap-2 px-2 pb-2">
+          {(list || []).map((a: any) => a.mime === "text/uri-list" ? (
+            <div key={a.id} className="relative group">
+              <button type="button" title="Open this saved link (7zap opens in the popup)"
+                onClick={() => { try { const url = decodeURIComponent(escape(atob(a.data))); /7zap\.com/i.test(url) ? openSevenZapPopup(url) : window.open(url, "_blank", "noopener"); } catch { toast.error("Couldn't open the link"); } }}
+                className="inline-flex items-center gap-1.5 border border-orange-200 bg-orange-50 rounded-md px-2 py-1 text-[12px] font-medium text-orange-700 hover:bg-orange-100">
+                <ExternalLink className="w-3.5 h-3.5" /> {a.name}
+              </button>
+              <button type="button" onClick={() => setDeleteId(a.id)} title="Delete link"
+                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ) : (
             <div key={a.id} className="relative group border rounded-md p-1.5 bg-white">
               <button type="button" onClick={() => setViewId(a.id)} className="block text-left" title={`${a.name} — click to view`}>
                 <AttachmentThumb id={a.id} name={a.name} />
