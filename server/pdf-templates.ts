@@ -15,6 +15,7 @@ const PH = 841.89;           // A4 height in points
 const M = 30;                // Page margin
 const CW = PW - M * 2;      // Content width
 const ROW_H = 16;            // Default table row height (compact, to keep docs on one page)
+const MAX_ROW_H = 90;        // Hard cap on a single tick-table row (ellipsised past this) — one rambling paragraph must not push the job card onto page 2
 const BOTTOM = 40;           // Bottom margin for page breaks
 
 // Colours
@@ -709,62 +710,99 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   }
   y += 4;
 
-  const blankRowH = 16;
   let cx = M;
   // A pre-filled, tick-off table: a header, then one row per item (height grows to fit the
   // text), then a few blank rows for anything added on the job. cols = [main, mid?, Done].
-  const tickTable = (headers: string[], cols: number[], rows: { main: string; mid?: string }[], blanks: number) => {
-    y = checkBreak(ROW_H + blankRowH);
+  const tickTable = (headers: string[], cols: number[], rows: { main: string; mid?: string }[], blanks: number, fs: number, bh: number) => {
+    y = checkBreak(ROW_H + bh);
     filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
     cellDividers(doc, M, y, ROW_H, cols);
-    doc.font('Helvetica').fontSize(8.5).fillColor('black');
+    doc.font('Helvetica').fontSize(fs).fillColor('black');
     cx = M;
     headers.forEach((h, i) => { doc.text(h, cx + 6, y + 6, { width: cols[i] - 12, align: 'center' }); cx += cols[i]; });
     y += ROW_H;
     for (const row of rows) {
-      doc.font('Helvetica').fontSize(8.5).fillColor('black');
-      const rowH = Math.max(blankRowH, doc.heightOfString(row.main, { width: cols[0] - 12 }) + 6);
+      doc.font('Helvetica').fontSize(fs).fillColor('black');
+      // A single row is capped (with an ellipsis) — one rambling paragraph must not be
+      // allowed to push the job card onto a second page.
+      const rowH = Math.min(MAX_ROW_H, Math.max(bh, doc.heightOfString(row.main, { width: cols[0] - 12 }) + 6));
       y = checkBreak(rowH);
       cx = M;
       for (const w of cols) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
-      doc.text(row.main, M + 6, y + 4, { width: cols[0] - 12 });
-      if (row.mid && cols.length === 3) doc.text(row.mid, M + cols[0] + 6, y + 4, { width: cols[1] - 12 });
+      doc.text(row.main, M + 6, y + 4, { width: cols[0] - 12, height: rowH - 7, ellipsis: true });
+      if (row.mid && cols.length === 3) doc.text(row.mid, M + cols[0] + 6, y + 4, { width: cols[1] - 12, height: rowH - 7, ellipsis: true });
       y += rowH;
     }
     for (let r = 0; r < blanks; r++) {
-      y = checkBreak(blankRowH);
+      y = checkBreak(bh);
       cx = M;
-      for (const w of cols) { doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore(); cx += w; }
-      y += blankRowH;
+      for (const w of cols) { doc.save().rect(cx, y, w, bh).stroke(BORDER).restore(); cx += w; }
+      y += bh;
     }
   };
 
-  // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
-  // for the mechanic to log labour (Tech / Qty / Done).
-  const services = (data.work_description || [])
+  const services: { main: string }[] = (data.work_description || [])
     .map((s: string) => String(s || '').replace(/^[\s•–—-]+/, '').trim())
     .filter(Boolean)
     .map((s: string) => ({ main: s }));
-  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
-  tickTable(['Service / Labour', 'Tech', 'Qty', 'Done'], lcw, services, 5);
-  y += 5;
-
-  // ── Parts table ── the actual parts on the job, tick-off, plus blank rows for extras.
-  const partRows = ((data.parts || []) as any[]).map((p) => ({
+  const partRows: { main: string; mid?: string }[] = ((data.parts || []) as any[]).map((p) => ({
     main: `${p.quantity && Number(p.quantity) !== 1 ? `${Number(p.quantity)} x ` : ''}${p.description || ''}`.trim(),
     mid: p.partNumber ? String(p.partNumber) : '',
   }));
+  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
   const pcw = [0.64, 0.24, 0.12].map((r) => CW * r);
-  tickTable(['Parts', 'Part No.', 'Done'], pcw, partRows, 4);
+
+  // ── One page, always ── a job card is a single physical sheet (the reset sheet prints on
+  // its back); only invoices may run to more pages. Measure the remaining content and step
+  // down through compression levels (fewer blank rows -> drop the car diagram -> smaller
+  // font) until it fits; as a last resort the item lists are truncated with a pointer to
+  // the system. checkBreak stays only as a never-expected fallback.
+  const DIAG_W = CW * 0.22;
+  const DIAG_H = DIAG_W * (274 / 355) + 8;
+  const TC_H = 94; // T&C paragraph + bold line + signature row (small safety margin — the T&C gate needs 80 clear)
+  const measure = (fs: number, bh: number, bl: number, bp: number, sRows: { main: string }[], pRows: { main: string }[]) => {
+    doc.font('Helvetica').fontSize(fs);
+    const rowsH = (rows: { main: string }[], w: number) =>
+      rows.reduce((a, r) => a + Math.min(MAX_ROW_H, Math.max(bh, doc.heightOfString(r.main, { width: w - 12 }) + 6)), 0);
+    return (ROW_H + rowsH(sRows, lcw[0]) + bl * bh + 5) + (ROW_H + rowsH(pRows, pcw[0]) + bp * bh + 4);
+  };
+  const budget = (PH - BOTTOM) - y - TC_H;
+  const levels = [
+    { fs: 8.5, bh: 16, bl: 5, bp: 4, diag: true },
+    { fs: 8.5, bh: 14, bl: 3, bp: 2, diag: true },
+    { fs: 8, bh: 13, bl: 2, bp: 2, diag: false },
+    { fs: 7.5, bh: 12, bl: 1, bp: 1, diag: false },
+  ];
+  let cfg = levels[levels.length - 1];
+  for (const l of levels) {
+    if (measure(l.fs, l.bh, l.bl, l.bp, services, partRows) <= budget - (l.diag ? DIAG_H : 0)) { cfg = l; break; }
+  }
+  // Trim rows until the tables fit; 18pt is reserved up front for the "+N more" hint row
+  // so appending it can't push the card back over the edge.
+  const fitCap = budget - (cfg.diag ? DIAG_H : 0) - 18;
+  let sShow = services, pShow = partRows, cut = 0;
+  while (measure(cfg.fs, cfg.bh, cfg.bl, cfg.bp, sShow, pShow) > fitCap
+    && (sShow.length > 1 || pShow.length > 1)) {
+    if (sShow.length >= pShow.length) sShow = sShow.slice(0, -1); else pShow = pShow.slice(0, -1);
+    cut++;
+  }
+  if (cut) sShow = [...sShow, { main: `… +${cut} more line${cut === 1 ? '' : 's'} — see the full job in the system` }];
+
+  // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
+  // for the mechanic to log labour (Tech / Qty / Done).
+  tickTable(['Service / Labour', 'Tech', 'Qty', 'Done'], lcw, sShow, cfg.bl, cfg.fs, cfg.bh);
+  y += 5;
+
+  // ── Parts table ── the actual parts on the job, tick-off, plus blank rows for extras.
+  tickTable(['Parts', 'Part No.', 'Done'], pcw, pShow, cfg.bp, cfg.fs, cfg.bh);
   y += 4;
 
-  // Car diagram
-  const diagram = findImg('car_diagram.png');
+  // Car diagram — dropped first when space is tight (see levels above).
+  const diagram = cfg.diag ? findImg('car_diagram.png') : null;
   if (diagram) {
-    const dw = CW * 0.22;
-    const dh = dw * (274 / 355);
+    const dh = DIAG_W * (274 / 355);
     y = checkBreak(dh + 70);
-    doc.image(diagram, M, y, { width: dw });
+    doc.image(diagram, M, y, { width: DIAG_W });
     y += dh + 4;
   }
 
@@ -797,6 +835,39 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     try { (doc as any)._root.data.ViewerPreferences = (doc as any).ref({ Duplex: 'DuplexFlipLongEdge' }); } catch { /* cosmetic */ }
     doc.addPage();
     y = M;
+
+    // This page must also stay exactly one page (it's the BACK of the job card). Measure
+    // at descending sizes; drop the variants section, then cap the step list if needed.
+    const steps: string[] = (sr.resetSteps || []).map((s: string, i: number) => `${i + 1}. ${s}`);
+    const variants: string[] = (sr.alternatives || []).map((s: string) => `• ${s}`);
+    const cautions: string[] = (sr.cautions || []).map((s: string) => `• ${s}`);
+    const srLevels = [
+      { fs: 9.5, iw: 300, variants: true },
+      { fs: 8.5, iw: 240, variants: true },
+      { fs: 8, iw: 200, variants: false },
+    ];
+    const srMeasure = (fs: number, iw: number, withVariants: boolean, stepList: string[]) => {
+      doc.font('Helvetica').fontSize(fs);
+      const para = (t: string) => doc.heightOfString(t, { width: CW }) + 5;
+      let h = 42; // title + subtitle
+      if (sr.obdLocation) h += 16 + para(sr.obdLocation);
+      if (sr.obdImage?.dataBase64) h += iw * (526 / 790) + 20;
+      if (stepList.length) h += 16 + stepList.reduce((a, s) => a + para(s), 0) + 2;
+      if (withVariants && variants.length) h += 16 + variants.reduce((a, s) => a + para(s), 0) + 2;
+      if (cautions.length) h += 16 + cautions.reduce((a, s) => a + para(s), 0);
+      return h;
+    };
+    const srBudget = PH - BOTTOM - M;
+    let srCfg = srLevels[srLevels.length - 1];
+    for (const l of srLevels) {
+      if (srMeasure(l.fs, l.iw, l.variants, steps) <= srBudget) { srCfg = l; break; }
+    }
+    let srSteps = steps;
+    while (srMeasure(srCfg.fs, srCfg.iw, srCfg.variants, srSteps) > srBudget && srSteps.length > 4) {
+      srSteps = srSteps.slice(0, -1);
+    }
+    if (srSteps.length < steps.length) srSteps = [...srSteps, '… see the full procedure in the system'];
+
     doc.font('Helvetica-Bold').fontSize(15).fillColor('black');
     doc.text(`Service Reset & OBD${sr.registration ? ` — ${sr.registration}` : ''}`, M, y); y += 20;
     doc.font('Helvetica').fontSize(9).fillColor('#555555');
@@ -808,35 +879,36 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
       doc.moveTo(M, y - 3).lineTo(PW - M, y - 3).lineWidth(0.5).strokeColor('#bbbbbb').stroke();
       y += 2;
     };
+    // height-capped so an estimate miss can never trigger PDFKit's auto-pagination
     const srPara = (t: string, colour = 'black') => {
-      doc.font('Helvetica').fontSize(9.5).fillColor(colour);
+      doc.font('Helvetica').fontSize(srCfg.fs).fillColor(colour);
       const h = doc.heightOfString(t, { width: CW });
-      doc.text(t, M, y, { width: CW }); y += h + 6;
+      doc.text(t, M, y, { width: CW, height: Math.max(10, PH - BOTTOM - y), ellipsis: true }); y += h + 5;
     };
 
     if (sr.obdLocation) { srHead('OBD port location'); srPara(sr.obdLocation); }
     if (sr.obdImage?.dataBase64) {
       try {
         const img = Buffer.from(sr.obdImage.dataBase64, 'base64');
-        const iw = 300, ih = iw * (526 / 790);
-        doc.image(img, M, y, { width: iw }); y += ih + 4;
+        const ih = srCfg.iw * (526 / 790);
+        doc.image(img, M, y, { width: srCfg.iw }); y += ih + 4;
         doc.font('Helvetica').fontSize(7.5).fillColor('#555555');
         doc.text(`Port highlighted — ${sr.obdImage.source || 'Trakm8 OBD checker'}${sr.obdImage.matched ? ` (${sr.obdImage.matched})` : ''}`, M, y); y += 16;
       } catch { /* bad image data — text still printed */ }
     }
-    if ((sr.resetSteps || []).length) {
+    if (srSteps.length) {
       srHead('Service light reset');
-      sr.resetSteps.forEach((s: string, i: number) => srPara(`${i + 1}. ${s}`));
+      srSteps.forEach((s) => srPara(s));
       y += 2;
     }
-    if ((sr.alternatives || []).length) {
+    if (srCfg.variants && variants.length) {
       srHead('Variants');
-      sr.alternatives.forEach((s: string) => srPara(`• ${s}`));
+      variants.forEach((s) => srPara(s));
       y += 2;
     }
-    if ((sr.cautions || []).length) {
+    if (cautions.length && y < PH - BOTTOM - 30) {
       srHead('Cautions');
-      sr.cautions.forEach((s: string) => srPara(`• ${s}`, '#92400e'));
+      cautions.forEach((s) => srPara(s, '#92400e'));
     }
   }
 
