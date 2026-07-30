@@ -387,6 +387,14 @@ Sections to return:
 - steps: how the job is done ON THIS VEHICLE, in order, each step one short imperative sentence. Include access/removal steps where this vehicle needs them, fluid capacities/specs where relevant, and any reset/relearn/calibration at the end. 4-14 steps.
 - partsToCheck: parts/consumables to check or replace TOGETHER with this job (the "while you're in there" items — e.g. discs with pads, sump washer with an oil change, aux belt while the front end is stripped). 0-8 short entries; empty if nothing applies.
 - cautions: warnings specific to this job/vehicle — torque-critical fasteners, one-time-use bolts, coding/battery/TPMS/steering-angle resets, common mistakes. 0-6 short entries.
+- customerSummary: the CUSTOMER-FACING account of the work, written in this garage's real invoice style — short step lines, one per entry, no bullet markers — but MORE INFORMATIVE than the terse original: where a step benefits, append a short plain-English clause after " — " explaining what or why, so the customer understands what they are paying for. 4-10 entries. No prices, no scare tactics, no marketing fluff.
+  The house style (from real invoices): "Carry out MOT", "Investigate non-start battery run flat", "Found the battery is faulty", "To supply and fit battery", "To obtain access to starter motor", "Reassemble per removal", "Road test".
+  Enriched examples of the SAME style for the customer:
+  "To supply and fit rear brake pads — the pads that press on the discs to stop the car had worn close to the limit"
+  "Put the electronic parking brake into service mode — required on this model before the pads can be changed"
+  "Clean and lubricate the caliper slides — so the new pads move freely and wear evenly"
+  "Check brake fluid level and condition"
+  "Road test — confirm the brakes feel right and nothing drags"
 
 Be honest about vehicle-specific facts: where a spec (capacity, torque) varies by exact variant and you are not certain for this one, say "check data for this variant" rather than guessing a number.`,
           prompt,
@@ -395,6 +403,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
             steps: z.array(z.string()).min(3).max(14),
             partsToCheck: z.array(z.string()).max(8),
             cautions: z.array(z.string()).max(6),
+            customerSummary: z.array(z.string()).min(3).max(10),
           }),
         });
         const guide = { ...object, generatedAt: new Date().toISOString() };

@@ -2252,6 +2252,9 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
 }) {
   const gen = trpc.ai.generateJobGuide.useMutation();
   const [open, setOpen] = useState(!!guide);
+  // The doc loads async — when the guide arrives after mount, open up (the initial
+  // useState only saw undefined).
+  useEffect(() => { if (guide) setOpen(true); }, [!!guide]);
   async function generate() {
     if (!description.trim()) { toast.error("Type the job description first — the guide is generated from it"); return; }
     try {
@@ -2277,6 +2280,7 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
       <h2>How the job is done</h2><ol>${(guide.steps || []).map((s: string) => `<li>${esc(s)}</li>`).join("")}</ol>
       ${(guide.partsToCheck || []).length ? `<h2>Parts to check together</h2><ul>${guide.partsToCheck.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
       ${(guide.cautions || []).length ? `<h2>Cautions</h2><ul>${guide.cautions.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+      ${(guide.customerSummary || []).length ? `<h2>For the customer — what you're paying for</h2><ul>${guide.customerSummary.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
     </body></html>`);
     w.document.close();
     w.focus();
@@ -2333,6 +2337,26 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
               <p className="font-semibold text-[12px] uppercase tracking-wide text-amber-800 mb-1">Cautions</p>
               <ul className="list-disc pl-5 space-y-0.5 text-amber-900">{guide.cautions.map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
             </div>
+          )}
+          {(guide.customerSummary || []).length > 0 ? (
+            <div className="rounded-md border border-violet-200 bg-violet-50/50 p-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="font-semibold text-[12px] uppercase tracking-wide text-violet-900">For the customer — what you're paying for</p>
+                <button type="button" title="Copy the customer version (paste straight into the invoice description / WhatsApp / email)"
+                  onClick={() => {
+                    navigator.clipboard.writeText((guide.customerSummary as string[]).join("\n"))
+                      .then(() => toast.success("Customer version copied"))
+                      .catch(() => toast.error("Couldn't copy — select the text manually"));
+                  }}
+                  className="ml-auto inline-flex items-center gap-1 text-[12px] text-violet-800 hover:underline">
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              </div>
+              {/* Invoice house style — plain step lines, no bullets, ready to paste into the description */}
+              <div className="space-y-0.5 text-violet-950">{guide.customerSummary.map((s: string, i: number) => <div key={i}>{s}</div>)}</div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">Regenerate the guide to add the plain-English customer explanation.</p>
           )}
         </div>
       )}
