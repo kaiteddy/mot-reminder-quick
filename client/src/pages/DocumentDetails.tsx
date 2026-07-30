@@ -2344,22 +2344,23 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
                 <p className="font-semibold text-[12px] uppercase tracking-wide text-violet-900">For the customer — what you're paying for</p>
                 <button type="button" title="Copy the customer version (paste straight into the invoice description / WhatsApp / email)"
                   onClick={() => {
-                    // One clean line per step: strip any stray bullets/markers the model
-                    // might add and collapse internal line breaks, so the paste is tidy.
-                    const text = (guide.customerSummary as string[])
-                      .map((s) => s.replace(/^[\s•*–—-]+/, "").replace(/\s+/g, " ").trim())
-                      .filter(Boolean)
-                      .join("\n");
+                    // The exact paste-ready invoice format: **Subject** title, blank line,
+                    // then one dashed step per line. Stray markers/line breaks are scrubbed.
+                    const clean = (s: string) => s.replace(/^[\s•*–—-]+/, "").replace(/\s+/g, " ").trim();
+                    const steps = (guide.customerSummary as string[]).map(clean).filter(Boolean);
+                    const title = clean(guide.customerTitle || "");
+                    const text = (title ? `**${title}**\n\n` : "") + steps.map((s) => `- ${s}`).join("\n");
                     navigator.clipboard.writeText(text)
-                      .then(() => toast.success("Customer version copied — one line per step"))
+                      .then(() => toast.success("Customer version copied — title + dashed steps"))
                       .catch(() => toast.error("Couldn't copy — select the text manually"));
                   }}
                   className="ml-auto inline-flex items-center gap-1 text-[12px] text-violet-800 hover:underline">
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
               </div>
-              {/* Invoice house style — plain step lines, no bullets, ready to paste into the description */}
-              <div className="space-y-0.5 text-violet-950">{guide.customerSummary.map((s: string, i: number) => <div key={i}>{s}</div>)}</div>
+              {/* Invoice house format — bold subject then dashed steps, exactly what Copy pastes */}
+              {guide.customerTitle && <p className="font-bold underline text-violet-950 mb-1">{guide.customerTitle}</p>}
+              <div className="space-y-0.5 text-violet-950">{guide.customerSummary.map((s: string, i: number) => <div key={i} style={{ paddingLeft: "1.1em", textIndent: "-1.1em" }}>- {s}</div>)}</div>
             </div>
           ) : (
             <p className="text-[11px] text-muted-foreground">Regenerate the guide to add the plain-English customer explanation.</p>
