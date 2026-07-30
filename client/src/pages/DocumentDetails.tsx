@@ -2344,8 +2344,14 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
                 <p className="font-semibold text-[12px] uppercase tracking-wide text-violet-900">For the customer — what you're paying for</p>
                 <button type="button" title="Copy the customer version (paste straight into the invoice description / WhatsApp / email)"
                   onClick={() => {
-                    navigator.clipboard.writeText((guide.customerSummary as string[]).join("\n"))
-                      .then(() => toast.success("Customer version copied"))
+                    // One clean line per step: strip any stray bullets/markers the model
+                    // might add and collapse internal line breaks, so the paste is tidy.
+                    const text = (guide.customerSummary as string[])
+                      .map((s) => s.replace(/^[\s•*–—-]+/, "").replace(/\s+/g, " ").trim())
+                      .filter(Boolean)
+                      .join("\n");
+                    navigator.clipboard.writeText(text)
+                      .then(() => toast.success("Customer version copied — one line per step"))
                       .catch(() => toast.error("Couldn't copy — select the text manually"));
                   }}
                   className="ml-auto inline-flex items-center gap-1 text-[12px] text-violet-800 hover:underline">
