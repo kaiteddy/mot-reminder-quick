@@ -64,6 +64,7 @@ export function ServiceResetCard({ vehicleId, info, onSaved, vehicleDesc, vin, m
           <h1>Service Reset &amp; OBD${registration ? ` — ${esc(registration)}` : ""}</h1>
           <div class="sub">${esc(vehicleDesc || "")}${card.generatedAt ? ` · generated ${new Date(card.generatedAt).toLocaleDateString("en-GB")}` : ""}</div>
           <h2>OBD port location</h2><p>${esc(card.obdLocation || "")}</p>
+          ${card.obdImage?.dataBase64 ? `<img src="data:image/png;base64,${card.obdImage.dataBase64}" alt="OBD port location" style="max-width:420px;width:100%;border:1px solid #ccc;border-radius:4px" /><p style="color:#555;font-size:11px;margin-top:2px">Port highlighted — ${esc(card.obdImage.source || "Trakm8")}</p>` : ""}
           <h2>Service light reset</h2><ol>${(card.resetSteps || []).map((s: string) => `<li>${esc(s)}</li>`).join("")}</ol>
           ${(card.alternatives || []).length ? `<h2>Variants</h2><ul>${card.alternatives.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
           ${(card.cautions || []).length ? `<h2>Cautions</h2><ul class="caution">${card.cautions.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
@@ -140,6 +141,13 @@ export function ServiceResetCard({ vehicleId, info, onSaved, vehicleDesc, vin, m
                         <Usb className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                         <p><span className="font-semibold">OBD port:</span> {card.obdLocation}</p>
                     </div>
+                    {card.obdImage?.dataBase64 && (
+                        <div>
+                            <img src={`data:image/png;base64,${card.obdImage.dataBase64}`} alt="OBD port location diagram"
+                                className="w-full max-w-[420px] rounded border bg-white" />
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Port highlighted — {card.obdImage.source}{card.obdImage.matched ? ` (${card.obdImage.matched})` : ""}</p>
+                        </div>
+                    )}
                     <div>
                         <p className="font-semibold text-[12px] uppercase tracking-wide text-emerald-900 mb-1">Service light reset</p>
                         <ol className="list-decimal pl-5 space-y-0.5">{(card.resetSteps || []).map((s: string, i: number) => <li key={i}>{s}</li>)}</ol>
