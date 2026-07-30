@@ -3180,8 +3180,11 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
                   : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
             ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}
           </div>
-          {showPartNo && (it.description || "").trim() && (
-            <button type="button" title="Find this part on 7zap — opens the exploded diagram for its system"
+          {showPartNo && (
+            <button type="button"
+              title={(it.description || "").trim()
+                ? "Find this part on 7zap — opens the exploded diagram for its system"
+                : "Opens this car's 7zap catalogue — type a description first to jump straight to the right diagrams"}
               onClick={() => findPartOn7zap(it.description, vehicle?.vin, vehicle?.make)}
               className="shrink-0 inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-1.5 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-100">
               <Search className="w-3 h-3" /> Find
