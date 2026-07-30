@@ -2251,16 +2251,17 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
   docId: number; guide: any; description: string; onSaved: () => void;
 }) {
   const gen = trpc.ai.generateJobGuide.useMutation();
-  const [open, setOpen] = useState(!!guide);
-  // The doc loads async — when the guide arrives after mount, open up (the initial
-  // useState only saw undefined).
-  useEffect(() => { if (guide) setOpen(true); }, [!!guide]);
+  // Collapsible, and it REMEMBERS being closed per job — once the guide's been used
+  // (copied/pasted), close it from the header and it stays out of the way.
+  const openKey = `eli.jobGuideOpen.${docId}`;
+  const [open, setOpen] = useState<boolean>(() => { try { return localStorage.getItem(openKey) !== "0"; } catch { return true; } });
+  const setOpenSticky = (n: boolean) => { setOpen(n); try { localStorage.setItem(openKey, n ? "1" : "0"); } catch {} };
   async function generate() {
     if (!description.trim()) { toast.error("Type the job description first — the guide is generated from it"); return; }
     try {
       await gen.mutateAsync({ docId, description });
       onSaved();
-      setOpen(true);
+      setOpenSticky(true);
       toast.success("Job guide generated");
     } catch (e: any) { toast.error(e.message || "Failed to generate the job guide"); }
   }
@@ -2290,7 +2291,9 @@ function JobGuidePanel({ docId, guide, description, onSaved }: {
     <div className="mt-3 rounded-md border border-sky-200 bg-sky-50/50">
       <div className="flex items-center gap-2 p-2">
         <BookOpen className="w-4 h-4 text-sky-700 shrink-0" />
-        <button type="button" onClick={() => setOpen((o) => !o)} className="text-[13px] font-semibold text-sky-900 hover:underline">
+        <button type="button" onClick={() => setOpenSticky(!open)} title={open ? "Hide the guide (stays hidden on this job until reopened)" : "Show the guide"}
+          className="inline-flex items-center gap-1 text-[13px] font-semibold text-sky-900 hover:underline">
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
           Job Guide {guide ? "" : "— not generated yet"}
         </button>
         <div className="ml-auto flex items-center gap-2">
