@@ -574,6 +574,14 @@ export default function DocumentDetails() {
 
   const techData = ((data as any)?.vehicle?.comprehensiveTechnicalData as any) || undefined;
 
+  // MOT/tax refresh live from DVSA/DVLA on every doc view (same as the vehicle page) —
+  // the cached row goes stale the moment a car passes its MOT here, and a job sheet
+  // reading "Expired 1d ago" right after the test is exactly the wrong thing to show.
+  const motTaxLive = trpc.vehicles.refreshMotTax.useQuery(
+    { registration: form.registration || "" },
+    { enabled: !isNew && !!form.registration, staleTime: 5 * 60_000 }
+  );
+
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
     const td = (v?.comprehensiveTechnicalData as any) || {};
@@ -593,12 +601,12 @@ export default function DocumentDetails() {
       oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
       airconType: lookupTech?.airconType ?? td.aircon?.type,
       airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity,
-      motExpiry: lookupTech?.motExpiry ?? v?.motExpiryDate,
-      taxStatus: lookupTech?.taxStatus ?? v?.taxStatus,
-      taxDueDate: lookupTech?.taxDueDate ?? v?.taxDueDate,
+      motExpiry: motTaxLive.data?.motExpiryDate ?? lookupTech?.motExpiry ?? v?.motExpiryDate,
+      taxStatus: motTaxLive.data?.taxStatus ?? lookupTech?.taxStatus ?? v?.taxStatus,
+      taxDueDate: motTaxLive.data?.taxDueDate ?? lookupTech?.taxDueDate ?? v?.taxDueDate,
       transmission: lookupTech?.transmission ?? td.ukvd?.transmission ?? null,
     };
-  }, [data, lookupTech]);
+  }, [data, lookupTech, motTaxLive.data]);
 
   // Detect when the customer's name / phone / email / postcode on this doc differ from
   // their saved record, so we can offer to update the customer master (auto-save can't prompt).
