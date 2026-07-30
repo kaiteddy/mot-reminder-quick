@@ -21,7 +21,6 @@ import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
-import { ServiceResetCard } from "@/components/ServiceResetCard";
 import { DOC_TYPE_TAILWIND } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -260,7 +259,6 @@ export default function DocumentDetails() {
     finally { setPrinting(false); }
   }
   const [historyPreviewId, setHistoryPreviewId] = useState<number | null>(null);
-  const [resetCardOpen, setResetCardOpen] = useState(false);
   const [historyPrinting, setHistoryPrinting] = useState(false);
   async function printHistoryPreview() {
     if (!historyPreviewId) return;
@@ -1378,27 +1376,6 @@ export default function DocumentDetails() {
                   sub={[vehInfo.transmission.gears ? `${vehInfo.transmission.gears}-speed` : null, vehInfo.transmission.driveType].filter(Boolean).join(" · ") || undefined} />
               )}
             </div>
-          )}
-          {!base && (data as any)?.vehicle?.id && (
-            <div className="px-3 pb-2 -mt-1">
-              <button type="button" onClick={() => setResetCardOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/60 px-2.5 py-1 text-[12px] font-medium text-emerald-800 hover:bg-emerald-100/60"
-                title="Service light reset procedure + OBD port location for this car">
-                <Gauge className="w-3.5 h-3.5" /> Service Reset / OBD
-                <span className="text-emerald-600">{(data as any)?.vehicle?.serviceResetInfo ? "· view" : "· generate"}</span>
-              </button>
-            </div>
-          )}
-          {(data as any)?.vehicle?.id && (
-            <Dialog open={resetCardOpen} onOpenChange={setResetCardOpen}>
-              <DialogContent className="max-w-lg">
-                <DialogHeader><DialogTitle className="text-sm">Service Reset &amp; OBD — {form.registration}</DialogTitle></DialogHeader>
-                <ServiceResetCard vehicleId={(data as any).vehicle.id} info={(data as any).vehicle.serviceResetInfo}
-                  vehicleDesc={[form.make, form.model].filter(Boolean).join(" ")}
-                  vin={form.vin} make={form.make} registration={form.registration}
-                  onSaved={() => utils.documents.getById.invalidate({ id })} />
-              </DialogContent>
-            </Dialog>
           )}
 
           {/* body: tabs + totals */}
