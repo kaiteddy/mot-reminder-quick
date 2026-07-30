@@ -3709,6 +3709,28 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       if (techData?.oil_specs) oil_specs = techData.oil_specs;
     } catch { /* ignore */ }
 
+    // Diagnostic and service job sheets automatically carry the car's Service Reset & OBD
+    // sheet as an extra page — the technician gets the OBD location (with the Trakm8
+    // diagram) and the reset procedure without asking for it. If the vehicle has no card
+    // yet, grab at least the diagram now and persist it so the next print is instant.
+    let service_reset: any = null;
+    if (vehicle && /diagnos|service/i.test(String(doc.description || ""))) {
+      let info: any = (vehicle as any).serviceResetInfo;
+      if (!info?.obdImage) {
+        try {
+          const { fetchTrakm8ObdImage } = await import("./services/trakm8");
+          const regYear = vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).getFullYear() : null;
+          const img = await fetchTrakm8ObdImage(vehicle.make, vehicle.model, regYear);
+          if (img) {
+            info = { ...(info || {}), obdImage: { locationId: img.locationId, matched: img.matched, source: "Trakm8 OBD checker", dataBase64: img.dataBase64 }, generatedAt: info?.generatedAt || new Date().toISOString() };
+            const db2 = await getDb();
+            if (db2) await db2.update(vehicles).set({ serviceResetInfo: info }).where(eq(vehicles.id, vehicle.id));
+          }
+        } catch { /* print works fine without the diagram */ }
+      }
+      if (info) service_reset = { registration: vehicle.registration, vehicleDesc: [vehicle.make, vehicle.model].filter(Boolean).join(" "), ...info };
+    }
+
     return generateJobSheetPDF({
       customer: customerData, vehicle: vehicleData,
       doc: {
@@ -3725,6 +3747,7 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       oil_specs,
       labour_rows: 5,
       parts_rows: 5,
+      service_reset,
     });
   }
 

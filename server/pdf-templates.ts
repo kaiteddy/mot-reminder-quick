@@ -785,6 +785,56 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   doc.font('Helvetica').fontSize(7.5);
   doc.text('Signed ________________          Date ________________', M, y);
 
+  // Diagnostic/service jobs carry the vehicle's Service Reset & OBD sheet as an extra
+  // page — OBD port location (with the Trakm8 interior diagram when captured) and the
+  // service-light reset procedure. See getRichPDF for when service_reset is populated.
+  const sr = data.service_reset;
+  if (sr) {
+    doc.addPage();
+    y = M;
+    doc.font('Helvetica-Bold').fontSize(15).fillColor('black');
+    doc.text(`Service Reset & OBD${sr.registration ? ` — ${sr.registration}` : ''}`, M, y); y += 20;
+    doc.font('Helvetica').fontSize(9).fillColor('#555555');
+    doc.text(`${sr.vehicleDesc || ''}${sr.generatedAt ? `  ·  generated ${new Date(sr.generatedAt).toLocaleDateString('en-GB')}` : ''}`, M, y); y += 22;
+
+    const srHead = (t: string) => {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+      doc.text(t.toUpperCase(), M, y); y += 14;
+      doc.moveTo(M, y - 3).lineTo(PW - M, y - 3).lineWidth(0.5).strokeColor('#bbbbbb').stroke();
+      y += 2;
+    };
+    const srPara = (t: string, colour = 'black') => {
+      doc.font('Helvetica').fontSize(9.5).fillColor(colour);
+      const h = doc.heightOfString(t, { width: CW });
+      doc.text(t, M, y, { width: CW }); y += h + 6;
+    };
+
+    if (sr.obdLocation) { srHead('OBD port location'); srPara(sr.obdLocation); }
+    if (sr.obdImage?.dataBase64) {
+      try {
+        const img = Buffer.from(sr.obdImage.dataBase64, 'base64');
+        const iw = 300, ih = iw * (526 / 790);
+        doc.image(img, M, y, { width: iw }); y += ih + 4;
+        doc.font('Helvetica').fontSize(7.5).fillColor('#555555');
+        doc.text(`Port highlighted — ${sr.obdImage.source || 'Trakm8 OBD checker'}${sr.obdImage.matched ? ` (${sr.obdImage.matched})` : ''}`, M, y); y += 16;
+      } catch { /* bad image data — text still printed */ }
+    }
+    if ((sr.resetSteps || []).length) {
+      srHead('Service light reset');
+      sr.resetSteps.forEach((s: string, i: number) => srPara(`${i + 1}. ${s}`));
+      y += 2;
+    }
+    if ((sr.alternatives || []).length) {
+      srHead('Variants');
+      sr.alternatives.forEach((s: string) => srPara(`• ${s}`));
+      y += 2;
+    }
+    if ((sr.cautions || []).length) {
+      srHead('Cautions');
+      sr.cautions.forEach((s: string) => srPara(`• ${s}`, '#92400e'));
+    }
+  }
+
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `${data.doc?.reference || 'JobSheet'}.pdf` };
 }
