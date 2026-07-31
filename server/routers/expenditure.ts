@@ -95,6 +95,13 @@ export const expenditureRouter = router({
       return setOverride(input);
     }),
 
+  setOverrideBulk: publicProcedure
+    .input(z.object({ ids: z.array(z.number()).min(1).max(500), category: z.string().nullable() }))
+    .mutation(async ({ input }) => {
+      const { setOverrideBulk } = await import("../services/expenditure");
+      return setOverrideBulk(input);
+    }),
+
   setTxnMonth: publicProcedure
     .input(z.object({ ids: z.array(z.number()), month: z.string().nullable() }))
     .mutation(async ({ input }) => {

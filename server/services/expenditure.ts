@@ -341,6 +341,16 @@ export async function setOverride(input: { id: number; category: string | null }
   return { ok: true };
 }
 
+/** Excel-style bulk apply: one category onto a dragged/shift-selected set of rows. */
+export async function setOverrideBulk(input: { ids: number[]; category: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const ids = (input.ids || []).map(Number).filter((n) => Number.isFinite(n));
+  if (!ids.length) return { ok: true, count: 0 };
+  await db.execute(sql`UPDATE "bankTransactions" SET "categoryOverride"=${input.category} WHERE "id" IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`);
+  return { ok: true, count: ids.length };
+}
+
 /** Book transaction(s) into a specific P&L month (YYYY-MM), or null to reset to the bank date. Fixes
  *  pay-date drift (e.g. a payroll paid on the 1st that belongs to the previous month). */
 export async function setTxnMonth(input: { ids: number[]; month: string | null }) {

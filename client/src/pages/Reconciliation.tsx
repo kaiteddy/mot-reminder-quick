@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -740,15 +740,55 @@ function TransactionsTab() {
   const [source, setSource] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [unlabelledOnly, setUnlabelledOnly] = useState(false);
+  const [catFilter, setCatFilter] = useState<string>("all");
   const cats = trpc.expenditure.categories.useQuery();
   const utils = trpc.useUtils();
   const q = trpc.expenditure.transactions.useQuery({
     source: source === "all" ? undefined : (source as any),
     search: search || undefined, unlabelledOnly, limit: 300,
   });
-  const setOverride = trpc.expenditure.setOverride.useMutation({
-    onSuccess: () => { utils.expenditure.transactions.invalidate(); utils.expenditure.reconciliation.invalidate(); utils.expenditure.stats.invalidate(); },
+  const invalidate = () => { utils.expenditure.transactions.invalidate(); utils.expenditure.reconciliation.invalidate(); utils.expenditure.stats.invalidate(); };
+  const setOverride = trpc.expenditure.setOverride.useMutation({ onSuccess: invalidate });
+  const setBulk = trpc.expenditure.setOverrideBulk.useMutation({
+    onSuccess: (res: any) => { invalidate(); setSelected(new Set()); toast.success(`Applied to ${res?.count ?? "the"} selected transactions`); },
   });
+
+  // ── Excel-style selection ── click selects, shift-click selects the range from the
+  // last click, and mouse-dragging down the rows sweeps a range (like dragging in a
+  // spreadsheet). A bulk bar then applies one category to everything selected.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const anchorRef = useRef<number | null>(null);
+  const dragFromRef = useRef<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    const up = () => { setDragging(false); dragFromRef.current = null; };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
+  // Category filter works on the loaded page of rows — "show me everything currently
+  // sitting in X" so same-type rows can be swept together.
+  const rows: any[] = (q.data?.rows || []).filter((r: any) => catFilter === "all" || r.category === catFilter);
+  const rangeIds = (a: number, b: number) => rows.slice(Math.min(a, b), Math.max(a, b) + 1).map((r) => r.id);
+  const applyRange = (a: number, b: number, base: Set<number>) => {
+    const next = new Set(base);
+    for (const id of rangeIds(a, b)) next.add(id);
+    return next;
+  };
+  const rowClick = (idx: number, e: React.MouseEvent) => {
+    setSelected((prev) => {
+      if (e.shiftKey && anchorRef.current != null) return applyRange(anchorRef.current, idx, prev);
+      anchorRef.current = idx;
+      const next = new Set(prev);
+      const id = rows[idx].id;
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const selRows = rows.filter((r) => selected.has(r.id));
+  const selSum = selRows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const catCounts = new Map<string, number>();
+  for (const r of q.data?.rows || []) catCounts.set(r.category, (catCounts.get(r.category) || 0) + 1);
 
   return (
     <Card>
@@ -762,28 +802,66 @@ function TransactionsTab() {
             <SelectItem value="card">Card</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); setSelected(new Set()); anchorRef.current = null; }}>
+          <SelectTrigger className="h-9 w-[220px]"><SelectValue placeholder="All categories" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {Array.from(catCounts.entries()).sort((a, b) => b[1] - a[1]).map(([name, n]) => (
+              <SelectItem key={name} value={name}>{name} ({n})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input placeholder="Search payee / memo" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-[220px]" />
         <Button variant={unlabelledOnly ? "default" : "outline"} size="sm" onClick={() => setUnlabelledOnly((v) => !v)}>To label only</Button>
       </CardHeader>
       <CardContent>
         {q.isLoading ? <Loading /> : (
           <>
-            <p className="mb-2 text-xs text-slate-500">{q.data?.total ?? 0} rows (showing up to 300)</p>
-            <div className="overflow-x-auto">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500">{rows.length} rows shown{catFilter !== "all" ? ` in "${catFilter}"` : ""} · click / shift-click / drag down the tick column to select</p>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setSelected(new Set(rows.map((r) => r.id))); }}>Select all shown</Button>
+              {selected.size > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelected(new Set())}>Clear</Button>}
+            </div>
+            {selected.size > 0 && (
+              <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2">
+                <span className="text-sm font-semibold text-sky-900">{selected.size} selected · {money(selSum)}</span>
+                <Select onValueChange={(v) => setBulk.mutate({ ids: Array.from(selected), category: v })}>
+                  <SelectTrigger className="h-8 w-[240px]"><SelectValue placeholder={setBulk.isPending ? "Applying…" : "Apply category to all selected…"} /></SelectTrigger>
+                  <SelectContent>
+                    {(cats.data || []).map((c: any) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className={`overflow-x-auto ${dragging ? "select-none" : ""}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8"><input type="checkbox" aria-label="Select all shown"
+                      checked={rows.length > 0 && selRows.length === rows.length}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} /></TableHead>
                     <TableHead>Date</TableHead><TableHead>Src</TableHead><TableHead>Payee / Merchant</TableHead>
                     <TableHead className="text-right">Amount</TableHead><TableHead>Category (row override)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(q.data?.rows || []).map((r: any) => (
-                    <TableRow key={r.id} className={r.category === "OTHER / to label" ? "bg-orange-50" : ""}>
-                      <TableCell className="whitespace-nowrap">{r.date}</TableCell>
-                      <TableCell className="uppercase text-slate-400">{r.source}</TableCell>
-                      <TableCell className="max-w-[280px] truncate" title={r.counterparty + (r.memo ? " — " + r.memo : "")}>{r.counterparty}</TableCell>
-                      <TableCell className={`text-right tabular-nums ${r.amount < 0 ? "text-red-600" : "text-green-700"}`}>{money(r.amount)}</TableCell>
+                  {rows.map((r: any, idx: number) => (
+                    <TableRow key={r.id}
+                      className={`${selected.has(r.id) ? "bg-sky-100 hover:bg-sky-100" : r.category === "OTHER / to label" ? "bg-orange-50" : ""}`}
+                      onMouseEnter={() => {
+                        // dragFromRef (not state) — state lags a fast drag and would drop rows
+                        if (dragFromRef.current != null) setSelected((prev) => applyRange(dragFromRef.current!, idx, prev));
+                      }}
+                    >
+                      <TableCell className="w-8 cursor-pointer"
+                        onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); dragFromRef.current = idx; setDragging(true); rowClick(idx, e); }}
+                      >
+                        <input type="checkbox" readOnly checked={selected.has(r.id)} className="pointer-events-none" />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap" onClick={(e) => rowClick(idx, e)}>{r.date}</TableCell>
+                      <TableCell className="uppercase text-slate-400" onClick={(e) => rowClick(idx, e)}>{r.source}</TableCell>
+                      <TableCell className="max-w-[280px] truncate cursor-pointer" title={r.counterparty + (r.memo ? " — " + r.memo : "")} onClick={(e) => rowClick(idx, e)}>{r.counterparty}</TableCell>
+                      <TableCell className={`text-right tabular-nums ${r.amount < 0 ? "text-red-600" : "text-green-700"}`} onClick={(e) => rowClick(idx, e)}>{money(r.amount)}</TableCell>
                       <TableCell>
                         <Select value={r.category} onValueChange={(v) => setOverride.mutate({ id: r.id, category: v })}>
                           <SelectTrigger className="h-8 w-[230px]"><SelectValue /></SelectTrigger>
