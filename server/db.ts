@@ -3711,22 +3711,32 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
 
     // Diagnostic and service job sheets automatically carry the car's Service Reset & OBD
     // sheet as an extra page — the technician gets the OBD location (with the Trakm8
-    // diagram) and the reset procedure without asking for it. If the vehicle has no card
-    // yet, grab at least the diagram now and persist it so the next print is instant.
+    // diagram) AND the reset procedure without asking for it. If the vehicle has no card
+    // yet, generate the FULL card now (AI steps + diagram, cached on the vehicle) — the
+    // first print for a car waits a few seconds; every later one is instant. If the AI is
+    // unavailable, fall back to fetching at least the diagram.
     let service_reset: any = null;
     if (vehicle && /diagnos|service/i.test(String(doc.description || ""))) {
       let info: any = (vehicle as any).serviceResetInfo;
-      if (!info?.obdImage) {
+      if (!info?.resetSteps?.length) {
         try {
-          const { fetchTrakm8ObdImage } = await import("./services/trakm8");
-          const regYear = vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).getFullYear() : null;
-          const img = await fetchTrakm8ObdImage(vehicle.make, vehicle.model, regYear);
-          if (img) {
-            info = { ...(info || {}), obdImage: { locationId: img.locationId, matched: img.matched, source: "Trakm8 OBD checker", dataBase64: img.dataBase64 }, generatedAt: info?.generatedAt || new Date().toISOString() };
-            const db2 = await getDb();
-            if (db2) await db2.update(vehicles).set({ serviceResetInfo: info }).where(eq(vehicles.id, vehicle.id));
+          const { generateServiceResetCard } = await import("./services/serviceReset");
+          info = await generateServiceResetCard(vehicle.id);
+        } catch {
+          // AI unavailable/failed — at least capture the diagram so the sheet shows the port.
+          if (!info?.obdImage) {
+            try {
+              const { fetchTrakm8ObdImage } = await import("./services/trakm8");
+              const regYear = vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).getFullYear() : null;
+              const img = await fetchTrakm8ObdImage(vehicle.make, vehicle.model, regYear);
+              if (img) {
+                info = { ...(info || {}), obdImage: { locationId: img.locationId, matched: img.matched, source: "Trakm8 OBD checker", dataBase64: img.dataBase64 }, generatedAt: info?.generatedAt || new Date().toISOString() };
+                const db2 = await getDb();
+                if (db2) await db2.update(vehicles).set({ serviceResetInfo: info }).where(eq(vehicles.id, vehicle.id));
+              }
+            } catch { /* print works fine without the diagram */ }
           }
-        } catch { /* print works fine without the diagram */ }
+        }
       }
       if (info) service_reset = { registration: vehicle.registration, vehicleDesc: [vehicle.make, vehicle.model].filter(Boolean).join(" "), ...info };
     }

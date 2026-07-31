@@ -1,34 +1,10 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateText, generateObject } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { ENV } from "../_core/env";
 import { getDb } from "../db";
 import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
-import { fetchTrakm8ObdImage } from "../services/trakm8";
-
-// Cheapest current OpenAI model (replaces the legacy gpt-4o-mini).
-// Override via AI_MODEL env without a code change (e.g. gpt-5.4-mini for higher quality).
-const AI_MODEL = process.env.AI_MODEL || "gpt-5.4-nano";
-// The Job Guide is technical reference content (steps/specs/cautions) where nano-tier
-// quality visibly disappoints — default it to the higher-quality mini tier instead.
-const AI_MODEL_GUIDE = process.env.AI_MODEL_GUIDE || "gpt-5.4-mini";
-
-// AI is usable when an OpenAI key (OPENAI_API_KEY) or the Forge fallback (BUILT_IN_FORGE_API_KEY)
-// is configured in the environment — Vercel in production, .env locally.
-const hasAIKey = () => Boolean(process.env.OPENAI_API_KEY || ENV.forgeApiKey);
-
-const getRuntimeProvider = () => {
-  const activeKey = process.env.OPENAI_API_KEY;
-
-  return activeKey
-    ? createOpenAI({ apiKey: activeKey, headers: { Authorization: `Bearer ${activeKey}` } })
-    : createOpenAI({
-        baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
-        apiKey: ENV.forgeApiKey,
-      });
-};
+import { AI_MODEL, AI_MODEL_GUIDE, getRuntimeProvider, hasAIKey } from "../services/aiProvider";
 
 // Static rules + worked examples for generateJobSpec's system prompt. The target style is
 // a REAL UK garage's terse invoice note — not a training-manual checklist. See the worked
@@ -420,57 +396,16 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
   // Per-vehicle workshop card: how to reset the service/oil-service light on THIS car and
   // where its OBD port is. Vehicle-level knowledge (not job-level), so it's cached on the
   // vehicle record and reused across every job on the car.
+  // Per-vehicle workshop card: how to reset the service/oil-service light on THIS car and
+  // where its OBD port is. Vehicle-level knowledge (not job-level), so it's cached on the
+  // vehicle record and reused across every job on the car. Core logic lives in
+  // services/serviceReset (also used by getRichPDF when printing diagnostic/service jobs).
   generateServiceReset: publicProcedure
     .input(z.object({ vehicleId: z.number() }))
     .mutation(async ({ input }) => {
-      if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
-      }
-      const db = await getDb();
-      if (!db) throw new Error("Database error");
-      const [veh] = await db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1);
-      if (!veh) throw new Error("Vehicle not found");
-      const regYear = veh.dateOfRegistration ? new Date(veh.dateOfRegistration).getFullYear() : null;
-      const vehDesc = [regYear, veh.make, veh.model, veh.derivative].filter(Boolean).join(" ");
-      if (!vehDesc.trim()) throw new Error("The vehicle needs at least a make/model on record first");
-      const detail = [veh.engineCode && `engine ${veh.engineCode}`, veh.engineCC && `${veh.engineCC}cc`, veh.fuelType].filter(Boolean).join(", ");
-
-      let techBlock = "";
-      if (veh.comprehensiveTechnicalData) {
-        try { techBlock = `\n\nKnown technical data for this exact vehicle (authoritative where relevant):\n${JSON.stringify(veh.comprehensiveTechnicalData).slice(0, 2500)}`; } catch {}
-      }
-
-      // Trakm8 diagram lookup runs alongside the AI call — neither blocks the other.
-      const obdImagePromise = fetchTrakm8ObdImage(veh.make, veh.model, regYear);
-
       try {
-        const provider = getRuntimeProvider();
-        const { object } = await generateObject({
-          model: provider(AI_MODEL_GUIDE),
-          system: `You are a UK master technician writing a quick-reference card for a specific vehicle. Two things only: where the OBD-II diagnostic port is, and how to reset the service/oil-service indicator. Practical, UK terms.
-
-Rules:
-- obdLocation: one or two sentences — exact physical location of the OBD port on this vehicle (e.g. "under the driver's side dash above the pedals, behind a flip-down cover"). If it genuinely varies within this model, say where to check.
-- resetSteps: the manual (button/stalk) reset procedure for the service indicator on this vehicle, one short imperative step per entry. If this model has no manual reset and NEEDS a diagnostic tool, return a single step saying exactly that.
-- alternatives: 0-3 entries — a different procedure used by other model-years/clusters of the same model, each as one compact entry ("Pre-2019 cluster: ..."), or empty.
-- cautions: 0-3 entries — e.g. "does not reset the oil-life counter", "ignition on, engine off", hybrid-specific notes.
-- HONESTY: procedures vary by year/cluster. If you are not confident for this exact year, give the most common procedure for this generation and add a caution that it varies — never invent button names.`,
-          prompt: `Vehicle: ${vehDesc}${detail ? ` (${detail})` : ""}${techBlock}`,
-          schema: z.object({
-            obdLocation: z.string(),
-            resetSteps: z.array(z.string()).min(1).max(12),
-            alternatives: z.array(z.string()).max(3),
-            cautions: z.array(z.string()).max(3),
-          }),
-        });
-        const obdImage = await obdImagePromise;
-        const card = {
-          ...object,
-          ...(obdImage ? { obdImage: { locationId: obdImage.locationId, matched: obdImage.matched, source: "Trakm8 OBD checker", dataBase64: obdImage.dataBase64 } } : {}),
-          generatedAt: new Date().toISOString(),
-        };
-        await db.update(vehicles).set({ serviceResetInfo: card }).where(eq(vehicles.id, input.vehicleId));
-        return card;
+        const { generateServiceResetCard } = await import("../services/serviceReset");
+        return await generateServiceResetCard(input.vehicleId);
       } catch (e: any) {
         console.error("AI generateServiceReset error:", e);
         throw new Error("Failed to generate the service reset card: " + e.message);
