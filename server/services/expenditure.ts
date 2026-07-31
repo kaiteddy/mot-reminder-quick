@@ -460,6 +460,37 @@ type ParsedTxn = {
   bankCategoryHint: string; subcategory: string; dedupeKey: string; suggested: string;
 };
 
+/** Xero-style statement export: Date,Bank description,Spent,Received,VAT,From/To,Match/Categorise.
+ *  This is the format Adam downloads (both bank and card come out this way), so it's detected by
+ *  its header and parsed for either source. The Match/Categorise column is kept as the category
+ *  hint — when it names one of our categories the row lands labelled straight away. */
+async function parseXeroStyleCsv(text: string, source: "bank" | "card"): Promise<ParsedTxn[] | null> {
+  const head = text.split(/\r?\n/, 1)[0] || "";
+  if (!/bank description/i.test(head) || !/spent/i.test(head)) return null;
+  const { parse } = await import("csv-parse/sync");
+  const recs: any[] = parse(text, { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true, trim: true, bom: true });
+  const money = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[£,\s]/g, "")); return isNaN(n) ? 0 : n; };
+  const out: ParsedTxn[] = [];
+  for (const r of recs) {
+    const dm = String(r["Date"] || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!dm) continue;
+    const txnDate = new Date(`${dm[3]}-${dm[2]}-${dm[1]}T00:00:00`);
+    const spent = money(r["Spent"]), recvd = money(r["Received"]);
+    const amt = recvd > 0 ? recvd : -spent;
+    if (!amt) continue;
+    const desc = String(r["Bank description"] || "").trim().replace(/\s+/g, " ");
+    const payee = (String(r["From/To"] || "").trim() || desc).slice(0, 255);
+    const hint = String(r["Match/Categorise"] || "").trim();
+    out.push({
+      source, txnDate, amount: amt, direction: amt > 0 ? "IN" : "OUT",
+      counterparty: payee, counterpartyKey: normkey(payee), memo: desc, cardHolder: "",
+      bankCategoryHint: hint.slice(0, 120), subcategory: String(r["VAT"] || "").trim(),
+      dedupeKey: sha(source, txnDate.toISOString().slice(0, 10), amt.toFixed(2), normkey(desc).slice(0, 80)),
+      suggested: source === "bank" ? bankCat(desc, hint, amt) : cardCat(payee, hint),
+    });
+  }
+  return out;
+}
+
 function parseBankCsv(text: string): ParsedTxn[] {
   const out: ParsedTxn[] = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -514,7 +545,8 @@ async function parseCardCsv(text: string): Promise<ParsedTxn[]> {
 export async function importTransactions(input: { source: "bank" | "card"; csvText: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const parsed = input.source === "bank" ? parseBankCsv(input.csvText) : await parseCardCsv(input.csvText);
+  const parsed = (await parseXeroStyleCsv(input.csvText, input.source))
+    ?? (input.source === "bank" ? parseBankCsv(input.csvText) : await parseCardCsv(input.csvText));
   if (!parsed.length) return { inserted: 0, skipped: 0, total: 0, newLabels: 0 };
 
   const batch = "import-" + new Date().toISOString().slice(0, 19);
