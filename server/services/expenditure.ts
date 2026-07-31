@@ -551,10 +551,37 @@ export async function importTransactions(input: { source: "bank" | "card"; csvTe
 
   const batch = "import-" + new Date().toISOString().slice(0, 19);
   let inserted = 0;
+
+  // ── Format-independent duplicate guard ──
+  // dedupeKey is derived from each format's own fields (statement number / transaction ID),
+  // so the SAME payment re-imported from a different export shape gets a different key and
+  // slips through — that's how 315 duplicates (£349k) got in on 31/07/2026. The only
+  // identifiers every export shares are source + date + amount, so we count what the ledger
+  // already holds for each (source, date, amount) and insert only the surplus this file adds.
+  // Counting (rather than a blanket skip) keeps genuine same-day repeats — two £45 tyre bills,
+  // or two staff paid £1,663.47 on the same day — while making re-uploads safe.
+  // Local Y-M-D, NOT toISOString(): parsed dates are local midnight, so during BST
+  // toISOString() rolls them back a day and every bucket misses.
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const bucket = (t: ParsedTxn) => `${t.source}|${ymd(t.txnDate)}|${t.amount.toFixed(2)}`;
+  const existing = new Map<string, number>();
+  const dates = parsed.map((t) => t.txnDate.getTime());
+  if (dates.length) {
+    const from = new Date(Math.min(...dates)), to = new Date(Math.max(...dates));
+    const res: any = await db.execute(sql`
+      SELECT "source", to_char("txnDate",'YYYY-MM-DD') d, "amount", COUNT(*) n
+      FROM "bankTransactions" WHERE "txnDate" BETWEEN ${from} AND ${to} GROUP BY 1,2,3`);
+    for (const r of (res.rows || res)) existing.set(`${r.source}|${r.d}|${Number(r.amount).toFixed(2)}`, Number(r.n));
+  }
+
+  let skippedAsDuplicate = 0;
   // de-dupe within the file too
   const seen = new Set<string>();
   for (const t of parsed) {
     if (seen.has(t.dedupeKey)) continue; seen.add(t.dedupeKey);
+    const b = bucket(t);
+    const held = existing.get(b) || 0;
+    if (held > 0) { existing.set(b, held - 1); skippedAsDuplicate++; continue; }
     const res: any = await db.execute(sql`
       INSERT INTO "bankTransactions"
         ("source","txnDate","amount","direction","counterparty","counterpartyKey","memo","cardHolder","bankCategoryHint","subcategory","dedupeKey","importBatch")
@@ -575,7 +602,7 @@ export async function importTransactions(input: { source: "bank" | "card"; csvTe
       ON CONFLICT ("source","counterpartyKey") DO NOTHING RETURNING "id"`);
     if ((res.rows || []).length) newLabels++;
   }
-  return { inserted, skipped: parsed.length - inserted, total: parsed.length, newLabels };
+  return { inserted, skipped: parsed.length - inserted, duplicatesBlocked: skippedAsDuplicate, total: parsed.length, newLabels };
 }
 
 // ── Car trading ledger ──────────────────────────────────────────────────────
