@@ -768,7 +768,21 @@ function TransactionsTab() {
 
   // Category filter works on the loaded page of rows — "show me everything currently
   // sitting in X" so same-type rows can be swept together.
-  const rows: any[] = (q.data?.rows || []).filter((r: any) => catFilter === "all" || r.category === catFilter);
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "date", dir: -1 });
+  const toggleSort = (key: string) => {
+    setSelected(new Set()); anchorRef.current = null; // selection is positional — reset on re-order
+    setSort((s) => s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "date" || key === "amount" ? -1 : 1 });
+  };
+  const rows: any[] = useMemo(() => {
+    const base = (q.data?.rows || []).filter((r: any) => catFilter === "all" || r.category === catFilter);
+    const val = (r: any) => sort.key === "amount" ? Number(r.amount) || 0 : String(r[sort.key] ?? "").toLowerCase();
+    return [...base].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
+  }, [q.data, catFilter, sort]);
+  const SortHead = ({ k, children, right }: { k: string; children: React.ReactNode; right?: boolean }) => (
+    <TableHead className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""}`} onClick={() => toggleSort(k)}>
+      {children}{sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+    </TableHead>
+  );
   const rangeIds = (a: number, b: number) => rows.slice(Math.min(a, b), Math.max(a, b) + 1).map((r) => r.id);
   const applyRange = (a: number, b: number, base: Set<number>) => {
     const next = new Set(base);
@@ -840,8 +854,8 @@ function TransactionsTab() {
                     <TableHead className="w-8"><input type="checkbox" aria-label="Select all shown"
                       checked={rows.length > 0 && selRows.length === rows.length}
                       onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} /></TableHead>
-                    <TableHead>Date</TableHead><TableHead>Src</TableHead><TableHead>Payee / Merchant</TableHead>
-                    <TableHead className="text-right">Amount</TableHead><TableHead>Category (row override)</TableHead>
+                    <SortHead k="date">Date</SortHead><SortHead k="source">Src</SortHead><SortHead k="counterparty">Payee / Merchant</SortHead>
+                    <SortHead k="amount" right>Amount</SortHead><SortHead k="category">Category (row override)</SortHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
