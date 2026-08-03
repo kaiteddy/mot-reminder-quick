@@ -478,7 +478,8 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
   const { data, isLoading } = trpc.documents.getById.useQuery({ id: id! }, { enabled: id != null });
   const del = trpc.documents.delete.useMutation();
   const convert = trpc.documents.convert.useMutation();
-  const [confirm, setConfirm] = useState<null | "delete" | "invoice">(null);
+  const issue = trpc.documents.issue.useMutation();
+  const [confirm, setConfirm] = useState<null | "delete" | "invoice" | "issue">(null);
   const doc = (data as any)?.doc, veh = (data as any)?.vehicle, cust = (data as any)?.customer;
   const items: any[] = (data as any)?.lineItems || [];
 
@@ -489,6 +490,18 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
       toast.success(`Deleted ${doc?.docNo ? `job ${doc.docNo}` : "the job"}`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
+  // Convert AND issue in one go — for old job sheets you just want on record. Issuing draws
+  // a real GA4 number from the pool (Adam: "we may not need to print it but it's recorded").
+  async function doConvertAndIssue() {
+    try {
+      const res: any = await convert.mutateAsync({ id: id!, toType: "SI" });
+      if (!res?.id) throw new Error("convert returned no invoice");
+      const iss: any = await issue.mutateAsync({ id: res.id });
+      onChanged(); setConfirm(null); onClose();
+      toast.success(`Issued as invoice ${iss?.ga4Number || iss?.docNo || ""} — recorded, no need to print`);
+    } catch (e: any) { toast.error("Issue failed: " + (e.message || "")); }
+  }
+
   async function doInvoice() {
     try {
       const res: any = await convert.mutateAsync({ id: id!, toType: "SI" });
@@ -541,6 +554,17 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
                 </div>
               </div>
             )}
+            {confirm === "issue" && (
+              <div className="rounded-md border border-emerald-300 bg-emerald-50 p-2.5">
+                <p className="mb-2 font-medium text-emerald-900">Convert and issue as it stands? It takes the next GA4 number and the visit is recorded — you don't have to print it. Issuing can't be undone.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={convert.isPending || issue.isPending} onClick={doConvertAndIssue}>
+                    {convert.isPending || issue.isPending ? "Issuing…" : "Yes, issue it"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+                </div>
+              </div>
+            )}
             {confirm === "invoice" && (
               <div className="rounded-md border border-sky-300 bg-sky-50 p-2.5">
                 <p className="mb-2 font-medium text-sky-900">Convert to an invoice as it stands, keeping the visit on record? It opens straight after so you can check it and issue.</p>
@@ -553,6 +577,7 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
             <div className="flex flex-wrap gap-2 pt-1">
               <Button size="sm" variant="outline" onClick={() => onOpenFull(doc.id)}><ExternalLink className="w-3.5 h-3.5 mr-1.5" />Open full job</Button>
               {doc.docType === "JS" && <Button size="sm" variant="outline" onClick={() => setConfirm("invoice")}><ReceiptText className="w-3.5 h-3.5 mr-1.5" />Convert to invoice</Button>}
+              {doc.docType === "JS" && <Button size="sm" onClick={() => setConfirm("issue")}><ReceiptText className="w-3.5 h-3.5 mr-1.5" />Issue as is</Button>}
               <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => setConfirm("delete")}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
             </div>
           </div>
