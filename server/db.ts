@@ -572,6 +572,7 @@ export async function getRemindersByVehicleId(vehicleId: number) {
     id: reminderLogs.id, sentAt: reminderLogs.sentAt, reminderType: reminderLogs.messageType,
     status: reminderLogs.status, method: reminderLogs.messageType,
     messageContent: reminderLogs.messageContent, recipient: reminderLogs.recipient,
+    readAt: reminderLogs.readAt, messageSid: reminderLogs.messageSid,
   }).from(reminderLogs).where(inArray(reminderLogs.vehicleId, ids)).orderBy(desc(reminderLogs.sentAt)).limit(50);
 
   const seen = new Set<string>();
@@ -581,7 +582,10 @@ export async function getRemindersByVehicleId(vehicleId: number) {
   });
   const merged = [
     ...sent.map((r: any) => ({ id: `log-${r.id}`, type: r.reminderType, reminderType: r.reminderType,
-      dueDate: null, status: r.status || "sent", sentAt: r.sentAt, method: "SMS",
+      dueDate: null, status: r.status || "sent", sentAt: r.sentAt,
+      // Channel isn't stored explicitly. A read receipt only exists on WhatsApp, so that's
+      // proof; otherwise we genuinely don't know, and must not claim SMS.
+      method: r.readAt ? "WhatsApp" : "", readAt: r.readAt,
       messageContent: r.messageContent, recipient: r.recipient })),
     // legacy rows carry `type`; mirror it so the table reads one field either way
     ...legacy.map((r: any) => ({ ...r, reminderType: r.reminderType ?? r.type, type: r.type ?? r.reminderType })),
