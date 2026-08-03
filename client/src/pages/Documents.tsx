@@ -493,6 +493,11 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
   const history: any[] = (data as any)?.history || [];
   const mine = history.find((h: any) => h.id === doc?.id);
   const convertedTo = mine?.convertedToDocNo || null;
+  // Last MOT actually completed here — the newest doc on this vehicle whose work mentions
+  // an MOT (job sheets included, since that's often where the test is recorded).
+  const lastMot = history
+    .filter((h: any) => /\bmot\b/i.test(String(h.description || "")) || /\bmot\b/i.test(String(h.mainDescription || "")))
+    .sort((a: any, b: any) => new Date(b.dateIssued || b.dateCreated || 0).getTime() - new Date(a.dateIssued || a.dateCreated || 0).getTime())[0];
   const lastInvoice = history
     .filter((h: any) => (h.docType === "SI" || h.docType === "XS") && h.id !== doc?.id)
     .sort((a: any, b: any) => new Date(b.dateIssued || b.dateCreated || 0).getTime() - new Date(a.dateIssued || a.dateCreated || 0).getTime())[0];
@@ -544,6 +549,11 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
             {convertedTo && (
               <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
                 Already converted — invoice <strong>{convertedTo}</strong>. This visit is on record; safe to delete this job sheet.
+              </div>
+            )}
+            {lastMot && (
+              <div className="text-[12px] text-slate-600">
+                Last MOT here: <strong>{fmtDate(lastMot.dateIssued || lastMot.dateCreated)}</strong> · {lastMot.docNo}
               </div>
             )}
             {lastInvoice && (
