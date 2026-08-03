@@ -562,7 +562,30 @@ async function getVehicleIdsForSamePlate(db: NonNullable<Awaited<ReturnType<type
 export async function getRemindersByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(reminders).where(inArray(reminders.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)));
+  const ids = await getVehicleIdsForSamePlate(db, vehicleId);
+  // The legacy `reminders` table is the GA4-imported QUEUE — it has due dates but no send
+  // record (null sentAt, status "pending") and was duplicated by a double import. Real sends
+  // live in reminderLogs, so merge both here: without this the vehicle page showed a stale
+  // queue and hid genuinely delivered messages (GC18EJO, MOT SMS delivered 17/07/2026).
+  const queued = await db.select().from(reminders).where(inArray(reminders.vehicleId, ids));
+  const sent = await db.select({
+    id: reminderLogs.id, sentAt: reminderLogs.sentAt, reminderType: reminderLogs.messageType,
+    status: reminderLogs.status, method: reminderLogs.messageType,
+  }).from(reminderLogs).where(inArray(reminderLogs.vehicleId, ids)).orderBy(desc(reminderLogs.sentAt)).limit(50);
+
+  const seen = new Set<string>();
+  const legacy = queued.filter((r: any) => {
+    const key = `${r.reminderType}|${r.dueDate ? new Date(r.dueDate).toISOString().slice(0, 10) : ""}`;
+    if (seen.has(key)) return false; seen.add(key); return true;
+  });
+  const merged = [
+    ...sent.map((r: any) => ({ id: `log-${r.id}`, type: r.reminderType, reminderType: r.reminderType,
+      dueDate: null, status: r.status || "sent", sentAt: r.sentAt, method: "SMS" })),
+    // legacy rows carry `type`; mirror it so the table reads one field either way
+    ...legacy.map((r: any) => ({ ...r, reminderType: r.reminderType ?? r.type, type: r.type ?? r.reminderType })),
+  ];
+  return merged.sort((a: any, b: any) =>
+    new Date(b.sentAt || b.dueDate || 0).getTime() - new Date(a.sentAt || a.dueDate || 0).getTime());
 }
 
 export async function getVehicleByRegistration(registration: string) {
