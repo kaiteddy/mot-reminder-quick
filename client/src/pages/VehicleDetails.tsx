@@ -1061,6 +1061,7 @@ export default function VehicleDetails() {
                                             <TableHead>Status</TableHead>
                                             <TableHead>Sent At</TableHead>
                                             <TableHead>Method</TableHead>
+                                            <TableHead>Message</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1085,6 +1086,11 @@ export default function VehicleDetails() {
                                                 </TableCell>
                                                 <TableCell>{formatDate(reminder.sentAt)}</TableCell>
                                                 <TableCell className="capitalize">{reminder.sentMethod || "-"}</TableCell>
+                                                <TableCell className="max-w-[420px]">
+                                                    {(reminder as any).messageContent
+                                                      ? <span className="block truncate text-[12px] text-slate-600" title={(reminder as any).messageContent}>{(reminder as any).messageContent}</span>
+                                                      : <span className="text-slate-400 text-[12px]">—</span>}
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
