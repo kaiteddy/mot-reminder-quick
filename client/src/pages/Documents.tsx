@@ -487,6 +487,15 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
   const [confirm, setConfirm] = useState<null | "delete" | "invoice" | "issue">(null);
   const doc = (data as any)?.doc, veh = (data as any)?.vehicle, cust = (data as any)?.customer;
   const items: any[] = (data as any)?.lineItems || [];
+  // Many stale job sheets were already invoiced — show the link the history view uses
+  // (convertedToDocNo) plus this vehicle's most recent invoice, so you can tell at a glance
+  // whether the visit is already on record before issuing or deleting.
+  const history: any[] = (data as any)?.history || [];
+  const mine = history.find((h: any) => h.id === doc?.id);
+  const convertedTo = mine?.convertedToDocNo || null;
+  const lastInvoice = history
+    .filter((h: any) => (h.docType === "SI" || h.docType === "XS") && h.id !== doc?.id)
+    .sort((a: any, b: any) => new Date(b.dateIssued || b.dateCreated || 0).getTime() - new Date(a.dateIssued || a.dateCreated || 0).getTime())[0];
 
   async function doDelete() {
     try {
@@ -532,6 +541,17 @@ function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
               <span className="text-muted-foreground">· {[cust?.forename, cust?.surname].filter(Boolean).join(" ") || doc.custName || "—"}</span>
               <span className="ml-auto font-semibold">{money(doc.totalGross)}{Number(doc.balance) > 0 ? ` · ${money(doc.balance)} due` : ""}</span>
             </div>
+            {convertedTo && (
+              <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
+                Already converted — invoice <strong>{convertedTo}</strong>. This visit is on record; safe to delete this job sheet.
+              </div>
+            )}
+            {lastInvoice && (
+              <div className="flex items-center gap-2 text-[12px] text-slate-600">
+                <span>Last invoice for this vehicle: <strong>{lastInvoice.docNo}</strong> · {fmtDate(lastInvoice.dateIssued || lastInvoice.dateCreated)} · {money(lastInvoice.totalGross)}</span>
+                <button type="button" className="text-violet-700 hover:underline" onClick={() => onOpenFull(lastInvoice.id)}>view</button>
+              </div>
+            )}
             <div className="rounded-md border bg-slate-50/60 p-2.5 max-h-56 overflow-auto whitespace-pre-wrap">
               {doc.description?.trim() || <span className="text-muted-foreground">No description on this job.</span>}
             </div>
