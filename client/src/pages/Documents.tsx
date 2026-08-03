@@ -56,6 +56,39 @@ function dateFilterRange(key: string): { dateFrom?: string; dateTo?: string } {
   }
 }
 
+// ── Age buckets ── the list is grouped by how old each job is, so anything sitting past a
+// fortnight stands out as outstanding. "Yesterday" means the previous WORKING day (weekend
+// work is unusual here), so on a Monday it reaches back to Friday.
+const AGE_BUCKETS = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "thisWeek", label: "Earlier this week" },
+  { key: "lastWeek", label: "Last week" },
+  { key: "fortnight", label: "Fortnight" },
+  { key: "older", label: "Older than a fortnight" },
+] as const;
+
+function bucketOf(dateStr: string | null | undefined): string {
+  if (!dateStr) return "older";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "older";
+  const at = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const DAY = 86400000;
+  const now = new Date();
+  const today = at(now);
+  const day = at(d);
+  // previous working day: Monday -> Friday, Sunday -> Friday, otherwise simply yesterday
+  const dow = now.getDay(); // 0 Sun … 6 Sat
+  const prevWorking = today + (dow === 1 ? -3 : dow === 0 ? -2 : -1) * DAY;
+  const thisMon = today - ((now.getDay() + 6) % 7) * DAY;
+  if (day >= today) return "today";
+  if (day >= prevWorking) return "yesterday";
+  if (day >= thisMon) return "thisWeek";
+  if (day >= thisMon - 7 * DAY) return "lastWeek";
+  if (day >= thisMon - 14 * DAY) return "fortnight";
+  return "older";
+}
+
 // Drag-to-reorder columns — "type" only ever shows on the "All" tab (see docType checks below),
 // but stays in the saved order so it lands back where you put it when All is selected again.
 type ColKey = "docNo" | "type" | "date" | "customer" | "phone" | "reg" | "vehicle" | "job" | "total" | "balance" | "status";
@@ -390,14 +423,31 @@ export default function Documents() {
                   {!isLoading && (docs?.length ?? 0) === 0 && (
                     <TableRow><TableCell colSpan={visibleColumns.length + 1} className="text-center py-8 text-muted-foreground">No documents found</TableCell></TableRow>
                   )}
-                  {docs?.map((d: any) => (
-                    <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`${base}/documents/${d.id}`)}>
-                      <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
-                      </TableCell>
-                      {visibleColumns.map((key) => <Fragment key={key}>{renderCell(key, d)}</Fragment>)}
-                    </TableRow>
-                  ))}
+                  {/* Grouped by age so outstanding work is obvious — see AGE_BUCKETS/bucketOf.
+                      Only buckets that actually have jobs get a heading. */}
+                  {AGE_BUCKETS.map(({ key, label }) => {
+                    const group = (docs || []).filter((d: any) => bucketOf(d.dateIssued || d.dateCreated || d.createdAt) === key);
+                    if (!group.length) return null;
+                    const stale = key === "older" || key === "fortnight";
+                    return (
+                      <Fragment key={key}>
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={visibleColumns.length + 1}
+                            className={`py-1.5 text-[11px] font-bold uppercase tracking-wide ${stale ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                            {label} · {group.length}{stale ? " — still open, chase?" : ""}
+                          </TableCell>
+                        </TableRow>
+                        {group.map((d: any) => (
+                          <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                            <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
+                              <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
+                            </TableCell>
+                            {visibleColumns.map((key2) => <Fragment key={key2}>{renderCell(key2, d)}</Fragment>)}
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
