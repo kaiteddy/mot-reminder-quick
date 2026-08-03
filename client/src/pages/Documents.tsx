@@ -2,10 +2,11 @@ import { useState, Fragment } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical, RotateCcw } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical, RotateCcw, ExternalLink, ReceiptText } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -141,6 +142,7 @@ export default function Documents() {
   const [, setLocation] = useLocation();
   const base = useClassicBase();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const utils = trpc.useUtils();
@@ -438,7 +440,7 @@ export default function Documents() {
                           </TableCell>
                         </TableRow>
                         {group.map((d: any) => (
-                          <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                          <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setPreviewId(d.id)}>
                             <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
                               <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
                             </TableCell>
@@ -457,7 +459,106 @@ export default function Documents() {
           </CardContent>
         </Card>
       </div>
+      <JobQuickView id={previewId} onClose={() => setPreviewId(null)}
+        onChanged={() => { utils.documents.list.invalidate(); utils.documents.stats.invalidate(); }}
+        onOpenFull={(id) => { setPreviewId(null); setLocation(`${base}/documents/${id}`); }} />
     </DashboardLayout>
+  );
+}
+
+// Quick look at a job without leaving the list — description, parts/labour and totals, plus
+// the two things you actually want for a stale job: bin it, or issue it as an invoice so the
+// visit stays on record. Both are confirm-gated; issuing is done from the full job sheet
+// because it consumes a GA4 number.
+function JobQuickView({ id, onClose, onChanged, onOpenFull }: {
+  id: number | null; onClose: () => void; onChanged: () => void; onOpenFull: (id: number) => void;
+}) {
+  const [, setLocation] = useLocation();
+  const base = useClassicBase();
+  const { data, isLoading } = trpc.documents.getById.useQuery({ id: id! }, { enabled: id != null });
+  const del = trpc.documents.delete.useMutation();
+  const convert = trpc.documents.convert.useMutation();
+  const [confirm, setConfirm] = useState<null | "delete" | "invoice">(null);
+  const doc = (data as any)?.doc, veh = (data as any)?.vehicle, cust = (data as any)?.customer;
+  const items: any[] = (data as any)?.lineItems || [];
+
+  async function doDelete() {
+    try {
+      await del.mutateAsync({ ids: [id!] });
+      onChanged(); onClose(); setConfirm(null);
+      toast.success(`Deleted ${doc?.docNo ? `job ${doc.docNo}` : "the job"}`);
+    } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
+  }
+  async function doInvoice() {
+    try {
+      const res: any = await convert.mutateAsync({ id: id!, toType: "SI" });
+      onChanged(); setConfirm(null); onClose();
+      toast.success("Converted to an invoice — opening it to issue");
+      if (res?.id) setLocation(`${base}/documents/${res.id}`);
+    } catch (e: any) { toast.error("Convert failed: " + (e.message || "")); }
+  }
+
+  return (
+    <Dialog open={id != null} onOpenChange={(o) => { if (!o) { onClose(); setConfirm(null); } }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-sm">
+            {doc ? `${TYPE_LABEL[doc.docType] || doc.docType} ${doc.docNo || ""} · ${fmtDate(doc.dateIssued || doc.dateCreated)}` : "Job"}
+          </DialogTitle>
+        </DialogHeader>
+        {isLoading || !doc ? <p className="py-8 text-center text-muted-foreground">Loading…</p> : (
+          <div className="space-y-3 text-[13px]">
+            <div className="flex flex-wrap items-center gap-2">
+              {veh?.registration && <RegPlate reg={veh.registration} size="xs" />}
+              <span className="font-semibold">{[veh?.make, veh?.model].filter(Boolean).join(" ")}</span>
+              <span className="text-muted-foreground">· {[cust?.forename, cust?.surname].filter(Boolean).join(" ") || doc.custName || "—"}</span>
+              <span className="ml-auto font-semibold">{money(doc.totalGross)}{Number(doc.balance) > 0 ? ` · ${money(doc.balance)} due` : ""}</span>
+            </div>
+            <div className="rounded-md border bg-slate-50/60 p-2.5 max-h-56 overflow-auto whitespace-pre-wrap">
+              {doc.description?.trim() || <span className="text-muted-foreground">No description on this job.</span>}
+            </div>
+            {items.length > 0 && (
+              <div className="max-h-40 overflow-auto rounded-md border">
+                <table className="w-full text-[12px]">
+                  <tbody>
+                    {items.map((li: any) => (
+                      <tr key={li.id} className="border-b last:border-0">
+                        <td className="px-2 py-1 text-slate-500 w-16">{li.itemType}</td>
+                        <td className="px-2 py-1">{li.description}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{money(li.subNet)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {confirm === "delete" && (
+              <div className="rounded-md border border-red-300 bg-red-50 p-2.5">
+                <p className="mb-2 font-medium text-red-800">Delete this job permanently? Its line items and payments go too — this cannot be undone.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="destructive" disabled={del.isPending} onClick={doDelete}>{del.isPending ? "Deleting…" : "Yes, delete"}</Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            {confirm === "invoice" && (
+              <div className="rounded-md border border-sky-300 bg-sky-50 p-2.5">
+                <p className="mb-2 font-medium text-sky-900">Convert to an invoice as it stands, keeping the visit on record? It opens straight after so you can check it and issue.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={convert.isPending} onClick={doInvoice}>{convert.isPending ? "Converting…" : "Yes, convert"}</Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button size="sm" variant="outline" onClick={() => onOpenFull(doc.id)}><ExternalLink className="w-3.5 h-3.5 mr-1.5" />Open full job</Button>
+              {doc.docType === "JS" && <Button size="sm" variant="outline" onClick={() => setConfirm("invoice")}><ReceiptText className="w-3.5 h-3.5 mr-1.5" />Convert to invoice</Button>}
+              <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => setConfirm("delete")}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
