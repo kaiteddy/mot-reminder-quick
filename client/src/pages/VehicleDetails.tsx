@@ -236,6 +236,7 @@ export default function VehicleDetails() {
     // of our own data. Track the specific URL that failed so a broken link falls back to the
     // manufacturer logo instead of showing a broken-image icon.
     const [failedImgUrl, setFailedImgUrl] = useState<string | null>(null);
+    const [openReminder, setOpenReminder] = useState<any>(null);
 
     const [rightTab, setRightTab] = useState<"General" | "Specs" | "Extra" | "Features" | "Notes">("General");
     const [historyTab, setHistoryTab] = useState<"issued" | "parts" | "reminders">("issued");
@@ -1066,7 +1067,7 @@ export default function VehicleDetails() {
                                     </TableHeader>
                                     <TableBody>
                                         {reminders.map((reminder) => (
-                                            <TableRow key={reminder.id}>
+                                            <TableRow key={reminder.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setOpenReminder(reminder)}>
                                                 <TableCell>
                                                     <Badge variant={reminder.type === 'MOT' ? 'default' : 'secondary'}>
                                                         {reminder.type}
@@ -1105,6 +1106,31 @@ export default function VehicleDetails() {
                     </Card>
                 </div>
             </div>
+            <Dialog open={!!openReminder} onOpenChange={(o) => { if (!o) setOpenReminder(null); }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-sm">
+                            {(openReminder as any)?.type || "Reminder"}
+                            {(openReminder as any)?.sentAt ? ` — sent ${new Date((openReminder as any).sentAt).toLocaleString("en-GB")}` : (openReminder as any)?.dueDate ? ` — due ${new Date((openReminder as any).dueDate).toLocaleDateString("en-GB")}` : ""}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2 text-[13px]">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+                            <span>Status: <strong>{(openReminder as any)?.status || "-"}</strong></span>
+                            {(openReminder as any)?.recipient && <span>To: <strong>{(openReminder as any).recipient}</strong></span>}
+                            {(openReminder as any)?.method && <span>Via: <strong>{(openReminder as any).method}</strong></span>}
+                        </div>
+                        <div className="rounded-md border bg-slate-50/60 p-3 whitespace-pre-wrap max-h-[50vh] overflow-auto">
+                            {(openReminder as any)?.messageContent || <span className="text-muted-foreground">No message text stored — this row came from the imported GA4 reminder queue, which only recorded that a reminder was due.</span>}
+                        </div>
+                        {(openReminder as any)?.messageContent && (
+                            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText((openReminder as any).messageContent); toast.success("Message copied"); }}>
+                                <Copy className="w-3.5 h-3.5 mr-1.5" />Copy message
+                            </Button>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }
