@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical, RotateCcw, ExternalLink, ReceiptText } from "lucide-react";
+import { FileText, Search, Trash2, Loader2, X, ChevronUp, ChevronDown, ChevronsUpDown, GripVertical, RotateCcw, ExternalLink, ReceiptText, Eye } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -440,9 +440,14 @@ export default function Documents() {
                           </TableCell>
                         </TableRow>
                         {group.map((d: any) => (
-                          <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setPreviewId(d.id)}>
-                            <TableCell className="w-8" onClick={(e) => e.stopPropagation()}>
-                              <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
+                          <TableRow key={d.id} className={`cursor-pointer hover:bg-muted/50 ${selected.has(d.id) ? "bg-violet-50" : ""}`} onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                            <TableCell className="w-14" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                <input type="checkbox" aria-label={`Select ${d.docNo || d.id}`} checked={selected.has(d.id)} onChange={() => toggle(d.id)} className="accent-violet-600 w-4 h-4 align-middle cursor-pointer" />
+                                <button type="button" title="Quick view — description, parts and quick actions"
+                                  onClick={(e) => { e.stopPropagation(); setPreviewId(d.id); }}
+                                  className="text-slate-400 hover:text-violet-600"><Eye className="w-4 h-4" /></button>
+                              </div>
                             </TableCell>
                             {visibleColumns.map((key2) => <Fragment key={key2}>{renderCell(key2, d)}</Fragment>)}
                           </TableRow>
