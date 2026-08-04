@@ -9,6 +9,7 @@ import { aiRouter } from "./routers/ai";
 import { omnipartRouter } from "./routers/omnipart";
 import { accountsExportRouter } from "./routers/accountsExport";
 import { expenditureRouter } from "./routers/expenditure";
+import { vehicleSaleRouter } from "./routers/vehicleSale";
 
 import { desc, eq, ne, or, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
 import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
@@ -22,6 +23,7 @@ export const appRouter = router({
   omnipart: omnipartRouter,
   accountsExport: accountsExportRouter,
   expenditure: expenditureRouter,
+  vehicleSale: vehicleSaleRouter,
   ga4: router({
     // freshness + last-run status for the "Sync GA4" button
     syncStatus: publicProcedure.query(async () => {

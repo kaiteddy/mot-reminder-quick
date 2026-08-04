@@ -670,3 +670,77 @@ export const ga4NumberPool = pgTable("ga4NumberPool", {
 
 export type Ga4PoolEntry = typeof ga4NumberPool.$inferSelect;
 export type InsertGa4PoolEntry = typeof ga4NumberPool.$inferInsert;
+
+/**
+ * Used Car Sales Invoice — the pre-printed HMRC margin-scheme form ELI fills in when a stock
+ * car is sold (VAT (Cars) Order 1972 S.I. No. 1970). Deliberately its OWN table rather than
+ * columns on serviceHistory: that table is a one-way mirror of GA4 and the sync would wipe
+ * anything the web app wrote. Column names match the form's `data-field` keys 1:1 so the
+ * replica renderer can address them directly.
+ *
+ * Every field is free text — this is a paper form, not a ledger. Money is stored as typed
+ * (e.g. "4,500.00") so what is printed is exactly what was entered; nothing here feeds the
+ * accounts export or the VAT return.
+ */
+export const vehicleSaleInvoices = pgTable("vehicleSaleInvoices", {
+  id: serial("id").primaryKey(),
+  salesStockId: integer("salesStockId"),   // the stock car it was raised from
+  vehicleId: integer("vehicleId"),         // matched vehicles row, once the sale is on the books
+  customerId: integer("customerId"),       // matched purchaser, if picked from the customer list
+
+  // transaction block (top right)
+  invoiceNumber: varchar("invoiceNumber", { length: 50 }),
+  transactionDate: varchar("transactionDate", { length: 30 }),
+  stockNumber: varchar("stockNumber", { length: 50 }),
+  dayBookFolio: varchar("dayBookFolio", { length: 50 }),
+  salesman: varchar("salesman", { length: 100 }),
+  purchaserStockNumber: varchar("purchaserStockNumber", { length: 50 }),
+  purchaserDayBookFolio: varchar("purchaserDayBookFolio", { length: 50 }),
+
+  // purchaser block (left)
+  purchaserName: varchar("purchaserName", { length: 255 }),
+  purchaserAddress: text("purchaserAddress"),      // up to 3 lines, newline separated
+  purchaserTelephone: varchar("purchaserTelephone", { length: 50 }),
+
+  // vehicle sold
+  grossPrice: varchar("grossPrice", { length: 30 }),
+  vehicleMake: varchar("vehicleMake", { length: 100 }),
+  vehicleType: varchar("vehicleType", { length: 255 }),
+  registrationNumber: varchar("registrationNumber", { length: 20 }),
+  chassisNumber: varchar("chassisNumber", { length: 50 }),
+  engineNumber: varchar("engineNumber", { length: 50 }),
+  firstRegisteredUK: varchar("firstRegisteredUK", { length: 30 }),
+  lastOwnerDetails: text("lastOwnerDetails"),      // up to 3 lines, newline separated
+  mileage: varchar("mileage", { length: 30 }),
+
+  // money down the right-hand side
+  lessLicenceValue: varchar("lessLicenceValue", { length: 30 }),
+  partExchangeAllowance: varchar("partExchangeAllowance", { length: 30 }),
+  deposit: varchar("deposit", { length: 30 }),
+  balance: varchar("balance", { length: 30 }),
+  settlementNotes: varchar("settlementNotes", { length: 255 }),
+
+  // goods taken in part exchange
+  partExchangeMake: varchar("partExchangeMake", { length: 100 }),
+  partExchangeType: varchar("partExchangeType", { length: 255 }),
+  partExchangeRegistration: varchar("partExchangeRegistration", { length: 20 }),
+  partExchangeChassis: varchar("partExchangeChassis", { length: 50 }),
+  partExchangeEngine: varchar("partExchangeEngine", { length: 50 }),
+  partExchangeFirstRegisteredUK: varchar("partExchangeFirstRegisteredUK", { length: 30 }),
+
+  // certificates
+  sellerCertificateDate: varchar("sellerCertificateDate", { length: 30 }),
+  sellerCertificateAddress: varchar("sellerCertificateAddress", { length: 255 }),
+  buyerCertificateDate: varchar("buyerCertificateDate", { length: 30 }),
+  sellerSignature: text("sellerSignature"),        // data: URL of the drawn/uploaded signature
+  buyerSignature: text("buyerSignature"),
+
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  salesStockIdx: index("vehicle_sale_invoices_sales_stock_idx").on(table.salesStockId),
+  regIdx: index("vehicle_sale_invoices_reg_idx").on(table.registrationNumber),
+}));
+
+export type VehicleSaleInvoice = typeof vehicleSaleInvoices.$inferSelect;
+export type InsertVehicleSaleInvoice = typeof vehicleSaleInvoices.$inferInsert;

@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -59,6 +59,19 @@ export default function SalesStock() {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(k); setSortDir(k === "vehicle" || k === "reg" ? "asc" : "desc"); }
   };
+
+  // Sales invoices already raised, so a car that has been sold offers "Open invoice" rather
+  // than silently raising a second one.
+  const { data: saleInvoices } = trpc.vehicleSale.list.useQuery();
+  const invoiceByStockId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const inv of (saleInvoices as any[]) || []) if (inv.salesStockId != null) m.set(inv.salesStockId, inv.id);
+    return m;
+  }, [saleInvoices]);
+  const raiseInvoice = trpc.vehicleSale.createFromStock.useMutation({
+    onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setLocation(`/vehicle-sale/${r.id}`); },
+    onError: (e) => toast.error(e.message || "Could not raise the sales invoice"),
+  });
 
   const cars = (data as any[]) || [];
   const shown = useMemo(() => {
@@ -145,6 +158,7 @@ export default function SalesStock() {
                     <SortHead label="MOT" k="mot" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Tax" k="tax" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <th className="text-left font-semibold px-2 py-2">Status</th>
+                    <th className="text-right font-semibold px-3 py-2">Sale</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -171,6 +185,14 @@ export default function SalesStock() {
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
                         <td className="px-2 py-2">{c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span> : <span className="text-slate-300">—</span>}</td>
+                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          <SaleInvoiceButton
+                            car={c} invoiceId={invoiceByStockId.get(c.id)} compact
+                            pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
+                            onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
+                            onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                          />
+                        </td>
                       </tr>
                     );
                   })}
@@ -213,6 +235,12 @@ export default function SalesStock() {
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
                       </div>
+                      <SaleInvoiceButton
+                        car={c} invoiceId={invoiceByStockId.get(c.id)}
+                        pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
+                        onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
+                        onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                      />
                       <div className="flex items-center gap-3 pt-1 text-[12px]">
                         <button onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)} className="text-violet-700 hover:underline">In workshop ↗</button>
                         {c.websiteUrl && <a href={c.websiteUrl} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">Listing <ExternalLink className="w-3 h-3" /></a>}
@@ -225,6 +253,33 @@ export default function SalesStock() {
           )}
       </div>
     </DashboardLayout>
+  );
+}
+
+/**
+ * Raise (or reopen) the used-car sales invoice for a stock car. The form is pre-filled from
+ * the stocklist and the garage's own vehicle record, then filled in on the replica itself.
+ */
+function SaleInvoiceButton({
+  car, invoiceId, pending, compact, onRaise, onOpen,
+}: {
+  car: any; invoiceId?: number; pending: boolean; compact?: boolean;
+  onRaise: () => void; onOpen: (invoiceId: number) => void;
+}) {
+  const raised = invoiceId != null;
+  const cls = compact
+    ? `inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium whitespace-nowrap disabled:opacity-50 ${raised ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-violet-300 bg-white text-violet-700 hover:bg-violet-50"}`
+    : `inline-flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[12px] font-semibold w-full disabled:opacity-50 ${raised ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-violet-300 bg-white text-violet-700 hover:bg-violet-50"}`;
+  return (
+    <button
+      className={cls}
+      disabled={pending}
+      title={raised ? "Open the used car sales invoice for this car" : `Raise a used car sales invoice for ${car.registration}`}
+      onClick={() => (raised ? onOpen(invoiceId!) : onRaise())}
+    >
+      {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ReceiptText className="w-3.5 h-3.5" />}
+      {raised ? "Open invoice" : "Sales invoice"}
+    </button>
   );
 }
 
