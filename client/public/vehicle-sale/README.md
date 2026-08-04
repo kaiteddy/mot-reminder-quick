@@ -27,6 +27,14 @@ projection-profile deskew for the badges; the two methods agreed to within 0.06�
 Edges were replicated outward before rotating and the result cropped back to the original
 dimensions, so the corners are filled with real colour rather than background wedges.
 
-`footer-*.jpg` is **left as scanned**. It is a 74px strip that is already clipped top and bottom
-in the source, leaving no clean feature to measure — the two variants disagreed by half a degree
-with opposite sign to the header, so rotating it would have been guesswork.
+## The footer is not here
+
+There is deliberately no `footer-*.jpg`. The supplied strip was 74px tall and the crop ran
+straight through the band **and** through the address text sitting on it: the orange band ended
+at row 62 with the glyphs of "49 VICTORIA ROAD HENDON LONDON NW4 2RP" sliced mid-stroke, and the
+missing pixels were never in the file, so no rotation or rescale could recover them.
+
+The footer is now drawn as vector in `VehicleSaleForm.tsx` (`FooterBand`), from that strip's own
+measured geometry — arrow tip at x≈1249, orange `#F4513A`, blue `#4A5F9A`, text set to the
+original's measured widths via `textLength`. It is legible, and unlike a 74px bitmap stretched
+across 210mm it stays crisp at print resolution.
