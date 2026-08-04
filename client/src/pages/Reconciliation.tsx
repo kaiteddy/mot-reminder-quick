@@ -1131,6 +1131,10 @@ function CarTradingTab() {
   const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
   const [carSearch, setCarSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold">("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  // Cars bought at auction should carry buyer fees; a customer/part-ex won't. "No fees" surfaces
+  // auction buys recorded at hammer price only (that's how £2.3k of cost went missing).
+  const [noFeesOnly, setNoFeesOnly] = useState(false);
   const [needsData, setNeedsData] = useState(false);
   const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
   const [splitFor, setSplitFor] = useState<{ carId: number; total: number; payee: string } | null>(null); // auction fee-split prompt
@@ -1178,7 +1182,7 @@ function CarTradingTab() {
 
   const rows: any[] = deals.data || [];
   const cq = carSearch.trim().toLowerCase();
-  const filterActive = needsData || statusFilter !== "all" || cq !== "";
+  const filterActive = needsData || statusFilter !== "all" || sourceFilter !== "all" || noFeesOnly || cq !== "";
   // Freeze WHICH rows are shown while a filter is active, recomputing only when the filter itself
   // changes (a button or the search box) — NOT when a row's data changes. So filling in a row won't
   // drop it out of view and make you relocate it; the search box still re-filters live as you type.
@@ -1187,13 +1191,15 @@ function CarTradingTab() {
     const s = new Set<number>();
     for (const r of rows) {
       if (statusFilter !== "all" && r.status !== statusFilter) continue;
+      if (sourceFilter !== "all" && (r.source || "(none)") !== sourceFilter) continue;
+      if (noFeesOnly && r.feeBreakdown) continue;
       if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
       if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
       s.add(r.id);
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, needsData, cq]);
+  }, [statusFilter, sourceFilter, noFeesOnly, needsData, cq]);
 
   if (deals.isLoading) return <Loading />;
   // pin the just-added row to the top so it doesn't re-order while you're filling it in
@@ -1245,6 +1251,18 @@ function CarTradingTab() {
             {([["all", "All", rows.length], ["in_stock", "In stock", inStock.length], ["sold", "Sold", sold.length]] as const).map(([k, lbl, n]) => (
               <Button key={k} type="button" variant={statusFilter === k ? "default" : "outline"} size="sm" className="h-9" onClick={() => setStatusFilter(k as any)}>{lbl} <span className="ml-1 opacity-60">{n}</span></Button>
             ))}
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="h-9 w-[170px]"><SelectValue placeholder="All sources" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                {Array.from(rows.reduce((m: Map<string, number>, r: any) => m.set(r.source || "(none)", (m.get(r.source || "(none)") || 0) + 1), new Map<string, number>()).entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([src, n]) => <SelectItem key={src} value={src}>{src} ({n})</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant={noFeesOnly ? "default" : "outline"} size="sm" className={`h-9 ${noFeesOnly ? "" : "text-orange-700"}`} title="Auction cars with no fee breakdown — their cost may be the hammer price only" onClick={() => setNoFeesOnly((v) => !v)}>
+              No fees <span className="ml-1 opacity-60">{rows.filter((r: any) => !r.feeBreakdown).length}</span>
+            </Button>
             <Button type="button" variant={needsData ? "default" : "outline"} size="sm" className={`h-9 ${needsData ? "" : "text-amber-700"}`} title="Cars missing a purchase price or purchase date (sold ones overstate the margin)" onClick={() => setNeedsData((v) => !v)}>
               <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
             </Button>
