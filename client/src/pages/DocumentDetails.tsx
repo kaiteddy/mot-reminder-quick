@@ -220,6 +220,29 @@ export default function DocumentDetails() {
   // and open the browser print dialog directly via a hidden iframe. Shared by the main Print
   // button (the doc currently open/being edited) and the history-preview drawer's Print button
   // (any past job in this vehicle's history, without navigating away to open it first).
+  // Save the document as a PDF file — same server-rendered PDF the Print button uses
+  // (job sheet / estimate / invoice layout picked by doc type in getRichPDF).
+  const [downloading, setDownloading] = useState(false);
+  async function downloadPdf() {
+    if (isNew) { toast.error("Save the document first"); return; }
+    setDownloading(true);
+    try {
+      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
+      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+      const bytes = atob(res.content);
+      const arr = new Uint8Array(bytes.length);
+      for (let i2 = 0; i2 < bytes.length; i2++) arr[i2] = bytes.charCodeAt(i2);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename || `${form.docNo || id}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      toast.success("PDF downloaded");
+    } catch (e: any) { toast.error("PDF failed: " + (e.message || "")); }
+    finally { setDownloading(false); }
+  }
+
   async function printDocById(documentId: number) {
     const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId });
     if (!res?.content) { toast.error("Could not generate the PDF"); return; }
@@ -959,6 +982,7 @@ export default function DocumentDetails() {
                 <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
               )}
               <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
+              <button onClick={downloadPdf} disabled={downloading || isNew} title="Download this document as a PDF" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF</button>
               {!isNew && (
                 <div className="relative">
                   <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
