@@ -421,8 +421,34 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <text className="legal" textAnchor="middle" x="1205" y="3305">
         <tspan fontWeight="800">IMPORTANT:</tspan> The copy invoice should be separately signed and dated by Seller and Purchaser.
       </text>
-      <image href={`/vehicle-sale/footer-${suffix}.jpg`} x="0" y="3364" width="2409" height="74" preserveAspectRatio="none" />
+      <FooterBand />
     </svg>
+  );
+}
+
+/**
+ * Footer band, drawn rather than scanned. The supplied `footer-*.jpg` strip was cropped through
+ * the band AND through the address text on it, so "49 VICTORIA ROAD…" printed with its lower
+ * third sliced off and the pixels simply weren't in the file to recover. Redrawn from the strip's
+ * own measured geometry (arrow tip x≈1241, orange #F4513A, blue #4A5F9A) and set in the same
+ * condensed face as the form's captions, so it is legible and stays crisp at print resolution.
+ */
+const FOOTER_Y = 3364;
+const FOOTER_H = H - FOOTER_Y;
+function FooterBand() {
+  const y = FOOTER_Y;
+  return (
+    <g className="vs-footer">
+      <rect x="0" y={y} width={W} height={FOOTER_H} fill="#4A5F9A" />
+      {/* orange half, ending in the rightward arrow the original band has */}
+      <polygon points={`0,${y} 1202,${y} 1249,${y + 50} 1222,${y + FOOTER_H} 0,${y + FOOTER_H}`} fill="#F4513A" />
+      <text className="footer-text" x="40" y={y + 64} textLength="970" lengthAdjust="spacingAndGlyphs">
+        49 VICTORIA ROAD HENDON LONDON NW4 2RP
+      </text>
+      <text className="footer-text" x="1290" y={y + 64} textLength="1078" lengthAdjust="spacingAndGlyphs">
+        TEL : 0208 203 6449 EMAIL : ELI@ELIMOTORS.CO.UK
+      </text>
+    </g>
   );
 }
 
@@ -528,6 +554,10 @@ export default function VehicleSaleForm({
         .vs-art .field-line { stroke: #333; stroke-width: 2.6; stroke-dasharray: 2 8; stroke-linecap: round; }
         .vs-art .solid-field-line { stroke: #333; stroke-width: 2.6; }
         .vs-art .signature-line { stroke: #333; stroke-width: 2.2; stroke-dasharray: 2 7; stroke-linecap: round; }
+        .vs-art .footer-text {
+          fill: #fff; font-size: 77px; font-weight: 700; letter-spacing: 1px;
+          font-family: "Liberation Sans Narrow", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+        }
 
         .vs-blank {
           margin: 0; padding: 0; border: 0; outline: 0; resize: none; overflow: hidden;
