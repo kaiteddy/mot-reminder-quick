@@ -685,10 +685,52 @@ export async function upsertCarDeal(input: any) {
         FROM (SELECT SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId"=${input.id}) lp
         WHERE d."id"=${input.id} AND COALESCE(lp.total,0) > 0`);
     }
+    // A new row starts blank and the reg is typed in afterwards — sync once it has one.
+    if ("registration" in input) await syncStockForDeal(input.id);
     return { id: input.id };
   }
   const [row]: any = await db.insert(carDeals).values(f).returning({ id: carDeals.id });
+  await syncStockForDeal(row.id);
   return { id: row.id };
+}
+
+/**
+ * Keep Sales Stock in step with the trading ledger.
+ *
+ * A car bought at auction exists in the business from the day it's paid for, but it isn't
+ * advertised until it's through prep — so it never appeared on Sales Stock, and the two lists
+ * silently drifted (five cars, ~£58k, sat in the ledger with no stock record). Adding a deal now
+ * creates its stock row immediately with status "IN PREP" rather than "ON FORECOURT"; the
+ * website stocklist import flips it to ON FORECOURT once the advert is live.
+ *
+ * Only ever creates — never overwrites a row the stocklist import owns.
+ */
+export async function syncStockForDeal(carDealId: number) {
+  const db = await getDb();
+  if (!db) return { created: false };
+  const d: any = await db.execute(sql`SELECT "registration", "description", "salesStockId" FROM "carDeals" WHERE "id"=${carDealId}`);
+  const deal = (d.rows || d)[0];
+  const reg = String(deal?.registration || "").trim();
+  if (!reg) return { created: false };            // a blank new row — nothing to sync yet
+  if (deal.salesStockId) return { created: false }; // already linked
+
+  const existing: any = await db.execute(sql`
+    SELECT "id" FROM "salesStock" WHERE REPLACE(UPPER("registration"),' ','') = ${reg.toUpperCase().replace(/\s/g, "")} LIMIT 1`);
+  let stockId = (existing.rows || existing)[0]?.id;
+
+  if (!stockId) {
+    const desc = String(deal?.description || "").trim();
+    const year = (desc.match(/\b(19|20)\d{2}\b/) || [])[0] || null;
+    const words = desc.replace(/\b(19|20)\d{2}\b/, "").trim().split(/\s+/).filter(Boolean);
+    const [ins]: any = await db.execute(sql`
+      INSERT INTO "salesStock" ("registration","title","make","model","year","status","createdAt","updatedAt")
+      VALUES (${reg}, ${desc || reg}, ${words[0] || null}, ${words.slice(1).join(" ") || null},
+              ${year ? Number(year) : null}, 'IN PREP', now(), now())
+      RETURNING "id"`).then((r: any) => r.rows || r);
+    stockId = ins?.id;
+  }
+  if (stockId) await db.execute(sql`UPDATE "carDeals" SET "salesStockId"=${stockId} WHERE "id"=${carDealId}`);
+  return { created: !!stockId, stockId };
 }
 
 export async function deleteCarDeal(input: { id: number }) {
