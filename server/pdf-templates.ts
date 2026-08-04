@@ -1059,34 +1059,64 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
     // Vehicle Detail Hero Block (Only on Page 1)
     if (pageNum === 1) {
-      doc.save().roundedRect(PAGE_M, y, CW, 80, 4).fillAndStroke(LIGHT_GREY, MID_GREY).restore();
-      
       const vMake = (data.vehicle_make || '').toUpperCase();
       const vModel = (data.vehicle_model || '').toUpperCase();
       const vReg = (data.vehicle_reg || '').toUpperCase();
+      const vName = [vMake, vModel].filter(Boolean).join(' ') || 'VEHICLE';
+
+      const PAD = 15;
+      const INSET = 20; // right inset shared by the summary column
+
+      // Measure the summary column so the vehicle name can never run underneath it.
+      doc.font('Helvetica').fontSize(10);
+      const summaryW =
+        Math.max(doc.widthOfString('TOTAL SERVICE VISITS'), doc.widthOfString('MAINTENANCE INVESTMENT')) +
+        INSET + 12;
+      const nameW = CW - PAD - summaryW;
+
+      // Long names ("MERCEDES-BENZ GLA-CLASS GLA 200 AMG LINE") shrink to fit one line.
+      let nameSize = 24;
+      doc.font('Helvetica').fontSize(nameSize);
+      while (nameSize > 15 && doc.widthOfString(vName) > nameW) {
+        nameSize -= 1;
+        doc.fontSize(nameSize);
+      }
+      // Still too wide even at 15pt: two readable lines beat one squeezed line, so step
+      // back up and let it wrap — the box grows to match.
+      if (doc.widthOfString(vName) > nameW) {
+        nameSize = 18;
+        doc.fontSize(nameSize);
+      }
+      const nameH = doc.heightOfString(vName, { width: nameW });
+
+      const nameY = y + 30;
+      const regY = nameY + nameH + 4;
+      const boxH = Math.max(80, regY + 16 + PAD - y);
+
+      doc.save().roundedRect(PAGE_M, y, CW, boxH, 4).fillAndStroke(LIGHT_GREY, MID_GREY).restore();
 
       doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('VEHICLE IDENTITY', PAGE_M + 15, y + 15);
-      
-      doc.font('Helvetica').fontSize(24).fillColor(BRAND_BLUE);
-      doc.text(`${vMake} ${vModel}`, PAGE_M + 15, y + 30);
-      
+      doc.text('VEHICLE IDENTITY', PAGE_M + PAD, y + 15);
+
+      doc.font('Helvetica').fontSize(nameSize).fillColor(BRAND_BLUE);
+      doc.text(vName, PAGE_M + PAD, nameY, { width: nameW });
+
       doc.font('Helvetica').fontSize(14).fillColor('#4b5563');
-      doc.text(`REGISTRATION: ${vReg}`, PAGE_M + 15, y + 55);
+      doc.text(`REGISTRATION: ${vReg}`, PAGE_M + PAD, regY, { width: nameW, lineBreak: false });
 
       // Financial Summary in the box
       doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('TOTAL SERVICE VISITS', PAGE_M, y + 15, { width: CW - 20, align: 'right' });
+      doc.text('TOTAL SERVICE VISITS', PAGE_M, y + 15, { width: CW - INSET, align: 'right' });
       doc.font('Helvetica').fontSize(16).fillColor(BRAND_BLUE);
-      doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - 20, align: 'right' });
-      
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - 20, align: 'right' });
-      doc.font('Helvetica').fontSize(12).fillColor(BRAND_BLUE);
-      doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - 20, align: 'right' });
+      doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - INSET, align: 'right' });
 
-      y += 105;
-      
+      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
+      doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - INSET, align: 'right' });
+      doc.font('Helvetica').fontSize(12).fillColor(BRAND_BLUE);
+      doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - INSET, align: 'right' });
+
+      y += boxH + 25;
+
       doc.font('Helvetica').fontSize(14).fillColor(DARK_TEXT);
       doc.text('Detailed Service History', PAGE_M, y);
       y += 20;
