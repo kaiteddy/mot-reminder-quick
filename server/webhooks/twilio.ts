@@ -217,6 +217,30 @@ async function retryAsSms(messageSid: string, errCode: number) {
   const why = errCode === 63016 ? "the 24-hour WhatsApp window had closed" : "they aren't on WhatsApp";
   const out = await sendAsSms(to, body, why);
   console.log(`[Twilio Status] ${messageSid} failed ${errCode}; SMS rescue ${out.success ? "sent " + out.messageId : "failed: " + out.error}`);
+
+  // Record the rescue against the same customer, otherwise the thread shows the failed
+  // WhatsApp and no sign that the message actually got through by text.
+  if (out.success) {
+    try {
+      const { findCustomerByPhone, createReminderLog } = await import("../db");
+      const plain = to.replace(/^whatsapp:/, "");
+      const customer: any = await findCustomerByPhone(plain);
+      await createReminderLog({
+        reminderId: null,
+        customerId: customer?.id ?? null,
+        vehicleId: null,
+        messageType: "Other",
+        recipient: plain,
+        messageSid: out.messageId,
+        status: "sent",
+        templateUsed: "rescue-sms",   // the "-sms" suffix is what tags it as a text in the thread
+        messageContent: body,
+        sentAt: new Date(),
+      });
+    } catch (e: any) {
+      console.error("[Twilio Status] couldn't log the SMS rescue:", e?.message);
+    }
+  }
 }
 
 export async function handleTwilioStatusCallback(req: Request, res: Response) {
