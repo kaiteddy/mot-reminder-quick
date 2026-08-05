@@ -102,7 +102,7 @@ function HistSortHead({ label, k, sort, onSort, align }: { label: string; k: str
     );
 }
 
-function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void }) {
+function HistoryActivityRow({ h, onOpenFull, onOpenDoc }: { h: any; onOpenFull: () => void; onOpenDoc: () => void }) {
     const [open, setOpen] = useState(false);
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
         { documentId: h.id },
@@ -126,7 +126,10 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${DOC_TYPE_TAILWIND[h.docType] || "bg-slate-100 text-slate-700"}`}>{HISTORY_TYPE_LABEL[h.docType] || h.docType}</span>
                 </TableCell>
                 <TableCell className="py-1.5 text-[13px] font-semibold text-slate-800 whitespace-nowrap">
-                    {h.docNo || h.id}
+                    {/* the number opens the document itself — the row's chevron just expands the detail */}
+                    <button type="button" title="Open this document"
+                        onClick={(e) => { e.stopPropagation(); onOpenDoc(); }}
+                        className="text-violet-700 hover:underline font-semibold">{h.docNo || h.id}</button>
                     {!h.viaAccountSame && <span className="ml-1.5 bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
                 </TableCell>
                 <TableCell className="py-1.5">
@@ -539,7 +542,7 @@ export default function CustomerDetails() {
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <User className="w-5 h-5 text-blue-500" />
-                            Contact Details
+                            Contact &amp; Location
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -813,6 +816,7 @@ export default function CustomerDetails() {
                                                                 setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
                                                                 setHistoryOpen(true);
                                                             }}
+                                                            onOpenDoc={() => { window.location.href = `${base}/documents/${h.id}`; }}
                                                         />
                                                     ))}
                                                 </TableBody>
