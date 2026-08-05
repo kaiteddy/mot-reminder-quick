@@ -2750,7 +2750,10 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
     : null;
   const seen = new Set<string>(), alt: any[] = [];
   const addAlt = (c: { name?: string; phone?: string; email?: string }) => {
-    const k = String(c.phone || c.email || c.name || "").replace(/\s+/g, "").toLowerCase();
+    // Dedupe on the NORMALIZED phone: the same mobile arrives as "07970111327" on one record and
+    // "+447970111327" on another, and a raw string compare kept both (Mrs Perl landed twice).
+    const k = (c.phone ? normPhoneKey(c.phone) : null)
+      || String(c.email || c.name || "").replace(/\s+/g, "").toLowerCase();
     if (!k || seen.has(k)) return;
     seen.add(k);
     alt.push({ name: c.name || "", phone: c.phone || "", email: c.email || "" });
