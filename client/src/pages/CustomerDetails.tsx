@@ -548,6 +548,11 @@ export default function CustomerDetails() {
                     <CardContent>
                         <div className="grid gap-6 md:grid-cols-3">
                             <div className="space-y-2.5">
+                                {/* Labelled record-style fields — these get read out to customers on the phone */}
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer Name</p>
+                                    <p className="text-[15px] font-bold text-slate-900">{customer.name}</p>
+                                </div>
                                 {parsedContacts.length > 0 ? (
                                     parsedContacts.map((contact, idx) => (
                                         <div key={idx} className="flex items-center gap-3 text-sm flex-wrap bg-slate-50/50 p-2 rounded-lg border border-slate-100">
@@ -560,15 +565,18 @@ export default function CustomerDetails() {
                                                     <Phone className="w-4 h-4" />
                                                 </div>
                                             )}
-                                            <a
-                                                href={contact.type === 'email'
-                                                    ? `mailto:${contact.value}`
-                                                    : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
-                                                }
-                                                className="hover:underline font-semibold text-slate-900 text-[15px] break-all"
-                                            >
-                                                {contact.value}
-                                            </a>
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{contact.type === 'email' ? 'Email' : 'Phone'}</p>
+                                                <a
+                                                    href={contact.type === 'email'
+                                                        ? `mailto:${contact.value}`
+                                                        : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
+                                                    }
+                                                    className="hover:underline font-semibold text-slate-900 text-[15px] break-all"
+                                                >
+                                                    {contact.value}
+                                                </a>
+                                            </div>
                                             {contact.tag && (
                                                 <Badge variant="secondary" className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200/50 ml-auto">
                                                     {contact.tag}
@@ -586,6 +594,7 @@ export default function CustomerDetails() {
                                     <div className="flex items-start gap-2.5">
                                         <MapPin className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
                                         <div className="space-y-1">
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Address</p>
                                             {customer.address && <div className="text-[16px] font-medium leading-snug text-slate-900">{customer.address}</div>}
                                             {customer.postcode && <div className="text-lg font-bold text-blue-700 uppercase tracking-wide">{customer.postcode}</div>}
                                             <DriveFromGarage postcode={customer.postcode} />
