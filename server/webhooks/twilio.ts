@@ -160,6 +160,40 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
 /**
  * Handle message status callbacks from Twilio
  */
+/**
+ * WhatsApp failures that a plain text message would have got through: outside the 24-hour
+ * service window, and "not a WhatsApp user". Both are reported asynchronously.
+ */
+const RESCUABLE_WHATSAPP_ERRORS = new Set([63016, 63024, 63003]);
+
+/**
+ * Re-send a WhatsApp message that failed after Twilio had already accepted it, as an SMS.
+ * The original body isn't in the callback, so it's read back from Twilio by SID.
+ */
+async function retryAsSms(messageSid: string, errCode: number) {
+  const accountSid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
+  const authToken = (process.env.TWILIO_AUTH_TOKEN || "").trim();
+  if (!accountSid || !authToken) return;
+
+  const auth = `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${messageSid}.json`,
+    { headers: { Authorization: auth } });
+  if (!res.ok) return;
+  const msg: any = await res.json();
+
+  // Only rescue outbound WhatsApp. An SMS that failed must not loop back through here.
+  const from = String(msg.from || "");
+  const to = String(msg.to || "");
+  if (!from.startsWith("whatsapp:") || !to.startsWith("whatsapp:")) return;
+  const body = String(msg.body || "").trim();
+  if (!body) return;
+
+  const { sendAsSms } = await import("../services/customerReply");
+  const why = errCode === 63016 ? "the 24-hour WhatsApp window had closed" : "they aren't on WhatsApp";
+  const out = await sendAsSms(to, body, why);
+  console.log(`[Twilio Status] ${messageSid} failed ${errCode}; SMS rescue ${out.success ? "sent " + out.messageId : "failed: " + out.error}`);
+}
+
 export async function handleTwilioStatusCallback(req: Request, res: Response) {
   try {
     const body: TwilioWebhookBody = req.body;
@@ -183,6 +217,16 @@ export async function handleTwilioStatusCallback(req: Request, res: Response) {
     if (msgSid) {
       const { updateAppointmentReminderStatus } = await import("../db");
       await updateAppointmentReminderStatus(msgSid, status);
+    }
+
+    // WhatsApp reports its two most common refusals asynchronously — 63016 (outside the
+    // 24-hour window) and 63024 (recipient isn't a WhatsApp user). Twilio accepts the send with
+    // a 201 and only says so here, so this is the only place the message can be rescued.
+    // Without it the customer simply never hears back.
+    const errCode = Number((req.body as any)?.ErrorCode || 0);
+    if (msgSid && RESCUABLE_WHATSAPP_ERRORS.has(errCode)) {
+      await retryAsSms(msgSid, errCode).catch((e) =>
+        console.error("[Twilio Status] SMS rescue failed:", e?.message));
     }
 
     res.status(200).send("OK");

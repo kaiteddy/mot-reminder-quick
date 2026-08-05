@@ -2926,7 +2926,7 @@ export const appRouter = router({
         // WhatsApp refuses a free-form reply more than 24h after the customer's last message;
         // this falls back to SMS in that case so the reply always lands.
         const { sendCustomerReply } = await import("./services/customerReply");
-        const result = await sendCustomerReply({ to: input.phoneNumber, body: input.message });
+        const result = await sendCustomerReply({ to: input.phoneNumber, body: input.message, customerId: input.customerId });
 
         if (!result.success) {
           throw new Error(result.error || "Failed to send message");
