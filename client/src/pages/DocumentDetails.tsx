@@ -309,7 +309,7 @@ export default function DocumentDetails() {
   }
   const emailMut = trpc.email.sendDocument.useMutation();
   const [emailOpen, setEmailOpen] = useState(false);
-  const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
+  const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", message: "" });
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
@@ -363,12 +363,55 @@ export default function DocumentDetails() {
     const t = (billedToInsurer && EMAIL_TEMPLATES.find((x) => x.name === "Insurance Invoice"))
       || EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
     const to = billedToInsurer ? (d?.insurerEmail || "") : (d?.custEmail || cust?.email || "");
-    setEmailForm({ to, ...applyTemplate(t, emailCtx()) });
+    setEmailForm({ to, cc: "", ...applyTemplate(t, emailCtx()) });
     setEmailOpen(true);
   }
+
+  /** Every address we hold for this job, for the one-click chips: the document's own recorded
+   * address, the customer record, the insurer, and each additional contact. A customer can
+   * legitimately have several (personal and company), which is why they're offered rather than
+   * one being guessed at. Deduped case-insensitively, and labelled with whose address it is. */
+  function knownEmails(): { email: string; label: string }[] {
+    const d = (data as any)?.doc; const cust = (data as any)?.customer;
+    const out: { email: string; label: string }[] = [];
+    const seen = new Set<string>();
+    const add = (email: any, label: string) => {
+      const e = String(email || "").trim();
+      if (!e.includes("@") || seen.has(e.toLowerCase())) return;
+      seen.add(e.toLowerCase());
+      out.push({ email: e, label });
+    };
+    add(d?.custEmail, "On this document");
+    add(cust?.email, cust?.name || "Customer");
+    add(d?.insurerEmail, d?.insuranceCompany || "Insurer");
+    for (const c of (Array.isArray(cust?.altContacts) ? cust.altContacts : [])) add(c?.email, c?.name || "Additional contact");
+    return out;
+  }
+
+  /** Add an address to To or CC without wiping what's already there — these fields take a
+   * comma-separated list so an invoice can go to the customer and the company at once. */
+  function addRecipient(field: "to" | "cc", email: string) {
+    setEmailForm((f) => {
+      const cur = String(f[field] || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (cur.some((c) => c.toLowerCase() === email.toLowerCase())) return f;
+      return { ...f, [field]: [...cur, email].join(", ") };
+    });
+  }
+
+  const splitAddrs = (raw: string) => String(raw || "").split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+
   async function sendEmail() {
-    if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
-    try { await flushPending(); await emailMut.mutateAsync({ docId: id, to: emailForm.to, subject: emailForm.subject, message: emailForm.message }); toast.success(`Emailed to ${emailForm.to}`); setEmailOpen(false); }
+    const tos = splitAddrs(emailForm.to);
+    const ccs = splitAddrs(emailForm.cc);
+    if (!tos.length) { toast.error("Enter a valid recipient email address"); return; }
+    const bad = [...tos, ...ccs].filter((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a));
+    if (bad.length) { toast.error(`Not a valid email address: ${bad.join(", ")}`); return; }
+    try {
+      await flushPending();
+      await emailMut.mutateAsync({ docId: id, to: tos.join(","), cc: ccs.join(",") || undefined, subject: emailForm.subject, message: emailForm.message });
+      toast.success(`Emailed to ${tos.join(", ")}${ccs.length ? ` (cc ${ccs.join(", ")})` : ""}`);
+      setEmailOpen(false);
+    }
     catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
   }
 
@@ -1657,8 +1700,28 @@ export default function DocumentDetails() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">To</label>
-                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.to} onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))} placeholder="customer@email.com" />
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.to} onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))} placeholder="customer@email.com, second@email.com" />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground">CC</label>
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.cc} onChange={(e) => setEmailForm((f) => ({ ...f, cc: e.target.value }))} placeholder="Optional — copy someone in" />
+              </div>
+              {/* One-click chips for every address on file. Typing a second address by hand still
+                  works — both fields accept a comma-separated list. */}
+              {knownEmails().length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Addresses on file</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {knownEmails().map((k) => (
+                      <span key={k.email} className="inline-flex items-center rounded-full border bg-slate-50 text-xs overflow-hidden">
+                        <span className="pl-2.5 pr-1.5 py-1 text-slate-600" title={k.label}>{k.email}</span>
+                        <button type="button" onClick={() => addRecipient("to", k.email)} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">To</button>
+                        <button type="button" onClick={() => addRecipient("cc", k.email)} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">CC</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-muted-foreground">Subject</label>
                 <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.subject} onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))} />
