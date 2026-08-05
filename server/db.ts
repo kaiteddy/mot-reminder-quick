@@ -1972,6 +1972,11 @@ const normReg = (r?: string) => {
   if (/^[A-Z]{2}[0-9]{2}[A-Z]{3}$/.test(s)) return s;   // current  AA00 AAA
   if (/^[A-Z]{1,3}[0-9]{1,4}$/.test(s)) return s;        // dateless AAA 9999 (incl. XLZ1872)
   if (/^[0-9]{1,4}[A-Z]{1,3}$/.test(s)) return s;        // dateless 9999 AAA
+  // Prefix (1983-2001) A999 AAA and suffix (1963-1983) AAA 999A plates are also real formats and
+  // must be trusted as-is. Without this, W466 YHJ (a Toyota) was coerced to the current-format
+  // template as WA66YHJ — a DIFFERENT vehicle — so a job sheet silently changed registration.
+  if (/^[A-Z][0-9]{1,3}[A-Z]{3}$/.test(s)) return s;     // prefix   A999 AAA
+  if (/^[A-Z]{3}[0-9]{1,3}[A-Z]$/.test(s)) return s;     // suffix   AAA 999A
   if (/^[A-Z0-9]{7}$/.test(s)) {
     const L = (c: string) => TO_LETTER[c] ?? c, D = (c: string) => TO_DIGIT[c] ?? c;
     const cand = L(s[0]) + L(s[1]) + D(s[2]) + D(s[3]) + L(s[4]) + L(s[5]) + L(s[6]);
