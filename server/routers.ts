@@ -463,6 +463,43 @@ export const appRouter = router({
       }),
   }),
 
+  // Text-on-inbound: who gets told when a customer replies on WhatsApp.
+  staffAlerts: router({
+    get: publicProcedure.query(async () => {
+      const { getAppSetting } = await import("./db");
+      const s: any = (await getAppSetting("staff_alerts")) || {};
+      return {
+        enabled: !!s.enabled,
+        phone: s.phone || "",
+        fromNumber: s.fromNumber || "",
+        cooldownMinutes: s.cooldownMinutes ?? 15,
+        smsSenderConfigured: !!(s.fromNumber || process.env.TWILIO_SMS_NUMBER),
+      };
+    }),
+    save: publicProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        phone: z.string().trim(),
+        fromNumber: z.string().trim().optional(),
+        cooldownMinutes: z.number().int().min(0).max(240).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { setAppSetting } = await import("./db");
+        await setAppSetting("staff_alerts", input);
+        return { ok: true };
+      }),
+    // Send a test text to the configured number so it can be proven end-to-end.
+    test: publicProcedure.mutation(async () => {
+      const { notifyInboundMessage } = await import("./services/staffAlerts");
+      return notifyInboundMessage({
+        customerId: null,
+        customerName: "Test alert",
+        customerPhone: "",
+        body: "This is what a customer reply looks like.",
+      });
+    }),
+  }),
+
   email: router({
     getSettings: publicProcedure.query(async () => {
       const { getEmailSettings } = await import("./services/email");
