@@ -134,6 +134,13 @@ const SERVICE_ITEMS: { key: string; label: string }[] = [
     { key: "cabinFilter", label: "Pollen/cabin filter" },
 ];
 
+// Big interval jobs tracked separately from the service grade — the dates you get asked for
+// and can't find quickly.
+const MILESTONES: { key: string; label: string }[] = [
+    { key: "gearboxOil", label: "Gearbox oil change" },
+    { key: "timingBelt", label: "Timing belt" },
+];
+
 /** When this car was last serviced and to what grade — worked out from the parts actually
  * invoiced rather than from how the job was described, so a job written up as "Carried Out Full
  * Service" with no filters on the bill still reads as an interim. The ticks are shown so the
@@ -149,8 +156,27 @@ function ServicingCard({ servicing }: { servicing: any }) {
                 <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base"><Wrench className="w-4 h-4" /> Servicing</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-3">
                     <p className="text-sm text-muted-foreground">No service found — no engine oil or filter has been invoiced for this car.</p>
+                    {/* A car can still have had a belt or gearbox oil without a graded service. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {MILESTONES.map((mst) => {
+                            const m = servicing?.milestones?.[mst.key];
+                            return (
+                                <div key={mst.key} className="rounded-lg border px-3 py-2">
+                                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{mst.label}</p>
+                                    {m ? (
+                                        <div className="text-sm font-semibold mt-0.5">
+                                            {new Date(m.date).toLocaleDateString("en-GB")}
+                                            {m.mileage ? <span className="font-normal text-muted-foreground"> · {Number(m.mileage).toLocaleString("en-GB")} mi</span> : null}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground mt-0.5">Not recorded</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </CardContent>
             </Card>
         );
@@ -190,6 +216,27 @@ function ServicingCard({ servicing }: { servicing: any }) {
                     {last.items?.fuelFilter && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] text-green-800"><Check className="w-3 h-3" />Fuel filter</span>
                     )}
+                </div>
+
+                {/* "Not recorded" is deliberately not "never done": it means we hold no invoice
+                    for it, which for a car that came to us later is a different thing. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {MILESTONES.map((mst) => {
+                        const m = servicing?.milestones?.[mst.key];
+                        return (
+                            <div key={mst.key} className="rounded-lg border px-3 py-2">
+                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{mst.label}</p>
+                                {m ? (
+                                    <div className="text-sm font-semibold mt-0.5">
+                                        {new Date(m.date).toLocaleDateString("en-GB")}
+                                        {m.mileage ? <span className="font-normal text-muted-foreground"> · {Number(m.mileage).toLocaleString("en-GB")} mi</span> : null}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground mt-0.5">Not recorded</div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {services.length > 1 && (

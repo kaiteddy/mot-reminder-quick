@@ -1311,6 +1311,46 @@ const SERVICE_ITEM_TESTS: { key: string; test: (s: string) => boolean }[] = [
   },
 ];
 
+/** Big interval jobs that aren't part of a routine service but you need the date of: when the
+ * gearbox oil was last changed, and when the timing belt was last done.
+ *
+ * Unlike the service grade these DO consider the document description as well as the line
+ * items — "To Replace Timing Belt" is a named job, not a vague write-up, and some belt jobs
+ * bill the parts as a bare "BELT KIT" that only the description disambiguates from a drive belt.
+ *
+ * Exclusions matter as much as the matches: GEARBOX MOUNTING and SPECIALIST TRANSMISSION
+ * REPAIR are not an oil change, and DRIVE BELT KIT / BELT TENSIONER are the auxiliary belt. */
+/** Advisory wording — "TIMING BELT CHANGE NOW DUE !! PLEASE REBOOK", "Note - Timing Belt Change
+ * Every 4 Years", "NOISE FROM TIMING BELT AREA". These say the job is OUTSTANDING, the exact
+ * opposite of done, and counting them would show an overdue belt as recently replaced. They sit
+ * on "Other" line items (93 of 120 such rows), while every Part and Labour line is genuine — so
+ * item type does most of the work and this is the second line of defence, also applied to the
+ * document description, which has no item type to lean on. */
+const MILESTONE_ADVISORY = /(\bdue\b|note|report|recommend|rebook|advis|noise|when tested|quote|estimate|next|should be|require)/;
+
+export const MILESTONE_TESTS: { key: string; label: string; test: (s: string) => boolean }[] = [
+  {
+    key: "gearboxOil",
+    label: "Gearbox oil change",
+    // Deliberately NOT differential oil — that's a separate job and would be mislabelled here.
+    test: (s) => (/gearoil/.test(s) || /(gear\s*box|gear|transmission|cvt)\b[a-z\s]*\b(oil|fluid)\b/.test(s))
+      && !/(mounting|repair|specialist|leak|seal|pump|cooler|diff)/.test(s),
+  },
+  {
+    key: "timingBelt",
+    label: "Timing belt",
+    test: (s) => /(timing|cam)\s*(belt|chain)/.test(s) && !/(drive|aux|alternator|fan)\s*belt/.test(s),
+  },
+];
+
+/** A milestone only counts off a line that represents work actually done: a fitted Part or the
+ * Labour to fit it. "Other" lines are where the advisories live. */
+const milestoneHit = (key: string, text: string, itemType?: string | null) => {
+  if (!text || MILESTONE_ADVISORY.test(text)) return false;
+  if (itemType != null && !/^(part|labour)$/i.test(String(itemType))) return false;
+  return MILESTONE_TESTS.find((t) => t.key === key)!.test(text);
+};
+
 export type ServiceGrade = "full" | "interim" | "oil" | "none";
 
 /** Grade a job from what was fitted, using Adam's definition:
@@ -1345,6 +1385,7 @@ export async function getVehicleServicing(vehicleId: number) {
     mileage: serviceHistory.mileage,
     description: serviceHistory.description,
     itemDesc: serviceLineItems.description,
+    itemType: serviceLineItems.itemType,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceLineItems.documentId, serviceHistory.id))
@@ -1355,18 +1396,23 @@ export async function getVehicleServicing(vehicleId: number) {
   for (const r of rows) {
     let d = byDoc.get(r.id);
     if (!d) {
-      d = { id: r.id, docNo: r.docNo, ga4Number: r.ga4Number, date: r.date, mileage: r.mileage, description: r.description, items: {} as Record<string, boolean> };
+      d = { id: r.id, docNo: r.docNo, ga4Number: r.ga4Number, date: r.date, mileage: r.mileage, description: r.description, items: {} as Record<string, boolean>, milestones: {} as Record<string, boolean> };
       byDoc.set(r.id, d);
+      // Milestones also read the job description — see MILESTONE_TESTS.
+      const docText = String(r.description || "").toLowerCase();
+      for (const { key } of MILESTONE_TESTS) if (milestoneHit(key, docText)) d.milestones[key] = true;
     }
     const text = String(r.itemDesc || "").toLowerCase();
     if (!text) continue;
     for (const { key, test } of SERVICE_ITEM_TESTS) if (test(text)) d.items[key] = true;
+    for (const { key } of MILESTONE_TESTS) if (milestoneHit(key, text, r.itemType)) d.milestones[key] = true;
   }
 
-  const services = Array.from(byDoc.values())
+  const allDocs = Array.from(byDoc.values()).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+  const services = allDocs
     .map((d) => ({ ...d, grade: gradeService(d.items) }))
-    .filter((d) => d.grade !== "none")
-    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    .filter((d) => d.grade !== "none");
 
   // Miles since the previous service — only when both odometer readings are present and sane.
   for (let i = 0; i < services.length; i++) {
@@ -1375,7 +1421,17 @@ export async function getVehicleServicing(vehicleId: number) {
     services[i].milesSincePrevious = a > 0 && b > 0 && a > b ? a - b : null;
   }
 
-  return { last: services[0] || null, services };
+  // Most recent occurrence of each big interval job. Searched across ALL invoices, not just the
+  // ones that graded as a service — a timing belt is usually its own job, not part of a service.
+  const milestones: Record<string, any> = {};
+  for (const { key, label } of MILESTONE_TESTS) {
+    const hit = allDocs.find((d) => d.milestones[key]);
+    milestones[key] = hit
+      ? { label, date: hit.date, mileage: hit.mileage, docNo: hit.docNo, ga4Number: hit.ga4Number, description: hit.description }
+      : null;
+  }
+
+  return { last: services[0] || null, services, milestones };
 }
 
 /** Last service per vehicle, for a whole list at once — the customer page shows one row per car
