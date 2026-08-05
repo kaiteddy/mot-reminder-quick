@@ -68,6 +68,15 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 // expanded it lazily loads the document's line items and lays them out like a job
 // card — Labour and Parts & Consumables broken out — so it's easy to see exactly
 // what was done and which parts were fitted on each visit.
+const SERVICE_GRADE_LABEL: Record<string, string> = {
+    full: "Full service", interim: "Interim service", oil: "Oil change", none: "\u2014",
+};
+const SERVICE_GRADE_TONE: Record<string, string> = {
+    full: "bg-green-100 text-green-800 border-green-200",
+    interim: "bg-blue-100 text-blue-800 border-blue-200",
+    oil: "bg-amber-100 text-amber-800 border-amber-200",
+};
+
 const HISTORY_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", XS: "Excess", CR: "Credit Note" };
 
 // The garage's own address — origin for the route map, directions link and drive-time lookup.
@@ -653,6 +662,7 @@ export default function CustomerDetails() {
                                                 <TableHead>Registration</TableHead>
                                                 <TableHead>Vehicle Info</TableHead>
                                                 <TableHead>MOT Status</TableHead>
+                                                <TableHead>Last Service</TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -698,6 +708,22 @@ export default function CustomerDetails() {
                                                                 </div>
                                                             ) : (
                                                                 <Badge variant="secondary" className="text-[10px]">No Data</Badge>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="py-2">
+                                                            {/* Graded from the parts invoiced, not the job wording — see getVehicleServicing. */}
+                                                            {v.lastService ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${SERVICE_GRADE_TONE[v.lastService.grade] || ""}`}>
+                                                                        {SERVICE_GRADE_LABEL[v.lastService.grade]}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">
+                                                                        {format(new Date(v.lastService.date), "dd/MM/yy")}
+                                                                        {v.lastService.mileage ? ` · ${Number(v.lastService.mileage).toLocaleString("en-GB")} mi` : ""}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <Badge variant="secondary" className="text-[10px]">None</Badge>
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="text-right py-2">

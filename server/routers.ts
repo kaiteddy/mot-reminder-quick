@@ -170,7 +170,12 @@ export const appRouter = router({
         const customer = await getCustomerById(input.id);
         if (!customer) return null;
 
-        const vehicles = await getVehiclesForCustomerAcrossLinkedAccounts(input.id);
+        const vehiclesRaw = await getVehiclesForCustomerAcrossLinkedAccounts(input.id);
+        // Attach each car's last service (and its grade) so the vehicle list answers "when did
+        // they last have a service" without opening every car in turn.
+        const { getLastServiceForVehicles } = await import("./db");
+        const lastServices = await getLastServiceForVehicles(vehiclesRaw.map((v: any) => v.id).filter(Boolean));
+        const vehicles = vehiclesRaw.map((v: any) => ({ ...v, lastService: lastServices.get(v.id) || null }));
         const reminders = await getCustomerReminderTimeline(input.id);
         const history = await getServiceHistoryForCustomerAcrossLinkedAccounts(input.id);
         const linkedAccounts = await getLinkedCustomerAccounts(input.id);

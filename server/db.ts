@@ -1378,6 +1378,49 @@ export async function getVehicleServicing(vehicleId: number) {
   return { last: services[0] || null, services };
 }
 
+/** Last service per vehicle, for a whole list at once — the customer page shows one row per car
+ * and would otherwise fire a query each. Same grading as getVehicleServicing; matches on
+ * vehicleId only (these are the customer's own linked cars, so the unlinked-document fallback
+ * that single-vehicle scoping needs doesn't apply). */
+export async function getLastServiceForVehicles(vehicleIds: number[]) {
+  const out = new Map<number, { date: any; mileage: any; grade: ServiceGrade; items: Record<string, boolean>; docNo: any; ga4Number: any }>();
+  const db = await getDb();
+  if (!db || !vehicleIds.length) return out;
+
+  const rows = await db.select({
+    vehicleId: serviceHistory.vehicleId,
+    id: serviceHistory.id,
+    docNo: serviceHistory.docNo,
+    ga4Number: serviceHistory.ga4Number,
+    date: serviceHistory.dateCreated,
+    mileage: serviceHistory.mileage,
+    itemDesc: serviceLineItems.description,
+  })
+    .from(serviceHistory)
+    .leftJoin(serviceLineItems, eq(serviceLineItems.documentId, serviceHistory.id))
+    .where(and(inArray(serviceHistory.vehicleId, vehicleIds), inArray(serviceHistory.docType, ["SI", "XS"])))
+    .orderBy(desc(serviceHistory.dateCreated));
+
+  const byDoc = new Map<number, any>();
+  for (const r of rows) {
+    let d = byDoc.get(r.id);
+    if (!d) { d = { ...r, items: {} as Record<string, boolean> }; byDoc.set(r.id, d); }
+    const text = String(r.itemDesc || "").toLowerCase();
+    if (!text) continue;
+    for (const { key, test } of SERVICE_ITEM_TESTS) if (test(text)) d.items[key] = true;
+  }
+
+  for (const d of byDoc.values()) {
+    const grade = gradeService(d.items);
+    if (grade === "none" || d.vehicleId == null) continue;
+    const cur = out.get(d.vehicleId);
+    if (!cur || new Date(d.date || 0) > new Date(cur.date || 0)) {
+      out.set(d.vehicleId, { date: d.date, mileage: d.mileage, grade, items: d.items, docNo: d.docNo, ga4Number: d.ga4Number });
+    }
+  }
+  return out;
+}
+
 export async function getServiceHistoryByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
