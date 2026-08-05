@@ -1279,6 +1279,105 @@ export async function findCustomerByName(name: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+/** Which documents belong to THIS car — shared by the history and the servicing summary so the
+ * two can never disagree. See getServiceHistoryByVehicleId for why it isn't a plain plate match. */
+async function vehicleDocMatch(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, vehicleId: number) {
+  const v = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+  const normReg = v?.registration ? v.registration.toUpperCase().replace(/\s+/g, "") : null;
+  const ids = await getVehicleIdsForSamePlate(db, vehicleId);
+  return normReg
+    ? or(
+        inArray(serviceHistory.vehicleId, ids),
+        and(isNull(serviceHistory.vehicleId), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') = ${normReg}`),
+      )!
+    : inArray(serviceHistory.vehicleId, ids);
+}
+
+/** What was actually fitted on a job, read from the line items.
+ *
+ * Wording is consistent in the parts list ("OIL FILTER", "Castrol 5w/30 Engine Oil", "AIR
+ * FILTER", "CABIN FILTER"/"Pollen Filter"), so plain matchers are reliable — but "oil" alone
+ * is not engine oil: gear oil, gearbox/transmission oil, an oil cooler and an oil LEAK all
+ * contain it, and "CASTROL SYNTRAX GEAROIL" would otherwise read as an oil change. */
+const SERVICE_ITEM_TESTS: { key: string; test: (s: string) => boolean }[] = [
+  { key: "oilFilter", test: (s) => /oil\s*filter/.test(s) },
+  { key: "airFilter", test: (s) => /air\s*(filter|cleaner)/.test(s) },
+  { key: "cabinFilter", test: (s) => /(pollen|cabin|micro)\s*filter/.test(s) },
+  { key: "fuelFilter", test: (s) => /fuel\s*filter/.test(s) },
+  {
+    key: "engineOil",
+    test: (s) => /\boil\b|oil$/.test(s)
+      && !/(gear|transmission|diff|brake|steering|cooler|filter|seal|leak|pump|sump|level|top\s*up)/.test(s),
+  },
+];
+
+export type ServiceGrade = "full" | "interim" | "oil" | "none";
+
+/** Grade a job from what was fitted, using Adam's definition:
+ *   interim ("small")  — engine oil + oil filter
+ *   full   ("large")   — plus air filter AND pollen/cabin filter
+ * Anything with oil but no oil filter is an oil change, not a service. */
+function gradeService(items: Record<string, boolean>): ServiceGrade {
+  if (!items.engineOil && !items.oilFilter) return "none";
+  if (!items.oilFilter) return "oil";
+  if (items.airFilter && items.cabinFilter) return "full";
+  return "interim";
+}
+
+export const SERVICE_GRADE_LABEL: Record<ServiceGrade, string> = {
+  full: "Full service", interim: "Interim service", oil: "Oil change", none: "—",
+};
+
+/** Every service this car has had, newest first, each graded by what was actually fitted —
+ * plus the miles covered since the one before it, which is the number that tells you whether
+ * it's due. Reads the line items rather than the description, because a job described as
+ * "Carried Out Full Service" doesn't prove the filters were on the invoice. */
+export async function getVehicleServicing(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return { last: null, services: [] as any[] };
+
+  const rows = await db.select({
+    id: serviceHistory.id,
+    docNo: serviceHistory.docNo,
+    ga4Number: serviceHistory.ga4Number,
+    docType: serviceHistory.docType,
+    date: serviceHistory.dateCreated,
+    mileage: serviceHistory.mileage,
+    description: serviceHistory.description,
+    itemDesc: serviceLineItems.description,
+  })
+    .from(serviceHistory)
+    .leftJoin(serviceLineItems, eq(serviceLineItems.documentId, serviceHistory.id))
+    .where(and(await vehicleDocMatch(db, vehicleId), inArray(serviceHistory.docType, ["SI", "XS"])))
+    .orderBy(desc(serviceHistory.dateCreated));
+
+  const byDoc = new Map<number, any>();
+  for (const r of rows) {
+    let d = byDoc.get(r.id);
+    if (!d) {
+      d = { id: r.id, docNo: r.docNo, ga4Number: r.ga4Number, date: r.date, mileage: r.mileage, description: r.description, items: {} as Record<string, boolean> };
+      byDoc.set(r.id, d);
+    }
+    const text = String(r.itemDesc || "").toLowerCase();
+    if (!text) continue;
+    for (const { key, test } of SERVICE_ITEM_TESTS) if (test(text)) d.items[key] = true;
+  }
+
+  const services = Array.from(byDoc.values())
+    .map((d) => ({ ...d, grade: gradeService(d.items) }))
+    .filter((d) => d.grade !== "none")
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+  // Miles since the previous service — only when both odometer readings are present and sane.
+  for (let i = 0; i < services.length; i++) {
+    const prev = services[i + 1];
+    const a = Number(services[i].mileage) || 0, b = Number(prev?.mileage) || 0;
+    services[i].milesSincePrevious = a > 0 && b > 0 && a > b ? a - b : null;
+  }
+
+  return { last: services[0] || null, services };
+}
+
 export async function getServiceHistoryByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];

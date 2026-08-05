@@ -117,6 +117,109 @@ function SpecTile({ label, value, tone = "neutral", icon }: { label: string; val
     );
 }
 
+const SERVICE_GRADE_LABEL: Record<string, string> = {
+    full: "Full service", interim: "Interim service", oil: "Oil change", none: "—",
+};
+const SERVICE_GRADE_TONE: Record<string, string> = {
+    full: "bg-green-100 text-green-800 border-green-200",
+    interim: "bg-blue-100 text-blue-800 border-blue-200",
+    oil: "bg-amber-100 text-amber-800 border-amber-200",
+};
+// The four items that decide the grade: oil + oil filter is an interim, adding the air and
+// pollen/cabin filters makes it a full service.
+const SERVICE_ITEMS: { key: string; label: string }[] = [
+    { key: "engineOil", label: "Engine oil" },
+    { key: "oilFilter", label: "Oil filter" },
+    { key: "airFilter", label: "Air filter" },
+    { key: "cabinFilter", label: "Pollen/cabin filter" },
+];
+
+/** When this car was last serviced and to what grade — worked out from the parts actually
+ * invoiced rather than from how the job was described, so a job written up as "Carried Out Full
+ * Service" with no filters on the bill still reads as an interim. The ticks are shown so the
+ * grading is auditable at a glance instead of being a black box. */
+function ServicingCard({ servicing }: { servicing: any }) {
+    const [showAll, setShowAll] = useState(false);
+    const last = servicing?.last;
+    const services: any[] = servicing?.services || [];
+
+    if (!last) {
+        return (
+            <Card className="md:col-span-3">
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base"><Wrench className="w-4 h-4" /> Servicing</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-sm text-muted-foreground">No service found — no engine oil or filter has been invoiced for this car.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const when = new Date(last.date);
+    const months = Math.floor((Date.now() - when.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+    const ago = months < 1 ? "this month" : months < 24 ? `${months} month${months === 1 ? "" : "s"} ago` : `${Math.floor(months / 12)} years ago`;
+    const rows = showAll ? services : services.slice(0, 4);
+
+    return (
+        <Card className="md:col-span-3">
+            <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><Wrench className="w-4 h-4" /> Servicing</CardTitle>
+                <CardDescription>Graded on the oil and filters actually invoiced</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${SERVICE_GRADE_TONE[last.grade] || ""}`}>
+                        {SERVICE_GRADE_LABEL[last.grade]}
+                    </span>
+                    <span className="text-sm font-semibold">{when.toLocaleDateString("en-GB")}</span>
+                    <span className="text-sm text-muted-foreground">{ago}</span>
+                    {last.mileage ? <span className="text-sm text-muted-foreground">at {Number(last.mileage).toLocaleString("en-GB")} mi</span> : null}
+                    <span className="text-xs text-muted-foreground">#{displayDocNo(last)}</span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                    {SERVICE_ITEMS.map((it) => {
+                        const on = !!last.items?.[it.key];
+                        return (
+                            <span key={it.key} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-green-200 bg-green-50 text-green-800" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
+                                {on ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{it.label}
+                            </span>
+                        );
+                    })}
+                    {last.items?.fuelFilter && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] text-green-800"><Check className="w-3 h-3" />Fuel filter</span>
+                    )}
+                </div>
+
+                {services.length > 1 && (
+                    <div className="pt-1">
+                        <table className="w-full text-xs">
+                            <tbody>
+                                {rows.map((s) => (
+                                    <tr key={s.id} className="border-t border-slate-100">
+                                        <td className="py-1 whitespace-nowrap">{new Date(s.date).toLocaleDateString("en-GB")}</td>
+                                        <td className="py-1">
+                                            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${SERVICE_GRADE_TONE[s.grade] || ""}`}>{SERVICE_GRADE_LABEL[s.grade]}</span>
+                                        </td>
+                                        <td className="py-1 text-right text-muted-foreground whitespace-nowrap">{s.mileage ? `${Number(s.mileage).toLocaleString("en-GB")} mi` : "—"}</td>
+                                        <td className="py-1 text-right text-muted-foreground whitespace-nowrap">{s.milesSincePrevious ? `+${s.milesSincePrevious.toLocaleString("en-GB")}` : ""}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {services.length > 4 && (
+                            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1.5 text-xs text-violet-700 hover:underline">
+                                {showAll ? "Show less" : `Show all ${services.length} services`}
+                            </button>
+                        )}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 /** Previous holders of a cherished plate. A private registration moves from car to car, and
  * the history above is deliberately scoped to THIS car — but the old car's work still gets
  * asked about, so it stays one click away rather than being hidden outright. Collapsed by
@@ -273,6 +376,8 @@ export default function VehicleDetails() {
     // Physically different cars that previously wore this plate (cherished transfer) — kept OUT
     // of the history above and offered as a separate link instead.
     const otherCarsOnPlate: any[] = (result as any)?.otherCarsOnPlate || [];
+    // Last service + grade, worked out from the parts invoiced (see getVehicleServicing).
+    const servicing = (result as any)?.servicing;
 
     // MOT/tax are free at DVLA and can change any time a test happens — the cached vehicles row
     // (last refreshed whenever it was last looked up) can be weeks stale, showing "Expired" for a
@@ -1082,6 +1187,8 @@ export default function VehicleDetails() {
                             )}
                         </CardContent>
                     </Card>
+
+                    <ServicingCard servicing={servicing} />
 
                     {/* Service History */}
                     <Card className="md:col-span-3">

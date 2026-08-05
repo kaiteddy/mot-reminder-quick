@@ -774,10 +774,12 @@ export const appRouter = router({
 
         const reminders = await getRemindersByVehicleId(vehicle.id);
         const latestMileage = await getLatestVehicleMileage(vehicle.id);
-        const { getServiceHistoryByVehicleId, getOtherVehiclesOnPlate } = await import("./db");
+        const { getServiceHistoryByVehicleId, getOtherVehiclesOnPlate, getVehicleServicing } = await import("./db");
         const history = await getServiceHistoryByVehicleId(vehicle.id);
         // Previous holders of a cherished plate — shown separately, never merged into history.
         const otherCarsOnPlate = await getOtherVehiclesOnPlate(vehicle.id);
+        // Last service and its grade, read from the parts actually fitted on past invoices.
+        const servicing = await getVehicleServicing(vehicle.id);
 
         return {
           vehicle,
@@ -786,6 +788,7 @@ export const appRouter = router({
           latestMileage,
           history,
           otherCarsOnPlate,
+          servicing,
           stats: {
             totalJobs: history.length,
             lastVisit: history.length > 0 ? history[0].dateCreated : null
