@@ -24,6 +24,8 @@ export interface ConversationThread {
 export interface ConversationMessage {
   id: number;
   type: "sent" | "received";
+  /** Which pipe carried it — the two now mix in one thread. */
+  channel?: "whatsapp" | "sms";
   content: string;
   timestamp: Date;
   status?: string; // For sent messages: sent, delivered, read, failed
@@ -211,6 +213,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       messageSid: reminderLogs.messageSid,
       vehicleRegistration: vehicles.registration,
       messageType: reminderLogs.messageType,
+      templateUsed: reminderLogs.templateUsed,
     })
     .from(reminderLogs)
     .leftJoin(vehicles, eq(reminderLogs.vehicleId, vehicles.id))
@@ -224,10 +227,20 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       content: customerMessages.messageBody,
       timestamp: customerMessages.receivedAt,
       messageSid: customerMessages.messageSid,
+      toNumber: customerMessages.toNumber,
     })
     .from(customerMessages)
     .where(eq(customerMessages.customerId, customerId))
     .orderBy(customerMessages.receivedAt);
+
+  // Which pipe carried each message. WhatsApp and SMS arrive on two different Twilio numbers,
+  // so inbound is told apart by the number it landed on; outbound by the marker sendReply
+  // writes when it has had to fall back to a text.
+  const waNumber = (process.env.TWILIO_WHATSAPP_NUMBER || "").replace(/^whatsapp:/, "").replace(/\D/g, "");
+  const inboundChannel = (to: string | null): "whatsapp" | "sms" => {
+    const digits = (to || "").replace(/\D/g, "");
+    return waNumber && digits === waNumber ? "whatsapp" : "sms";
+  };
 
   // Combine and sort by timestamp
   const messages: ConversationMessage[] = [
@@ -240,6 +253,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       messageSid: log.messageSid || undefined,
       vehicleRegistration: log.vehicleRegistration || undefined,
       messageType: log.messageType || undefined,
+      channel: (log.templateUsed || "").endsWith("-sms") ? ("sms" as const) : ("whatsapp" as const),
     })),
     ...receivedMsgs.map(msg => ({
       id: msg.id,
@@ -247,6 +261,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       content: msg.content || "",
       timestamp: msg.timestamp,
       messageSid: msg.messageSid || undefined,
+      channel: inboundChannel(msg.toNumber),
     })),
   ];
 

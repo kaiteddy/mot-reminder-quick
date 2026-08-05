@@ -398,6 +398,22 @@ export default function Conversations() {
                               minute: "2-digit",
                             })}
                           </span>
+                          {/* WhatsApp and texts now share one thread, so say which carried it */}
+                          {(message as any).channel && (
+                            <span
+                              className={cn(
+                                "ml-1 px-1 rounded text-[10px] font-medium tracking-wide",
+                                message.type === "sent"
+                                  ? "bg-white/20 text-blue-50"
+                                  : "bg-slate-200/80 text-slate-600",
+                              )}
+                              title={(message as any).channel === "sms"
+                                ? "Sent as a text message"
+                                : "Sent on WhatsApp"}
+                            >
+                              {(message as any).channel === "sms" ? "SMS" : "WhatsApp"}
+                            </span>
+                          )}
                           {message.type === "sent" && message.status && (
                             <span className="ml-1">{getStatusIcon(message.status)}</span>
                           )}
