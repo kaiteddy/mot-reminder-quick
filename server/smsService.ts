@@ -30,6 +30,12 @@ interface SendSMSResult {
 /**
  * Send SMS using Twilio
  */
+/** Where Twilio should report delivery outcomes. Must be publicly reachable. */
+export function statusCallbackUrl(): string {
+  const base = (process.env.PUBLIC_APP_URL || "https://mot-reminder-quick.vercel.app").replace(/\/$/, "");
+  return `${base}/api/webhooks/twilio/status`;
+}
+
 export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
   const config: SMSConfig = {
     accountSid: (process.env.TWILIO_ACCOUNT_SID || "").trim(),
@@ -104,6 +110,12 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
       // When using MessagingServiceSid, 'From' is optional but good to keep as fallback
       console.log('[SMS Service] Using MessagingServiceSid:', messagingServiceSid);
     }
+
+    // WhatsApp's commonest refusals — outside the 24h window (63016) and "not a WhatsApp user"
+    // (63024) — arrive AFTER Twilio has accepted the send with a 201, so the synchronous
+    // fallback below can never see them. Requesting a status callback is what lets the webhook
+    // catch them and re-send as a text; without it those messages are simply lost.
+    formData.append('StatusCallback', statusCallbackUrl());
 
     const response = await fetch(url, {
       method: "POST",
