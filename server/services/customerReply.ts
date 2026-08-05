@@ -64,6 +64,9 @@ function twilioAuth() {
 
 async function postMessage(params: Record<string, string>): Promise<{ ok: boolean; sid?: string; code?: number; message?: string }> {
   const { accountSid, header } = twilioAuth();
+  // Ask for delivery outcomes so the webhook can rescue an async WhatsApp refusal.
+  const { statusCallbackUrl } = await import("../smsService");
+  params = { ...params, StatusCallback: statusCallbackUrl() };
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
     headers: { Authorization: header, "Content-Type": "application/x-www-form-urlencoded" },
