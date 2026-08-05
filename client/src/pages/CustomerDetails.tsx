@@ -565,7 +565,7 @@ export default function CustomerDetails() {
                                                     ? `mailto:${contact.value}`
                                                     : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
                                                 }
-                                                className="hover:underline font-medium text-slate-800"
+                                                className="hover:underline font-semibold text-slate-900 text-[15px] break-all"
                                             >
                                                 {contact.value}
                                             </a>
@@ -586,7 +586,7 @@ export default function CustomerDetails() {
                                     <div className="flex items-start gap-2.5">
                                         <MapPin className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
                                         <div className="space-y-1">
-                                            {customer.address && <div className="text-[15px] leading-snug text-slate-800">{customer.address}</div>}
+                                            {customer.address && <div className="text-[16px] font-medium leading-snug text-slate-900">{customer.address}</div>}
                                             {customer.postcode && <div className="text-lg font-bold text-blue-700 uppercase tracking-wide">{customer.postcode}</div>}
                                             <DriveFromGarage postcode={customer.postcode} />
                                             <a
@@ -661,8 +661,8 @@ export default function CustomerDetails() {
                                                             </Link>
                                                         </TableCell>
                                                         <TableCell className="py-2">
-                                                            <div className="text-sm font-bold">{v.make || "Unknown"}</div>
-                                                            <div className="text-[10px] text-muted-foreground uppercase opacity-70">{v.model || ""}</div>
+                                                            <div className="text-[15px] font-bold text-slate-900">{v.make || "Unknown"}</div>
+                                                            <div className="text-[13px] text-slate-600">{v.model || ""}</div>
                                                             {!v.viaAccountSame && (
                                                                 <div className="text-[10px] text-amber-700 mt-0.5" title="Same person, different GA4 account — shown here because it shares this customer's phone number">
                                                                     Via linked account {v.viaAccountNumber || `#${v.viaAccountId}`}
