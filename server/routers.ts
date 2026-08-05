@@ -3059,10 +3059,10 @@ export const appRouter = router({
           }
         }
 
-        const result = await sendSMS({
-          to: input.phoneNumber,
-          message: input.message,
-        });
+        // WhatsApp refuses a free-form reply more than 24h after the customer's last message;
+        // this falls back to SMS in that case so the reply always lands.
+        const { sendCustomerReply } = await import("./services/customerReply");
+        const result = await sendCustomerReply({ to: input.phoneNumber, body: input.message });
 
         if (!result.success) {
           throw new Error(result.error || "Failed to send message");
@@ -3079,12 +3079,20 @@ export const appRouter = router({
           recipient: input.phoneNumber,
           messageSid: result.messageId,
           status: "sent",
-          templateUsed: "freeform",
+          templateUsed: result.channel === "sms" ? "freeform-sms" : "freeform",
           messageContent: input.message,
           sentAt: new Date(),
         });
 
-        return { success: true, messageId: result.messageId };
+        return { success: true, messageId: result.messageId, channel: result.channel };
+      }),
+
+    /** How long is left to answer on WhatsApp before a reply has to go by SMS. */
+    replyWindow: publicProcedure
+      .input(z.object({ customerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getReplyWindow } = await import("./services/customerReply");
+        return getReplyWindow(input.customerId);
       }),
   }),
 

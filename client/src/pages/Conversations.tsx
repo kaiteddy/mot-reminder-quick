@@ -49,12 +49,22 @@ export default function Conversations() {
     },
   });
 
+  // WhatsApp only accepts a free-form reply within 24h of the customer's last message; after
+  // that the server falls back to SMS. Surfaced so the channel is never a surprise.
+  const { data: replyWindow, refetch: refetchWindow } = trpc.conversations.replyWindow.useQuery(
+    { customerId: selectedCustomerId! },
+    { enabled: selectedCustomerId !== null },
+  );
+
   const sendReplyMutation = trpc.conversations.sendReply.useMutation({
-    onSuccess: () => {
-      toast.success("Message sent successfully");
+    onSuccess: (res: any) => {
+      toast.success(res?.channel === "sms"
+        ? "WhatsApp window had closed — sent as a text instead"
+        : "Message sent successfully");
       setReplyMessage("");
       refetchMessages();
       refetchThreads();
+      refetchWindow();
     },
     onError: (error) => {
       toast.error(`Failed to send message: ${error.message}`);
@@ -460,9 +470,7 @@ export default function Conversations() {
                       <Send className="w-4 h-4" />
                     </Button>
                   </div>
-                  <p className="text-xs text-slate-500 mt-2">
-                    Press Enter to send, Shift+Enter for new line
-                  </p>
+                  <ReplyChannelHint window={replyWindow} />
                 </div>
               </>
             ) : (
@@ -610,5 +618,30 @@ function NotificationsButton() {
       {busy ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Bell className="w-4 h-4 mr-1.5" />}
       Alerts
     </Button>
+  );
+}
+
+/**
+ * WhatsApp only allows a free-form business reply within 24 hours of the customer's last
+ * message. Past that the server delivers the same text by SMS instead — this says so up front,
+ * rather than letting the send fail or silently change channel.
+ */
+function ReplyChannelHint({ window }: { window?: { isOpen: boolean; hoursLeft: number | null; openUntil: string | null } }) {
+  if (!window || window.openUntil === null) {
+    return <p className="text-xs text-slate-500 mt-2">Press Enter to send, Shift+Enter for new line</p>;
+  }
+  if (window.isOpen) {
+    const h = window.hoursLeft ?? 0;
+    const left = h >= 1 ? `${Math.round(h)}h` : `${Math.round(h * 60)}m`;
+    return (
+      <p className="text-xs text-slate-500 mt-2">
+        Replying on WhatsApp · <span className="text-slate-400">{left} left in the reply window</span>
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-amber-700 mt-2">
+      WhatsApp's 24-hour reply window has closed — this will send as a <b>text message</b> instead.
+    </p>
   );
 }
