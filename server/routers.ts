@@ -568,6 +568,67 @@ export const appRouter = router({
       }),
   }),
 
+  // Push notifications to phones that installed the app to their home screen.
+  push: router({
+    publicKey: publicProcedure.query(async () => {
+      const { getPushPublicKey } = await import("./services/pushNotifications");
+      return { publicKey: await getPushPublicKey() };
+    }),
+    subscribe: publicProcedure
+      .input(z.object({
+        endpoint: z.string().url(),
+        p256dh: z.string(),
+        auth: z.string(),
+        label: z.string().optional(),
+        userAgent: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { pushSubscriptions } = await import("../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        // Re-subscribing on the same device returns the same endpoint, so upsert keeps one row.
+        await db.insert(pushSubscriptions)
+          .values({ endpoint: input.endpoint, p256dh: input.p256dh, auth: input.auth, label: input.label, userAgent: input.userAgent })
+          .onConflictDoUpdate({
+            target: pushSubscriptions.endpoint,
+            set: { p256dh: input.p256dh, auth: input.auth, label: input.label, userAgent: input.userAgent },
+          });
+        return { ok: true };
+      }),
+    unsubscribe: publicProcedure
+      .input(z.object({ endpoint: z.string() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { pushSubscriptions } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return { ok: true };
+        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, input.endpoint));
+        return { ok: true };
+      }),
+    devices: publicProcedure.query(async () => {
+      const { getDb } = await import("./db");
+      const { pushSubscriptions } = await import("../drizzle/schema");
+      const { desc } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return [];
+      return db.select({
+        id: pushSubscriptions.id, label: pushSubscriptions.label,
+        lastNotifiedAt: pushSubscriptions.lastNotifiedAt, createdAt: pushSubscriptions.createdAt,
+      }).from(pushSubscriptions).orderBy(desc(pushSubscriptions.createdAt));
+    }),
+    test: publicProcedure.mutation(async () => {
+      const { pushToAll } = await import("./services/pushNotifications");
+      return pushToAll({
+        title: "Test notification",
+        body: "This is what a customer message will look like.",
+        url: "/conversations",
+        tag: "test",
+      });
+    }),
+  }),
+
   // Text-on-inbound: who gets told when a customer replies on WhatsApp.
   staffAlerts: router({
     get: publicProcedure.query(async () => {
