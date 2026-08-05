@@ -85,12 +85,21 @@ async function smsSender(): Promise<string> {
  * Send a reply, falling back from WhatsApp to SMS when the 24-hour window has closed.
  * Returns which channel actually carried it so the thread can show it.
  */
-export async function sendCustomerReply(input: { to: string; body: string }): Promise<ReplyResult> {
+export async function sendCustomerReply(input: { to: string; body: string; customerId?: number }): Promise<ReplyResult> {
   const { accountSid, authToken } = twilioAuth();
   const waFrom = (process.env.TWILIO_WHATSAPP_NUMBER || "").trim();
   if (!accountSid || !authToken || !waFrom) return { success: false, error: "Twilio is not configured" };
 
   const to = input.to.replace(/^whatsapp:/, "");
+
+  // Decide BEFORE sending. Twilio accepts an out-of-window WhatsApp message with a 201 and only
+  // reports 63016 later on the status callback, so inspecting the send response can't catch it —
+  // by then the reply has already been reported as sent and nobody is waiting to retry it.
+  if (input.customerId != null) {
+    const w = await getReplyWindow(input.customerId);
+    if (!w.isOpen) return sendAsSms(to, input.body, "the 24-hour WhatsApp window has closed");
+  }
+
   const wa = await postMessage({
     To: `whatsapp:${to}`,
     From: waFrom.startsWith("whatsapp:") ? waFrom : `whatsapp:${waFrom}`,
@@ -98,22 +107,26 @@ export async function sendCustomerReply(input: { to: string; body: string }): Pr
   });
   if (wa.ok) return { success: true, channel: "whatsapp", messageId: wa.sid };
 
+  // Some rejections do come back synchronously; still handle those.
   if (!WINDOW_CLOSED_CODES.has(wa.code ?? -1)) {
     return { success: false, error: wa.message || "WhatsApp send failed" };
   }
+  return sendAsSms(to, input.body, "WhatsApp refused the message");
+}
 
-  // Window shut — same words, different pipe.
+/** Deliver the same words by text. Shared by the pre-flight check and the async retry. */
+export async function sendAsSms(to: string, body: string, why: string): Promise<ReplyResult> {
   const from = await smsSender();
   if (!from) {
     return {
       success: false,
-      error: "This customer last messaged over 24 hours ago, so WhatsApp won't accept a free-form reply. "
-        + "Set an SMS sender number in Email Settings and it will fall back to a text automatically.",
+      error: `Can't send this — ${why}, and no SMS sender number is set. `
+        + "Add your Twilio number under Text messages in Email Settings and replies will go by text automatically.",
     };
   }
-  const sms = await postMessage({ To: to, From: from, Body: input.body });
+  const sms = await postMessage({ To: to.replace(/^whatsapp:/, ""), From: from, Body: body });
   if (sms.ok) {
-    console.log(`[Reply] WhatsApp window closed for ${to} — delivered as SMS instead`);
+    console.log(`[Reply] ${why} for ${to} — delivered as SMS instead`);
     return { success: true, channel: "sms", messageId: sms.sid };
   }
   return { success: false, error: sms.message || "Both WhatsApp and SMS failed" };
