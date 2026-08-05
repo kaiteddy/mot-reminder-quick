@@ -96,9 +96,9 @@ export default function EmailSettings() {
 }
 
 /**
- * Text-on-inbound. Deliberately SMS rather than WhatsApp: a business-initiated WhatsApp outside
- * the 24-hour service window needs a Meta-approved template, and every template on the account
- * is customer-facing. SMS lands on any phone with no approval needed.
+ * Two separate things that both happen to use a Twilio SMS number, kept visibly apart because
+ * conflating them was confusing: the number is primarily how we reach CUSTOMERS when WhatsApp
+ * can't, and only optionally how we nudge staff.
  */
 function StaffAlertsCard() {
   const { data } = trpc.staffAlerts.get.useQuery();
@@ -114,16 +114,15 @@ function StaffAlertsCard() {
     });
   }, [data]);
 
+  const persist = (next: typeof f) => save.mutateAsync({ ...next, cooldownMinutes: Number(next.cooldownMinutes) || 0 });
+
   async function onSave() {
-    try {
-      await save.mutateAsync({ ...f, cooldownMinutes: Number(f.cooldownMinutes) || 0 });
-      await utils.staffAlerts.get.invalidate();
-      toast.success("Alert settings saved");
-    } catch (e: any) { toast.error(e.message); }
+    try { await persist(f); await utils.staffAlerts.get.invalidate(); toast.success("Saved"); }
+    catch (e: any) { toast.error(e.message); }
   }
   async function onTest() {
     try {
-      await save.mutateAsync({ ...f, cooldownMinutes: Number(f.cooldownMinutes) || 0 });
+      await persist({ ...f, enabled: true });
       const r: any = await test.mutateAsync();
       if (r?.sent) toast.success("Test text sent — check the phone");
       else toast.error(`Not sent: ${r?.reason || "unknown"}`);
@@ -132,33 +131,49 @@ function StaffAlertsCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Text me when a customer replies</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Customer WhatsApp replies land in <b>Conversations</b>. Turn this on to get a text the moment one arrives,
-          with a link straight to that conversation — so you can answer from your phone.
-        </p>
-        <div className="grid grid-cols-3 gap-3 items-center">
-          <label className="text-sm text-muted-foreground">Alerts</label>
-          <div className="col-span-2 flex gap-2">
-            <button type="button" onClick={() => setF((p) => ({ ...p, enabled: true }))}
-              className={`px-4 py-1 rounded text-sm ${f.enabled ? "bg-violet-700 text-white" : "border"}`}>On</button>
-            <button type="button" onClick={() => setF((p) => ({ ...p, enabled: false }))}
-              className={`px-4 py-1 rounded text-sm ${!f.enabled ? "bg-violet-700 text-white" : "border"}`}>Off</button>
+      <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Text messages</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            WhatsApp can\'t always reach a customer — some don\'t use it, and it refuses a free-form
+            reply more than 24 hours after their last message. When that happens the app sends a
+            normal text instead, so your reply still gets there. This is the number it sends from.
+          </p>
+          <Field label="Send texts from" value={f.fromNumber} onChange={(v) => setF((p) => ({ ...p, fromNumber: String(v) }))} placeholder="+447488896449" />
+        </div>
+
+        <div className="border-t pt-3 space-y-3">
+          <div className="grid grid-cols-3 gap-3 items-start">
+            <label className="text-sm text-muted-foreground pt-1">Also text me</label>
+            <div className="col-span-2">
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setF((p) => ({ ...p, enabled: true }))}
+                  className={`px-4 py-1 rounded text-sm ${f.enabled ? "bg-violet-700 text-white" : "border"}`}>On</button>
+                <button type="button" onClick={() => setF((p) => ({ ...p, enabled: false }))}
+                  className={`px-4 py-1 rounded text-sm ${!f.enabled ? "bg-violet-700 text-white" : "border"}`}>Off</button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Off is usually right. The notification on your phone is what tells you a customer has
+                messaged — tap it and you land in the conversation ready to reply. A text can\'t do that.
+                Turn this on only if you want a belt-and-braces nudge as well.
+              </p>
+            </div>
           </div>
+          {f.enabled && (
+            <>
+              <Field label="Text me on" value={f.phone} onChange={(v) => setF((p) => ({ ...p, phone: String(v) }))} placeholder="+447700900123" />
+              <Field label="Quiet period (mins)" value={f.cooldownMinutes} onChange={(v) => setF((p) => ({ ...p, cooldownMinutes: Number(v) }))} type="number" placeholder="15" />
+            </>
+          )}
         </div>
-        <Field label="Send texts to" value={f.phone} onChange={(v) => setF((p) => ({ ...p, phone: String(v) }))} placeholder="+447700900123" />
-        <Field label="Send from" value={f.fromNumber} onChange={(v) => setF((p) => ({ ...p, fromNumber: String(v) }))} placeholder="+447488896449 (your Twilio number)" />
-        <Field label="Quiet period (mins)" value={f.cooldownMinutes} onChange={(v) => setF((p) => ({ ...p, cooldownMinutes: Number(v) }))} type="number" placeholder="15" />
-        <div className="bg-blue-50 border border-blue-100 rounded p-3 text-xs text-slate-600">
-          The quiet period stops a chatty customer sending you a text per message — you'll get at most one
-          alert per customer in that window. Texts cost a few pence each.
-        </div>
-        <div className="flex gap-2 pt-2">
+
+        <div className="flex gap-2 pt-1">
           <Button onClick={onSave} disabled={save.isPending}>{save.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Save</Button>
-          <Button variant="outline" onClick={onTest} disabled={test.isPending || save.isPending || !f.phone}>
-            {test.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Send test text
-          </Button>
+          {f.enabled && (
+            <Button variant="outline" onClick={onTest} disabled={test.isPending || save.isPending || !f.phone}>
+              {test.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Send test text
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
