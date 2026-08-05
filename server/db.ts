@@ -559,6 +559,57 @@ async function getVehicleIdsForSamePlate(db: NonNullable<Awaited<ReturnType<type
   return matches.map((m) => m.id);
 }
 
+/** Base plate for a registration, ignoring GA4's superseded-record marker: when a cherished
+ * plate moves to another car GA4 renames the old row "S8 BEP* (03/03/2023)" (the date it lost
+ * the plate). Everything from the "*" on is dropped, then punctuation/case normalized. */
+const basePlateSql = (col: any) => sql`UPPER(REGEXP_REPLACE(SPLIT_PART(${col}, '*', 1), '[^A-Za-z0-9]', '', 'g'))`;
+
+/** Physically DIFFERENT cars that have worn this car's plate — the previous holders of a
+ * cherished registration. Deliberately NOT merged into the vehicle's own history (see
+ * getServiceHistoryByVehicleId); shown as a separate, collapsed strip so the old car's work is
+ * still one click away when a customer rings about it. */
+export async function getOtherVehiclesOnPlate(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const v = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+  if (!v?.registration) return [];
+  const sameCarIds = await getVehicleIdsForSamePlate(db, vehicleId);
+  const base = v.registration.toUpperCase().split("*")[0].replace(/[^A-Z0-9]/g, "");
+  if (!base) return [];
+
+  const rows = await db.select({
+    id: vehicles.id,
+    registration: vehicles.registration,
+    make: vehicles.make,
+    model: vehicles.model,
+    vin: vehicles.vin,
+  })
+    .from(vehicles)
+    .where(and(sql`${basePlateSql(vehicles.registration)} = ${base}`, sql`${vehicles.id} NOT IN (${sql.join(sameCarIds.map((i) => sql`${i}`), sql`, `)})`));
+  if (!rows.length) return [];
+
+  // Counts come from one grouped pass rather than a correlated subquery per row — the
+  // subquery form returned the same totals for every car (an uncorrelated outer reference).
+  const stats = await db.select({
+    vehicleId: serviceHistory.vehicleId,
+    docs: sql<number>`COUNT(*)`,
+    firstSeen: sql<string>`MIN(${serviceHistory.dateCreated})`,
+    lastSeen: sql<string>`MAX(${serviceHistory.dateCreated})`,
+  })
+    .from(serviceHistory)
+    .where(inArray(serviceHistory.vehicleId, rows.map((r) => r.id)))
+    .groupBy(serviceHistory.vehicleId);
+  const byId = new Map(stats.map((s) => [s.vehicleId, s]));
+
+  return rows
+    .map((r) => {
+      const s = byId.get(r.id);
+      return { ...r, docs: Number(s?.docs ?? 0), firstSeen: s?.firstSeen ?? null, lastSeen: s?.lastSeen ?? null };
+    })
+    .filter((r) => r.docs > 0)
+    .sort((a, b) => new Date(b.lastSeen || 0).getTime() - new Date(a.lastSeen || 0).getTime());
+}
+
 export async function getRemindersByVehicleId(vehicleId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1240,9 +1291,24 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
   // DVLA-solid vs GA4-spaced split was already known to affect ~3,743 vehicles).
   const thisVehicle = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
   const normReg = thisVehicle?.registration ? thisVehicle.registration.toUpperCase().replace(/\s+/g, "") : null;
+  const sameCarIds = await getVehicleIdsForSamePlate(db, vehicleId);
+
+  // ...but a plate is NOT a car. A cherished/private plate transfers between physically
+  // different vehicles, and the documents written while the plate was on the OLD car still
+  // carry that plate as text — so matching document registration text alone dragged three
+  // different cars into one history (S8 BEP: Lexus IS250 08/11-05/22, Lexus CT200h
+  // 03/23-11/24, Volvo XC40 05/25-> ; the Volvo was showing a 2016 door-glass job and its own
+  // cherished-transfer invoice). GA4 already disambiguates these by renaming the superseded
+  // row "S8 BEP* (03/03/2023)", and every one of those documents is correctly linked by
+  // vehicleId — so trust the link and keep the registration-text match ONLY for documents
+  // that have no vehicleId at all (~2,527 of 34,912), which would otherwise vanish from every
+  // history. Other cars that wore this plate are surfaced separately — getOtherVehiclesOnPlate.
   const vehicleMatch = normReg
-    ? or(eq(serviceHistory.vehicleId, vehicleId), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') = ${normReg}`)
-    : eq(serviceHistory.vehicleId, vehicleId);
+    ? or(
+        inArray(serviceHistory.vehicleId, sameCarIds),
+        and(isNull(serviceHistory.vehicleId), sql`REPLACE(UPPER(${serviceHistory.registration}), ' ', '') = ${normReg}`),
+      )
+    : inArray(serviceHistory.vehicleId, sameCarIds);
 
   // We join with line items to get a main description and a fallback total
   const rawDocs = await db.select({
@@ -2565,13 +2631,16 @@ export async function getCustomerContacts(customerId: number) {
   return Array.isArray(r?.altContacts) ? r!.altContacts : [];
 }
 
-// Save a customer's extra named phone numbers (family members etc.) as [{ name, phone }].
-export async function saveCustomerContacts(customerId: number, contacts: { name?: string; phone?: string }[]) {
+// Save a customer's extra contacts (family members, a second work address, the accounts
+// department) as [{ name, phone, email }]. Email was added alongside phone because plenty of
+// customers genuinely have more than one — a personal address and a company one — and the
+// single `customers.email` column forced a choice between them.
+export async function saveCustomerContacts(customerId: number, contacts: { name?: string; phone?: string; email?: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const clean = (contacts || [])
-    .map((c) => ({ name: String(c.name ?? "").trim(), phone: String(c.phone ?? "").trim() }))
-    .filter((c) => c.name || c.phone)
+    .map((c) => ({ name: String(c.name ?? "").trim(), phone: String(c.phone ?? "").trim(), email: String(c.email ?? "").trim() }))
+    .filter((c) => c.name || c.phone || c.email)
     .slice(0, 20);
   await db.update(customers).set({ altContacts: clean }).where(eq(customers.id, customerId));
   return { saved: clean.length };
@@ -2664,7 +2733,9 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   if (!force && distinctAccts.length > 1)
     throw new Error(`Won't merge across different GA4 account numbers (${distinctAccts.join(" ≠ ")}). These are distinct accounts — use "Not duplicates" if they really are separate.`);
   let moved = 0;
-  for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }
+  // node-postgres reports `rowCount`; the mysql-style keys were always undefined here, so the
+  // merge reported "0 rows moved" even when it had moved hundreds.
+  for (const t of FK) { const r: any = await db.update(t as any).set({ customerId: primaryId }).where(inArray((t as any).customerId, secondaryIds)); moved += (r as any).rowCount ?? (r as any).rowsAffected ?? (r as any)[0]?.affectedRows ?? 0; }
   const parse = (x: any) => { try { return typeof x === "string" ? JSON.parse(x) : (x || []); } catch { return []; } };
   const all = [primary, ...secs];
   const hasTitle = (n: string) => _DUP_TITLES.test(String(n || "").trim().split(/\s+/)[0] || "");
@@ -2678,7 +2749,26 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
     ? (all.map((r: any) => r.optedOutAt).filter(Boolean).map((d: any) => new Date(d)).sort((a: any, b: any) => a.getTime() - b.getTime())[0] ?? new Date())
     : null;
   const seen = new Set<string>(), alt: any[] = [];
-  for (const r of all) for (const ct of parse(r.altContacts)) { const k = String(ct.phone || ct.name || "").replace(/\s+/g, "").toLowerCase(); if (k && !seen.has(k)) { seen.add(k); alt.push({ name: ct.name || "", phone: ct.phone || "" }); } }
+  const addAlt = (c: { name?: string; phone?: string; email?: string }) => {
+    const k = String(c.phone || c.email || c.name || "").replace(/\s+/g, "").toLowerCase();
+    if (!k || seen.has(k)) return;
+    seen.add(k);
+    alt.push({ name: c.name || "", phone: c.phone || "", email: c.email || "" });
+  };
+  for (const r of all) for (const ct of parse(r.altContacts)) addAlt(ct);
+  // A merge keeps only ONE primary phone/email (see `pick` below), so carry every OTHER
+  // record's contact details down into the alt list rather than deleting them with the record.
+  // Without this, folding Benjamin Perl into Sixtrees Ltd would have silently destroyed
+  // bperl@sixtrees.co.uk and his mobile — the only way to reach him.
+  const primaryPhoneKey = String(primary.phone || "").replace(/\s+/g, "").toLowerCase();
+  const primaryEmailKey = String(primary.email || "").trim().toLowerCase();
+  for (const s of secs) {
+    const ph = String(s.phone || "").trim(), em = String(s.email || "").trim();
+    const phDup = !ph || ph.replace(/\s+/g, "").toLowerCase() === primaryPhoneKey;
+    const emDup = !em || em.toLowerCase() === primaryEmailKey;
+    if (phDup && emDup) continue;
+    addAlt({ name: s.name || "", phone: phDup ? "" : ph, email: emDup ? "" : em });
+  }
   const aliases = new Set<string>(parse(primary.mergedExternalIds));
   for (const s of secs) { for (const a of parse(s.mergedExternalIds)) aliases.add(a); if (s.externalId && !String(s.externalId).startsWith("WEB-")) aliases.add(s.externalId); }
   await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null }).where(eq(customers.id, primaryId));

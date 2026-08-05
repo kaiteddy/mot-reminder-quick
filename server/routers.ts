@@ -133,7 +133,7 @@ export const appRouter = router({
         return getCustomerContacts(input.customerId);
       }),
     saveContacts: publicProcedure
-      .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional() })) }))
+      .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional(), email: z.string().optional() })) }))
       .mutation(async ({ input }) => {
         const { saveCustomerContacts } = await import("./db");
         return saveCustomerContacts(input.customerId, input.contacts);
@@ -774,8 +774,10 @@ export const appRouter = router({
 
         const reminders = await getRemindersByVehicleId(vehicle.id);
         const latestMileage = await getLatestVehicleMileage(vehicle.id);
-        const { getServiceHistoryByVehicleId } = await import("./db");
+        const { getServiceHistoryByVehicleId, getOtherVehiclesOnPlate } = await import("./db");
         const history = await getServiceHistoryByVehicleId(vehicle.id);
+        // Previous holders of a cherished plate — shown separately, never merged into history.
+        const otherCarsOnPlate = await getOtherVehiclesOnPlate(vehicle.id);
 
         return {
           vehicle,
@@ -783,6 +785,7 @@ export const appRouter = router({
           reminders,
           latestMileage,
           history,
+          otherCarsOnPlate,
           stats: {
             totalJobs: history.length,
             lastVisit: history.length > 0 ? history[0].dateCreated : null

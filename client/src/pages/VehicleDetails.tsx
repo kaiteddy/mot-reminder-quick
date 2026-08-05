@@ -52,7 +52,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Smartphone, QrCode } from "lucide-react";
+import { Smartphone, QrCode, ChevronDown, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
@@ -112,6 +112,55 @@ function SpecTile({ label, value, tone = "neutral", icon }: { label: string; val
                 {label}
             </p>
             <div className="text-sm font-semibold mt-0.5">{value}</div>
+        </div>
+    );
+}
+
+/** Previous holders of a cherished plate. A private registration moves from car to car, and
+ * the history above is deliberately scoped to THIS car — but the old car's work still gets
+ * asked about, so it stays one click away rather than being hidden outright. Collapsed by
+ * default, and rendered at all only when there genuinely is an earlier car. */
+function EarlierCarsOnPlate({ cars, base }: { cars: any[]; base: string }) {
+    const [open, setOpen] = useState(false);
+    if (!cars.length) return null;
+    const yr = (d: any) => (d ? new Date(d).getFullYear() : null);
+
+    return (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+            >
+                {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Earlier cars on this plate ({cars.length})
+            </button>
+            {open && (
+                <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] text-slate-400">
+                        This registration was transferred between vehicles. Their work is kept separate
+                        from the history above because they are different cars.
+                    </p>
+                    {cars.map((c) => {
+                        const from = yr(c.firstSeen), to = yr(c.lastSeen);
+                        return (
+                            <Link
+                                key={c.id}
+                                href={`${base}/view-vehicle/${encodeURIComponent(String(c.registration || "").trim())}`}
+                                className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                            >
+                                <span className="font-medium">
+                                    {c.make} {c.model}
+                                </span>
+                                <span className="text-xs text-slate-500 shrink-0">
+                                    {c.docs} job{Number(c.docs) === 1 ? "" : "s"}
+                                    {from ? ` · ${from}${to && to !== from ? `–${to}` : ""}` : ""}
+                                </span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }
@@ -220,6 +269,9 @@ export default function VehicleDetails() {
     const customer = result?.customer;
     const reminders = result?.reminders || [];
     const history = result?.history || [];
+    // Physically different cars that previously wore this plate (cherished transfer) — kept OUT
+    // of the history above and offered as a separate link instead.
+    const otherCarsOnPlate: any[] = (result as any)?.otherCarsOnPlate || [];
 
     // MOT/tax are free at DVLA and can change any time a test happens — the cached vehicles row
     // (last refreshed whenever it was last looked up) can be weeks stale, showing "Expired" for a
@@ -1041,6 +1093,7 @@ export default function VehicleDetails() {
                         </CardHeader>
                         <CardContent>
                             <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} />
+                            <EarlierCarsOnPlate cars={otherCarsOnPlate} base={base} />
                         </CardContent>
                     </Card>
 

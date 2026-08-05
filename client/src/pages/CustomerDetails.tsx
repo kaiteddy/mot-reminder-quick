@@ -243,13 +243,13 @@ function AdditionalNumbers({ customerId }: { customerId: number }) {
         { customerId },
         { enabled: !!customerId, staleTime: 30_000 }
     );
-    const [rows, setRows] = useState<{ name: string; phone: string }[]>([]);
+    const [rows, setRows] = useState<{ name: string; phone: string; email: string }[]>([]);
     const [dirty, setDirty] = useState(false);
     const loadedFor = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         if (customerId && serverContacts !== undefined && loadedFor.current !== customerId) {
-            setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "" })) : []);
+            setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "", email: c.email || "" })) : []);
             setDirty(false);
             loadedFor.current = customerId;
         }
@@ -269,37 +269,44 @@ function AdditionalNumbers({ customerId }: { customerId: number }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows, dirty, customerId]);
 
-    const upd = (i: number, k: "name" | "phone", v: string) => {
+    const upd = (i: number, k: "name" | "phone" | "email", v: string) => {
         setRows((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
         setDirty(true);
     };
-    const add = () => { setRows((p) => [...p, { name: "", phone: "" }]); setDirty(true); };
+    const add = () => { setRows((p) => [...p, { name: "", phone: "", email: "" }]); setDirty(true); };
     const remove = (i: number) => { setRows((p) => p.filter((_, j) => j !== i)); setDirty(true); };
 
     return (
         <div className="pt-3 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Additional numbers</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Additional contacts</span>
                 {(dirty || save.isPending)
                     ? <span className="text-[11px] text-violet-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving…</span>
                     : save.isSuccess ? <span className="text-[11px] text-green-600">Saved ✓</span> : null}
             </div>
             <div className="space-y-2">
                 {rows.map((r, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="flex items-start gap-2">
                         <Input value={r.name} onChange={(e) => upd(i, "name", e.target.value)} placeholder="Name (optional)" className="w-28 shrink-0 h-8 text-sm" />
-                        <Input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} placeholder="Phone number" className="flex-1 h-8 text-sm" />
+                        {/* Phone and email sit on one row per contact: a second address usually
+                            belongs to a specific person (the wife, the company accounts desk),
+                            so keeping them together says WHOSE email it is. Either can be left
+                            blank — an email-only row is a perfectly normal extra contact. */}
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} placeholder="Phone number" className="h-8 text-sm" />
+                            <Input value={r.email} onChange={(e) => upd(i, "email", e.target.value)} placeholder="Email address" type="email" className="h-8 text-sm" />
+                        </div>
                         <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-red-500 hover:text-red-700" onClick={() => remove(i)}>
                             <Trash2 className="w-4 h-4" />
                         </Button>
                     </div>
                 ))}
                 {rows.length === 0 && (
-                    <p className="text-sm text-muted-foreground italic">No additional numbers yet.</p>
+                    <p className="text-sm text-muted-foreground italic">No additional contacts yet.</p>
                 )}
             </div>
             <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-2 text-violet-700 hover:text-violet-800" onClick={add}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add number
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add contact
             </Button>
         </div>
     );
