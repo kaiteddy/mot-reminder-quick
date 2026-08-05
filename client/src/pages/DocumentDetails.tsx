@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
-import { DOC_TYPE_TAILWIND } from "@/lib/docType";
+import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -762,9 +762,9 @@ export default function DocumentDetails() {
   useEffect(() => {
     const doc = (data as any)?.doc;
     if (isNew || !doc?.id) return;
-    upsertOpenDoc({ id: doc.id, docNo: doc.docNo, reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
+    upsertOpenDoc({ id: doc.id, docNo: displayDocNo(doc), reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.registration]);
+  }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.ga4Number, (data as any)?.doc?.registration]);
 
   // If the document was deleted / doesn't exist, drop its stale tab and bounce to the next
   // open doc (or the list) — so a stale tab can't strand the user on a dead "not found" screen.
@@ -814,6 +814,8 @@ export default function DocumentDetails() {
 
   const typeLabel = TYPE_LABEL[form.docType] || form.docType || "Job Sheet";
   const docNo = (data as any)?.doc?.docNo;
+  // GA4's stamped invoice number, once issued — the number on the printed/emailed copy.
+  const ga4Number = String((data as any)?.doc?.ga4Number ?? "").trim();
   const history = (data as any)?.history ?? [];
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
@@ -916,7 +918,7 @@ export default function DocumentDetails() {
       {isExcess && relatedDoc && (
         <Panel title="Insurance Invoice">
           <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
-            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+            <span>Doc No</span><span className="font-semibold">{displayDocNo(relatedDoc)}</span>
           </button>
           <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
           <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
@@ -926,7 +928,7 @@ export default function DocumentDetails() {
       {!isExcess && relatedDoc && (
         <Panel title="Policy Excess Invoice">
           <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
-            <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
+            <span>Doc No</span><span className="font-semibold">{displayDocNo(relatedDoc)}</span>
           </button>
           <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
           <p className="text-[10.5px] text-slate-500 mt-1">
@@ -1084,6 +1086,16 @@ export default function DocumentDetails() {
                 spellCheck={false}
                 className={base ? "w-28 bg-white/15 border border-white/30 px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60" : "w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"}
               />
+              {/* The field above stays the web's own docNo — it's editable and other records
+                  cascade from it. But once issued, the number the customer actually holds is
+                  GA4's, so when the two differ, show the real one rather than leaving the header
+                  contradicting the invoice in their inbox. */}
+              {ga4Number && ga4Number !== String(form.docNo ?? "").trim() && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded bg-white/15 border border-white/30 px-2 py-0.5 text-[11px] font-semibold tracking-wide"
+                  title="GA4's invoice number — this is what the printed and emailed invoice shows">
+                  <span className="text-white/60">GA4</span> {ga4Number}
+                </span>
+              )}
             </div>
             {base ? (
               <button type="button" className="js-notice" onClick={() => toast.message("Auto-saves — no manual save needed.")}>
@@ -1148,7 +1160,7 @@ export default function DocumentDetails() {
           {/* policy-excess banner */}
           {isExcess && (
             <div className="bg-fuchsia-50 border-b border-fuchsia-200 text-center py-2 text-[14px] font-semibold text-fuchsia-900">
-              This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || relatedDoc?.docNo || "—"}
+              This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || displayDocNo(relatedDoc) || "—"}
               <span className="block text-[11px] font-normal text-fuchsia-700">Billed to the customer: {form.customerName || (data as any)?.customer?.name || "—"}</span>
             </div>
           )}
@@ -1160,7 +1172,7 @@ export default function DocumentDetails() {
               </span>
               <span className="font-normal text-sky-700">
                 · re. customer {form.customerName || (data as any)?.customer?.name || "—"}
-                {relatedDoc ? ` · excess invoice ${relatedDoc.docNo}` : ""}
+                {relatedDoc ? ` · excess invoice ${displayDocNo(relatedDoc)}` : ""}
               </span>
               {isInvoice && !relatedDoc && !isNew && (
                 <button onClick={() => setExcessOpen(true)}
@@ -1606,7 +1618,7 @@ export default function DocumentDetails() {
                                   <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                                   <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                                   <TableCell>
-                                    {h.docNo}
+                                    {displayDocNo(h)}
                                     {h.convertedToDocNo && <span className="ml-1.5 text-[10px] text-muted-foreground whitespace-nowrap">→ Invoice {h.convertedToDocNo}</span>}
                                   </TableCell>
                                   <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
@@ -1626,7 +1638,7 @@ export default function DocumentDetails() {
                             <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
                             <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
                             <TableCell>
-                              {h.docNo}
+                              {displayDocNo(h)}
                               {h.convertedToDocNo && <span className="ml-1.5 text-[10px] text-muted-foreground whitespace-nowrap">→ Invoice {h.convertedToDocNo}</span>}
                             </TableCell>
                             <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
@@ -1773,7 +1785,7 @@ export default function DocumentDetails() {
                       <div className="min-w-0">
                         <SheetTitle className="flex items-center gap-2 flex-wrap">
                           {h && <Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge>}
-                          <span className="truncate">{h?.docNo || h?.externalId}</span>
+                          <span className="truncate">{displayDocNo(h) || h?.externalId}</span>
                         </SheetTitle>
                         <SheetDescription className="sr-only">Quick view of a past job on this vehicle, with its full description, labour and parts.</SheetDescription>
                       </div>

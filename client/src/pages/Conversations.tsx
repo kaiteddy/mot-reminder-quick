@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -540,7 +541,7 @@ export default function Conversations() {
                         {h.mainDescription || h.description || "—"}
                       </div>
                       <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-xs text-slate-400">#{h.docNo}</span>
+                        <span className="text-xs text-slate-400">#{displayDocNo(h)}</span>
                         <span className="text-xs font-medium text-slate-600">{money(h.totalGross)}</span>
                       </div>
                     </button>

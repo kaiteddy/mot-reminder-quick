@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { displayDocNo } from "@/lib/docType";
 import { format } from "date-fns";
 import {
     Table,
@@ -366,7 +367,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             </div>
                             {summary && <div className="text-sm text-slate-700 mt-2 break-words line-clamp-2">{summary}</div>}
                             <div className="flex items-center justify-between gap-2 mt-2.5">
-                                <span className="text-xs text-muted-foreground font-mono truncate">{doc.docNo || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
+                                <span className="text-xs text-muted-foreground font-mono truncate">{displayDocNo(doc) || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
                                 <div className="flex gap-1.5 shrink-0">
                                     <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`${base}/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
@@ -418,7 +419,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     );
                                 })()}
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-xs font-mono">{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
+                            <TableCell className="text-muted-foreground text-xs font-mono">{displayDocNo(doc) || doc.externalId.substring(0, 8)}</TableCell>
                             <TableCell>{doc.mileage ? doc.mileage.toLocaleString() : "-"}</TableCell>
                             <TableCell className="text-right font-medium">
                                 £{Number(doc.totalGross).toFixed(2)}
@@ -489,7 +490,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                                 }`}>
                                                 {docMeta(doc.docType).label}
                                             </span>
-                                            <span className="text-[11px] font-mono text-slate-400">#{doc.docNo || doc.externalId.substring(0, 8)}</span>
+                                            <span className="text-[11px] font-mono text-slate-400">#{displayDocNo(doc) || doc.externalId.substring(0, 8)}</span>
                                         </div>
                                         {doc.mileage && (
                                             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Mileage: {doc.mileage.toLocaleString()} mi</p>
@@ -590,7 +591,7 @@ export function LineItemsView({ documentId, history }: { documentId: number, his
             <div className="grid grid-cols-2 gap-4 text-sm border-b pb-4">
                 <div>
                     <p className="text-muted-foreground">Document Number</p>
-                    <p className="font-semibold">{doc?.docNo || doc?.externalId}</p>
+                    <p className="font-semibold">{displayDocNo(doc) || doc?.externalId}</p>
                 </div>
                 <div className="text-right">
                     <p className="text-muted-foreground">Date</p>

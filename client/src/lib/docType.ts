@@ -32,3 +32,20 @@ export function groupByDocType<T extends { docType?: string | null }>(docs: T[])
   for (const [t, docsForType] of byType) if (!DOC_TYPE_ORDER.includes(t)) ordered.push({ type: t, label: DOC_TYPE_LABEL[t] || t, docs: docsForType });
   return ordered;
 }
+
+/** The number to SHOW for a document — GA4's, whenever it has one.
+ *
+ * Two numbers exist per document. `docNo` is the web app's own, allocated ahead of GA4 so the
+ * two systems can't collide (see getNextDocNo / docNoClearance). `ga4Number` is stamped on issue
+ * and is the real invoice number: it's what the PDF prints, what the emailed copy quotes, what
+ * GA4 holds, and therefore the only number the customer or the accountant will ever mention.
+ *
+ * Showing docNo on screen meant the tab said 90937 while the invoice in the customer's inbox
+ * said 90888. Anything customer-facing or referenced in conversation should use this helper.
+ * `docNo` is still the editable field on the form and the key other records cascade from —
+ * never overwrite it with the GA4 number. Search matches both, so either one still finds it. */
+export function displayDocNo(doc: { ga4Number?: string | number | null; docNo?: string | number | null } | null | undefined): string {
+  if (!doc) return "";
+  const ga4 = String(doc.ga4Number ?? "").trim();
+  return ga4 || String(doc.docNo ?? "").trim();
+}

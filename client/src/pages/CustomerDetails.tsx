@@ -12,7 +12,7 @@ import { Link } from "wouter";
 import { RegPlate } from "@/components/RegPlate";
 import { format } from "date-fns";
 import { useState, useEffect, useRef, Fragment } from "react";
-import { DOC_TYPE_TAILWIND } from "@/lib/docType";
+import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { workSummary } from "@/lib/workSummary";
 import {
     Dialog,
@@ -129,7 +129,7 @@ function HistoryActivityRow({ h, onOpenFull, onOpenDoc }: { h: any; onOpenFull: 
                     {/* the number opens the document itself — the row's chevron just expands the detail */}
                     <button type="button" title="Open this document"
                         onClick={(e) => { e.stopPropagation(); onOpenDoc(); }}
-                        className="text-violet-700 hover:underline font-semibold">{h.docNo || h.id}</button>
+                        className="text-violet-700 hover:underline font-semibold">{displayDocNo(h) || h.id}</button>
                     {!h.viaAccountSame && <span className="ml-1.5 bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
                 </TableCell>
                 <TableCell className="py-1.5">

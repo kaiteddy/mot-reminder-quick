@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -201,7 +202,7 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                                     <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateCreated || p.dateIssued)}</TableCell>
                                     <TableCell className="text-sm">{p.description}</TableCell>
                                     <TableCell className="font-mono text-xs text-muted-foreground">{p.partNumber || "-"}</TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">{p.docNo}</TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">{displayDocNo(p)}</TableCell>
                                     <TableCell className="text-right text-sm">{Number(p.quantity || 0)}</TableCell>
                                     <TableCell className="text-right text-sm">£{Number(p.unitPrice || 0).toFixed(2)}</TableCell>
                                 </TableRow>
@@ -613,7 +614,7 @@ export default function VehicleDetails() {
                                     {history.map((d: any) => (
                                         <button key={d.id} type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
                                             <span>{formatDate(d.dateCreated || d.dateIssued)}</span>
-                                            <span>{d.docType} {d.docNo}</span>
+                                            <span>{d.docType} {displayDocNo(d)}</span>
                                             <span>{d.accountNumber || ""}</span>
                                             <span>{d.customerName || ""}</span>
                                             <span>{d.mainDescription || ""}</span>
@@ -639,7 +640,7 @@ export default function VehicleDetails() {
                                             <span>{formatDate(p.dateCreated || p.dateIssued)}</span>
                                             <span>{p.description}</span>
                                             <span>{p.partNumber || ""}</span>
-                                            <span>{p.docNo}</span>
+                                            <span>{displayDocNo(p)}</span>
                                             <span className="vd-num">{Number(p.quantity || 0)}</span>
                                             <span className="vd-num">{money(p.unitPrice)}</span>
                                         </div>
