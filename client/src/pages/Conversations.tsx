@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -25,7 +25,12 @@ const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—"
 
 export default function Conversations() {
   const [, setLocation] = useLocation();
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  // ?customer=<id> opens that thread straight away — the link in the notification, so tapping
+  // it on a phone lands directly on the conversation.
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("customer"));
+    return Number.isFinite(id) && id > 0 ? id : null;
+  });
   const [replyMessage, setReplyMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
@@ -176,18 +181,23 @@ export default function Conversations() {
 
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-8rem)] flex flex-col bg-slate-50 border rounded-lg overflow-hidden">
-        {/* Header */}
-        <div className="bg-white border-b px-6 py-4">
-          <h1 className="text-2xl font-bold text-slate-900">Conversations</h1>
+      {/* dvh, not vh: mobile browser chrome shrinks the viewport and vh would push the
+          reply box off the bottom of the screen. */}
+      <div className="h-[calc(100dvh-7rem)] md:h-[calc(100vh-8rem)] flex flex-col bg-slate-50 border rounded-lg overflow-hidden">
+        {/* Header — hidden on mobile once a thread is open, so the phone screen is all conversation */}
+        <div className={cn("bg-white border-b px-4 py-3 md:px-6 md:py-4", selectedCustomerId && "hidden md:block")}>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900">Conversations</h1>
           <p className="text-sm text-slate-600 mt-1">
             WhatsApp-style message threads with customers
           </p>
         </div>
 
         <div className="flex-1 flex overflow-hidden @container">
-          {/* Conversation List Sidebar */}
-          <div className="w-72 @5xl:w-80 @6xl:w-96 bg-white border-r flex flex-col shrink-0">
+          {/* Conversation List Sidebar — full width on a phone, and stands aside once a thread is picked */}
+          <div className={cn(
+            "w-full md:w-72 @5xl:w-80 @6xl:w-96 bg-white md:border-r flex-col shrink-0",
+            selectedCustomerId ? "hidden md:flex" : "flex",
+          )}>
             {/* Search */}
             <div className="p-4 border-b">
               <div className="relative">
@@ -254,13 +264,27 @@ export default function Conversations() {
           </div>
 
           {/* Conversation Detail */}
-          <div className="flex-1 flex flex-col bg-slate-50">
+          <div className={cn(
+            "flex-1 flex-col bg-slate-50 min-w-0",
+            selectedCustomerId ? "flex" : "hidden md:flex",
+          )}>
             {selectedThread ? (
               <>
                 {/* Conversation Header */}
-                <div className="bg-white border-b px-6 py-4 flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="font-semibold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
+                {/* stacks on a phone — side by side there isn't room for the name and the actions */}
+                <div className="bg-white border-b px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-2 md:gap-4">
+                  <div className="min-w-0 flex-1 flex items-start gap-2">
+                    {/* back to the thread list — phone only, where the list is hidden */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomerId(null)}
+                      aria-label="Back to conversations"
+                      className="md:hidden -ml-1 mt-0.5 p-1 rounded hover:bg-slate-100 text-slate-600 shrink-0"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                    <h2 className="font-semibold text-base md:text-lg text-slate-900 flex items-center gap-2 flex-wrap">
                       <span className="truncate">{selectedThread.customerName}</span>
                       {selectedThread.optedOut && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 shrink-0">
@@ -268,7 +292,7 @@ export default function Conversations() {
                         </span>
                       )}
                     </h2>
-                    <div className="flex items-center gap-3 text-sm text-slate-600 mt-1 min-w-0">
+                    <div className="flex items-center gap-2 text-xs md:text-sm text-slate-600 mt-1 min-w-0">
                       <span className="shrink-0">{selectedThread.customerPhone}</span>
                       {selectedThread.vehicleRegistration && (
                         <>
@@ -284,8 +308,9 @@ export default function Conversations() {
                         </>
                       )}
                     </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
                     <Button
                       variant="outline"
                       size="sm"
@@ -350,7 +375,7 @@ export default function Conversations() {
                 </Dialog>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4">
                   {messages?.map((message) => (
                     <div
                       key={`${message.type}-${message.id}`}
@@ -361,7 +386,7 @@ export default function Conversations() {
                     >
                       <div
                         className={cn(
-                          "max-w-[70%] rounded-lg px-4 py-2 shadow-sm",
+                          "max-w-[85%] md:max-w-[70%] rounded-lg px-3 py-2 md:px-4 shadow-sm",
                           message.type === "sent"
                             ? "bg-blue-500 text-white"
                             : "bg-white text-slate-900"
@@ -398,15 +423,15 @@ export default function Conversations() {
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Reply Input */}
-                <div className="bg-white border-t p-4">
+                {/* Reply Input — pb accounts for the iOS home indicator when installed to the home screen */}
+                <div className="bg-white border-t p-3 md:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4">
                   {outsideReplyWindow && (
                     <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-md px-3 py-2 mb-2">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>
                         {lastInboundAt
-                          ? `${selectedThread?.customerName} last messaged ${formatTime(lastInboundAt)} — WhatsApp only allows free-text replies within 24h of a customer's last message. This reply will likely fail to deliver; call/text them directly instead, or resend an approved template (MOT/Service reminder) to reopen the window.`
-                          : `${selectedThread?.customerName} hasn't messaged you — WhatsApp only allows free-text replies within 24h of a customer's last message. This reply will likely fail to deliver; call/text them directly instead, or send an approved template (MOT/Service reminder) to open the window.`}
+                          ? `${selectedThread?.customerName} last messaged ${formatTime(lastInboundAt)} — WhatsApp only allows free-text replies within 24h of a customer's last message, so this will be sent as a text message instead.`
+                          : `${selectedThread?.customerName} hasn't messaged you, so WhatsApp won't accept a free-text reply — this will be sent as a text message instead.`}
                       </span>
                     </div>
                   )}
@@ -421,7 +446,8 @@ export default function Conversations() {
                           handleSendReply();
                         }
                       }}
-                      className="flex-1"
+                      // 16px minimum stops iOS Safari zooming the page when the field is focused
+                      className="flex-1 text-base md:text-sm"
                     />
                     <Button
                       onClick={handleSendReply}

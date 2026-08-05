@@ -312,6 +312,19 @@ async function logIncomingMessage(data: {
       from: fromNumber,
       customerId,
     });
+
+    // Text whoever is on call, so a reply doesn't sit unseen in the web app. Awaited rather than
+    // fired-and-forgotten because serverless can freeze the instance as soon as we respond to
+    // Twilio — but it never throws, so a failed alert can't make Twilio retry the message.
+    let customerName = fromNumber;
+    if (customerId != null) {
+      try {
+        const c: any = await findCustomerByPhone(fromNumber);
+        if (c?.name) customerName = c.name;
+      } catch { /* fall back to showing the number */ }
+    }
+    const { notifyInboundMessage } = await import("../services/staffAlerts");
+    await notifyInboundMessage({ customerId, customerName, customerPhone: fromNumber, body: data.body });
   } catch (error) {
     console.error("[Twilio Webhook] Failed to log message:", error);
   }
