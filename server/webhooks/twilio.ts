@@ -142,6 +142,9 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
       await recordAppointmentResponse((body.From || "").replace("whatsapp:", ""), buttonAction);
     }
 
+    // Which channel this arrived on — Twilio prefixes WhatsApp addresses, plain SMS has no prefix.
+    const isWhatsApp = String(body.From || "").startsWith("whatsapp:");
+
     // Send TwiML response to acknowledge receipt
     res.set("Content-Type", "text/xml");
     if (buttonAction) {
@@ -155,15 +158,23 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
   <Message>${reply}</Message>
 </Response>`);
     } else if (isOptOut) {
+      // Always confirm an opt-out, on either channel — the customer asked to stop and is
+      // owed an acknowledgement, and it is worth the few pence on SMS.
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>You have been unsubscribed from MOT reminders. Reply START to opt back in.</Message>
 </Response>`);
-    } else {
+    } else if (isWhatsApp) {
       res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Message>Thank you for your message. We'll get back to you soon.</Message>
 </Response>`);
+    } else {
+      // Plain SMS: acknowledge silently. On WhatsApp the courtesy reply is free, but by text
+      // it bills per message — a customer answering "ok thanks" would cost a reply nobody
+      // needed. The message is already in Conversations and raises a notification.
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response></Response>`);
     }
   } catch (error) {
     console.error("[Twilio Webhook] Error:", error);
