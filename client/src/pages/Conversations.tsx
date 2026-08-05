@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, ChevronLeft } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, ChevronLeft, Loader2 } from "lucide-react";
+import { usePushNotifications } from "@/lib/usePushNotifications";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -157,11 +158,14 @@ export default function Conversations() {
           reply box off the bottom of the screen. */}
       <div className="h-[calc(100dvh-7rem)] md:h-[calc(100vh-8rem)] flex flex-col bg-slate-50 border rounded-lg overflow-hidden">
         {/* Header — hidden on mobile once a thread is open, so the phone screen is all conversation */}
-        <div className={cn("bg-white border-b px-4 py-3 md:px-6 md:py-4", selectedCustomerId && "hidden md:block")}>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900">Conversations</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            WhatsApp-style message threads with customers
-          </p>
+        <div className={cn("bg-white border-b px-4 py-3 md:px-6 md:py-4 flex items-start justify-between gap-3", selectedCustomerId && "hidden md:flex")}>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-900">Conversations</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              WhatsApp-style message threads with customers
+            </p>
+          </div>
+          <NotificationsButton />
         </div>
 
         <div className="flex-1 flex overflow-hidden">
@@ -434,5 +438,51 @@ export default function Conversations() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+/**
+ * Turn on lock-screen notifications for this device. Placed in the Conversations header rather
+ * than buried in settings because that's where you are when you realise you're missing messages.
+ */
+function NotificationsButton() {
+  const { state, busy, enable, disable, configured } = usePushNotifications();
+  const test = trpc.push.test.useMutation();
+
+  if (!configured || state === "unsupported") return null;
+
+  if (state === "needs-install") {
+    return (
+      <div className="text-[11px] text-slate-500 max-w-[10rem] text-right leading-snug">
+        To get alerts on this phone: <b>Share → Add to Home Screen</b>, then open it from there.
+      </div>
+    );
+  }
+  if (state === "denied") {
+    return (
+      <div className="text-[11px] text-amber-700 max-w-[10rem] text-right leading-snug">
+        Notifications are blocked — turn them back on in your phone's settings for this app.
+      </div>
+    );
+  }
+  if (state === "on") {
+    return (
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="hidden sm:inline text-[11px] text-green-700 font-medium">Alerts on</span>
+        <Button variant="outline" size="sm" onClick={() => test.mutate()} disabled={test.isPending} title="Send a test notification to this device">
+          {test.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => disable()} disabled={busy} title="Stop notifications on this device">
+          <BellOff className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <Button size="sm" onClick={() => enable()} disabled={busy} className="shrink-0"
+      title="Get a notification the moment a customer messages">
+      {busy ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Bell className="w-4 h-4 mr-1.5" />}
+      Alerts
+    </Button>
   );
 }

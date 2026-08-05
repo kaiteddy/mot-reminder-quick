@@ -303,8 +303,20 @@ async function logIncomingMessage(data: {
         if (c?.name) customerName = c.name;
       } catch { /* fall back to showing the number */ }
     }
+    const url = customerId != null ? `/conversations?customer=${customerId}` : "/conversations";
+    const { pushToAll } = await import("../services/pushNotifications");
     const { notifyInboundMessage } = await import("../services/staffAlerts");
-    await notifyInboundMessage({ customerId, customerName, customerPhone: fromNumber, body: data.body });
+    // Push first — it's the one that lands on the lock screen. The text is the backstop for when
+    // a phone's push subscription has quietly lapsed. Both are best-effort and neither throws.
+    await Promise.all([
+      pushToAll({
+        title: customerName,
+        body: (data.body || "").slice(0, 160),
+        url,
+        tag: customerId != null ? `customer-${customerId}` : "customer-message",
+      }),
+      notifyInboundMessage({ customerId, customerName, customerPhone: fromNumber, body: data.body }),
+    ]);
   } catch (error) {
     console.error("[Twilio Webhook] Failed to log message:", error);
   }

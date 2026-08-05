@@ -693,3 +693,25 @@ export const vehicleSaleInvoices = pgTable("vehicleSaleInvoices", {
 
 export type VehicleSaleInvoice = typeof vehicleSaleInvoices.$inferSelect;
 export type InsertVehicleSaleInvoice = typeof vehicleSaleInvoices.$inferInsert;
+
+/**
+ * Web-push subscriptions — one row per phone that has installed the app to its home screen and
+ * allowed notifications, so a customer's WhatsApp reply raises a banner on the lock screen.
+ *
+ * The browser owns the endpoint and keys; we only store them. A subscription dies silently when
+ * the app is uninstalled or the push service rotates it, which surfaces as 404/410 on send —
+ * those rows get pruned rather than retried forever.
+ */
+export const pushSubscriptions = pgTable("pushSubscriptions", {
+  id: serial("id").primaryKey(),
+  endpoint: text("endpoint").notNull().unique(),  // push service URL, unique per device+install
+  p256dh: text("p256dh").notNull(),               // client public key, for payload encryption
+  auth: text("auth").notNull(),                   // client auth secret
+  label: varchar("label", { length: 120 }),       // "Adam's iPhone", so a device can be told apart
+  userAgent: text("userAgent"),
+  lastNotifiedAt: timestamp("lastNotifiedAt", { mode: "date" }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
