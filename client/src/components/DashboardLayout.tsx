@@ -105,9 +105,12 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    // Redirect to login if not authenticated
+    // Redirect to login if not authenticated, carrying where they were trying to get to —
+    // otherwise signing in always lands on the home page and a link straight to a document
+    // (an invoice, a job sheet) silently never opens.
     if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/login?next=${encodeURIComponent(next)}`;
     }
     return null;
   }
