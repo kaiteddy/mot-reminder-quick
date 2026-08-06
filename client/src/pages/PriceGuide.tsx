@@ -14,6 +14,12 @@ import { Loader2, Search, Info, Printer, ChevronRight, ChevronDown } from "lucid
  */
 const money = (n: any) => `£${Number(n || 0).toLocaleString("en-GB")}`;
 
+const SIZE_HINT: Record<string, string> = {
+  Small: "under 1400cc — Aygo, Fiesta, Picanto",
+  Medium: "1400–1999cc — Focus, Golf, C-Class",
+  Large: "2000cc and up — Kuga, Sorento, GLC",
+};
+
 const SIZE_TONE: Record<string, string> = {
   Small: "bg-sky-50 text-sky-700 border-sky-200",
   Medium: "bg-amber-50 text-amber-700 border-amber-200",
@@ -35,8 +41,9 @@ function SizeBadge({ size, cc }: { size?: string | null; cc?: number }) {
 
 function Cell({ stat }: { stat: any }) {
   if (!stat) return <td className="px-2 py-2 text-center text-slate-300">—</td>;
-  // Three jobs is a hint, not a price. Say so rather than presenting it like the rest.
-  const thin = stat.n < 3;
+  // Under five jobs is a hint, not a price — a Kuga priced off two jobs came out cheaper than a
+  // Fiesta, which is nonsense you'd only spot if the sample size is impossible to miss.
+  const thin = stat.n < 5;
   return (
     <td className="px-2 py-2 text-center whitespace-nowrap">
       <div className={`font-semibold ${thin ? "text-slate-500" : "text-slate-900"}`}>{money(stat.median)}</div>
@@ -56,6 +63,7 @@ export default function PriceGuide() {
   const cats: any[] = (data as any)?.categories || [];
   const makes: any[] = (data as any)?.makes || [];
   const all: any = (data as any)?.all || {};
+  const sizes: any[] = (data as any)?.sizes || [];
   const f = filter.trim().toLowerCase();
   const shown = f ? makes.filter((m) => m.make.toLowerCase().includes(f)) : makes;
 
@@ -107,6 +115,20 @@ export default function PriceGuide() {
                     <td className="px-3 py-2 font-semibold">All makes</td>
                     {cats.map((c) => <Cell key={c.key} stat={all[c.key]} />)}
                   </tr>
+                  {/* By size, pooled across every make: an individual model rarely has enough
+                      jobs to be trustworthy, but the size band always does — and size is what
+                      really moves a service price. These are the figures to quote from. */}
+                  {(sizes as any[]).map((b) => (
+                    <tr key={b.band} className="bg-slate-50/80">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2 pl-1">
+                          <SizeBadge size={b.band} />
+                          <span className="text-[12px] text-slate-600">{SIZE_HINT[b.band]}</span>
+                        </div>
+                      </td>
+                      {cats.map((c) => <Cell key={c.key} stat={b.cats[c.key]} />)}
+                    </tr>
+                  ))}
                   {shown.map((m) => {
                     const open = !!openMakes[m.make];
                     const models: any[] = m.models || [];
@@ -121,7 +143,11 @@ export default function PriceGuide() {
                                 : <span className="w-3.5 shrink-0" />}
                               <ManufacturerLogo make={m.make} size="sm" />
                               <span className="font-medium truncate">{m.make}</span>
-                              <SizeBadge size={m.size} cc={m.cc} />
+                              {m.size
+                                ? <SizeBadge size={m.size} cc={m.cc} />
+                                : m.ccRange && m.ccRange.min !== m.ccRange.max
+                                  ? <span className="text-[10px] text-slate-400 whitespace-nowrap">{m.ccRange.min}–{m.ccRange.max}cc</span>
+                                  : null}
                               {models.length > 0 && !open && (
                                 <span className="text-[10px] text-slate-400 whitespace-nowrap">{models.length} model{models.length === 1 ? "" : "s"}</span>
                               )}
@@ -159,9 +185,10 @@ export default function PriceGuide() {
                   is greyed out: treat it as a hint, not a price.
                 </p>
                 <p>
-                  <strong>Click a make to see its models.</strong> Small / Medium / Large comes from engine size,
-                  which is what actually moves a service price — an Aygo and a RAV4 are never on the same line.
-                  A model needs at least three jobs of its own to appear; the rest still count towards the make.
+                  <strong>Quote from the size rows.</strong> A make is not a size — Ford runs from a 999cc B-Max to a
+                  2331cc Kuga — so the size bands, pooled across every make, are the reliable figures. Click a make to
+                  see its models underneath; those are useful for a sanity check but many rest on only a handful of jobs,
+                  and anything under five is greyed out.
                 </p>
                 <p>
                   <strong>MOT is quoted separately</strong> and stripped out of every figure here, so you can add it on top.

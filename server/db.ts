@@ -4510,6 +4510,10 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     const price = (d.own + d.labour) * 1.2;                  // net lines -> what the customer pays
     if (!(price > 40) || price > 2000) continue;             // guard against broken records
     push(`ALL|${cat}`, price);
+    // Size band is judged per JOB, from that car's own engine size — pooling by band gives the
+    // stable figure to quote, where a single model's handful of jobs never can.
+    const band = !d.cc ? null : d.cc < 1400 ? "Small" : d.cc < 2000 ? "Medium" : "Large";
+    if (band) push(`SIZE:${band}|${cat}`, price);
     if (d.make) { push(`${d.make}|${cat}`, price); pushCc(d.make, d.cc); }
     if (d.make && d.model) { push(`${d.make}~${d.model}|${cat}`, price); pushCc(`${d.make}~${d.model}`, d.cc); }
   }
@@ -4525,6 +4529,17 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
 
   const all: Record<string, any> = {};
   for (const c of PRICE_GUIDE_CATEGORIES) all[c.key] = pgStats(byKey.get(`ALL|${c.key}`) || []);
+
+  const sizes = ["Small", "Medium", "Large"].map((band) => {
+    const cats: Record<string, any> = {};
+    let jobs = 0;
+    for (const c of PRICE_GUIDE_CATEGORIES) {
+      const st = pgStats(byKey.get(`SIZE:${band}|${c.key}`) || []);
+      cats[c.key] = st;
+      jobs += st?.n || 0;
+    }
+    return { band, jobs, cats };
+  }).filter((b) => b.jobs > 0);
 
   const makeNames = new Set<string>();
   for (const k of Array.from(byKey.keys())) { const m = k.split("|")[0]; if (m !== "ALL") makeNames.add(m); }
@@ -4561,10 +4576,16 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
       // Two jobs can't carry a model's price; those cars still count towards the make's row.
       .filter((m) => m.jobs >= 3)
       .sort((a, b) => a.cc - b.cc || b.jobs - a.jobs);
-    return { make, jobs, cats, cc, size: sizeOf(cc), models };
+    // A make is not a size: Ford runs from a 999cc B-Max to a 2331cc Kuga, and badging the
+    // whole make "Small" off its average was actively misleading. Report the span its models
+    // actually cover, and leave the band itself to the model rows where it means something.
+    const bands = Array.from(new Set(models.map((m) => m.size).filter(Boolean)));
+    const ccs = models.map((m) => m.cc).filter((v) => v > 0);
+    const ccRange = ccs.length ? { min: Math.min(...ccs), max: Math.max(...ccs) } : null;
+    return { make, jobs, cats, cc, size: bands.length === 1 ? bands[0] : null, bands, ccRange, models };
   })
     .filter((m) => m.jobs >= 3)
     .sort((a, b) => b.jobs - a.jobs);
 
-  return { years, categories: PRICE_GUIDE_CATEGORIES, all, makes };
+  return { years, categories: PRICE_GUIDE_CATEGORIES, all, sizes, makes };
 }
