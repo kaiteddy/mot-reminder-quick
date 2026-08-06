@@ -47,6 +47,7 @@ const PartsPriceList = lazy(() => import("./pages/PartsPriceList"));
 const PriceGuide = lazy(() => import("./pages/PriceGuide"));
 const SalesStock = lazy(() => import("./pages/SalesStock"));
 const VehicleSaleInvoice = lazy(() => import("./pages/VehicleSaleInvoice"));
+const LogPurchase = lazy(() => import("./pages/LogPurchase"));
 const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
@@ -124,6 +125,7 @@ function Router() {
       <Route path="/price-guide" component={PriceGuide} />
       <Route path="/sales-stock" component={SalesStock} />
       <Route path="/vehicle-sale/:id" component={VehicleSaleInvoice} />
+      <Route path="/log-purchase" component={LogPurchase} />
       <Route path="/duplicates" component={Duplicates} />
       <Route path="/system-status" component={SystemStatus} />
       <Route path="/mobile/job/:id" component={MobileJobSummary} />
