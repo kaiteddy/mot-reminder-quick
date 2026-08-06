@@ -4321,3 +4321,75 @@ export async function saveAppSetting(keyName: string, value: any) {
   }
 }
 
+
+/** A customer's ENTIRE history — every car they've had work on — as one PDF.
+ *
+ * Built by running the existing per-vehicle report for each car and merging the results rather
+ * than by writing a second template: the per-vehicle report already handles the pagination,
+ * the invoice-copy appending and the "invoiced work only" rule, and one template means the two
+ * can't drift. Cars with no invoiced work are skipped so the file isn't padded with empty
+ * sections. Newest-active vehicle first. */
+export async function getCustomerServiceHistoryPDF(customerId: number, opts?: { includeInvoices?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const customer = (await db.select().from(customers).where(eq(customers.id, customerId)).limit(1))[0];
+  if (!customer) throw new Error("Customer not found");
+
+  const cars = await db.select({ id: vehicles.id, registration: vehicles.registration }).from(vehicles).where(eq(vehicles.customerId, customerId));
+  if (!cars.length) throw new Error("This customer has no vehicles on file.");
+
+  // Only cars with actual invoiced work, ordered newest first. The per-vehicle report happily
+  // renders an empty section for a car we've never invoiced, which would pad a 12-car customer
+  // with blank pages — so exclude those here rather than hoping the generator refuses.
+  const lastByVehicle = new Map<number, number>();
+  const lastRows = await db.select({ vehicleId: serviceHistory.vehicleId, last: sql<string>`MAX(${serviceHistory.dateCreated})` })
+    .from(serviceHistory)
+    .where(and(inArray(serviceHistory.vehicleId, cars.map((c) => c.id)), inArray(serviceHistory.docType, ["SI", "XS"])))
+    .groupBy(serviceHistory.vehicleId);
+  for (const r of lastRows) if (r.vehicleId != null) lastByVehicle.set(r.vehicleId, new Date(r.last || 0).getTime());
+
+  const ordered = cars
+    .filter((c) => lastByVehicle.has(c.id))
+    .sort((a, b) => (lastByVehicle.get(b.id) || 0) - (lastByVehicle.get(a.id) || 0));
+  if (!ordered.length) throw new Error("No invoiced work found for this customer's vehicles.");
+
+  const parts: string[] = [];
+  let included = 0;
+  for (const car of ordered) {
+    try {
+      const pdf: any = await getServiceHistoryPDF(car.id, opts);
+      if (pdf?.content) { parts.push(pdf.content); included++; }
+    } catch {
+      // A car with no invoiced work throws rather than producing an empty report — skip it.
+    }
+  }
+  if (!parts.length) throw new Error("No invoiced work found for this customer's vehicles.");
+
+  const safeName = String(customer.name || `Customer-${customerId}`).replace(/[^\w\-]+/g, "-").replace(/^-|-$/g, "");
+  const filename = `Service-History-${safeName}.pdf`;
+  if (parts.length === 1) return { content: parts[0], filename, vehicleCount: included };
+
+  const { PDFDocument } = await import("pdf-lib");
+  const merged = await PDFDocument.create();
+  for (const b64 of parts) {
+    const src = await PDFDocument.load(Buffer.from(b64, "base64"));
+    const pages = await merged.copyPages(src, src.getPageIndices());
+    for (const p of pages) merged.addPage(p);
+  }
+  return { content: Buffer.from(await merged.save()).toString("base64"), filename, vehicleCount: included };
+}
+
+/** Mark a forecourt car as sold (or put it back on sale). Status is free text in this table —
+ * the values in use are "ON FORECOURT" and "IN PREP" — so SOLD joins them rather than becoming
+ * an enum. The sale price is kept separately from `price` (the advertised figure) so the
+ * asking price isn't overwritten by what it actually went for. */
+export async function setSalesStockSold(input: { id: number; sold: boolean; soldPrice?: number | null; soldAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const patch = input.sold
+    ? { status: "SOLD", soldAt: input.soldAt || new Date(), soldPrice: input.soldPrice != null ? String(input.soldPrice) : null }
+    : { status: "ON FORECOURT", soldAt: null, soldPrice: null };
+  await db.update(salesStock).set(patch as any).where(eq(salesStock.id, input.id));
+  return (await db.select().from(salesStock).where(eq(salesStock.id, input.id)).limit(1))[0];
+}

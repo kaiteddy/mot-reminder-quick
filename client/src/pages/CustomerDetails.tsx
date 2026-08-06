@@ -111,6 +111,87 @@ function HistSortHead({ label, k, sort, onSort, align }: { label: string; k: str
     );
 }
 
+/** Emails the customer their whole history — every car, one PDF. The per-vehicle version lives
+ * on the vehicle page; this is the "send me everything" people ask for when they sell up or
+ * change insurer. Defaults to the summary; ticking the box appends a full copy of every
+ * invoice, which on a long-standing customer is a big file, hence off by default. */
+function SendFullHistoryDialog({ customer, vehicleCount, open, onClose }: { customer: any; vehicleCount: number; open: boolean; onClose: () => void }) {
+    const send = trpc.email.sendCustomerHistory.useMutation({
+        onSuccess: (r: any) => {
+            toast.success(`Full history sent to ${to}${r?.vehicleCount ? ` — ${r.vehicleCount} vehicle${r.vehicleCount === 1 ? "" : "s"}` : ""}`);
+            onClose();
+        },
+        onError: (e: any) => toast.error(e.message || "Could not send the history"),
+    });
+    const knownEmails: string[] = Array.from(new Set([
+        customer?.email,
+        ...(Array.isArray(customer?.altContacts) ? customer.altContacts.map((c: any) => c?.email) : []),
+    ].map((e: any) => String(e || "").trim()).filter((e: string) => e.includes("@"))));
+
+    const [to, setTo] = useState("");
+    const [cc, setCc] = useState("");
+    const [includeInvoices, setIncludeInvoices] = useState(false);
+    useEffect(() => { if (open) { setTo(knownEmails[0] || ""); setCc(""); setIncludeInvoices(false); } }, [open, customer?.id]);
+
+    const addr = (raw: string) => raw.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+    const submit = () => {
+        const tos = addr(to), ccs = addr(cc);
+        if (!tos.length) { toast.error("Enter a recipient email address"); return; }
+        const bad = [...tos, ...ccs].filter((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a));
+        if (bad.length) { toast.error(`Not a valid email address: ${bad.join(", ")}`); return; }
+        send.mutate({ customerId: customer.id, to: tos.join(","), cc: ccs.join(",") || undefined, includeInvoices });
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2"><Send className="w-5 h-5" /> Send full history</DialogTitle>
+                    <DialogDescription>
+                        Every vehicle {customer?.name ? `${customer.name} has` : "they have"} had work on, as one PDF.
+                        {vehicleCount ? ` ${vehicleCount} vehicle${vehicleCount === 1 ? "" : "s"} on file — cars with no invoiced work are left out.` : ""}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-xs text-muted-foreground">To</label>
+                        <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="customer@email.com" className="mt-0.5 h-9" />
+                    </div>
+                    <div>
+                        <label className="text-xs text-muted-foreground">CC</label>
+                        <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Optional" className="mt-0.5 h-9" />
+                    </div>
+                    {knownEmails.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {knownEmails.map((e) => (
+                                <span key={e} className="inline-flex items-center rounded-full border bg-slate-50 text-xs overflow-hidden">
+                                    <span className="pl-2.5 pr-1.5 py-1 text-slate-600">{e}</span>
+                                    <button type="button" onClick={() => setTo((v) => (addr(v).some((x) => x.toLowerCase() === e.toLowerCase()) ? v : [...addr(v), e].join(", ")))} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">To</button>
+                                    <button type="button" onClick={() => setCc((v) => (addr(v).some((x) => x.toLowerCase() === e.toLowerCase()) ? v : [...addr(v), e].join(", ")))} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">CC</button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={includeInvoices} onChange={(e) => setIncludeInvoices(e.target.checked)} className="mt-0.5" />
+                        <span>
+                            Attach a full copy of every invoice
+                            <span className="block text-xs text-muted-foreground">Otherwise just the one-line-per-visit summary. On a long-standing customer this makes a large file.</span>
+                        </span>
+                    </label>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={send.isPending}>Cancel</Button>
+                    <Button onClick={submit} disabled={send.isPending}>
+                        {send.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                        {send.isPending ? "Building PDF…" : "Send"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function HistoryActivityRow({ h, onOpenFull, onOpenDoc }: { h: any; onOpenFull: () => void; onOpenDoc: () => void }) {
     const [open, setOpen] = useState(false);
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
@@ -353,6 +434,7 @@ export default function CustomerDetails() {
     const [histSort, setHistSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
     const histSortBy = (key: string) => setHistSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" || key === "total" || key === "unpaid" ? "desc" : "asc" }));
 
+    const [historyEmailOpen, setHistoryEmailOpen] = useState(false);
     const [unlinkTarget, setUnlinkTarget] = useState<{ id: number; registration: string } | null>(null);
     const unlinkVehicle = trpc.reminders.unlinkVehicle.useMutation({
         onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); setUnlinkTarget(null); refetch(); },
@@ -467,6 +549,10 @@ export default function CustomerDetails() {
                         <Button onClick={() => setIsEditOpen(true)} variant="outline" size="sm">
                             <Pencil className="w-4 h-4 mr-2" />
                             Edit Profile
+                        </Button>
+                        <Button onClick={() => setHistoryEmailOpen(true)} variant="outline" size="sm">
+                            <Send className="w-4 h-4 mr-2" />
+                            Send Full History
                         </Button>
                         <Button
                             variant="default"
@@ -995,6 +1081,13 @@ export default function CustomerDetails() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <SendFullHistoryDialog
+                customer={customer}
+                vehicleCount={vehicles.length}
+                open={historyEmailOpen}
+                onClose={() => setHistoryEmailOpen(false)}
+            />
         </DashboardLayout>
     );
 }

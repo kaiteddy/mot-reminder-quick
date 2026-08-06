@@ -540,6 +540,10 @@ export const salesStock = pgTable("salesStock", {
   atAdvertStatus: varchar("atAdvertStatus", { length: 30 }),
   bodyType: varchar("bodyType", { length: 50 }),
   doors: integer("doors"),
+  // Sale details. Kept apart from `price`, which is the ADVERTISED figure — overwriting that
+  // with what the car actually went for would destroy the asking price we listed it at.
+  soldAt: timestamp("soldAt", { mode: "date" }),
+  soldPrice: numeric("soldPrice", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({

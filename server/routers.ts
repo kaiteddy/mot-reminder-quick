@@ -72,6 +72,17 @@ export const appRouter = router({
       const { refreshSalesStockMotTax } = await import("./db");
       return refreshSalesStockMotTax();
     }),
+    setSold: publicProcedure
+      .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
+      .mutation(async ({ input }) => {
+        const { setSalesStockSold } = await import("./db");
+        return setSalesStockSold({
+          id: input.id,
+          sold: input.sold,
+          soldPrice: input.soldPrice ?? null,
+          soldAt: input.soldAt ? new Date(input.soldAt) : null,
+        });
+      }),
   }),
 
   customers: router({
@@ -729,6 +740,25 @@ export const appRouter = router({
             documentId: null,
             type: "email", direction: "out",
             subject: input.subject || `Emailed service history to ${input.to}`,
+            body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
+          } as any);
+        } catch { /* logging must never block the send */ }
+        return result;
+      }),
+    sendCustomerHistory: publicProcedure
+      .input(z.object({ customerId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        const { sendCustomerHistoryEmail } = await import("./services/email");
+        const { getCustomerById, addCustomerLog } = await import("./db");
+        const cust: any = await getCustomerById(input.customerId);
+        const result = await sendCustomerHistoryEmail({ ...input, customerName: cust?.name });
+        try {
+          await addCustomerLog({
+            customerId: input.customerId,
+            vehicleId: null,
+            documentId: null,
+            type: "email", direction: "out",
+            subject: input.subject || `Emailed full service history to ${input.to}`,
             body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
           } as any);
         } catch { /* logging must never block the send */ }

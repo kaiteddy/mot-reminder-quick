@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2 } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -72,6 +72,20 @@ export default function SalesStock() {
     onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setLocation(`/vehicle-sale/${r.id}`); },
     onError: (e) => toast.error(e.message || "Could not raise the sales invoice"),
   });
+
+  // Mark sold: capture price/date, then hand over to the invoice if asked.
+  const [soldTarget, setSoldTarget] = useState<any>(null);
+  const unsell = trpc.salesStock.setSold.useMutation({
+    onSuccess: (_r, v) => { utils.salesStock.list.invalidate(); toast.success("Back on the forecourt"); },
+    onError: (e) => toast.error(e.message || "Could not update this car"),
+  });
+  const onSoldDone = (car: any, opts: { raiseInvoice: boolean }) => {
+    setSoldTarget(null);
+    if (!opts.raiseInvoice) return;
+    const existing = invoiceByStockId.get(car.id);
+    if (existing != null) setLocation(`/vehicle-sale/${existing}`);
+    else raiseInvoice.mutate({ salesStockId: car.id });
+  };
 
   const cars = (data as any[]) || [];
   const shown = useMemo(() => {
@@ -184,14 +198,27 @@ export default function SalesStock() {
                         <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
-                        <td className="px-2 py-2">{c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span> : <span className="text-slate-300">—</span>}</td>
+                        <td className="px-2 py-2">
+                          {isSold(c)
+                            ? <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">SOLD{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}</span>
+                            : c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span>
+                            : <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                          <SaleInvoiceButton
-                            car={c} invoiceId={invoiceByStockId.get(c.id)} compact
-                            pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
-                            onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
-                            onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
-                          />
+                          <div className="inline-flex gap-1.5">
+                            <MarkSoldButton
+                              car={c} compact
+                              pending={unsell.isPending && unsell.variables?.id === c.id}
+                              onMark={() => setSoldTarget(c)}
+                              onUndo={() => unsell.mutate({ id: c.id, sold: false })}
+                            />
+                            <SaleInvoiceButton
+                              car={c} invoiceId={invoiceByStockId.get(c.id)} compact
+                              pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
+                              onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
+                              onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                            />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -212,6 +239,11 @@ export default function SalesStock() {
                         : <div className="w-full h-full flex items-center justify-center text-slate-300"><Car className="w-10 h-10" /></div>}
                       <div className="absolute top-2 left-2 bg-black/75 text-white text-[13px] font-bold tracking-wider rounded px-2 py-0.5">{c.registration}</div>
                       <div className="absolute bottom-2 right-2 bg-white/95 text-slate-900 text-[15px] font-bold rounded px-2 py-0.5 shadow">£{money(c.price)}</div>
+                      {isSold(c) && (
+                        <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wide rounded px-2 py-0.5 shadow">
+                          Sold{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}
+                        </div>
+                      )}
                     </div>
                     <div className="p-3 flex flex-col gap-2 flex-1">
                       <div>
@@ -235,12 +267,20 @@ export default function SalesStock() {
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
                       </div>
-                      <SaleInvoiceButton
-                        car={c} invoiceId={invoiceByStockId.get(c.id)}
-                        pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
-                        onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
-                        onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
-                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <MarkSoldButton
+                          car={c}
+                          pending={unsell.isPending && unsell.variables?.id === c.id}
+                          onMark={() => setSoldTarget(c)}
+                          onUndo={() => unsell.mutate({ id: c.id, sold: false })}
+                        />
+                        <SaleInvoiceButton
+                          car={c} invoiceId={invoiceByStockId.get(c.id)}
+                          pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
+                          onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
+                          onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                        />
+                      </div>
                       <div className="flex items-center gap-3 pt-1 text-[12px]">
                         <button onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)} className="text-violet-700 hover:underline">In workshop ↗</button>
                         {c.websiteUrl && <a href={c.websiteUrl} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">Listing <ExternalLink className="w-3 h-3" /></a>}
@@ -252,6 +292,14 @@ export default function SalesStock() {
             </div>
           )}
       </div>
+
+      {soldTarget && (
+        <MarkSoldDialog
+          car={soldTarget}
+          onClose={() => setSoldTarget(null)}
+          onDone={(opts) => onSoldDone(soldTarget, opts)}
+        />
+      )}
     </DashboardLayout>
   );
 }
@@ -260,6 +308,79 @@ export default function SalesStock() {
  * Raise (or reopen) the used-car sales invoice for a stock car. The form is pre-filled from
  * the stocklist and the garage's own vehicle record, then filled in on the replica itself.
  */
+const isSold = (c: any) => /^sold$/i.test(String(c?.status || ""));
+
+/** Marking a car sold and raising its invoice are one action in practice — you agree a price and
+ * the paperwork follows — so this captures the price and date, then hands straight over to the
+ * sales invoice. The sale price is recorded separately from the advertised price so what we
+ * asked for isn't lost behind what it went for. */
+function MarkSoldDialog({ car, onClose, onDone }: { car: any; onClose: () => void; onDone: (opts: { raiseInvoice: boolean }) => void }) {
+  const [price, setPrice] = useState(String(car?.price ?? ""));
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [raise, setRaise] = useState(true);
+  const setSold = trpc.salesStock.setSold.useMutation();
+  const utils = trpc.useUtils();
+
+  const submit = async () => {
+    const p = price.trim() === "" ? null : Number(price);
+    if (p != null && (!isFinite(p) || p < 0)) { toast.error("Enter a valid sale price"); return; }
+    try {
+      await setSold.mutateAsync({ id: car.id, sold: true, soldPrice: p, soldAt: date || null });
+      await utils.salesStock.list.invalidate();
+      toast.success(`${car.registration} marked sold`);
+      onDone({ raiseInvoice: raise });
+    } catch (e: any) {
+      toast.error(e.message || "Could not mark this car sold");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold flex items-center gap-2"><BadgePoundSterling className="w-5 h-5" /> Mark as sold</h3>
+        <p className="text-xs text-muted-foreground">{car.make} {car.model} · {car.registration}{car.price ? ` · advertised £${money(car.price)}` : ""}</p>
+        <div>
+          <label className="text-xs text-muted-foreground">Sale price</label>
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="What it actually sold for"
+            className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Date sold</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" />
+        </div>
+        <label className="flex items-start gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={raise} onChange={(e) => setRaise(e.target.checked)} className="mt-0.5" />
+          <span>Raise the sales invoice now<span className="block text-xs text-muted-foreground">Opens the used car sales invoice for this car.</span></span>
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
+          <button onClick={submit} disabled={setSold.isPending}
+            className="bg-violet-700 text-white rounded px-4 py-1.5 text-sm hover:bg-violet-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+            {setSold.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <BadgePoundSterling className="w-4 h-4" />} Mark sold
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Sold cars keep the button so a mistake can be undone — a car marked sold in error would
+ * otherwise be stuck off the forecourt with no way back. */
+function MarkSoldButton({ car, compact, onMark, onUndo, pending }: { car: any; compact?: boolean; onMark: () => void; onUndo: () => void; pending: boolean }) {
+  const sold = isSold(car);
+  const cls = compact
+    ? `inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium whitespace-nowrap disabled:opacity-50 ${sold ? "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100" : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"}`
+    : `inline-flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[12px] font-semibold w-full disabled:opacity-50 ${sold ? "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100" : "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"}`;
+  return (
+    <button className={cls} disabled={pending} onClick={() => (sold ? onUndo() : onMark())}
+      title={sold ? "Put this car back on the forecourt" : `Mark ${car.registration} as sold`}>
+      {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : sold ? <Undo2 className="w-3.5 h-3.5" /> : <BadgePoundSterling className="w-3.5 h-3.5" />}
+      {sold ? "Back on sale" : "Mark sold"}
+    </button>
+  );
+}
+
 function SaleInvoiceButton({
   car, invoiceId, pending, compact, onRaise, onOpen,
 }: {
