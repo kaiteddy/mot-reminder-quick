@@ -94,6 +94,8 @@ export async function sendCustomerReply(input: { to: string; body: string; custo
   if (!accountSid || !authToken || !waFrom) return { success: false, error: "Twilio is not configured" };
 
   const to = input.to.replace(/^whatsapp:/, "");
+  const { isOwnNumber } = await import("../smsService");
+  if (isOwnNumber(to)) return { success: false, error: "That is the garage's own number — not sending." };
 
   // Decide BEFORE sending. Twilio accepts an out-of-window WhatsApp message with a 201 and only
   // reports 63016 later on the status callback, so inspecting the send response can't catch it —

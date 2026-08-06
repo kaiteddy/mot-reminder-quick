@@ -195,7 +195,7 @@ export default function Conversations() {
     <DashboardLayout>
       {/* dvh, not vh: mobile browser chrome shrinks the viewport and vh would push the
           reply box off the bottom of the screen. */}
-      <div className="h-[calc(100dvh-7rem)] md:h-[calc(100vh-8rem)] flex flex-col bg-slate-50 border rounded-lg overflow-hidden">
+      <div className="h-[calc(100dvh-7rem-env(safe-area-inset-top))] md:h-[calc(100vh-8rem)] flex flex-col bg-slate-50 border rounded-lg overflow-hidden">
         {/* Header — hidden on mobile once a thread is open, so the phone screen is all conversation */}
         <div className={cn("bg-white border-b px-4 py-3 md:px-6 md:py-4 flex items-start justify-between gap-3", selectedCustomerId && "hidden md:flex")}>
           <div>

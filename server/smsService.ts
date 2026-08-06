@@ -36,6 +36,23 @@ export function statusCallbackUrl(): string {
   return `${base}/api/webhooks/twilio/status`;
 }
 
+/**
+ * The garage's own numbers. Customer #87 ("ELI MOTORS LTD") carries the workshop landline, so
+ * reminders were being sent to the garage itself — 8 of them before anyone noticed. Blocking at
+ * the send layer rather than at one caller catches every path, including future ones.
+ */
+const OWN_NUMBERS = ["+442082036449"];
+
+export function isOwnNumber(phone: string): boolean {
+  const d = String(phone || "").replace(/^whatsapp:/, "").replace(/\D/g, "");
+  if (!d) return false;
+  const norm = (n: string) => n.replace(/\D/g, "").replace(/^44/, "0").replace(/^0/, "");
+  const target = norm(d);
+  return OWN_NUMBERS.some((own) => norm(own) === target)
+    || [process.env.TWILIO_WHATSAPP_NUMBER, process.env.TWILIO_SMS_NUMBER]
+         .filter(Boolean).some((own) => norm(String(own)) === target);
+}
+
 export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
   const config: SMSConfig = {
     accountSid: (process.env.TWILIO_ACCOUNT_SID || "").trim(),
@@ -52,6 +69,12 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
   const authHeader = `Basic ${Buffer.from(`${usingApiKey ? apiKey : config.accountSid}:${usingApiKey ? apiSecret : config.authToken}`).toString("base64")}`;
 
   console.log(`[SMS Service] Sending to ${params.to} via SID ${config.accountSid.substring(0, 6)}... (auth: ${usingApiKey ? "API key" : "auth token"})`);
+
+  // Never message ourselves — see isOwnNumber.
+  if (isOwnNumber(params.to)) {
+    console.log(`[SMS Service] Refusing to message our own number (${params.to})`);
+    return { success: false, error: "That is the garage's own number — not sending." };
+  }
 
   // Check if Twilio is configured
   if (!config.accountSid || !config.whatsappNumber || (!usingApiKey && !config.authToken)) {
