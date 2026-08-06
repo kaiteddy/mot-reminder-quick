@@ -3293,7 +3293,10 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
   // The data cells for one row (everything except the drag-handle column).
   const rowCells = (it: Item, idx: number) => {
     const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
-    const floor = showPartNo && floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
+    // Floors used to apply to PART rows only (showPartNo), which meant a standard price for
+    // labour-side work — an MOT, an interim service — had nowhere to live and no warning when a
+    // job was written up under it. The rules are description-matched, so they work on any row.
+    const floor = floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
     const belowFloor = floor != null && (num(it.unitPrice) ?? 0) > 0 && (num(it.unitPrice) ?? 0) < floor;
     // Picking a suggestion fills description/part no AND, when known (a price-list entry or the
     // part's average historical price), quantity/price/VAT too — not just left at the £0 default.
