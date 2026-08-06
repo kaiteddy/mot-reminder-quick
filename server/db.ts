@@ -4445,7 +4445,7 @@ const pgStats = (vals: number[]) => {
 
 export async function getJobPriceGuide(opts?: { years?: number }) {
   const db = await getDb();
-  if (!db) return { years: 0, categories: PRICE_GUIDE_CATEGORIES, all: {}, makes: [] as any[] };
+  if (!db) return { years: 0, categories: PRICE_GUIDE_CATEGORIES, all: {} as Record<string, any>, sizes: [] as any[], makes: [] as any[] };
   const years = Math.max(1, Math.min(10, opts?.years ?? 3));
 
   const rows: any = await db.execute(sql`
