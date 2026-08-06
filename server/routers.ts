@@ -86,6 +86,12 @@ export const appRouter = router({
   }),
 
   priceGuide: router({
+    forRegistration: publicProcedure
+      .input(z.object({ registration: z.string(), years: z.number().optional() }))
+      .query(async ({ input }) => {
+        const { getPriceGuideForRegistration } = await import("./db");
+        return getPriceGuideForRegistration(input.registration, { years: input.years });
+      }),
     get: publicProcedure
       .input(z.object({ years: z.number().optional() }).optional())
       .query(async ({ input }) => {

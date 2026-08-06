@@ -54,10 +54,86 @@ function Cell({ stat }: { stat: any }) {
   );
 }
 
+/** The whole point of the page, in one box: type the reg, get the price.
+ *
+ * Everything below it is reference material. This is what gets used with a customer on the
+ * phone, so it does the thinking — works out the car's size band and reads back the few numbers
+ * that get asked for, big enough to read at a glance. */
+function QuickQuote({ years }: { years: number }) {
+  const [reg, setReg] = useState("");
+  const [submitted, setSubmitted] = useState("");
+  const { data, isFetching } = trpc.priceGuide.forRegistration.useQuery(
+    { registration: submitted, years },
+    { enabled: submitted.length >= 2, staleTime: 60_000 }
+  );
+
+  const HEADLINE = ["interimService", "fullService", "brakeFluid", "frontPads", "frontDiscs"];
+  const found = (data as any)?.found;
+  const v = (data as any)?.vehicle;
+  const prices = (data as any)?.prices || {};
+  const labels: Record<string, string> = Object.fromEntries(((data as any)?.categories || []).map((c: any) => [c.key, c.label]));
+
+  return (
+    <div className="rounded-xl border-2 border-violet-200 bg-violet-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm font-semibold text-slate-700">What's it for?</label>
+        <form onSubmit={(e) => { e.preventDefault(); setSubmitted(reg.trim().toUpperCase()); }} className="flex gap-2">
+          <input
+            value={reg}
+            onChange={(e) => setReg(e.target.value.toUpperCase())}
+            placeholder="Enter a registration"
+            className="w-44 rounded-md border-2 border-slate-300 bg-yellow-300 px-3 py-1.5 font-mono text-[16px] font-bold tracking-wider text-black placeholder:font-sans placeholder:text-[13px] placeholder:font-normal placeholder:text-black/50 outline-none focus:border-violet-500"
+          />
+          <button type="submit" className="rounded-md bg-violet-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-800">
+            {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Price it"}
+          </button>
+        </form>
+        {submitted && !isFetching && found === false && (
+          <span className="text-sm text-slate-500">Couldn't find {submitted} — use the size rows below.</span>
+        )}
+      </div>
+
+      {found && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold">{v?.make} {v?.model}</span>
+            <SizeBadge size={(data as any)?.band} cc={v?.engineCC} />
+            {v?.engineCC ? <span className="text-slate-500">{v.engineCC}cc</span> : null}
+            {(data as any)?.source === "dvla" && <span className="text-[11px] text-slate-400">(not one of ours — looked up at DVLA)</span>}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {/* MOT is a fixed charge, so it's stated rather than averaged. */}
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">MOT</div>
+              <div className="text-[22px] font-bold leading-tight">£50</div>
+              <div className="text-[10px] text-slate-400">fixed price</div>
+            </div>
+            {HEADLINE.map((k) => {
+              const st = prices[k];
+              return (
+                <div key={k} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500 truncate" title={labels[k]}>{labels[k]}</div>
+                  <div className={`text-[22px] font-bold leading-tight ${st ? "" : "text-slate-300"}`}>{st ? money(st.median) : "—"}</div>
+                  <div className="text-[10px] text-slate-400">{st ? `usually ${money(st.low)}–${money(st.high)}` : "no jobs like it yet"}</div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, VAT included. MOT is on top of these.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function PriceGuide() {
   const [years, setYears] = useState(3);
   const [filter, setFilter] = useState("");
   const [openMakes, setOpenMakes] = useState<Record<string, boolean>>({});
+  const [showTable, setShowTable] = useState(false);
   const { data, isLoading } = trpc.priceGuide.get.useQuery({ years }, { staleTime: 5 * 60_000 });
 
   const cats: any[] = (data as any)?.categories || [];
@@ -95,11 +171,19 @@ export default function PriceGuide() {
           </div>
         </div>
 
+        <QuickQuote years={years} />
+
         {isLoading ? (
           <div className="flex items-center gap-2 text-slate-500 py-12 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Working out prices from your invoices…</div>
         ) : (
           <>
-            <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
+            <button type="button" onClick={() => setShowTable((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-700 hover:underline print:hidden">
+              {showTable ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              {showTable ? "Hide the full breakdown" : "Show the full breakdown by make and model"}
+            </button>
+
+            <div className={`rounded-xl border border-slate-200 bg-white overflow-x-auto ${showTable ? "" : "hidden print:block"}`}>
               <table className="w-full text-[13px] min-w-[900px]">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase">
@@ -174,9 +258,9 @@ export default function PriceGuide() {
               </table>
             </div>
 
-            {!shown.length && <p className="text-sm text-slate-500 text-center py-6">No makes match “{filter}”.</p>}
+            {showTable && !shown.length && <p className="text-sm text-slate-500 text-center py-6">No makes match “{filter}”.</p>}
 
-            <div className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] text-slate-600">
+            <div className={`flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] text-slate-600 ${showTable ? "" : "hidden print:flex"}`}>
               <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
               <div className="space-y-1">
                 <p>

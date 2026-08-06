@@ -4589,3 +4589,52 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
 
   return { years, categories: PRICE_GUIDE_CATEGORIES, all, sizes, makes };
 }
+
+/** "How much is a service for this car?" — the whole price guide, reduced to one answer.
+ *
+ * Takes a registration, works out which size band that car is in, and hands back the prices for
+ * it. Falls back to DVLA when we've never seen the car, so a new customer on the phone gets an
+ * answer too. The model's own figures come back alongside, but only when there are enough of
+ * them to mean anything — otherwise the band is the answer. */
+export async function getPriceGuideForRegistration(registration: string, opts?: { years?: number }) {
+  const reg = String(registration || "").toUpperCase().replace(/\s+/g, "");
+  if (!reg) return null;
+
+  const db = await getDb();
+  let vehicle: any = db
+    ? (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0]
+    : null;
+
+  let source: "ours" | "dvla" | null = vehicle ? "ours" : null;
+  if (!vehicle) {
+    try {
+      const { getVehicleDetails } = await import("./dvlaApi");
+      const d: any = await getVehicleDetails(reg);
+      if (d) { vehicle = { registration: reg, make: d.make, model: d.model, engineCC: d.engineCapacity ?? d.engineCC }; source = "dvla"; }
+    } catch { /* no DVLA answer — fall through to "unknown car" */ }
+  }
+  if (!vehicle) return { found: false, registration: reg };
+
+  const cc = Number(vehicle.engineCC) || 0;
+  const band = !cc ? null : cc < 1400 ? "Small" : cc < 2000 ? "Medium" : "Large";
+
+  const guide = await getJobPriceGuide({ years: opts?.years });
+  const bandRow = guide.sizes.find((b: any) => b.band === band) || null;
+  const make = String(vehicle.make || "").toUpperCase();
+  const model = String(vehicle.model || "").split(" ")[0].toUpperCase();
+  const makeRow = guide.makes.find((m: any) => m.make === make) || null;
+  const modelRow = makeRow?.models?.find((m: any) => m.model === model) || null;
+
+  return {
+    found: true,
+    source,
+    registration: reg,
+    vehicle: { make: vehicle.make, model: vehicle.model, engineCC: cc },
+    band,
+    categories: guide.categories,
+    // Band prices are the answer; the model's own only when they're solid enough to beat it.
+    prices: bandRow?.cats || guide.all,
+    usedFallback: !bandRow,
+    model: modelRow ? { name: modelRow.model, cc: modelRow.cc, cats: modelRow.cats } : null,
+  };
+}
