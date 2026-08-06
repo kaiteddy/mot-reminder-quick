@@ -50,6 +50,9 @@ function Cell({ stat }: { stat: any }) {
       <div className="text-[10px] text-slate-400">
         {stat.low === stat.high ? `${stat.n} job${stat.n === 1 ? "" : "s"}` : `${money(stat.low)}–${money(stat.high)} · ${stat.n}`}
       </div>
+      {stat.labour != null && stat.parts != null && (
+        <div className="text-[10px] text-slate-400">{money(stat.labour)} lab + {money(stat.parts)} parts</div>
+      )}
     </td>
   );
 }
@@ -115,13 +118,17 @@ function QuickQuote({ years }: { years: number }) {
                 <div key={k} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 truncate" title={labels[k]}>{labels[k]}</div>
                   <div className={`text-[22px] font-bold leading-tight ${st ? "" : "text-slate-300"}`}>{st ? money(st.median) : "—"}</div>
-                  <div className="text-[10px] text-slate-400">{st ? `usually ${money(st.low)}–${money(st.high)}` : "no jobs like it yet"}</div>
+                  {/* Labour is a rate we set; parts are whatever the car takes. Splitting them is
+                      how the job gets quoted, and shows which half is moving the price. */}
+                  <div className="text-[10px] text-slate-400">
+                    {st ? `labour ${money(st.labour)} + parts ${money(st.parts)}` : "no jobs like it yet"}
+                  </div>
                 </div>
               );
             })}
           </div>
           <p className="text-[11px] text-slate-500">
-            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, VAT included. MOT is on top of these.
+            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, VAT included — labour plus the parts that car takes. MOT is on top.
           </p>
         </>
       )}

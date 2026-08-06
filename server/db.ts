@@ -4430,16 +4430,28 @@ export const PRICE_GUIDE_CATEGORIES = [
   ...PG_CATEGORIES.map(({ key, label, group }) => ({ key, label, group })),
 ];
 
-const pgStats = (vals: number[]) => {
-  if (!vals.length) return null;
-  const s = [...vals].sort((a, b) => a - b);
-  const at = (p: number) => s[Math.min(s.length - 1, Math.floor(s.length * p))];
-  const mid = Math.floor(s.length / 2);
+type PgJob = { total: number; labour: number; parts: number };
+
+/** Median, quartiles, and the labour/parts split — because that's how the job is quoted: the
+ * labour is a rate we set, the parts are whatever the car takes. Quoting only the all-in total
+ * hides which half moves. Each is taken independently, so labour + parts won't always add up to
+ * the total to the penny; they're each the middle of their own column. */
+const pgStats = (jobs: PgJob[]) => {
+  if (!jobs.length) return null;
+  const mid = (arr: number[]) => {
+    const s = [...arr].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const totals = jobs.map((j) => j.total).sort((a, b) => a - b);
+  const at = (p: number) => totals[Math.min(totals.length - 1, Math.floor(totals.length * p))];
   return {
-    median: Math.round(s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2),
+    median: Math.round(mid(totals)),
     low: Math.round(at(0.25)),
     high: Math.round(at(0.75)),
-    n: s.length,
+    labour: Math.round(mid(jobs.map((j) => j.labour))),
+    parts: Math.round(mid(jobs.map((j) => j.parts))),
+    n: jobs.length,
   };
 };
 
@@ -4486,8 +4498,8 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     else d.other += amt;                                     // unrelated work — disqualifies the doc
   }
 
-  const byKey = new Map<string, number[]>();
-  const push = (k: string, v: number) => { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k)!.push(v); };
+  const byKey = new Map<string, PgJob[]>();
+  const push = (k: string, v: PgJob) => { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k)!.push(v); };
   // Engine size per make/model, to say whether it's a small car or a big one. It's a proxy, but
   // a good one on this data: it ranks Picanto 1149cc -> Sorento 2030cc and A-Class -> GLE
   // correctly, and it's populated on 87% of the fleet where a body type isn't recorded at all.
@@ -4507,15 +4519,17 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
       ? (d.oilFilter ? (d.airFilter && d.cabinFilter ? "fullService" : "interimService") : null)
       : only;
     if (!cat) continue;
-    const price = (d.own + d.labour) * 1.2;                  // net lines -> what the customer pays
+    // Grossed up per component, so the labour and parts figures are quotable in their own right.
+    const job: PgJob = { total: (d.own + d.labour) * 1.2, labour: d.labour * 1.2, parts: d.own * 1.2 };
+    const price = job.total;
     if (!(price > 40) || price > 2000) continue;             // guard against broken records
-    push(`ALL|${cat}`, price);
+    push(`ALL|${cat}`, job);
     // Size band is judged per JOB, from that car's own engine size — pooling by band gives the
     // stable figure to quote, where a single model's handful of jobs never can.
     const band = !d.cc ? null : d.cc < 1400 ? "Small" : d.cc < 2000 ? "Medium" : "Large";
-    if (band) push(`SIZE:${band}|${cat}`, price);
-    if (d.make) { push(`${d.make}|${cat}`, price); pushCc(d.make, d.cc); }
-    if (d.make && d.model) { push(`${d.make}~${d.model}|${cat}`, price); pushCc(`${d.make}~${d.model}`, d.cc); }
+    if (band) push(`SIZE:${band}|${cat}`, job);
+    if (d.make) { push(`${d.make}|${cat}`, job); pushCc(d.make, d.cc); }
+    if (d.make && d.model) { push(`${d.make}~${d.model}|${cat}`, job); pushCc(`${d.make}~${d.model}`, d.cc); }
   }
 
   const avgCc = (k: string) => {
