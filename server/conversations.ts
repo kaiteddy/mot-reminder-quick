@@ -253,7 +253,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       messageSid: log.messageSid || undefined,
       vehicleRegistration: log.vehicleRegistration || undefined,
       messageType: log.messageType || undefined,
-      channel: (log.templateUsed || "").endsWith("-sms") ? ("sms" as const) : ("whatsapp" as const),
+      channel: (log.templateUsed || "").includes("-sms") ? ("sms" as const) : ("whatsapp" as const),
     })),
     ...receivedMsgs.map(msg => ({
       id: msg.id,

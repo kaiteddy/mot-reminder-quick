@@ -199,34 +199,42 @@ async function retryAsSms(messageSid: string, errCode: number) {
   const body = String(msg.body || "").trim();
   if (!body) return;
 
+  const plain = to.replace(/^whatsapp:/, "");
+  const marker = `rescue-sms:${messageSid}`;
+
+  const { getDb, findCustomerByPhone } = await import("../db");
+  const { sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) return;
+
+  // CLAIM FIRST, then send. Twilio repeats status callbacks about a second apart, so a
+  // check-then-send races and both copies go out — that is exactly what happened on the first
+  // live rescues. A partial unique index on this marker makes the second insert lose, and the
+  // loser returns without sending. The row is written before the SMS so a crash mid-send costs
+  // a missed message rather than a duplicate one.
+  const customer: any = await findCustomerByPhone(plain).catch(() => null);
+  const claim: any = await db.execute(sql`
+    INSERT INTO "reminderLogs" ("customerId", "messageType", "recipient", "status", "templateUsed", "messageContent", "sentAt")
+    VALUES (${customer?.id ?? null}, 'Other', ${plain}, 'queued', ${marker}, ${body}, now())
+    ON CONFLICT DO NOTHING
+    RETURNING id`);
+  const claimedId = claim?.rows?.[0]?.id;
+  if (!claimedId) {
+    console.log(`[Twilio Status] ${messageSid} already rescued — ignoring repeat callback`);
+    return;
+  }
+
   const { sendAsSms } = await import("../services/customerReply");
   const why = errCode === 63016 ? "the 24-hour WhatsApp window had closed" : "they aren't on WhatsApp";
   const out = await sendAsSms(to, body, why);
   console.log(`[Twilio Status] ${messageSid} failed ${errCode}; SMS rescue ${out.success ? "sent " + out.messageId : "failed: " + out.error}`);
 
-  // Record the rescue against the same customer, otherwise the thread shows the failed
-  // WhatsApp and no sign that the message actually got through by text.
-  if (out.success) {
-    try {
-      const { findCustomerByPhone, createReminderLog } = await import("../db");
-      const plain = to.replace(/^whatsapp:/, "");
-      const customer: any = await findCustomerByPhone(plain);
-      await createReminderLog({
-        reminderId: null,
-        customerId: customer?.id ?? null,
-        vehicleId: null,
-        messageType: "Other",
-        recipient: plain,
-        messageSid: out.messageId,
-        status: "sent",
-        templateUsed: "rescue-sms",   // the "-sms" suffix is what tags it as a text in the thread
-        messageContent: body,
-        sentAt: new Date(),
-      });
-    } catch (e: any) {
-      console.error("[Twilio Status] couldn't log the SMS rescue:", e?.message);
-    }
-  }
+  await db.execute(sql`
+    UPDATE "reminderLogs"
+       SET "messageSid" = ${out.messageId ?? null},
+           status = ${out.success ? "sent" : "failed"},
+           "errorMessage" = ${out.success ? null : (out.error ?? null)}
+     WHERE id = ${claimedId}`).catch(() => undefined);
 }
 
 export async function handleTwilioStatusCallback(req: Request, res: Response) {

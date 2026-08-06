@@ -315,8 +315,12 @@ function DashboardLayoutContent({
       )}
 
       <SidebarInset className="flex flex-col flex-1 overflow-hidden relative">
-        <header className="h-16 flex items-center justify-between px-6 bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10">
-          <div className="flex items-center gap-4">
+        {/* Installed to the home screen the web view runs under the iOS status bar (we ask for a
+            translucent one), so the header must grow by the safe-area inset — without it these
+            buttons sit beneath the clock and the notch. Both resolve to zero in a browser tab
+            and on desktop, so nothing changes there. */}
+        <header className="h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] flex items-center justify-between px-4 sm:px-6 bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10">
+          <div className="flex items-center gap-2 sm:gap-4">
             <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
             <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
             <div className="flex flex-col">
