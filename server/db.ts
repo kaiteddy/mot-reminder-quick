@@ -4541,8 +4541,15 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     return { band, jobs, cats };
   }).filter((b) => b.jobs > 0);
 
+  // byKey holds three kinds of key — "ALL", "SIZE:<band>", "<MAKE>" and "<MAKE>~<MODEL>". Only
+  // the bare make is a make: without this the size bands and every model turned up in the table
+  // as manufacturers of their own ("SIZE:Medium", "HONDA~JAZZ", complete with a fallback logo).
   const makeNames = new Set<string>();
-  for (const k of Array.from(byKey.keys())) { const m = k.split("|")[0]; if (m !== "ALL") makeNames.add(m); }
+  for (const k of Array.from(byKey.keys())) {
+    const m = k.split("|")[0];
+    if (m === "ALL" || m.startsWith("SIZE:") || m.includes("~")) continue;
+    makeNames.add(m);
+  }
 
   const modelNames = new Map<string, Set<string>>();
   for (const k of Array.from(byKey.keys())) {
