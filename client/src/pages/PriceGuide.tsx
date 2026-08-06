@@ -13,6 +13,12 @@ import { Loader2, Search, Info, Printer, ChevronRight, ChevronDown } from "lucid
  * car", and the job count says how much weight the figure carries.
  */
 const money = (n: any) => `£${Number(n || 0).toLocaleString("en-GB")}`;
+/** Every figure derived from invoices is stored VAT-inclusive (that's what the customer paid).
+ * Ex-VAT is what gets typed onto a job sheet, so both are needed — the toggle switches the
+ * derived figures, and the headline quote shows both at once since that's the one being read
+ * out loud. */
+const exVat = (n: any) => Number(n || 0) / 1.2;
+const fmt = (n: any, mode: "inc" | "ex") => `£${Math.round(mode === "ex" ? exVat(n) : Number(n || 0)).toLocaleString("en-GB")}`;
 
 const SIZE_HINT: Record<string, string> = {
   Small: "under 1400cc — Aygo, Fiesta, Picanto",
@@ -39,19 +45,19 @@ function SizeBadge({ size, cc }: { size?: string | null; cc?: number }) {
   );
 }
 
-function Cell({ stat }: { stat: any }) {
+function Cell({ stat, vat }: { stat: any; vat: "inc" | "ex" }) {
   if (!stat) return <td className="px-2 py-2 text-center text-slate-300">—</td>;
   // Under five jobs is a hint, not a price — a Kuga priced off two jobs came out cheaper than a
   // Fiesta, which is nonsense you'd only spot if the sample size is impossible to miss.
   const thin = stat.n < 5;
   return (
     <td className="px-2 py-2 text-center whitespace-nowrap">
-      <div className={`font-semibold ${thin ? "text-slate-500" : "text-slate-900"}`}>{money(stat.median)}</div>
+      <div className={`font-semibold ${thin ? "text-slate-500" : "text-slate-900"}`}>{fmt(stat.median, vat)}</div>
       <div className="text-[10px] text-slate-400">
-        {stat.low === stat.high ? `${stat.n} job${stat.n === 1 ? "" : "s"}` : `${money(stat.low)}–${money(stat.high)} · ${stat.n}`}
+        {stat.low === stat.high ? `${stat.n} job${stat.n === 1 ? "" : "s"}` : `${fmt(stat.low, vat)}–${fmt(stat.high, vat)} · ${stat.n}`}
       </div>
       {stat.labour != null && stat.parts != null && (
-        <div className="text-[10px] text-slate-400">{money(stat.labour)} lab + {money(stat.parts)} parts</div>
+        <div className="text-[10px] text-slate-400">{fmt(stat.labour, vat)} lab + {fmt(stat.parts, vat)} parts</div>
       )}
     </td>
   );
@@ -62,7 +68,7 @@ function Cell({ stat }: { stat: any }) {
  * Everything below it is reference material. This is what gets used with a customer on the
  * phone, so it does the thinking — works out the car's size band and reads back the few numbers
  * that get asked for, big enough to read at a glance. */
-function QuickQuote({ years }: { years: number }) {
+function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
   const [reg, setReg] = useState("");
   const [submitted, setSubmitted] = useState("");
   const { data, isFetching } = trpc.priceGuide.forRegistration.useQuery(
@@ -112,13 +118,16 @@ function QuickQuote({ years }: { years: number }) {
               <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Interim service — quote this</div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-0.5">
                 <span className="text-[28px] font-bold leading-none text-emerald-900">{money((data as any).ourLabour.labour)}</span>
-                <span className="text-sm text-emerald-800">labour, plus parts</span>
+                <span className="text-sm text-emerald-800">
+                  + VAT = <strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2))}</strong> labour, plus parts
+                </span>
                 <span className="text-[11px] text-emerald-700">({(data as any).ourLabour.label} · {v?.engineCC}cc)</span>
               </div>
               {prices.interimService?.parts != null && (
                 <div className="text-[11px] text-emerald-800/80 mt-1">
-                  Parts on a car this size have typically run {money(prices.interimService.parts)} — so around{" "}
-                  <strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2 + prices.interimService.parts))}</strong> all in, MOT on top.
+                  Parts on a car this size have typically run {money(Math.round(exVat(prices.interimService.parts)))} + VAT — so around{" "}
+                  <strong>{money(Math.round(Number((data as any).ourLabour.labour) + exVat(prices.interimService.parts)))}</strong> + VAT
+                  {" "}(<strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2 + prices.interimService.parts))}</strong> inc VAT) all in, MOT on top.
                 </div>
               )}
             </div>
@@ -129,6 +138,7 @@ function QuickQuote({ years }: { years: number }) {
             <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">MOT</div>
               <div className="text-[22px] font-bold leading-tight">£50</div>
+              <div className="text-[11px] font-medium text-slate-500">no VAT on MOT</div>
               <div className="text-[10px] text-slate-400">fixed price</div>
             </div>
             {HEADLINE.map((k) => {
@@ -136,18 +146,24 @@ function QuickQuote({ years }: { years: number }) {
               return (
                 <div key={k} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wide text-slate-500 truncate" title={labels[k]}>{labels[k]}</div>
+                  {/* Both figures, always: the retail price is what's quoted to the customer, the
+                      ex-VAT one is what goes on the job sheet. Needing to switch between them
+                      mid-call is exactly the friction this page exists to remove. */}
                   <div className={`text-[22px] font-bold leading-tight ${st ? "" : "text-slate-300"}`}>{st ? money(st.median) : "—"}</div>
-                  {/* Labour is a rate we set; parts are whatever the car takes. Splitting them is
-                      how the job gets quoted, and shows which half is moving the price. */}
-                  <div className="text-[10px] text-slate-400">
-                    {st ? `labour ${money(st.labour)} + parts ${money(st.parts)}` : "no jobs like it yet"}
-                  </div>
+                  {st ? (
+                    <>
+                      <div className="text-[11px] font-medium text-slate-500">{money(Math.round(exVat(st.median)))} + VAT</div>
+                      <div className="text-[10px] text-slate-400">labour {money(Math.round(exVat(st.labour)))} + parts {money(Math.round(exVat(st.parts)))}</div>
+                    </>
+                  ) : (
+                    <div className="text-[10px] text-slate-400">no jobs like it yet</div>
+                  )}
                 </div>
               );
             })}
           </div>
           <p className="text-[11px] text-slate-500">
-            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, VAT included — labour plus the parts that car takes. MOT is on top.
+            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, {vat === "inc" ? "VAT included" : "excluding VAT"} — labour plus the parts that car takes. MOT is on top.
           </p>
         </>
       )}
@@ -160,6 +176,7 @@ export default function PriceGuide() {
   const [filter, setFilter] = useState("");
   const [openMakes, setOpenMakes] = useState<Record<string, boolean>>({});
   const [showTable, setShowTable] = useState(false);
+  const [vat, setVat] = useState<"inc" | "ex">("inc");
   const { data, isLoading } = trpc.priceGuide.get.useQuery({ years }, { staleTime: 5 * 60_000 });
 
   const cats: any[] = (data as any)?.categories || [];
@@ -176,7 +193,7 @@ export default function PriceGuide() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Price Guide</h1>
             <p className="text-sm text-slate-500">
-              What we actually charged, per manufacturer — taken from our own invoices, VAT included.
+              What we actually charged, per manufacturer — taken from our own invoices. Showing {vat === "inc" ? "prices including VAT" : "prices excluding VAT"}.
             </p>
           </div>
           <div className="flex items-center gap-2 print:hidden">
@@ -184,6 +201,14 @@ export default function PriceGuide() {
               <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a make…"
                 className="border rounded-md pl-8 pr-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+            </div>
+            <div className="inline-flex rounded-md border overflow-hidden text-sm">
+              {(["inc", "ex"] as const).map((mode) => (
+                <button key={mode} type="button" onClick={() => setVat(mode)}
+                  className={`px-2.5 py-1.5 ${vat === mode ? "bg-violet-700 text-white" : "bg-white hover:bg-slate-50"}`}>
+                  {mode === "inc" ? "Inc VAT" : "Ex VAT"}
+                </button>
+              ))}
             </div>
             <select value={years} onChange={(e) => setYears(Number(e.target.value))}
               className="border rounded-md px-2 py-1.5 text-sm">
@@ -197,7 +222,7 @@ export default function PriceGuide() {
           </div>
         </div>
 
-        <QuickQuote years={years} />
+        <QuickQuote years={years} vat={vat} />
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-slate-500 py-12 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Working out prices from your invoices…</div>
@@ -223,7 +248,7 @@ export default function PriceGuide() {
                   {/* The house figure first — the one to quote when the make has too little history. */}
                   <tr className="bg-violet-50/50">
                     <td className="px-3 py-2 font-semibold">All makes</td>
-                    {cats.map((c) => <Cell key={c.key} stat={all[c.key]} />)}
+                    {cats.map((c) => <Cell key={c.key} stat={all[c.key]} vat={vat} />)}
                   </tr>
                   {/* By size, pooled across every make: an individual model rarely has enough
                       jobs to be trustworthy, but the size band always does — and size is what
@@ -236,7 +261,7 @@ export default function PriceGuide() {
                           <span className="text-[12px] text-slate-600">{SIZE_HINT[b.band]}</span>
                         </div>
                       </td>
-                      {cats.map((c) => <Cell key={c.key} stat={b.cats[c.key]} />)}
+                      {cats.map((c) => <Cell key={c.key} stat={b.cats[c.key]} vat={vat} />)}
                     </tr>
                   ))}
                   {shown.map((m) => {
@@ -263,7 +288,7 @@ export default function PriceGuide() {
                               )}
                             </div>
                           </td>
-                          {cats.map((c) => <Cell key={c.key} stat={m.cats[c.key]} />)}
+                          {cats.map((c) => <Cell key={c.key} stat={m.cats[c.key]} vat={vat} />)}
                         </tr>
                         {open && models.map((md: any) => (
                           <tr key={`${m.make}-${md.model}`} className="bg-slate-50/60">
@@ -274,7 +299,7 @@ export default function PriceGuide() {
                                 {md.cc ? <span className="text-[10px] text-slate-400">{md.cc}cc</span> : null}
                               </div>
                             </td>
-                            {cats.map((c) => <Cell key={c.key} stat={md.cats[c.key]} />)}
+                            {cats.map((c) => <Cell key={c.key} stat={md.cats[c.key]} vat={vat} />)}
                           </tr>
                         ))}
                       </Fragment>
