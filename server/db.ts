@@ -4449,7 +4449,8 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
   const years = Math.max(1, Math.min(10, opts?.years ?? 3));
 
   const rows: any = await db.execute(sql`
-    SELECT s.id, v.make, li.description d, li."itemType" t,
+    SELECT s.id, v.make, split_part(COALESCE(v.model,''), ' ', 1) model, v."engineCC" cc,
+           li.description d, li."itemType" t,
            COALESCE(li."subNet", li.quantity * li."unitPrice") amt
     FROM "serviceHistory" s
     JOIN vehicles v ON v.id = s."vehicleId"
@@ -4457,11 +4458,19 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     WHERE s."docType" IN ('SI','XS')
       AND s."dateCreated" >= now() - (${years} || ' years')::interval`);
 
-  type Doc = { make: string; own: number; other: number; labour: number; cats: Set<string>; oilFilter: boolean; airFilter: boolean; cabinFilter: boolean };
+  type Doc = { make: string; model: string; cc: number; own: number; other: number; labour: number; cats: Set<string>; oilFilter: boolean; airFilter: boolean; cabinFilter: boolean };
   const docs = new Map<number, Doc>();
   for (const r of rows.rows) {
     let d = docs.get(r.id);
-    if (!d) { d = { make: String(r.make || "").toUpperCase(), own: 0, other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false }; docs.set(r.id, d); }
+    if (!d) {
+      d = {
+        make: String(r.make || "").toUpperCase(),
+        model: String(r.model || "").toUpperCase(),
+        cc: Number(r.cc) || 0,
+        own: 0, other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false,
+      };
+      docs.set(r.id, d);
+    }
     const s = String(r.d || "").toLowerCase();
     const amt = Number(r.amt) || 0;
     const type = String(r.t || "");
@@ -4479,6 +4488,11 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
 
   const byKey = new Map<string, number[]>();
   const push = (k: string, v: number) => { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k)!.push(v); };
+  // Engine size per make/model, to say whether it's a small car or a big one. It's a proxy, but
+  // a good one on this data: it ranks Picanto 1149cc -> Sorento 2030cc and A-Class -> GLE
+  // correctly, and it's populated on 87% of the fleet where a body type isn't recorded at all.
+  const ccByKey = new Map<string, number[]>();
+  const pushCc = (k: string, cc: number) => { if (cc > 0) { if (!ccByKey.has(k)) ccByKey.set(k, []); ccByKey.get(k)!.push(cc); } };
 
   for (const d of docs.values()) {
     if (d.other > 0.01 || d.labour <= 0) continue;
@@ -4496,8 +4510,18 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     const price = (d.own + d.labour) * 1.2;                  // net lines -> what the customer pays
     if (!(price > 40) || price > 2000) continue;             // guard against broken records
     push(`ALL|${cat}`, price);
-    if (d.make) push(`${d.make}|${cat}`, price);
+    if (d.make) { push(`${d.make}|${cat}`, price); pushCc(d.make, d.cc); }
+    if (d.make && d.model) { push(`${d.make}~${d.model}|${cat}`, price); pushCc(`${d.make}~${d.model}`, d.cc); }
   }
+
+  const avgCc = (k: string) => {
+    const v = ccByKey.get(k) || [];
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0;
+  };
+  /** Small / Medium / Large — the distinction that actually changes the price of a service
+   * (oil capacity and filter cost both track it). Blank when we've no engine size to go on,
+   * rather than guessing a band. */
+  const sizeOf = (cc: number) => (!cc ? null : cc < 1400 ? "Small" : cc < 2000 ? "Medium" : "Large");
 
   const all: Record<string, any> = {};
   for (const c of PRICE_GUIDE_CATEGORIES) all[c.key] = pgStats(byKey.get(`ALL|${c.key}`) || []);
@@ -4505,15 +4529,39 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
   const makeNames = new Set<string>();
   for (const k of Array.from(byKey.keys())) { const m = k.split("|")[0]; if (m !== "ALL") makeNames.add(m); }
 
-  const makes = Array.from(makeNames).map((make) => {
+  const modelNames = new Map<string, Set<string>>();
+  for (const k of Array.from(byKey.keys())) {
+    const left = k.split("|")[0];
+    if (!left.includes("~")) continue;
+    const [mk, md] = left.split("~");
+    if (!modelNames.has(mk)) modelNames.set(mk, new Set());
+    modelNames.get(mk)!.add(md);
+  }
+
+  const statsFor = (prefix: string) => {
     const cats: Record<string, any> = {};
     let jobs = 0;
     for (const c of PRICE_GUIDE_CATEGORIES) {
-      const st = pgStats(byKey.get(`${make}|${c.key}`) || []);
+      const st = pgStats(byKey.get(`${prefix}|${c.key}`) || []);
       cats[c.key] = st;
       jobs += st?.n || 0;
     }
-    return { make, jobs, cats };
+    return { cats, jobs };
+  };
+
+  const makes = Array.from(makeNames).map((make) => {
+    const { cats, jobs } = statsFor(make);
+    const cc = avgCc(make);
+    const models = Array.from(modelNames.get(make) || [])
+      .map((model) => {
+        const m = statsFor(`${make}~${model}`);
+        const mcc = avgCc(`${make}~${model}`);
+        return { model, jobs: m.jobs, cats: m.cats, cc: mcc, size: sizeOf(mcc) };
+      })
+      // Two jobs can't carry a model's price; those cars still count towards the make's row.
+      .filter((m) => m.jobs >= 3)
+      .sort((a, b) => a.cc - b.cc || b.jobs - a.jobs);
+    return { make, jobs, cats, cc, size: sizeOf(cc), models };
   })
     .filter((m) => m.jobs >= 3)
     .sort((a, b) => b.jobs - a.jobs);

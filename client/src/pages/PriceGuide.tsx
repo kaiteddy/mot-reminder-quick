@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
-import { Loader2, Search, Info, Printer } from "lucide-react";
+import { Loader2, Search, Info, Printer, ChevronRight, ChevronDown } from "lucide-react";
 
 /**
  * "How much is a small service for a GLC?" — answered from our own invoices instead of guessed.
@@ -13,6 +13,25 @@ import { Loader2, Search, Info, Printer } from "lucide-react";
  * car", and the job count says how much weight the figure carries.
  */
 const money = (n: any) => `£${Number(n || 0).toLocaleString("en-GB")}`;
+
+const SIZE_TONE: Record<string, string> = {
+  Small: "bg-sky-50 text-sky-700 border-sky-200",
+  Medium: "bg-amber-50 text-amber-700 border-amber-200",
+  Large: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+/** Engine size is the proxy for how big a car is, and it's what actually moves the price of a
+ * service — oil capacity and filter cost both track it. Shown so an Aygo and a RAV4 are never
+ * read off the same line. */
+function SizeBadge({ size, cc }: { size?: string | null; cc?: number }) {
+  if (!size) return null;
+  return (
+    <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-semibold ${SIZE_TONE[size] || ""}`}
+      title={cc ? `Average ${cc}cc across these jobs` : undefined}>
+      {size}
+    </span>
+  );
+}
 
 function Cell({ stat }: { stat: any }) {
   if (!stat) return <td className="px-2 py-2 text-center text-slate-300">—</td>;
@@ -31,6 +50,7 @@ function Cell({ stat }: { stat: any }) {
 export default function PriceGuide() {
   const [years, setYears] = useState(3);
   const [filter, setFilter] = useState("");
+  const [openMakes, setOpenMakes] = useState<Record<string, boolean>>({});
   const { data, isLoading } = trpc.priceGuide.get.useQuery({ years }, { staleTime: 5 * 60_000 });
 
   const cats: any[] = (data as any)?.categories || [];
@@ -87,17 +107,43 @@ export default function PriceGuide() {
                     <td className="px-3 py-2 font-semibold">All makes</td>
                     {cats.map((c) => <Cell key={c.key} stat={all[c.key]} />)}
                   </tr>
-                  {shown.map((m) => (
-                    <tr key={m.make} className="hover:bg-slate-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2.5">
-                          <ManufacturerLogo make={m.make} size="sm" />
-                          <span className="font-medium truncate">{m.make}</span>
-                        </div>
-                      </td>
-                      {cats.map((c) => <Cell key={c.key} stat={m.cats[c.key]} />)}
-                    </tr>
-                  ))}
+                  {shown.map((m) => {
+                    const open = !!openMakes[m.make];
+                    const models: any[] = m.models || [];
+                    return (
+                      <Fragment key={m.make}>
+                        <tr className={`hover:bg-slate-50 ${models.length ? "cursor-pointer" : ""}`}
+                          onClick={() => models.length && setOpenMakes((o) => ({ ...o, [m.make]: !o[m.make] }))}>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              {models.length
+                                ? (open ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />)
+                                : <span className="w-3.5 shrink-0" />}
+                              <ManufacturerLogo make={m.make} size="sm" />
+                              <span className="font-medium truncate">{m.make}</span>
+                              <SizeBadge size={m.size} cc={m.cc} />
+                              {models.length > 0 && !open && (
+                                <span className="text-[10px] text-slate-400 whitespace-nowrap">{models.length} model{models.length === 1 ? "" : "s"}</span>
+                              )}
+                            </div>
+                          </td>
+                          {cats.map((c) => <Cell key={c.key} stat={m.cats[c.key]} />)}
+                        </tr>
+                        {open && models.map((md: any) => (
+                          <tr key={`${m.make}-${md.model}`} className="bg-slate-50/60">
+                            <td className="px-3 py-1.5">
+                              <div className="flex items-center gap-2 pl-8">
+                                <span className="text-[12px] text-slate-700 truncate">{md.model}</span>
+                                <SizeBadge size={md.size} cc={md.cc} />
+                                {md.cc ? <span className="text-[10px] text-slate-400">{md.cc}cc</span> : null}
+                              </div>
+                            </td>
+                            {cats.map((c) => <Cell key={c.key} stat={md.cats[c.key]} />)}
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -111,6 +157,11 @@ export default function PriceGuide() {
                   <strong>The big figure is the middle price</strong> — half of those jobs came in under it, half over.
                   The smaller line is the usual spread and how many jobs it's based on. A make with only one or two jobs
                   is greyed out: treat it as a hint, not a price.
+                </p>
+                <p>
+                  <strong>Click a make to see its models.</strong> Small / Medium / Large comes from engine size,
+                  which is what actually moves a service price — an Aygo and a RAV4 are never on the same line.
+                  A model needs at least three jobs of its own to appear; the rest still count towards the make.
                 </p>
                 <p>
                   <strong>MOT is quoted separately</strong> and stripped out of every figure here, so you can add it on top.
