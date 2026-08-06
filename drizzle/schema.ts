@@ -770,3 +770,17 @@ export const pushSubscriptions = pgTable("pushSubscriptions", {
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+/** Our own labour price for a service, banded by engine size — the figure we CHOOSE to charge,
+ * as opposed to the historical medians the Price Guide derives from past invoices. Kept in a
+ * table rather than in code so the bands can be repriced without a deploy. A null maxCC is the
+ * catch-all top band. */
+export const serviceLabourBands = pgTable("serviceLabourBands", {
+  id: serial("id").primaryKey(),
+  jobKey: varchar("jobKey", { length: 40 }).notNull(),   // e.g. "interimService"
+  maxCC: integer("maxCC"),                                // inclusive upper bound; null = no limit
+  label: varchar("label", { length: 60 }).notNull(),
+  labour: numeric("labour", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+});

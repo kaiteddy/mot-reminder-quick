@@ -4646,16 +4646,41 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   const makeRow = guide.makes.find((m: any) => m.make === make) || null;
   const modelRow = makeRow?.models?.find((m: any) => m.model === model) || null;
 
+  // Our own banded labour price for this engine size — what to actually quote, alongside what
+  // the history says we've charged.
+  const labourBands = await getServiceLabourBands("interimService");
+  const ourLabour = pickLabourBand(labourBands, cc);
+
   return {
     found: true,
     source,
     registration: reg,
     vehicle: { make: vehicle.make, model: vehicle.model, engineCC: cc },
     band,
+    ourLabour,
+    labourBands,
     categories: guide.categories,
     // Band prices are the answer; the model's own only when they're solid enough to beat it.
     prices: bandRow?.cats || guide.all,
     usedFallback: !bandRow,
     model: modelRow ? { name: modelRow.model, cc: modelRow.cc, cats: modelRow.cats } : null,
   };
+}
+
+/** Our chosen labour price for a job, by engine size — what we mean to charge, as distinct from
+ * the historical medians the price guide derives. Adam's bands, 06/08/2026:
+ *   up to 999cc £124 · 1.0–1.5L £134 · over 1.5–2.0L £144 · over 2.0L £164
+ * A car with no engine size on file gets no band rather than a guessed one. */
+export async function getServiceLabourBands(jobKey = "interimService") {
+  const db = await getDb();
+  if (!db) return [];
+  const rows: any = await db.execute(sql`
+    SELECT id, "jobKey", "maxCC", label, labour FROM "serviceLabourBands"
+    WHERE "jobKey" = ${jobKey} ORDER BY COALESCE("maxCC", 2147483647) ASC`);
+  return rows.rows.map((r: any) => ({ id: r.id, jobKey: r.jobKey, maxCC: r.maxCC == null ? null : Number(r.maxCC), label: r.label, labour: Number(r.labour) }));
+}
+
+export function pickLabourBand(bands: { maxCC: number | null; label: string; labour: number }[], cc: number) {
+  if (!cc || !bands.length) return null;
+  return bands.find((b) => b.maxCC == null || cc <= b.maxCC) || null;
 }

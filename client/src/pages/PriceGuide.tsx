@@ -105,6 +105,25 @@ function QuickQuote({ years }: { years: number }) {
             {(data as any)?.source === "dvla" && <span className="text-[11px] text-slate-400">(not one of ours — looked up at DVLA)</span>}
           </div>
 
+          {/* Our banded labour price comes first: it's the figure to quote, decided rather than
+              derived. The history below it says what these jobs have actually come to. */}
+          {(data as any)?.ourLabour && (
+            <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Interim service — quote this</div>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-0.5">
+                <span className="text-[28px] font-bold leading-none text-emerald-900">{money((data as any).ourLabour.labour)}</span>
+                <span className="text-sm text-emerald-800">labour, plus parts</span>
+                <span className="text-[11px] text-emerald-700">({(data as any).ourLabour.label} · {v?.engineCC}cc)</span>
+              </div>
+              {prices.interimService?.parts != null && (
+                <div className="text-[11px] text-emerald-800/80 mt-1">
+                  Parts on a car this size have typically run {money(prices.interimService.parts)} — so around{" "}
+                  <strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2 + prices.interimService.parts))}</strong> all in, MOT on top.
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {/* MOT is a fixed charge, so it's stated rather than averaged. */}
             <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
