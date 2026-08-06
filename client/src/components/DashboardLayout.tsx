@@ -21,36 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginRoute } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import {
-  LayoutDashboard,
-  LogOut,
-  PanelLeft,
-  Users,
-  Archive,
-  AlertCircle,
-  MessageSquare,
-  Database as DatabaseIcon,
-  Car,
-  UserCheck,
-  Search,
-  FileText,
-  FileSpreadsheet,
-  Mail,
-  Settings,
-  ShieldCheck,
-  Smartphone,
-  BarChart,
-  ScanLine,
-  History,
-  Calendar as CalendarIcon,
-  Wrench,
-  Brain,
-  PoundSterling,
-  Tag,
-  GitMerge,
-  ShieldAlert,
-  Package
-} from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Archive, AlertCircle, MessageSquare, Database as DatabaseIcon, Car, UserCheck, Search, FileText, FileSpreadsheet, Mail, Settings, ShieldCheck, Smartphone, BarChart, ScanLine, History, Calendar as CalendarIcon, Wrench, Brain, PoundSterling, Tag, GitMerge, ShieldAlert, Package, Tags } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -69,6 +40,7 @@ const menuGroups = [
     { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
     { icon: Package, label: "Parts Price List", path: "/parts-price-list" },
+    { icon: Tags, label: "Price Guide", path: "/price-guide" },
     { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
     { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
     { icon: Wrench, label: "Technical Data", path: "/technical-data" },

@@ -4393,3 +4393,130 @@ export async function setSalesStockSold(input: { id: number; sold: boolean; sold
   await db.update(salesStock).set(patch as any).where(eq(salesStock.id, input.id));
   return (await db.select().from(salesStock).where(eq(salesStock.id, input.id)).limit(1))[0];
 }
+
+// ─── Job price guide ─────────────────────────────────────────────────────────
+/** What we actually charge for the jobs customers ring up about, worked out from our own
+ * invoices, per manufacturer.
+ *
+ * The hard part is that a real invoice bundles work: a service, an MOT and two wiper blades on
+ * one bill. Pricing from the document total therefore massively overstates every job (an
+ * interim service "cost" £286 that way). So each job is priced from ITS OWN lines:
+ *
+ *   - a document only counts for a category if it carries NO parts outside that category, so a
+ *     service done alongside a brake job prices neither;
+ *   - the MOT charge is stripped out, since that's quoted separately;
+ *   - line values are net, so the guide figure is grossed up by VAT — customers ask
+ *     "how much", and they mean the number on the card machine.
+ *
+ * Reported as a MEDIAN with the quartiles either side: an average is dragged around by the
+ * occasional big job, and the quartile spread is what tells you whether a brand's price is
+ * genuinely predictable or varies with the car. `n` is always carried so a figure resting on
+ * three jobs can be seen for what it is. */
+const PG_SERVICE_PART = (s: string) =>
+  (/\boil\b|oil$/.test(s) && !/(gear|transmission|diff|brake|steering|cooler|seal|leak|pump|level|top\s*up)/.test(s))
+  || /oil\s*filter|air\s*(filter|cleaner)|(pollen|cabin|micro)\s*filter|fuel\s*filter|sump\s*plug|washer|sundr|\bppe\b|lubricant|anti\s*freeze|screen\s*wash/.test(s);
+
+const PG_CATEGORIES: { key: string; label: string; group: string; part: (s: string) => boolean }[] = [
+  { key: "frontPads", label: "Front brake pads", group: "Brakes", part: (s) => /pad/.test(s) && /(frt|front)/.test(s) },
+  { key: "rearPads", label: "Rear brake pads", group: "Brakes", part: (s) => /pad/.test(s) && /(\brr\b|rear)/.test(s) },
+  { key: "frontDiscs", label: "Front discs & pads", group: "Brakes", part: (s) => /disc/.test(s) && /(frt|front)/.test(s) },
+  { key: "rearDiscs", label: "Rear discs & pads", group: "Brakes", part: (s) => /disc/.test(s) && /(\brr\b|rear)/.test(s) },
+  { key: "brakeFluid", label: "Brake fluid change", group: "Brakes", part: (s) => /brake fluid|dot ?4/.test(s) && !/(bulb|light|cleaner|switch|hose|pipe)/.test(s) },
+];
+
+export const PRICE_GUIDE_CATEGORIES = [
+  { key: "interimService", label: "Interim service", group: "Servicing" },
+  { key: "fullService", label: "Full service", group: "Servicing" },
+  ...PG_CATEGORIES.map(({ key, label, group }) => ({ key, label, group })),
+];
+
+const pgStats = (vals: number[]) => {
+  if (!vals.length) return null;
+  const s = [...vals].sort((a, b) => a - b);
+  const at = (p: number) => s[Math.min(s.length - 1, Math.floor(s.length * p))];
+  const mid = Math.floor(s.length / 2);
+  return {
+    median: Math.round(s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2),
+    low: Math.round(at(0.25)),
+    high: Math.round(at(0.75)),
+    n: s.length,
+  };
+};
+
+export async function getJobPriceGuide(opts?: { years?: number }) {
+  const db = await getDb();
+  if (!db) return { years: 0, categories: PRICE_GUIDE_CATEGORIES, all: {}, makes: [] as any[] };
+  const years = Math.max(1, Math.min(10, opts?.years ?? 3));
+
+  const rows: any = await db.execute(sql`
+    SELECT s.id, v.make, li.description d, li."itemType" t,
+           COALESCE(li."subNet", li.quantity * li."unitPrice") amt
+    FROM "serviceHistory" s
+    JOIN vehicles v ON v.id = s."vehicleId"
+    JOIN "serviceLineItems" li ON li."documentId" = s.id
+    WHERE s."docType" IN ('SI','XS')
+      AND s."dateCreated" >= now() - (${years} || ' years')::interval`);
+
+  type Doc = { make: string; own: number; other: number; labour: number; cats: Set<string>; oilFilter: boolean; airFilter: boolean; cabinFilter: boolean };
+  const docs = new Map<number, Doc>();
+  for (const r of rows.rows) {
+    let d = docs.get(r.id);
+    if (!d) { d = { make: String(r.make || "").toUpperCase(), own: 0, other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false }; docs.set(r.id, d); }
+    const s = String(r.d || "").toLowerCase();
+    const amt = Number(r.amt) || 0;
+    const type = String(r.t || "");
+    if (!s) continue;
+    if (/^labour$/i.test(type)) { if (!/\bmot\b/.test(s)) d.labour += amt; continue; }
+    if (!/^part$/i.test(type)) continue;                    // "Other" rows are notes/advisories
+    if (/oil\s*filter/.test(s)) d.oilFilter = true;
+    if (/air\s*(filter|cleaner)/.test(s)) d.airFilter = true;
+    if (/(pollen|cabin|micro)\s*filter/.test(s)) d.cabinFilter = true;
+    const cat = PG_CATEGORIES.find((c) => c.part(s));
+    if (cat) { d.cats.add(cat.key); d.own += amt; }
+    else if (PG_SERVICE_PART(s)) { d.cats.add("service"); d.own += amt; }
+    else d.other += amt;                                     // unrelated work — disqualifies the doc
+  }
+
+  const byKey = new Map<string, number[]>();
+  const push = (k: string, v: number) => { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k)!.push(v); };
+
+  for (const d of docs.values()) {
+    if (d.other > 0.01 || d.labour <= 0) continue;
+    // Discs are never fitted without pads, so a front-disc job always carries BOTH categories
+    // and would disqualify itself under the one-category rule. Collapse the pad into the disc:
+    // "front discs & pads" is how the job is actually sold and quoted.
+    if (d.cats.has("frontDiscs")) d.cats.delete("frontPads");
+    if (d.cats.has("rearDiscs")) d.cats.delete("rearPads");
+    if (d.cats.size !== 1) continue;
+    const only = Array.from(d.cats)[0];
+    const cat = only === "service"
+      ? (d.oilFilter ? (d.airFilter && d.cabinFilter ? "fullService" : "interimService") : null)
+      : only;
+    if (!cat) continue;
+    const price = (d.own + d.labour) * 1.2;                  // net lines -> what the customer pays
+    if (!(price > 40) || price > 2000) continue;             // guard against broken records
+    push(`ALL|${cat}`, price);
+    if (d.make) push(`${d.make}|${cat}`, price);
+  }
+
+  const all: Record<string, any> = {};
+  for (const c of PRICE_GUIDE_CATEGORIES) all[c.key] = pgStats(byKey.get(`ALL|${c.key}`) || []);
+
+  const makeNames = new Set<string>();
+  for (const k of Array.from(byKey.keys())) { const m = k.split("|")[0]; if (m !== "ALL") makeNames.add(m); }
+
+  const makes = Array.from(makeNames).map((make) => {
+    const cats: Record<string, any> = {};
+    let jobs = 0;
+    for (const c of PRICE_GUIDE_CATEGORIES) {
+      const st = pgStats(byKey.get(`${make}|${c.key}`) || []);
+      cats[c.key] = st;
+      jobs += st?.n || 0;
+    }
+    return { make, jobs, cats };
+  })
+    .filter((m) => m.jobs >= 3)
+    .sort((a, b) => b.jobs - a.jobs);
+
+  return { years, categories: PRICE_GUIDE_CATEGORIES, all, makes };
+}

@@ -44,6 +44,7 @@ const Appointments = lazy(() => import("./pages/Appointments"));
 const PricingIntelligence = lazy(() => import("./pages/PricingIntelligence"));
 const RepairPricing = lazy(() => import("./pages/RepairPricing"));
 const PartsPriceList = lazy(() => import("./pages/PartsPriceList"));
+const PriceGuide = lazy(() => import("./pages/PriceGuide"));
 const SalesStock = lazy(() => import("./pages/SalesStock"));
 const VehicleSaleInvoice = lazy(() => import("./pages/VehicleSaleInvoice"));
 const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
@@ -120,6 +121,7 @@ function Router() {
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/repair-pricing" component={RepairPricing} />
       <Route path="/parts-price-list" component={PartsPriceList} />
+      <Route path="/price-guide" component={PriceGuide} />
       <Route path="/sales-stock" component={SalesStock} />
       <Route path="/vehicle-sale/:id" component={VehicleSaleInvoice} />
       <Route path="/duplicates" component={Duplicates} />

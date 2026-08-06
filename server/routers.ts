@@ -85,6 +85,15 @@ export const appRouter = router({
       }),
   }),
 
+  priceGuide: router({
+    get: publicProcedure
+      .input(z.object({ years: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getJobPriceGuide } = await import("./db");
+        return getJobPriceGuide({ years: input?.years });
+      }),
+  }),
+
   customers: router({
     list: publicProcedure.query(async () => {
       const { getAllCustomers } = await import("./db");
