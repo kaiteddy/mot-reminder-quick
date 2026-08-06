@@ -10,6 +10,31 @@ import { z } from "zod";
 
 const feeSchema = z.record(z.string(), z.number());
 
+/**
+ * The rest of the app stores on-costs as {buyerFee, assured, delivery, other} — the Profit &
+ * Cashbook fee editor reads exactly those keys, and bookDelivery sums exactly those four to
+ * recompute reconditioningCost. Invoice labels vary ("Buyers Fee (Business)", "BCA Assured
+ * Charge"), so they are folded onto the canonical shape here. Writing the raw labels instead
+ * would leave the fees invisible on that page and zero them the moment it was opened.
+ */
+function toCanonicalFees(fees: Record<string, number>) {
+  const out = { buyerFee: 0, assured: 0, delivery: 0, other: 0 };
+  for (const [label, amount] of Object.entries(fees)) {
+    const v = Number(amount) || 0;
+    if (!v) continue;
+    if (/buyer|auction|entry/i.test(label)) out.buyerFee += v;
+    else if (/assur|warrant/i.test(label)) out.assured += v;
+    else if (/deliver|transport|collect|movement/i.test(label)) out.delivery += v;
+    else out.other += v;
+  }
+  return {
+    buyerFee: out.buyerFee || null,
+    assured: out.assured || null,
+    delivery: out.delivery || null,
+    other: out.other || null,
+  };
+}
+
 export const purchaseInvoiceRouter = router({
   /** Read a PDF and report what's in it, alongside DVLA's view of the same registration. */
   parse: publicProcedure
@@ -134,9 +159,14 @@ export const purchaseInvoiceRouter = router({
         salesStockId = created.id;
       }
 
+      // Keep the invoice's own wording in the notes — the canonical four buckets lose it,
+      // and "BCA Assured Charge £62.40" is worth being able to look up later.
+      const feeDetail = Object.entries(input.fees)
+        .map(([k, v]) => `${k} £${Number(v).toFixed(2)}`).join(", ");
       const noteParts = [
         input.invoiceNumber ? `${input.source} invoice ${input.invoiceNumber}` : null,
         input.marginScheme ? "Margin scheme (second-hand goods)" : "Standard-rated",
+        feeDetail || null,
         input.notes || null,
       ].filter(Boolean);
 
@@ -149,7 +179,7 @@ export const purchaseInvoiceRouter = router({
         // The vehicle carries no reclaimable VAT under the margin scheme, and on this invoice
         // the fees were zero-rated too — so nothing is assumed here.
         onCostVat: null,
-        feeBreakdown: input.fees,
+        feeBreakdown: toCanonicalFees(input.fees),
         status: "in_stock",
         salesStockId,
         stdRated: input.marginScheme ? 0 : 1,
