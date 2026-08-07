@@ -4462,6 +4462,10 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
 
   const rows: any = await db.execute(sql`
     SELECT s.id, v.make, split_part(COALESCE(v.model,''), ' ', 1) model, v."engineCC" cc,
+           -- GA4 "Fixed Item 1/2/3" = Sundries / Lubricants / Paint & Mat. These are charged on
+           -- the Extras side panel, NOT as line items, on about two thirds of services — so
+           -- summing line items alone understated parts by the sundries charge on most jobs.
+           COALESCE(s."fixedItem1Net",0) + COALESCE(s."fixedItem2Net",0) + COALESCE(s."fixedItem3Net",0) extras,
            li.description d, li."itemType" t,
            COALESCE(li."subNet", li.quantity * li."unitPrice") amt
     FROM "serviceHistory" s
@@ -4479,7 +4483,9 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
         make: String(r.make || "").toUpperCase(),
         model: String(r.model || "").toUpperCase(),
         cc: Number(r.cc) || 0,
-        own: 0, other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false,
+        // Extras are per-document, so they're taken once when the doc is first seen.
+        own: Number(r.extras) || 0,
+        other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false,
       };
       docs.set(r.id, d);
     }
@@ -4508,6 +4514,9 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
 
   for (const d of docs.values()) {
     if (d.other > 0.01 || d.labour <= 0) continue;
+    // `own` is seeded with the Extras total, so it can no longer stand in for "had a relevant
+    // part" — the category set is what decides that.
+    if (!d.cats.size) continue;
     // Discs are never fitted without pads, so a front-disc job always carries BOTH categories
     // and would disqualify itself under the one-category rule. Collapse the pad into the disc:
     // "front discs & pads" is how the job is actually sold and quoted.
