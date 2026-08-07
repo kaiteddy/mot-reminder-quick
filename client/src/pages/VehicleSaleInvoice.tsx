@@ -3,7 +3,7 @@
  * pre-printed form. Autosaves as you type; Print sends the same DOM to the printer, so what is
  * on screen is what comes out (white original + pale-yellow seller's copy).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import { ArrowLeft, Printer, Loader2, Save, CheckCircle2, Trash2 } from "lucide-react";
@@ -99,6 +99,9 @@ export default function VehicleSaleInvoice() {
     await flush();
     // Leaving a blank focused would print it scrolled to the caret; blurring resets it.
     (document.activeElement as HTMLElement | null)?.blur?.();
+    // Tag again here as well as on render: if the shell hasn't been tagged for any reason, the
+    // print rules hide every child of <body> and a blank sheet comes out of the printer.
+    tagPrintAncestors();
     // The form is the print target — nothing is re-rendered or re-templated on the way out.
     window.print();
   }
@@ -109,16 +112,29 @@ export default function VehicleSaleInvoice() {
    * right. Instead, tag every ancestor between the sheet and <body>: print CSS collapses those
    * to `display: contents` and drops their other children, leaving the sheet as a plain flow
    * child of the page.
+   *
+   * The tag is inert on screen — it only means anything inside `@media print` — so it can sit on
+   * the shell for as long as this page is open. It MUST come off on the way out, though: left
+   * behind, it would blank the printout of every other page in the app.
    */
-  useEffect(() => {
+  const taggedRef = useRef<Element[]>([]);
+  const tagPrintAncestors = useCallback(() => {
     const root = document.querySelector(".vs-print-root");
     if (!root) return;
-    const tagged: Element[] = [];
     for (let el = root.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.classList.contains("vs-print-passthrough")) continue;
       el.classList.add("vs-print-passthrough");
-      tagged.push(el);
+      taggedRef.current.push(el);
     }
-    return () => tagged.forEach((el) => el.classList.remove("vs-print-passthrough"));
+  }, []);
+
+  // Runs again once the record arrives: on first mount this component is still rendering
+  // "Loading…", so the sheet — and everything to tag above it — doesn't exist yet.
+  useEffect(() => { tagPrintAncestors(); }, [tagPrintAncestors, isLoading, data]);
+
+  useEffect(() => () => {
+    taggedRef.current.forEach((el) => el.classList.remove("vs-print-passthrough"));
+    taggedRef.current = [];
   }, []);
 
   async function handleDelete() {
