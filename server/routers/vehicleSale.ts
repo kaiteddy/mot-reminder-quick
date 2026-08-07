@@ -12,7 +12,7 @@ import { z } from "zod";
 const FIELDS = [
   "invoiceNumber", "transactionDate", "stockNumber", "dayBookFolio", "salesman",
   "purchaserStockNumber", "purchaserDayBookFolio",
-  "purchaserName", "purchaserAddress", "purchaserTelephone",
+  "purchaserName", "purchaserAddress", "purchaserTelephone", "purchaserEmail",
   "grossPrice", "vehicleMake", "vehicleType", "registrationNumber", "chassisNumber",
   "engineNumber", "firstRegisteredUK", "lastOwnerDetails", "mileage",
   "lessLicenceValue", "partExchangeAllowance", "deposit", "balance", "settlementNotes",
@@ -193,6 +193,9 @@ export const vehicleSaleRouter = router({
         purchaserName: String(c.name || "").toUpperCase(),
         purchaserAddress: addressLines(c.address, c.postcode).join("\n").toUpperCase(),
         purchaserTelephone: nationalPhone(c.phone),
+        // Left as typed — an email is case-sensitive after the @ on some servers, and it is the
+        // one thing on this block that isn't shouted in capitals.
+        purchaserEmail: String(c.email || "").trim(),
       };
       await db.update(vehicleSaleInvoices).set({ ...fields, customerId: c.id }).where(eq(vehicleSaleInvoices.id, input.id));
       // Only the form's own text fields go back — the caller merges these straight into the

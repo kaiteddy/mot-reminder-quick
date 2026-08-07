@@ -654,6 +654,8 @@ export const vehicleSaleInvoices = pgTable("vehicleSaleInvoices", {
   purchaserName: varchar("purchaserName", { length: 255 }),
   purchaserAddress: text("purchaserAddress"),      // up to 3 lines, newline separated
   purchaserTelephone: varchar("purchaserTelephone", { length: 50 }),
+  // Not on the printed pad — added on the spare half of the postcode line.
+  purchaserEmail: varchar("purchaserEmail", { length: 255 }),
 
   // vehicle sold
   grossPrice: varchar("grossPrice", { length: 30 }),
