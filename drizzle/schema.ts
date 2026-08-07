@@ -692,6 +692,9 @@ export const vehicleSaleInvoices = pgTable("vehicleSaleInvoices", {
   salesStockId: integer("salesStockId"),   // the stock car it was raised from
   vehicleId: integer("vehicleId"),         // matched vehicles row, once the sale is on the books
   customerId: integer("customerId"),       // matched purchaser, if picked from the customer list
+  // 'sale' = selling a car out; 'purchase' = buying a customer's car in on the same pre-printed
+  // form, where the last-owner block doesn't apply and is struck out as PURCHASE.
+  docKind: varchar("docKind", { length: 10 }).$type<"sale" | "purchase">().notNull().default("sale"),
 
   // transaction block (top right)
   invoiceNumber: varchar("invoiceNumber", { length: 50 }),

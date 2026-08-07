@@ -22,6 +22,9 @@ const A4_RATIO = 297 / 210;
 
 export type VehicleSaleValues = Record<string, string>;
 
+/** Which way round the pre-printed form is being used: selling a car out, or buying one in. */
+export type DocKind = "sale" | "purchase";
+
 /**
  * Type-ahead attached to a single blank. The form owns the anchoring and the dropdown; the
  * caller owns what is being searched, so the sheet stays ignorant of customers.
@@ -471,20 +474,47 @@ function Signature({ src, box }: { src?: string; box: { x: number; y: number; w:
   );
 }
 
+/**
+ * Buying a car in uses the same pre-printed form as selling one, and on a purchase the
+ * "Name & Address of last Owner or Keeper" block has nothing to say — the person signing IS the
+ * last keeper. It gets crossed out and marked PURCHASE by hand (see invoice 6185); this does the
+ * same in print, so the block can't be filled in by mistake either.
+ */
+function PurchaseStamp() {
+  const def = FIELDS.find((f) => f.key === "lastOwnerDetails")!;
+  const h = lineOf(def) * (def.rows ?? 1);
+  return (
+    <div
+      className="vs-purchase-stamp"
+      style={{
+        left: `calc(${def.x - 13} * var(--ux))`,
+        top: `calc(${topBase(def)} * var(--uy))`,
+        width: `calc(${def.width + 26} * var(--ux))`,
+        height: `calc(${h} * var(--uy))`,
+        fontSize: `calc(58 * var(--uy))`,
+      }}
+    >
+      PURCHASE
+    </div>
+  );
+}
+
 function Page({
-  kind, values, onChange, suggestFor, suggest,
+  kind, values, onChange, suggestFor, suggest, docKind = "sale",
 }: {
   kind: "white" | "yellow";
   values: VehicleSaleValues;
   onChange?: (key: string, v: string) => void;
   suggestFor?: string;
   suggest?: SuggestProps;
+  docKind?: DocKind;
 }) {
   const readOnly = kind === "yellow";
+  const purchase = docKind === "purchase";
   return (
     <div className="vs-page" data-kind={kind}>
       <Artwork kind={kind} />
-      {FIELDS.map((f) => (
+      {FIELDS.filter((f) => !(purchase && f.key === "lastOwnerDetails")).map((f) => (
         <Blank
           key={f.key}
           def={f}
@@ -494,6 +524,7 @@ function Page({
           suggest={!readOnly && f.key === suggestFor ? suggest : undefined}
         />
       ))}
+      {purchase && <PurchaseStamp />}
       <Signature src={values.sellerSignature} box={{ x: 185, y: 3025, w: 545, h: 95 }} />
       <Signature src={values.buyerSignature} box={{ x: 1460, y: 3025, w: 900, h: 95 }} />
     </div>
@@ -501,13 +532,15 @@ function Page({
 }
 
 export default function VehicleSaleForm({
-  values, onChange, suggestFor, suggest,
+  values, onChange, suggestFor, suggest, docKind = "sale",
 }: {
   values: VehicleSaleValues;
   onChange?: (key: string, v: string) => void;
   /** Field key to attach a type-ahead to (e.g. "purchaserName"). */
   suggestFor?: string;
   suggest?: SuggestProps;
+  /** 'purchase' strikes out the last-owner block — see PurchaseStamp. */
+  docKind?: DocKind;
 }) {
   // No resize handling: every blank's geometry and its shrink ratio are expressed in artwork
   // units, so the whole sheet is scale-invariant and nothing needs re-measuring when it resizes.
@@ -571,6 +604,21 @@ export default function VehicleSaleForm({
         .vs-blank:focus { background: rgba(99,102,241,.13); }
         .vs-signature { object-fit: contain; object-position: center; }
 
+        /* PURCHASE across the last-owner block. Prints as well as shows: the grey has to survive
+           on paper, which is why it carries print-color-adjust like the coloured bands do. */
+        .vs-purchase-stamp {
+          position: absolute;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(15,23,42,.07);
+          border: calc(3 * var(--uy)) solid rgba(15,23,42,.35);
+          border-radius: calc(8 * var(--uy));
+          color: #4b5563;
+          font-family: "Liberation Sans Narrow", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+          font-weight: 800; letter-spacing: .22em; text-indent: .22em;
+          user-select: none; pointer-events: none;
+          print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        }
+
         /* Type-ahead — screen affordance only, never printed. Sized in px, not artwork units,
            so it stays legible however small the sheet is rendered. */
         .vs-suggest {
@@ -599,8 +647,8 @@ export default function VehicleSaleForm({
           .vs-suggest { display: none !important; }
         }
       `}</style>
-      <Page kind="white" values={values} onChange={onChange} suggestFor={suggestFor} suggest={suggest} />
-      <Page kind="yellow" values={values} />
+      <Page kind="white" values={values} onChange={onChange} suggestFor={suggestFor} suggest={suggest} docKind={docKind} />
+      <Page kind="yellow" values={values} docKind={docKind} />
     </div>
   );
 }

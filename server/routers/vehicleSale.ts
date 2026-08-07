@@ -77,6 +77,7 @@ export const vehicleSaleRouter = router({
     return db.select({
       id: vehicleSaleInvoices.id,
       salesStockId: vehicleSaleInvoices.salesStockId,
+      docKind: vehicleSaleInvoices.docKind,
       invoiceNumber: vehicleSaleInvoices.invoiceNumber,
       transactionDate: vehicleSaleInvoices.transactionDate,
       purchaserName: vehicleSaleInvoices.purchaserName,
@@ -104,16 +105,21 @@ export const vehicleSaleRouter = router({
    * for that car, so the button is safe to press twice.
    */
   createFromStock: publicProcedure
-    .input(z.object({ salesStockId: z.number() }))
+    .input(z.object({ salesStockId: z.number(), docKind: z.enum(["sale", "purchase"]).default("sale") }))
     .mutation(async ({ input }) => {
       const { getDb } = await import("../db");
       const { vehicleSaleInvoices, salesStock, vehicles } = await import("../../drizzle/schema");
-      const { eq, sql } = await import("drizzle-orm");
+      const { and, eq, sql } = await import("drizzle-orm");
       const db = await getDb();
       if (!db) throw new Error("Database unavailable");
 
+      // Scoped to the kind: one car can legitimately have both a purchase (buying it in) and a
+      // sale (selling it on), so matching on the stock car alone would hand back the wrong one.
       const existing = await db.select({ id: vehicleSaleInvoices.id }).from(vehicleSaleInvoices)
-        .where(eq(vehicleSaleInvoices.salesStockId, input.salesStockId)).limit(1).then((r: any) => r[0]);
+        .where(and(
+          eq(vehicleSaleInvoices.salesStockId, input.salesStockId),
+          eq(vehicleSaleInvoices.docKind, input.docKind),
+        )).limit(1).then((r: any) => r[0]);
       if (existing) return { id: existing.id, existed: true };
 
       const car: any = await db.select().from(salesStock).where(eq(salesStock.id, input.salesStockId)).limit(1).then((r: any) => r[0]);
@@ -135,6 +141,7 @@ export const vehicleSaleRouter = router({
       const [created]: any = await db.insert(vehicleSaleInvoices).values({
         salesStockId: car.id,
         vehicleId: veh?.id ?? null,
+        docKind: input.docKind,
         transactionDate: ukDate(new Date()),
         stockNumber: car.stockNumber || "",
         vehicleMake: String(car.make || veh?.make || "").toUpperCase(),
