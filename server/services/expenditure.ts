@@ -630,18 +630,46 @@ export async function deleteCarDeal(input: { id: number }) {
   return { ok: true };
 }
 
-/** Vehicle-stock purchase transactions, with their current car-deal link (for association UI). */
+/**
+ * Vehicle-stock purchases, with their current car-deal link (for association UI).
+ *
+ * Two kinds of row, because a car is bought before the money leaves the account:
+ *  - kind 'bank'    — a real payment on the statement, waiting to be tied to a car.
+ *  - kind 'invoice' — a car logged from its supplier purchase invoice whose payment hasn't
+ *                     appeared in the bank feed yet. Shown so a just-logged car is visible here
+ *                     straight away instead of only after the next statement import.
+ *
+ * An invoice row disappears of its own accord once any payment is linked to that car, so the
+ * arrival of the real statement line replaces it rather than duplicating it. These rows are
+ * display-only — they are NOT bank transactions and never reach the P&L, which is fed from
+ * "bankTransactions" alone.
+ */
 export async function getVehiclePurchases() {
   const db = await getDb();
   if (!db) return [];
   const res: any = await db.execute(sql`
-    SELECT t."id", to_char(t."txnDate",'YYYY-MM-DD') date, t."counterparty", t."amount",
-           t."carDealId", d."registration" "dealReg", d."description" "dealDesc"
+    SELECT t."id", 'bank' kind, to_char(t."txnDate",'YYYY-MM-DD') date, t."counterparty", t."amount",
+           t."carDealId", d."registration" "dealReg", d."description" "dealDesc", NULL "invoiceRef"
     FROM "bankTransactions" t
     LEFT JOIN "transactionLabels" l ON l."source"=t."source" AND l."counterpartyKey"=t."counterpartyKey"
     LEFT JOIN "carDeals" d ON d."id"=t."carDealId"
     WHERE COALESCE(t."categoryOverride", l."category", '')=${VEHICLE_STOCK}
-    ORDER BY t."txnDate" DESC`);
+
+    UNION ALL
+
+    -- Invoiced but not yet seen in the bank. The amount is the whole invoice (vehicle + on-costs
+    -- + their VAT), because that is what the payment will be — purchaseCost alone is the
+    -- vehicle-only figure that drives the margin.
+    SELECT d."id", 'invoice' kind, to_char(d."purchaseDate",'YYYY-MM-DD') date,
+           COALESCE(d."source",'Supplier') "counterparty",
+           -(COALESCE(d."purchaseCost",0) + COALESCE(d."reconditioningCost",0) + COALESCE(d."onCostVat",0)) "amount",
+           d."id" "carDealId", d."registration" "dealReg", d."description" "dealDesc",
+           d."purchaseInvoiceRef" "invoiceRef"
+    FROM "carDeals" d
+    WHERE d."purchaseInvoiceRef" IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM "bankTransactions" b WHERE b."carDealId" = d."id")
+
+    ORDER BY date DESC`);
   return (res.rows || []).map((r: any) => ({ ...r, amount: num(r.amount) }));
 }
 

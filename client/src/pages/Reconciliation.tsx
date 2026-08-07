@@ -1217,19 +1217,33 @@ function CarTradingTab() {
               </TableHeader>
               <TableBody>
                 {purch.map((p) => (
-                  <TableRow key={p.id} className={p.carDealId ? "" : "bg-orange-50"}>
+                  <TableRow key={`${p.kind ?? "bank"}-${p.id}`} className={p.kind === "invoice" ? "bg-sky-50" : p.carDealId ? "" : "bg-orange-50"}>
                     <TableCell className="whitespace-nowrap">{p.date}</TableCell>
-                    <TableCell>{p.counterparty}</TableCell>
+                    <TableCell>
+                      {p.counterparty}
+                      {p.kind === "invoice" && (
+                        <span className="ml-2 whitespace-nowrap rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"
+                          title="Logged from the supplier's purchase invoice. The payment hasn't reached the bank feed yet, so this row is a reminder, not expenditure — it is replaced by the real statement line once that is imported and linked to this car.">
+                          {p.invoiceRef} · awaiting payment
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums text-red-600">{money(p.amount)}</TableCell>
                     <TableCell>
-                      <CarPicker cars={rows} value={p.carDealId ?? null} allowDelivery={Math.abs(Number(p.amount) || 0) < 1000}
-                        onChange={(id, mode) => {
-                          if (mode === "delivery" && id) deliv.mutate({ txnId: p.id, carDealId: id, amount: Math.abs(Number(p.amount) || 0) });
-                          else link.mutate({ txnId: p.id, carDealId: id }, { onSuccess: () => { if (id && isAuctionPayee(p.counterparty)) setSplitFor({ carId: id, total: Math.abs(Number(p.amount) || 0), payee: p.counterparty }); } });
-                        }} />
+                      {/* An invoice row is not a bank transaction — its id is a car-deal id, so it must
+                          never be fed to the link/delivery mutations, which key on a transaction id. */}
+                      {p.kind === "invoice" ? (
+                        <span className="text-sm text-slate-600">{p.dealReg} · {p.dealDesc}</span>
+                      ) : (
+                        <CarPicker cars={rows} value={p.carDealId ?? null} allowDelivery={Math.abs(Number(p.amount) || 0) < 1000}
+                          onChange={(id, mode) => {
+                            if (mode === "delivery" && id) deliv.mutate({ txnId: p.id, carDealId: id, amount: Math.abs(Number(p.amount) || 0) });
+                            else link.mutate({ txnId: p.id, carDealId: id }, { onSuccess: () => { if (id && isAuctionPayee(p.counterparty)) setSplitFor({ carId: id, total: Math.abs(Number(p.amount) || 0), payee: p.counterparty }); } });
+                          }} />
+                      )}
                     </TableCell>
                     <TableCell>
-                      {!p.carDealId && (
+                      {p.kind !== "invoice" && !p.carDealId && (
                         <button type="button" title="This isn't a car purchase — remove it from this list (re-files it under ‘to label’ to categorise properly; does NOT delete the bank transaction)"
                           onClick={() => { if (confirm(`Remove the ${money(Math.abs(p.amount))} payment to “${p.counterparty}” from car purchases?\n\nIt moves to ‘to label’ so you can categorise it properly — it does NOT delete the bank transaction.`)) notCar.mutate({ id: p.id, category: "OTHER / to label" }); }}
                           className="whitespace-nowrap text-xs text-slate-400 hover:text-red-600">Not a car ✕</button>
