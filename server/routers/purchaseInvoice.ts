@@ -184,6 +184,9 @@ export const purchaseInvoiceRouter = router({
         salesStockId,
         stdRated: input.marginScheme ? 0 : 1,
         source: input.source,
+        // Marks this as invoiced, so it shows in the vehicle-stock purchase list straight away —
+        // before the payment reaches the bank feed — and drops out once a payment is linked.
+        purchaseInvoiceRef: input.invoiceNumber?.slice(0, 40) || `${input.source} purchase`.slice(0, 40),
         notes: noteParts.join(" · ") || null,
       }).returning({ id: carDeals.id });
 

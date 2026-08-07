@@ -640,6 +640,7 @@ export const carDeals = pgTable("carDeals", {
   stdRated: integer("stdRated"),                                       // 1 = standard-rated (VAT-qualifying) car: output VAT = full sale/6, not margin/6
   notes: text("notes"),
   source: varchar("source", { length: 60 }),   // where the car came from: BCA/Manheim/Customer/Eastbourne/Aston Barclay or free text
+  purchaseInvoiceRef: varchar("purchaseInvoiceRef", { length: 40 }),   // supplier's invoice no when the car was logged from its PDF; marks a purchase that's invoiced but not necessarily paid yet
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
