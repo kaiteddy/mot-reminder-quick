@@ -133,6 +133,40 @@ function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
             </div>
           )}
 
+          {/* The three things people ask to compare, side by side with what each one buys. The
+              "what's the difference?" question follows "how much?" every single time, so the
+              answer is on the page rather than in someone's head. */}
+          {(data as any)?.options && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {((data as any).options as any[]).map((o) => (
+                <div key={o.key} className="rounded-lg border border-slate-200 bg-white p-3 flex flex-col">
+                  <div className="text-[12px] font-semibold text-slate-700">{o.name}</div>
+                  <div className="text-[26px] font-bold leading-tight mt-0.5">{o.price != null ? money(o.price) : "—"}</div>
+                  {o.priceExVat != null && o.key !== "mot" && (
+                    <div className="text-[11px] text-slate-500">{money(o.priceExVat)} + VAT</div>
+                  )}
+                  {o.note && <div className="text-[10px] text-slate-400 mt-0.5">{o.note}</div>}
+                  <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">
+                    {o.includes.map((line: string) => (
+                      <li key={line} className="flex gap-1.5"><span className="text-emerald-600">✓</span><span>{line}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(data as any)?.combos?.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {((data as any).combos as any[]).map((c) => (
+                <div key={c.name} className={`rounded-lg border px-3 py-2 ${c.isDiff ? "border-slate-300 bg-slate-50" : "border-violet-200 bg-violet-50"}`}>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500">{c.name}</div>
+                  <div className="text-[18px] font-bold leading-tight">{c.isDiff ? `+${money(c.price)}` : money(c.price)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {/* MOT is a fixed charge, so it's stated rather than averaged. */}
             <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">

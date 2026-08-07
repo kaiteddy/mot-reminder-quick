@@ -4660,6 +4660,50 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   const labourBands = await getServiceLabourBands("interimService");
   const ourLabour = pickLabourBand(labourBands, cc);
 
+  /** What a customer is buying, and the difference between the two services — the question
+   * that follows "how much" every single time. Taken from what these jobs ACTUALLY carry
+   * rather than a generic menu: across 1,240 interims and 267 full services, an oil filter is
+   * on 100% of both, while the air and pollen filters are on 100% of full services and only 3%
+   * of interims. That IS the difference, so that's what's stated. */
+  const interimStats = guide.sizes.find((b: any) => b.band === band)?.cats?.interimService || guide.all.interimService;
+  const fullStats = guide.sizes.find((b: any) => b.band === band)?.cats?.fullService || guide.all.fullService;
+  const MOT_PRICE = 50;
+
+  const options = [
+    {
+      key: "mot",
+      name: "MOT only",
+      price: MOT_PRICE,
+      priceExVat: MOT_PRICE,
+      note: "No VAT on an MOT test",
+      includes: ["MOT test", "Written pass or failure sheet with any advisories"],
+    },
+    {
+      key: "interimService",
+      name: "Interim service (small)",
+      price: interimStats?.median ?? null,
+      priceExVat: interimStats ? Math.round(interimStats.median / 1.2) : null,
+      note: ourLabour ? `Labour £${ourLabour.labour} + parts` : null,
+      includes: ["Engine oil replaced", "Oil filter replaced", "Sump plug seal where needed", "Levels topped up and vehicle checked over"],
+    },
+    {
+      key: "fullService",
+      name: "Full service (large)",
+      price: fullStats?.median ?? null,
+      priceExVat: fullStats ? Math.round(fullStats.median / 1.2) : null,
+      note: "Everything in the interim, plus the two filters",
+      includes: ["Everything in the interim service", "Air filter replaced", "Pollen / cabin filter replaced"],
+    },
+  ];
+
+  // The combinations people actually ask for, so the difference is a number and not mental
+  // arithmetic on the phone.
+  const combos = [
+    interimStats ? { name: "MOT + interim service", price: interimStats.median + MOT_PRICE } : null,
+    fullStats ? { name: "MOT + full service", price: fullStats.median + MOT_PRICE } : null,
+    interimStats && fullStats ? { name: "Difference: interim → full", price: fullStats.median - interimStats.median, isDiff: true } : null,
+  ].filter(Boolean);
+
   return {
     found: true,
     source,
@@ -4668,6 +4712,9 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     band,
     ourLabour,
     labourBands,
+    options,
+    combos,
+    motPrice: MOT_PRICE,
     categories: guide.categories,
     // Band prices are the answer; the model's own only when they're solid enough to beat it.
     prices: bandRow?.cats || guide.all,
