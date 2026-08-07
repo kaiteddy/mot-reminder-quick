@@ -314,6 +314,16 @@ export default function DocumentDetails() {
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
   const partsForDefects = trpc.ai.partsForDefects.useMutation();
+  // The MOT charge on the Extras panel used to default to a hardcoded "45". It's a price we set,
+  // so it belongs in the maintained price list (raised to £50) — one source of truth, changeable
+  // without a deploy. The literal stays only as a last-resort fallback if the list can't load.
+  const { data: motPriceRows } = trpc.partsPriceList.list.useQuery({ search: "MOT" }, { staleTime: 5 * 60_000 });
+  const motDefault = (() => {
+    const row = ((motPriceRows as any[]) || []).find((r) => String(r.description || "").trim().toUpperCase() === "MOT");
+    const v = Number(row?.unitPrice);
+    return v > 0 ? String(v.toFixed(2).replace(/\.00$/, "")) : "45";
+  })();
+
   const [issueOpen, setIssueOpen] = useState(false);
   const [excessOpen, setExcessOpen] = useState(false);
   async function doDelete() {
@@ -890,7 +900,7 @@ export default function DocumentDetails() {
                   if (e.target.checked) {
                     setForm((f) => ({
                       ...f,
-                      motAmount: num(f.motAmount) ? f.motAmount : "45",
+                      motAmount: num(f.motAmount) ? f.motAmount : motDefault,
                       motClass: f.motClass || "4",
                       motStatus: f.motStatus || "Pass",
                       staffMotTester: f.staffMotTester || "Dec Buckley",

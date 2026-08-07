@@ -100,7 +100,7 @@ export const aiRouter = router({
           pricingRules = `
 CRITICAL PRICING RULES TO USE (DO NOT DEVIATE):
 - Hourly Labour Rate: £${rules.labourRate || "70"}
-- Fixed MOT Cost: £${rules.motCost || "45"}
+- Fixed MOT Cost: £${rules.motCost || "50"}
 - Fixed Service Labour (Small/Medium): £${rules.serviceMedium || "124"}
 ${rules.customKnowledge ? `\nADDITIONAL PRICING KNOWLEDGE:\n${rules.customKnowledge}` : ''}
 `;
