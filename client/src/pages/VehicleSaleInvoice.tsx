@@ -8,7 +8,7 @@ import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import { ArrowLeft, Printer, Loader2, Save, CheckCircle2, Trash2 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
-import VehicleSaleForm, { VEHICLE_SALE_FIELD_KEYS, type VehicleSaleValues } from "@/components/VehicleSaleForm";
+import VehicleSaleForm, { VEHICLE_SALE_FIELD_KEYS, type VehicleSaleValues, type DocKind } from "@/components/VehicleSaleForm";
 import { trpc } from "@/lib/trpc";
 
 export default function VehicleSaleInvoice() {
@@ -147,6 +147,9 @@ export default function VehicleSaleInvoice() {
     } catch (e: any) { toast.error(e.message || "Delete failed"); }
   }
 
+  const docKind: DocKind = (data as any)?.docKind === "purchase" ? "purchase" : "sale";
+  const isPurchase = docKind === "purchase";
+
   const heading = useMemo(() => {
     const bits = [values.vehicleMake, values.vehicleType].filter(Boolean).join(" ");
     return [values.registrationNumber, bits].filter(Boolean).join(" · ") || "Used Car Sales Invoice";
@@ -199,19 +202,22 @@ export default function VehicleSaleInvoice() {
           </div>
         </div>
 
-        <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 rounded-md flex items-center justify-between">
+        <div className={`${isPurchase ? "bg-gradient-to-r from-slate-800 to-slate-600" : "bg-gradient-to-r from-violet-800 to-fuchsia-700"} text-white px-4 py-2 rounded-md flex items-center justify-between`}>
           <div className="flex items-center gap-2 font-semibold">
             <span className="text-amber-300">★</span>
-            <span>Used Car Sales Invoice</span>
+            <span>{isPurchase ? "Used Car Purchase Invoice" : "Used Car Sales Invoice"}</span>
             <span className="text-white/60 text-sm font-normal">{heading}</span>
           </div>
-          <span className="text-[11px] text-white/70">Type straight onto the form · auto-saves</span>
+          <span className="text-[11px] text-white/70">
+            {isPurchase ? "Buying this car in · last-owner block marked PURCHASE" : "Type straight onto the form · auto-saves"}
+          </span>
         </div>
       </div>
 
       <div className="vs-print-root mt-3">
         <VehicleSaleForm
           values={values}
+          docKind={docKind}
           onChange={set}
           suggestFor="purchaserName"
           suggest={{

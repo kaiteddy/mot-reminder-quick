@@ -60,17 +60,21 @@ export default function SalesStock() {
     else { setSortKey(k); setSortDir(k === "vehicle" || k === "reg" ? "asc" : "desc"); }
   };
 
-  // Sales invoices already raised, so a car that has been sold offers "Open invoice" rather
-  // than silently raising a second one.
+  // Invoices already raised, so an existing one is opened rather than silently duplicated.
+  // Keyed by kind as well as car: the same car can be bought in on one form and sold on another.
   const { data: saleInvoices } = trpc.vehicleSale.list.useQuery();
   const invoiceByStockId = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const inv of (saleInvoices as any[]) || []) if (inv.salesStockId != null) m.set(inv.salesStockId, inv.id);
+    const m = new Map<string, number>();
+    for (const inv of (saleInvoices as any[]) || []) {
+      if (inv.salesStockId != null) m.set(`${inv.salesStockId}:${inv.docKind || "sale"}`, inv.id);
+    }
     return m;
   }, [saleInvoices]);
+  // Which car the sale-or-purchase chooser is open for.
+  const [invoiceFor, setInvoiceFor] = useState<any>(null);
   const raiseInvoice = trpc.vehicleSale.createFromStock.useMutation({
-    onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setLocation(`/vehicle-sale/${r.id}`); },
-    onError: (e) => toast.error(e.message || "Could not raise the sales invoice"),
+    onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setInvoiceFor(null); setLocation(`/vehicle-sale/${r.id}`); },
+    onError: (e) => toast.error(e.message || "Could not raise the invoice"),
   });
 
   const cars = (data as any[]) || [];
@@ -192,10 +196,10 @@ export default function SalesStock() {
                         <td className="px-2 py-2">{c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span> : <span className="text-slate-300">—</span>}</td>
                         <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                           <SaleInvoiceButton
-                            car={c} invoiceId={invoiceByStockId.get(c.id)} compact
+                            car={c} compact
+                            raised={invoiceByStockId.has(`${c.id}:sale`) || invoiceByStockId.has(`${c.id}:purchase`)}
                             pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
-                            onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
-                            onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                            onChoose={() => setInvoiceFor(c)}
                           />
                         </td>
                       </tr>
@@ -241,10 +245,10 @@ export default function SalesStock() {
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
                       </div>
                       <SaleInvoiceButton
-                        car={c} invoiceId={invoiceByStockId.get(c.id)}
+                        car={c}
+                        raised={invoiceByStockId.has(`${c.id}:sale`) || invoiceByStockId.has(`${c.id}:purchase`)}
                         pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
-                        onRaise={() => raiseInvoice.mutate({ salesStockId: c.id })}
-                        onOpen={(invId) => setLocation(`/vehicle-sale/${invId}`)}
+                        onChoose={() => setInvoiceFor(c)}
                       />
                       <div className="flex items-center gap-3 pt-1 text-[12px]">
                         <button onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)} className="text-violet-700 hover:underline">In workshop ↗</button>
@@ -257,6 +261,19 @@ export default function SalesStock() {
             </div>
           )}
       </div>
+      {invoiceFor && (
+        <InvoiceKindDialog
+          car={invoiceFor}
+          saleId={invoiceByStockId.get(`${invoiceFor.id}:sale`)}
+          purchaseId={invoiceByStockId.get(`${invoiceFor.id}:purchase`)}
+          pending={raiseInvoice.isPending}
+          onClose={() => setInvoiceFor(null)}
+          onPick={(kind, existingId) => {
+            if (existingId != null) { setInvoiceFor(null); setLocation(`/vehicle-sale/${existingId}`); return; }
+            raiseInvoice.mutate({ salesStockId: invoiceFor.id, docKind: kind });
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }
@@ -266,12 +283,11 @@ export default function SalesStock() {
  * the stocklist and the garage's own vehicle record, then filled in on the replica itself.
  */
 function SaleInvoiceButton({
-  car, invoiceId, pending, compact, onRaise, onOpen,
+  car, raised, pending, compact, onChoose,
 }: {
-  car: any; invoiceId?: number; pending: boolean; compact?: boolean;
-  onRaise: () => void; onOpen: (invoiceId: number) => void;
+  car: any; raised: boolean; pending: boolean; compact?: boolean;
+  onChoose: () => void;
 }) {
-  const raised = invoiceId != null;
   const cls = compact
     ? `inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium whitespace-nowrap disabled:opacity-50 ${raised ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-violet-300 bg-white text-violet-700 hover:bg-violet-50"}`
     : `inline-flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[12px] font-semibold w-full disabled:opacity-50 ${raised ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-violet-300 bg-white text-violet-700 hover:bg-violet-50"}`;
@@ -279,12 +295,59 @@ function SaleInvoiceButton({
     <button
       className={cls}
       disabled={pending}
-      title={raised ? "Open the used car sales invoice for this car" : `Raise a used car sales invoice for ${car.registration}`}
-      onClick={() => (raised ? onOpen(invoiceId!) : onRaise())}
+      title={`Invoice for ${car.registration} — selling it, or buying it in`}
+      onClick={onChoose}
     >
       {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ReceiptText className="w-3.5 h-3.5" />}
-      {raised ? "Open invoice" : "Sales invoice"}
+      {raised ? "Open invoice" : "Invoice"}
     </button>
+  );
+}
+
+/**
+ * Sale or purchase, asked before the form is raised.
+ *
+ * The same pre-printed pad is used both ways round, and the two aren't interchangeable once
+ * filled in — a purchase strikes out the last-owner block — so the kind is settled up front
+ * rather than being something to notice afterwards.
+ */
+function InvoiceKindDialog({
+  car, saleId, purchaseId, pending, onPick, onClose,
+}: {
+  car: any; saleId?: number; purchaseId?: number; pending: boolean;
+  onPick: (kind: "sale" | "purchase", existingId?: number) => void; onClose: () => void;
+}) {
+  const Option = ({ kind, existingId, title, blurb, tone }: any) => (
+    <button
+      disabled={pending}
+      onClick={() => onPick(kind, existingId)}
+      className={`w-full rounded-lg border-2 p-3 text-left transition-colors disabled:opacity-50 ${tone}`}
+    >
+      <div className="flex items-center justify-between font-semibold">
+        <span>{title}</span>
+        {existingId != null && <span className="text-[11px] font-medium opacity-70">already raised — open it</span>}
+      </div>
+      <div className="mt-0.5 text-[12px] font-normal opacity-80">{blurb}</div>
+    </button>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 font-semibold text-slate-800">
+          {car.registration} · {[car.make, car.model].filter(Boolean).join(" ")}
+        </div>
+        <p className="mb-3 text-[12px] text-slate-500">Which way round is this?</p>
+        <div className="space-y-2">
+          <Option kind="sale" existingId={saleId} title="Sales invoice"
+            blurb="Selling this car to a customer."
+            tone="border-violet-300 bg-violet-50/60 text-violet-900 hover:bg-violet-100" />
+          <Option kind="purchase" existingId={purchaseId} title="Purchase invoice"
+            blurb="Buying this car in from a customer. The last-owner block is greyed out and marked PURCHASE."
+            tone="border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100" />
+        </div>
+        <button onClick={onClose} className="mt-3 w-full rounded-md py-1.5 text-[12px] text-slate-500 hover:bg-slate-100">Cancel</button>
+      </div>
+    </div>
   );
 }
 
