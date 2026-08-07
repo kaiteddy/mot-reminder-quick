@@ -55,6 +55,12 @@ type FieldDef = {
   lineHeight?: number; // set for the multi-line blocks
   rows?: number;
   title: string;      // tooltip / aria-label — the printed caption beside the blank
+  /**
+   * Money rows are split by the pre-printed colon: pounds to its left, pence on the short rule to
+   * its right (the form is written "4500 : —"). One value is still stored — "1,000.50" — and the
+   * two boxes are just the two halves of it.
+   */
+  pence?: { x: number; width: number };
 };
 
 const FIELDS: FieldDef[] = [
@@ -77,7 +83,7 @@ const FIELDS: FieldDef[] = [
   { key: "purchaserTelephone", x: 575, y: 1409, size: 36, width: 620, title: "Telephone" },
 
   // vehicle sold
-  { key: "grossPrice", x: 2370, y: 1528, size: 50, width: 340, anchor: "end", title: "Gross price (inclusive of V.A.T.)" },
+  { key: "grossPrice", x: 2190, y: 1528, size: 50, width: 175, anchor: "end", pence: { x: 2375, width: 115 }, title: "Gross price (inclusive of V.A.T.)" },
   { key: "vehicleMake", x: 185, y: 1604, size: 42, width: 1005, title: "Make" },
   { key: "vehicleType", x: 170, y: 1681, size: 42, width: 1020, title: "Type" },
   { key: "registrationNumber", x: 260, y: 1758, size: 42, width: 930, title: "Reg'n. No" },
@@ -88,10 +94,10 @@ const FIELDS: FieldDef[] = [
   { key: "lastOwnerDetails", x: 43, y: 2276, size: 36, width: 1150, lineHeight: 75, rows: 3, title: "Name & Address of last Owner or Keeper" },
 
   // money, right-hand column
-  { key: "lessLicenceValue", x: 2370, y: 1609, size: 36, width: 110, anchor: "end", title: "Less value of veh. exc. licence" },
-  { key: "partExchangeAllowance", x: 2370, y: 1842, size: 36, width: 110, anchor: "end", title: "All'ce on part exchange" },
-  { key: "deposit", x: 2370, y: 2004, size: 36, width: 110, anchor: "end", title: "Deposit (non refundable)" },
-  { key: "balance", x: 2370, y: 2097, size: 50, width: 420, anchor: "end", title: "Balance" },
+  { key: "lessLicenceValue", x: 2190, y: 1609, size: 36, width: 255, anchor: "end", pence: { x: 2375, width: 115 }, title: "Less value of veh. exc. licence" },
+  { key: "partExchangeAllowance", x: 2190, y: 1842, size: 36, width: 255, anchor: "end", pence: { x: 2375, width: 115 }, title: "All'ce on part exchange" },
+  { key: "deposit", x: 2190, y: 2004, size: 36, width: 255, anchor: "end", pence: { x: 2375, width: 115 }, title: "Deposit (non refundable)" },
+  { key: "balance", x: 2190, y: 2097, size: 50, width: 255, anchor: "end", pence: { x: 2375, width: 115 }, title: "Balance" },
   { key: "settlementNotes", x: 1290, y: 2355, size: 36, width: 1030, title: "To be settled by" },
   { key: "mileage", x: 1465, y: 2424, size: 42, width: 900, title: "Mileage" },
 
@@ -333,6 +339,8 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <text className="print-label" fontStyle="italic" x="1290" y="1545">(inclusive of V.A.T.)</text>
       <text className="section-title" x="1960" y="1545">£</text>
       <line className="solid-field-line" x1="2015" y1="1538" x2="2380" y2="1538" />
+      {/* pounds/pence separator, as on every other money row of the printed form */}
+      <text className="print-label" x="2220" y="1545">:</text>
 
       <text className="print-label" x="22" y="1620">Make</text>
       <line className="field-line" x1="170" y1="1613" x2="1205" y2="1613" />
@@ -499,6 +507,45 @@ function PurchaseStamp() {
   );
 }
 
+/**
+ * "1,000.50" -> ["1,000", "50"]. Splits on the LAST separator so thousands commas — and a value
+ * typed with the form's own colon, "1000:50" — both come apart correctly.
+ */
+function splitMoney(v: string): [string, string] {
+  const s = String(v ?? "").trim();
+  const m = s.match(/^(.*)[.:](\d{0,2})$/);
+  return m ? [m[1], m[2]] : [s, ""];
+}
+/** Pence are only appended when there are some, so "1000" stays "1000" rather than "1000.". */
+function joinMoney(pounds: string, pence: string): string {
+  const p = pounds.trim(), c = pence.trim();
+  return c ? `${p}.${c}` : p;
+}
+
+/**
+ * A money row, written across the pre-printed colon: pounds on the left, pence on the short rule
+ * to the right. Both halves edit the one stored value, so nothing downstream sees two fields.
+ */
+function MoneyBlank({
+  def, value, onChange, readOnly,
+}: {
+  def: FieldDef; value: string; onChange?: (v: string) => void; readOnly?: boolean;
+}) {
+  const [pounds, pence] = splitMoney(value);
+  const penceDef: FieldDef = {
+    ...def, x: def.pence!.x, width: def.pence!.width, anchor: "end",
+    title: `${def.title} — pence`, pence: undefined,
+  };
+  return (
+    <>
+      <Blank def={def} value={pounds} readOnly={readOnly}
+        onChange={onChange && ((v) => onChange(joinMoney(v, pence)))} />
+      <Blank def={penceDef} value={pence} readOnly={readOnly}
+        onChange={onChange && ((v) => onChange(joinMoney(pounds, v)))} />
+    </>
+  );
+}
+
 function Page({
   kind, values, onChange, suggestFor, suggest, docKind = "sale",
 }: {
@@ -515,14 +562,24 @@ function Page({
     <div className="vs-page" data-kind={kind}>
       <Artwork kind={kind} />
       {FIELDS.filter((f) => !(purchase && f.key === "lastOwnerDetails")).map((f) => (
-        <Blank
-          key={f.key}
-          def={f}
-          value={values[f.key] ?? ""}
-          onChange={readOnly ? undefined : (v) => onChange?.(f.key, v)}
-          readOnly={readOnly}
-          suggest={!readOnly && f.key === suggestFor ? suggest : undefined}
-        />
+        f.pence ? (
+          <MoneyBlank
+            key={f.key}
+            def={f}
+            value={values[f.key] ?? ""}
+            onChange={readOnly ? undefined : (v) => onChange?.(f.key, v)}
+            readOnly={readOnly}
+          />
+        ) : (
+          <Blank
+            key={f.key}
+            def={f}
+            value={values[f.key] ?? ""}
+            onChange={readOnly ? undefined : (v) => onChange?.(f.key, v)}
+            readOnly={readOnly}
+            suggest={!readOnly && f.key === suggestFor ? suggest : undefined}
+          />
+        )
       ))}
       {purchase && <PurchaseStamp />}
       <Signature src={values.sellerSignature} box={{ x: 185, y: 3025, w: 545, h: 95 }} />
