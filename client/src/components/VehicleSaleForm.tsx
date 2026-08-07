@@ -80,6 +80,9 @@ const FIELDS: FieldDef[] = [
   // Line pitch matches the spacing of the three printed rules (1218/1290/1362), not the source
   // template's 67 — at 67 each successive line crept 5 units further off its rule.
   { key: "purchaserAddress", x: 200, y: 1209, size: 36, width: 1170, lineHeight: 72, rows: 3, title: "Purchaser's Address" },
+  // Shares the third address rule with the postcode, which never needs more than its left-hand
+  // end. Listed AFTER the address so it paints over that textarea's tail and stays clickable.
+  { key: "purchaserEmail", x: 755, y: 1353, size: 32, width: 440, title: "Purchaser's Email" },
   { key: "purchaserTelephone", x: 575, y: 1409, size: 36, width: 620, title: "Telephone" },
 
   // vehicle sold
@@ -311,6 +314,9 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <line className="field-line" x1="185" y1="1218" x2="1205" y2="1218" />
       <line className="field-line" x1="22" y1="1290" x2="1205" y2="1290" />
       <line className="field-line" x1="22" y1="1362" x2="1205" y2="1362" />
+      {/* Not on the printed pad. The postcode only ever uses the left of this rule, so the
+          customer's email goes on the rest of it rather than costing the form a whole line. */}
+      <text className="print-label" x="600" y="1369">Email</text>
       <text className="print-label" x="350" y="1425">Telephone</text>
       <line className="field-line" x1="560" y1="1418" x2="1205" y2="1418" />
 
