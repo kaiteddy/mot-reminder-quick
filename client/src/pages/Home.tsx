@@ -283,6 +283,11 @@ export default function Home() {
   const filteredAndSortedVehicles = useMemo(() => {
     if (!vehicles) return [];
     let filtered = vehicles.filter(vehicle => {
+      // Opted-out customers can never actually receive a reminder (sendWhatsApp rejects them
+      // server-side) — mostly the garage's own trade/stock accounts (e.g. Eli Motors itself,
+      // M & Y Autos), not real customers. Keep this list to vehicles a reminder can actually reach.
+      if (vehicle.customerOptedOut) return false;
+
       if (!showDeadVehicles) {
         if (vehicle.motExpiryDate) {
           const expiry = new Date(vehicle.motExpiryDate);
