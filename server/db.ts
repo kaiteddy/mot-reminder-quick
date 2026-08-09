@@ -1017,12 +1017,15 @@ export async function getAllVehiclesWithCustomers() {
       }
     }
 
+    const lastVisitMap = await getLastVisitDatesForVehicles();
+
     return allVehicles.map(v => {
       const log = v.id ? logMap.get(v.id) : null;
       return {
         ...v,
         lastReminderSent: log ? log.sentAt : null,
         lastReminderStatus: log ? log.status : null,
+        lastVisit: v.id ? lastVisitMap.get(v.id) || null : null,
       };
     });
   } catch (error) {
@@ -1474,6 +1477,28 @@ export async function getLastServiceForVehicles(vehicleIds: number[]) {
       out.set(d.vehicleId, { date: d.date, mileage: d.mileage, grade, items: d.items, docNo: d.docNo, ga4Number: d.ga4Number });
     }
   }
+  return out;
+}
+
+// Last time ANY document was created against a vehicle (any doc type) — a lighter-weight cousin
+// of getLastServiceForVehicles above, which only counts graded service jobs. This just answers
+// "when were they last in", so it's a single grouped aggregate over every vehicle at once rather
+// than per-customer.
+export async function getLastVisitDatesForVehicles() {
+  const out = new Map<number, Date>();
+  const db = await getDb();
+  if (!db) return out;
+
+  const rows = await db
+    .select({
+      vehicleId: serviceHistory.vehicleId,
+      lastVisit: sql<Date>`max(${serviceHistory.dateCreated})`,
+    })
+    .from(serviceHistory)
+    .where(isNotNull(serviceHistory.vehicleId))
+    .groupBy(serviceHistory.vehicleId);
+
+  for (const r of rows) if (r.vehicleId != null && r.lastVisit) out.set(r.vehicleId, r.lastVisit);
   return out;
 }
 
