@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown, ArrowLeftRight, UserX } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown, ArrowLeftRight, UserX, Clock } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
@@ -529,6 +529,12 @@ export default function CustomerDetails() {
     const { customer, vehicles, reminders } = data;
     const linkedAccounts: any[] = (data as any).linkedAccounts || [];
     const parsedContacts = parseContacts(customer.email as string | null, customer.phone as string | null);
+    // Most recent job across every doc on file for this customer — "when were they last in".
+    const lastVisit = (data.history || []).reduce((latest: Date | null, h: any) => {
+        if (!h.dateCreated) return latest;
+        const d = new Date(h.dateCreated);
+        return !latest || d > latest ? d : latest;
+    }, null as Date | null);
 
     return (
         <DashboardLayout>
@@ -633,6 +639,11 @@ export default function CustomerDetails() {
                         <Send className="w-4 h-4 text-purple-500" />
                         <span className="font-bold text-slate-900">{reminders.length}</span>
                         <span className="text-muted-foreground">reminders sent</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Clock className="w-4 h-4 text-slate-500" />
+                        <span className="font-bold text-slate-900">{lastVisit ? format(lastVisit, "dd/MM/yy") : "—"}</span>
+                        <span className="text-muted-foreground">last visit</span>
                     </div>
                 </div>
 
