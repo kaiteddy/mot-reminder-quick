@@ -847,6 +847,14 @@ export const appRouter = router({
           }
         };
       }),
+    /** Plate transferred to a different car: retire it from the old record so the new vehicle
+     *  can take it. See retirePlateFromVehicle — the old car keeps all of its history. */
+    retirePlate: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { retirePlateFromVehicle } = await import("./db");
+        return retirePlateFromVehicle(input.registration);
+      }),
     lookupExternal: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {

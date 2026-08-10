@@ -4833,3 +4833,75 @@ export function pickLabourBand(bands: { maxCC: number | null; label: string; lab
   if (!cc || !bands.length) return null;
   return bands.find((b) => b.maxCC == null || cc <= b.maxCC) || null;
 }
+
+/** Retire a plate from the car that currently holds it, so a genuinely different vehicle can
+ * take it on.
+ *
+ * A private plate moves with the owner, not the car. When that happens the existing record is
+ * the OLD car's real history and must not be rewritten with the new car's identity — which is
+ * what the identity-conflict guard in getVehicleByRegistration protects against. But that guard
+ * told the user to "use New Vehicle", which is impossible: vehicles.registration is UNIQUE, so
+ * the plate has to be freed first.
+ *
+ * This does what GA4 does — renames the old row to "LR72 VXE* (10/08/2026)", the date it lost
+ * the plate. History, invoices and links all stay attached to that record, and the plate is
+ * free for the new car. Nothing is deleted.
+ */
+export async function retirePlateFromVehicle(registration: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const reg = String(registration || "").toUpperCase().replace(/\s+/g, "");
+  if (!reg) throw new Error("A registration is required");
+
+  const v = (await db.select().from(vehicles)
+    .where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
+  if (!v) throw new Error(`${reg} isn't on file`);
+  if (String(v.registration || "").includes("*")) throw new Error(`${v.registration} has already been retired`);
+
+  const d = new Date();
+  const stamp = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  const retired = `${v.registration}* (${stamp})`;
+
+  // How much of a record this actually is. A reg typed into a job sheet creates a vehicle row
+  // from the DVLA/SWS lookup whether or not the job was ever written — so plenty of these rows
+  // are empty artifacts, and renaming one to "LR72VXE* (10/08/2026)" would leave permanent
+  // clutter in the vehicle list to preserve nothing at all.
+  const counts: any = await db.execute(sql`
+    SELECT
+      (SELECT COUNT(*) FROM ${serviceHistory} WHERE ${serviceHistory.vehicleId} = ${v.id}) docs,
+      (SELECT COUNT(*) FROM "reminders"           WHERE "vehicleId" = ${v.id}) rem,
+      (SELECT COUNT(*) FROM "reminderLogs"        WHERE "vehicleId" = ${v.id}) rlog,
+      (SELECT COUNT(*) FROM "appointments"        WHERE "vehicleId" = ${v.id}) appt,
+      (SELECT COUNT(*) FROM "vehicleSaleInvoices" WHERE "vehicleId" = ${v.id}) sale`);
+  const c = counts.rows[0] || {};
+  const docs = Number(c.docs || 0);
+  // customerLogs are deliberately NOT counted: a lookup writes one, so they're a record of us
+  // looking at the car, not of work done on it.
+  const hasHistory = docs > 0 || Number(c.rem || 0) > 0 || Number(c.rlog || 0) > 0
+    || Number(c.appt || 0) > 0 || Number(c.sale || 0) > 0 || !!v.customerId;
+
+  if (!hasHistory) {
+    // Nothing attached — the row is a lookup artifact, so free the plate by removing it rather
+    // than parking a retired-plate ghost in the vehicle list forever.
+    await db.execute(sql`DELETE FROM "customerLogs" WHERE "vehicleId" = ${v.id}`);
+    await db.delete(vehicles).where(eq(vehicles.id, v.id));
+    return {
+      action: "deleted" as const,
+      retiredVehicleId: v.id,
+      retiredAs: null,
+      was: `${v.make || ""} ${v.model || ""}`.trim(),
+      documentsKept: 0,
+      plateFreed: v.registration,
+    };
+  }
+
+  await db.update(vehicles).set({ registration: retired }).where(eq(vehicles.id, v.id));
+  return {
+    action: "retired" as const,
+    retiredVehicleId: v.id,
+    retiredAs: retired,
+    was: `${v.make || ""} ${v.model || ""}`.trim(),
+    documentsKept: docs,
+    plateFreed: v.registration,
+  };
+}

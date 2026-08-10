@@ -610,7 +610,19 @@ export default function DocumentDetails() {
       else if (src.includes("sws")) toast.success("Loaded from SWS vehicle data" + (src.includes("dvla") ? " + DVLA" : ""));
       else if (src.includes("dvla")) toast.success("Loaded from DVLA");
       else toast.message("No external data found — registration set");
-      if (res.warning) toast.warning(res.warning, { duration: 8000 });
+      // A plate-transfer warning is only useful if there's a way through it. The old text said
+      // "use New Vehicle", which can't work — vehicles.registration is UNIQUE, so the plate has
+      // to be freed from the old car first. Offer that as the action.
+      if (res.warning) {
+        const conflict = /different vehicle now carrying this plate/i.test(String(res.warning));
+        toast.warning(res.warning, {
+          duration: conflict ? 20000 : 8000,
+          action: conflict ? {
+            label: "It's a different car",
+            onClick: () => retirePlate(String(v.registration || reg)),
+          } : undefined,
+        });
+      }
       // Changing the reg to a car with no owner on file leaves the previously-linked customer
       // attached. Warn so an unrelated customer isn't silently carried onto a different vehicle.
       if (force && !c && form.customerId) {
@@ -619,6 +631,29 @@ export default function DocumentDetails() {
       }
     } catch { toast.error("Lookup failed"); }
     finally { setLooking(false); }
+  }
+
+  /** The plate has genuinely moved to a different car. Retire it from the old record — which
+   *  keeps every invoice it already has — then re-run the lookup so the new vehicle is created
+   *  cleanly against the freed plate. */
+  const retirePlateMut = trpc.vehicles.retirePlate.useMutation();
+  async function retirePlate(registration: string) {
+    try {
+      const r: any = await retirePlateMut.mutateAsync({ registration });
+      toast.success(
+        r.action === "deleted"
+          ? `${r.plateFreed} freed — the old ${r.was || "record"} had no history, so it's been removed rather than left as a ghost.`
+          : `${r.was || "The old vehicle"} kept as ${r.retiredAs}${r.documentsKept ? ` with its ${r.documentsKept} document${r.documentsKept === 1 ? "" : "s"}` : ""} — ${r.plateFreed} is free now.`,
+        { duration: 9000 },
+      );
+      // The plate is free now, so the next lookup must be a FORCED one to create the new car
+      // rather than merging onto whatever is still in the form. `force` is derived from the reg
+      // having changed since load, so clear that marker first.
+      regOnLoadRef.current = "";
+      await lookup(registration);
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't retire that plate");
+    }
   }
 
   // Auto-fire the same lookup() cascade (our records -> SWS -> DVLA) the moment a reg is
