@@ -1159,7 +1159,11 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     // Brakes + Supply & Fit Front Disks &…" was as much of the work as the customer ever saw —
     // on a service history that's the whole point of the document. Rows now grow to fit the
     // description. The cap is generous but real: one rambling entry mustn't swallow a page.
-    const HIST_MAX_ROW_H = 74;   // ~7 lines at 8.5pt — named apart from the module-level MAX_ROW_H used by the job-sheet tables
+    // Near a full page. The point of this document is to SHOW the work, so a row grows for as
+    // long as the job needs; a row taller than the page it sits on would break checkBreak's
+    // logic, so the cap exists for that and nothing else. Named apart from the module-level
+    // MAX_ROW_H, which caps the job-sheet tables for a different reason (one-page job sheets).
+    const HIST_MAX_ROW_H = Math.floor(PH - PAGE_M * 2 - 60);
 
     doc.save().rect(PAGE_M, y, CW, 18).fill(BRAND_BLUE).restore();
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
@@ -1170,26 +1174,50 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('Total', PAGE_M, y + 5, { width: CW - 6, align: 'right' });
     y += 18;
 
+    const PAD_T = 5, PAD_B = 6;
     entries.forEach((e: any, i: number) => {
-      // Prefer the full write-up; fall back to the heading for older records that have none.
-      const work = String(e.work || e.title || 'Service').trim() || 'Service';
-      // Measure with the same font the row is drawn in, or the height is meaningless.
-      doc.font('Helvetica').fontSize(8.5);
-      const textH = doc.heightOfString(work, { width: workW });
-      const rowH = Math.min(HIST_MAX_ROW_H, Math.max(MIN_ROW_H, Math.ceil(textH) + 8));
-      const clipped = textH > HIST_MAX_ROW_H - 8;
+      // The write-up is a heading followed by the steps taken. Drawn as one blob it reads as a
+      // wall of grey, so the heading keeps the row scannable in bold and the steps sit under it
+      // a size down and indented — the same shape as the job sheet the customer signed.
+      const full = String(e.work || e.title || 'Service').trim() || 'Service';
+      const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
+      const head = lines[0] || 'Service';
+      const steps = lines.slice(1);
+      const stepText = steps.join('\n');
+      const STEP_IND = 6;
+
+      doc.font('Helvetica-Bold').fontSize(8.5);
+      const headH = doc.heightOfString(head, { width: workW });
+      doc.font('Helvetica').fontSize(7.5);
+      const stepsH = stepText ? doc.heightOfString(stepText, { width: workW - STEP_IND, lineGap: 1 }) : 0;
+
+      const wanted = PAD_T + headH + (stepsH ? stepsH + 2 : 0) + PAD_B;
+      const rowH = Math.min(HIST_MAX_ROW_H, Math.max(MIN_ROW_H, Math.ceil(wanted)));
+      // Only what's left for the steps after the heading has taken its share.
+      const stepsRoom = rowH - PAD_T - headH - 2 - PAD_B;
+      const clipped = stepsH > stepsRoom;
 
       y = checkBreak(rowH + 4);
       if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#f4f6f8').restore(); }
-      doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
+
       const dp = String(e.date || '').split(' ');
       const shortDate = dp.length === 3 ? `${dp[0]} ${dp[1].slice(0, 3)} ${dp[2]}` : (e.date || '');
-      doc.text(shortDate, PAGE_M + 6, y + 4, { width: 74, lineBreak: false });
-      doc.text(e.doc_ref || '', colRef, y + 4, { width: 56, lineBreak: false });
-      doc.text(e.mileage || '', colMile, y + 4, { width: 64, lineBreak: false });
-      // Wraps now. `ellipsis` only bites on the rare entry longer than the cap.
-      doc.text(work, colWork, y + 4, { width: workW, height: rowH - 8, ellipsis: clipped });
-      doc.font('Helvetica-Bold').text(e.total || '', PAGE_M, y + 4, { width: CW - 6, align: 'right' });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
+      doc.text(shortDate, PAGE_M + 6, y + PAD_T, { width: 74, lineBreak: false });
+      doc.text(e.doc_ref || '', colRef, y + PAD_T, { width: 56, lineBreak: false });
+      doc.text(e.mileage || '', colMile, y + PAD_T, { width: 64, lineBreak: false });
+
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1f2937');
+      doc.text(head, colWork, y + PAD_T, { width: workW });
+      if (stepText && stepsRoom > 6) {
+        doc.font('Helvetica').fontSize(7.5).fillColor('#4b5563');
+        doc.text(stepText, colWork + STEP_IND, y + PAD_T + headH + 2, {
+          width: workW - STEP_IND, height: stepsRoom, lineGap: 1, ellipsis: clipped,
+        });
+      }
+
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1f2937');
+      doc.text(e.total || '', PAGE_M, y + PAD_T, { width: CW - 6, align: 'right' });
       doc.save().strokeColor('#e5e7eb').lineWidth(0.5).moveTo(PAGE_M, y + rowH).lineTo(PW - PAGE_M, y + rowH).stroke().restore();
       y += rowH;
     });
