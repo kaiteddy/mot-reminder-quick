@@ -504,6 +504,7 @@ export const salesStock = pgTable("salesStock", {
   externalId: varchar("externalId", { length: 64 }).unique(), // CSV VehicleID
   registration: varchar("registration", { length: 20 }),
   vin: varchar("vin", { length: 50 }),
+  engineNo: varchar("engineNo", { length: 50 }),   // for the sales invoice; filled by the UKVD lookup
   title: text("title"),
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
