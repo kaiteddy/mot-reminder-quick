@@ -97,11 +97,21 @@ export const aiRouter = router({
         const settings = await db.select().from(appSettings).where(eq(appSettings.keyName, 'pricing_knowledge')).limit(1);
         if (settings.length > 0 && settings[0].value) {
           const rules = settings[0].value as any;
+          // Service labour is banded by engine size (serviceLabourBands). The prompt used to
+          // quote a single "Small/Medium" figure for every car, so the bands never reached the
+          // AI at all and a 2.3L SUV was priced like a 1.0L hatchback. Read the live bands so
+          // there's one source of truth, and fall back to the stored tiers if the table is empty.
+          const { getServiceLabourBands } = await import("../db");
+          const bands = await getServiceLabourBands("interimService");
+          const bandLines = bands.length
+            ? bands.map((b: any) => `  · ${b.label}${b.maxCC ? ` (up to ${b.maxCC}cc)` : ""}: £${b.labour}`).join("\n")
+            : `  · Small: £${rules.serviceSmall || "124"}\n  · Medium: £${rules.serviceMedium || "134"}\n  · Large: £${rules.serviceLarge || "144"}`;
           pricingRules = `
 CRITICAL PRICING RULES TO USE (DO NOT DEVIATE):
 - Hourly Labour Rate: £${rules.labourRate || "70"}
-- Fixed MOT Cost: £${rules.motCost || "50"}
-- Fixed Service Labour (Small/Medium): £${rules.serviceMedium || "124"}
+- Fixed MOT Cost: £${rules.motCost || "50"} (no VAT on an MOT test)
+- Interim/small service LABOUR, by engine size (parts are charged on top):
+${bandLines}
 ${rules.customKnowledge ? `\nADDITIONAL PRICING KNOWLEDGE:\n${rules.customKnowledge}` : ''}
 `;
         }

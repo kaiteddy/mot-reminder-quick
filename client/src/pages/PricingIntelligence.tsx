@@ -27,8 +27,8 @@ export default function PricingIntelligence() {
   // job sheet, in the parts price list. £50 as of 06/08/2026.
   const [motCost, setMotCost] = useState("50");
   const [serviceSmall, setServiceSmall] = useState("124");
-  const [serviceMedium, setServiceMedium] = useState("124");
-  const [serviceLarge, setServiceLarge] = useState("154");
+  const [serviceMedium, setServiceMedium] = useState("134");
+  const [serviceLarge, setServiceLarge] = useState("144");
   const [customKnowledge, setCustomKnowledge] = useState("");
 
   const { data: pricingData, isLoading: isLoadingSettings } = trpc.ai.getPricingKnowledge.useQuery(undefined, {
