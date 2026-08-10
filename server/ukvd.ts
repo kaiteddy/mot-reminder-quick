@@ -84,9 +84,23 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
     url.searchParams.append("Vrm", cleanVRM);
 
     try {
-        const response = await fetch(url.toString());
+        // UKVD throttles a run of back-to-back lookups with a 429. Returning null there would be
+        // read as "this vehicle has no data" and the car silently skipped — seen for real when
+        // backfilling stock: 5 consecutive regs came back empty purely from rate limiting, and all
+        // 5 returned full data on a spaced retry. A 429 is never a billed lookup, so retrying it
+        // costs nothing.
+        let response!: Response;
+        for (let attempt = 1; ; attempt++) {
+            response = await fetch(url.toString());
+            if (response.status !== 429 || attempt >= 3) break;
+            const retryAfter = Number(response.headers.get("retry-after")) * 1000;
+            await new Promise((r) => setTimeout(r, retryAfter > 0 ? retryAfter : attempt * 4000));
+            console.warn(`[UKVD] rate limited on ${cleanVRM} — retry ${attempt} of 2`);
+        }
         if (!response.ok) {
-            console.error(`[UKVD] API Error: ${response.status} ${response.statusText}`);
+            const why = response.status === 429 ? "rate limited (not billed)" : response.statusText;
+            _lastUkvdStatus = `UKVD ${response.status}: ${why}`;
+            console.error(`[UKVD] API Error: ${response.status} ${why}`);
             return null;
         }
 
