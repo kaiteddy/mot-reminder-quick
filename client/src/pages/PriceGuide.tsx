@@ -3,6 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { Loader2, Search, Info, Printer, ChevronRight, ChevronDown } from "lucide-react";
+import { schemeForMake, SERVICE_DIFFERENCE } from "@/lib/serviceSchemes";
 
 /**
  * "How much is a small service for a GLC?" — answered from our own invoices instead of guessed.
@@ -155,6 +156,63 @@ function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
               ))}
             </div>
           )}
+
+          {/* What actually differs, beyond the price — and in the manufacturer's own words where
+              they use one, because a Mercedes owner asks whether theirs is an A or a B. */}
+          <details className="rounded-lg border border-slate-200 bg-white p-3" open>
+            <summary className="cursor-pointer text-[12px] font-semibold text-slate-700">
+              What's the difference between them?
+            </summary>
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+              <div>
+                <div className="font-semibold text-slate-600 mb-1">Both services include</div>
+                <ul className="space-y-0.5 text-slate-600">
+                  {SERVICE_DIFFERENCE.same.map((l) => <li key={l} className="flex gap-1.5"><span className="text-emerald-600">✓</span><span>{l}</span></li>)}
+                </ul>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-600 mb-1">Only on the full service</div>
+                <ul className="space-y-0.5 text-slate-600">
+                  {SERVICE_DIFFERENCE.onlyFull.map((l) => <li key={l} className="flex gap-1.5"><span className="text-violet-600">+</span><span>{l}</span></li>)}
+                </ul>
+                <div className="mt-1.5 text-[10px] text-slate-400">That's the whole difference — and the {money(((data as any).combos || []).find((c: any) => c.isDiff)?.price || 0)} between them.</div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-600 mb-1">Neither — charged separately</div>
+                <ul className="space-y-0.5 text-slate-500">
+                  {SERVICE_DIFFERENCE.notIncluded.map((l) => <li key={l} className="flex gap-1.5"><span className="text-slate-300">–</span><span>{l}</span></li>)}
+                </ul>
+              </div>
+            </div>
+
+            {(() => {
+              const sc = schemeForMake(v?.make);
+              if (!sc) return null;
+              return (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+                  <div className="text-[11px] font-semibold text-amber-900">
+                    {v?.make} calls it: {sc.scheme}
+                  </div>
+                  <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-900/90">
+                    <div>
+                      <span className="font-semibold">{sc.minor.name}</span>{" "}
+                      <span className="text-amber-700">= {sc.minor.maps}</span>
+                      <div className="text-amber-800/80">{sc.minor.detail}</div>
+                    </div>
+                    <div>
+                      <span className="font-semibold">{sc.major.name}</span>{" "}
+                      <span className="text-amber-700">= {sc.major.maps}</span>
+                      <div className="text-amber-800/80">{sc.major.detail}</div>
+                    </div>
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-amber-800">{sc.note}</div>
+                  <div className="mt-1 text-[10px] text-amber-700/70">
+                    General guidance for the make — the exact schedule for this car comes from its technical data.
+                  </div>
+                </div>
+              );
+            })()}
+          </details>
 
           {(data as any)?.combos?.length > 0 && (
             <div className="flex flex-wrap gap-2">
