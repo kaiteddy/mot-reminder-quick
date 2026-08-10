@@ -316,7 +316,10 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <line className="field-line" x1="22" y1="1362" x2="1205" y2="1362" />
       {/* Not on the printed pad. The postcode only ever uses the left of this rule, so the
           customer's email goes on the rest of it rather than costing the form a whole line. */}
-      <text className="print-label" x="600" y="1369">Email</text>
+      {/* Baseline matches the address text on this rule, not the +7 the other captions use — they
+          sit to the LEFT of their rule, whereas this one is mid-line and the rule would strike
+          through it. */}
+      <text className="print-label" x="600" y="1353">Email</text>
       <text className="print-label" x="350" y="1425">Telephone</text>
       <line className="field-line" x1="560" y1="1418" x2="1205" y2="1418" />
 
