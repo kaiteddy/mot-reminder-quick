@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
@@ -64,12 +64,85 @@ function Cell({ stat, vat }: { stat: any; vat: "inc" | "ex" }) {
   );
 }
 
+/** What separates the two services — and what the manufacturer calls them. Deliberately NOT
+ * behind the registration lookup: it's the reference you want open while you're talking, before
+ * you know the car, and the make picker means a Mercedes A/B question can be answered without
+ * a reg to hand. When a car HAS been looked up its make is preselected. */
+function ServiceDifference({ make, onMake, diff }: { make: string; onMake: (m: string) => void; diff?: number }) {
+  const MAKES = ["MERCEDES-BENZ", "BMW", "MINI", "VOLKSWAGEN", "AUDI", "SKODA", "SEAT", "TOYOTA", "LEXUS", "HONDA", "FORD", "KIA", "HYUNDAI"];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-slate-700">What's the difference between the services?</span>
+        <select value={make} onChange={(e) => onMake(e.target.value)}
+          className="border rounded-md px-2 py-1 text-sm print:hidden">
+          <option value="">Any make</option>
+          {MAKES.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+  {/* What actually differs, beyond the price — and in the manufacturer's own words where
+      they use one, because a Mercedes owner asks whether theirs is an A or a B. */}
+  <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+      <div>
+        <div className="font-semibold text-slate-600 mb-1">Both services include</div>
+        <ul className="space-y-0.5 text-slate-600">
+          {SERVICE_DIFFERENCE.same.map((l) => <li key={l} className="flex gap-1.5"><span className="text-emerald-600">✓</span><span>{l}</span></li>)}
+        </ul>
+      </div>
+      <div>
+        <div className="font-semibold text-slate-600 mb-1">Only on the full service</div>
+        <ul className="space-y-0.5 text-slate-600">
+          {SERVICE_DIFFERENCE.onlyFull.map((l) => <li key={l} className="flex gap-1.5"><span className="text-violet-600">+</span><span>{l}</span></li>)}
+        </ul>
+        {diff ? <div className="mt-1.5 text-[10px] text-slate-400">That's the whole difference — and the {money(diff)} between them.</div> : null}
+      </div>
+      <div>
+        <div className="font-semibold text-slate-600 mb-1">Neither — charged separately</div>
+        <ul className="space-y-0.5 text-slate-500">
+          {SERVICE_DIFFERENCE.notIncluded.map((l) => <li key={l} className="flex gap-1.5"><span className="text-slate-300">–</span><span>{l}</span></li>)}
+        </ul>
+      </div>
+    </div>
+
+    {(() => {
+      const sc = schemeForMake(make);
+      if (!sc) return null;
+      return (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+          <div className="text-[11px] font-semibold text-amber-900">
+            {make} calls it: {sc.scheme}
+          </div>
+          <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-900/90">
+            <div>
+              <span className="font-semibold">{sc.minor.name}</span>{" "}
+              <span className="text-amber-700">= {sc.minor.maps}</span>
+              <div className="text-amber-800/80">{sc.minor.detail}</div>
+            </div>
+            <div>
+              <span className="font-semibold">{sc.major.name}</span>{" "}
+              <span className="text-amber-700">= {sc.major.maps}</span>
+              <div className="text-amber-800/80">{sc.major.detail}</div>
+            </div>
+          </div>
+          <div className="mt-1.5 text-[10px] text-amber-800">{sc.note}</div>
+          <div className="mt-1 text-[10px] text-amber-700/70">
+            General guidance for the make — the exact schedule for this car comes from its technical data.
+          </div>
+        </div>
+      );
+    })()}
+  </div>
+    </div>
+  );
+}
+
 /** The whole point of the page, in one box: type the reg, get the price.
  *
  * Everything below it is reference material. This is what gets used with a customer on the
  * phone, so it does the thinking — works out the car's size band and reads back the few numbers
  * that get asked for, big enough to read at a glance. */
-function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
+function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; onCar: (info: { make: string; diff?: number }) => void }) {
   const [reg, setReg] = useState("");
   const [submitted, setSubmitted] = useState("");
   const { data, isFetching } = trpc.priceGuide.forRegistration.useQuery(
@@ -78,6 +151,11 @@ function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
   );
 
   const HEADLINE = ["interimService", "fullService", "brakeFluid", "frontPads", "frontDiscs"];
+  // Hand the looked-up make and interim->full gap to the reference panel below, so it follows
+  // the car without being trapped inside the lookup.
+  const foundMake = (data as any)?.vehicle?.make;
+  const foundDiff = ((data as any)?.combos || []).find((c: any) => c.isDiff)?.price;
+  useEffect(() => { if (foundMake) onCar({ make: String(foundMake).toUpperCase(), diff: foundDiff }); }, [foundMake, foundDiff]);
   const found = (data as any)?.found;
   const v = (data as any)?.vehicle;
   const prices = (data as any)?.prices || {};
@@ -157,63 +235,6 @@ function QuickQuote({ years, vat }: { years: number; vat: "inc" | "ex" }) {
             </div>
           )}
 
-          {/* What actually differs, beyond the price — and in the manufacturer's own words where
-              they use one, because a Mercedes owner asks whether theirs is an A or a B. */}
-          <details className="rounded-lg border border-slate-200 bg-white p-3" open>
-            <summary className="cursor-pointer text-[12px] font-semibold text-slate-700">
-              What's the difference between them?
-            </summary>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
-              <div>
-                <div className="font-semibold text-slate-600 mb-1">Both services include</div>
-                <ul className="space-y-0.5 text-slate-600">
-                  {SERVICE_DIFFERENCE.same.map((l) => <li key={l} className="flex gap-1.5"><span className="text-emerald-600">✓</span><span>{l}</span></li>)}
-                </ul>
-              </div>
-              <div>
-                <div className="font-semibold text-slate-600 mb-1">Only on the full service</div>
-                <ul className="space-y-0.5 text-slate-600">
-                  {SERVICE_DIFFERENCE.onlyFull.map((l) => <li key={l} className="flex gap-1.5"><span className="text-violet-600">+</span><span>{l}</span></li>)}
-                </ul>
-                <div className="mt-1.5 text-[10px] text-slate-400">That's the whole difference — and the {money(((data as any).combos || []).find((c: any) => c.isDiff)?.price || 0)} between them.</div>
-              </div>
-              <div>
-                <div className="font-semibold text-slate-600 mb-1">Neither — charged separately</div>
-                <ul className="space-y-0.5 text-slate-500">
-                  {SERVICE_DIFFERENCE.notIncluded.map((l) => <li key={l} className="flex gap-1.5"><span className="text-slate-300">–</span><span>{l}</span></li>)}
-                </ul>
-              </div>
-            </div>
-
-            {(() => {
-              const sc = schemeForMake(v?.make);
-              if (!sc) return null;
-              return (
-                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5">
-                  <div className="text-[11px] font-semibold text-amber-900">
-                    {v?.make} calls it: {sc.scheme}
-                  </div>
-                  <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-900/90">
-                    <div>
-                      <span className="font-semibold">{sc.minor.name}</span>{" "}
-                      <span className="text-amber-700">= {sc.minor.maps}</span>
-                      <div className="text-amber-800/80">{sc.minor.detail}</div>
-                    </div>
-                    <div>
-                      <span className="font-semibold">{sc.major.name}</span>{" "}
-                      <span className="text-amber-700">= {sc.major.maps}</span>
-                      <div className="text-amber-800/80">{sc.major.detail}</div>
-                    </div>
-                  </div>
-                  <div className="mt-1.5 text-[10px] text-amber-800">{sc.note}</div>
-                  <div className="mt-1 text-[10px] text-amber-700/70">
-                    General guidance for the make — the exact schedule for this car comes from its technical data.
-                  </div>
-                </div>
-              );
-            })()}
-          </details>
-
           {(data as any)?.combos?.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {((data as any).combos as any[]).map((c) => (
@@ -269,6 +290,8 @@ export default function PriceGuide() {
   const [openMakes, setOpenMakes] = useState<Record<string, boolean>>({});
   const [showTable, setShowTable] = useState(false);
   const [vat, setVat] = useState<"inc" | "ex">("inc");
+  const [schemeMake, setSchemeMake] = useState("");
+  const [schemeDiff, setSchemeDiff] = useState<number | undefined>(undefined);
   const { data, isLoading } = trpc.priceGuide.get.useQuery({ years }, { staleTime: 5 * 60_000 });
 
   const cats: any[] = (data as any)?.categories || [];
@@ -314,7 +337,9 @@ export default function PriceGuide() {
           </div>
         </div>
 
-        <QuickQuote years={years} vat={vat} />
+        <QuickQuote years={years} vat={vat} onCar={(info) => { setSchemeMake(info.make); setSchemeDiff(info.diff); }} />
+
+        <ServiceDifference make={schemeMake} onMake={setSchemeMake} diff={schemeDiff} />
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-slate-500 py-12 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Working out prices from your invoices…</div>
