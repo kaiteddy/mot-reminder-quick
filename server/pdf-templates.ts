@@ -1154,7 +1154,12 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     const colMile = PAGE_M + 140;
     const colWork = PAGE_M + 208;
     const workW = (PW - PAGE_M - 74) - colWork;
-    const rowH = 17;
+    const MIN_ROW_H = 17;
+    // A job used to be clamped to a single 11pt line and ellipsised, so "Check Front & Rear
+    // Brakes + Supply & Fit Front Disks &…" was as much of the work as the customer ever saw —
+    // on a service history that's the whole point of the document. Rows now grow to fit the
+    // description. The cap is generous but real: one rambling entry mustn't swallow a page.
+    const HIST_MAX_ROW_H = 74;   // ~7 lines at 8.5pt — named apart from the module-level MAX_ROW_H used by the job-sheet tables
 
     doc.save().rect(PAGE_M, y, CW, 18).fill(BRAND_BLUE).restore();
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
@@ -1166,6 +1171,14 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     y += 18;
 
     entries.forEach((e: any, i: number) => {
+      // Prefer the full write-up; fall back to the heading for older records that have none.
+      const work = String(e.work || e.title || 'Service').trim() || 'Service';
+      // Measure with the same font the row is drawn in, or the height is meaningless.
+      doc.font('Helvetica').fontSize(8.5);
+      const textH = doc.heightOfString(work, { width: workW });
+      const rowH = Math.min(HIST_MAX_ROW_H, Math.max(MIN_ROW_H, Math.ceil(textH) + 8));
+      const clipped = textH > HIST_MAX_ROW_H - 8;
+
       y = checkBreak(rowH + 4);
       if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#f4f6f8').restore(); }
       doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
@@ -1174,7 +1187,8 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
       doc.text(shortDate, PAGE_M + 6, y + 4, { width: 74, lineBreak: false });
       doc.text(e.doc_ref || '', colRef, y + 4, { width: 56, lineBreak: false });
       doc.text(e.mileage || '', colMile, y + 4, { width: 64, lineBreak: false });
-      doc.text(e.title || 'Service', colWork, y + 4, { width: workW, height: 11, ellipsis: true, lineBreak: false });
+      // Wraps now. `ellipsis` only bites on the rare entry longer than the cap.
+      doc.text(work, colWork, y + 4, { width: workW, height: rowH - 8, ellipsis: clipped });
       doc.font('Helvetica-Bold').text(e.total || '', PAGE_M, y + 4, { width: CW - 6, align: 'right' });
       doc.save().strokeColor('#e5e7eb').lineWidth(0.5).moveTo(PAGE_M, y + rowH).lineTo(PW - PAGE_M, y + rowH).stroke().restore();
       y += rowH;

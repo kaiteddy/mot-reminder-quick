@@ -4214,6 +4214,15 @@ export async function getServiceHistoryPDF(vehicleId: number, opts?: { includeIn
       total: `£${(gross || (net + vat)).toFixed(2)}`,
       title,
       narrative,
+      // The summary table used to print `title` alone — the FIRST LINE of the description —
+      // so a job written up as a heading plus steps showed only its heading, and the customer's
+      // service history said "Check front and rear brakes." for a £395 job. This carries the
+      // whole write-up for that table; markdown bullets and bold markers are stripped since
+      // the PDF renders plain text.
+      work: [title, narrative].filter(Boolean).join("\n")
+        .replace(/\*\*/g, "")
+        .replace(/^[ \t]*[-*\u2022][ \t]+/gm, "\u2022 ")
+        .trim(),
       mot,
       labour,
       parts: parts.concat(other),
