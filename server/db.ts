@@ -2855,24 +2855,58 @@ export async function getSalesStock() {
 export async function refreshSalesStockMotTax() {
   const db = await getDb();
   if (!db) return { updated: 0 };
-  const cars = await db.select({ id: salesStock.id, registration: salesStock.registration }).from(salesStock);
+  const cars = await db.select({
+    id: salesStock.id, registration: salesStock.registration,
+    mileage: salesStock.mileage, registrationDate: salesStock.registrationDate,
+    make: salesStock.make, model: salesStock.model, colour: salesStock.colour, fuelType: salesStock.fuelType,
+  }).from(salesStock);
   const { getVehicleDetails } = await import("./dvlaApi");
-  const { getCurrentMotExpiry } = await import("./motApi");
+  const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
   const toDate = (x: any) => { if (!x) return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d.getTime()) ? null : d; };
-  let updated = 0;
+  let updated = 0, filled = 0;
+  const gapsFilled: Record<string, number> = {};
   for (const car of cars) {
     if (!car.registration) continue;
     const reg = String(car.registration).toUpperCase().replace(/\s+/g, "");
     try {
-      // MOT expiry from DVSA MOT History (authoritative); tax from DVLA VES
-      const [d, motExp]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getCurrentMotExpiry(reg)]);
+      // MOT history from DVSA (authoritative for expiry, and the only source of a mileage
+      // reading); tax and the vehicle's registry details from DVLA VES.
+      const [d, mot]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getMOTHistory(reg).catch(() => null)]);
+      const motExp = mot ? getLatestMOTExpiry(mot) : null;
       const set: any = { taxStatus: d?.taxStatus || null, taxDueDate: toDate(d?.taxDueDate), motTaxChecked: new Date() };
       if (motExp) set.motExpiryDate = motExp;
+
+      // Backfill only — a blank is filled from the registry, but anything already on the stock
+      // row is left alone. The stocklist is what the forecourt advertises and must win.
+      const fill = (col: string, value: any) => {
+        if (value == null || value === "") return;
+        set[col] = value;
+        gapsFilled[col] = (gapsFilled[col] || 0) + 1;
+        filled++;
+      };
+      if (car.mileage == null) {
+        // Latest test by completion date — motTests aren't guaranteed to be ordered.
+        const readings = (mot?.motTests || [])
+          .filter((t: any) => t.odometerValue && /mi/i.test(t.odometerUnit || "mi"))
+          .sort((a: any, b: any) => +new Date(b.completedDate) - +new Date(a.completedDate));
+        const miles = Number(String(readings[0]?.odometerValue || "").replace(/\D/g, ""));
+        if (Number.isFinite(miles) && miles > 0) fill("mileage", miles);
+      }
+      if (!car.registrationDate) {
+        // DVSA gives a full date; DVLA only ever gives the month, so it's the fallback.
+        fill("registrationDate", toDate(mot?.firstUsedDate)
+          ?? (d?.monthOfFirstRegistration ? toDate(`${d.monthOfFirstRegistration}-01`) : null));
+      }
+      if (!car.make) fill("make", (d?.make || mot?.make || "").toUpperCase() || null);
+      if (!car.model) fill("model", (mot?.model || "").toUpperCase() || null);
+      if (!car.colour) fill("colour", (d?.colour || mot?.primaryColour || "").toUpperCase() || null);
+      if (!car.fuelType) fill("fuelType", d?.fuelType || mot?.fuelType || null);
+
       await db.update(salesStock).set(set).where(eq(salesStock.id, car.id));
       updated++;
     } catch { /* skip this reg */ }
   }
-  return { updated };
+  return { updated, filled, gapsFilled };
 }
 
 export async function getCustomerContacts(customerId: number) {

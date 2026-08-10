@@ -37,6 +37,8 @@ interface MOTHistory {
   model?: string;
   primaryColour?: string;
   fuelType?: string;
+  /** Full first-use date, e.g. "2017-03-18" — DVLA's VES only gives the month. */
+  firstUsedDate?: string;
   motTests?: MOTTest[];
 }
 
