@@ -133,6 +133,7 @@ export const expenditureRouter = router({
       feeBreakdown: z.object({ buyerFee: z.number().nullish(), assured: z.number().nullish(), delivery: z.number().nullish(), other: z.number().nullish() }).nullish(),
       status: z.enum(["in_stock", "sold"]).optional(), notes: z.string().nullish(),
       source: z.string().nullish(),
+      salesStockId: z.number().nullish(),
     }))
     .mutation(async ({ input }) => {
       const { upsertCarDeal } = await import("../services/expenditure");

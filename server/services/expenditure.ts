@@ -662,6 +662,10 @@ function dealFields(input: any) {
   if ("status" in input) f.status = input.status;
   if ("notes" in input) f.notes = input.notes || null;
   if ("source" in input) f.source = input.source || null;
+  // Filling the purchase in from the Sales Stock page creates the deal for a car that's already
+  // in stock, so the link has to be set on insert — otherwise syncStockForDeal makes a SECOND
+  // stock row for a car that's already sitting there.
+  if ("salesStockId" in input) f.salesStockId = input.salesStockId ?? null;
   return f;
 }
 

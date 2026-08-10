@@ -119,6 +119,8 @@ export default function SalesStock() {
 
   // Mark sold: capture price/date, then hand over to the invoice if asked.
   const [soldTarget, setSoldTarget] = useState<any>(null);
+  // Which car's purchase details are being filled in from the Needs column.
+  const [fixTarget, setFixTarget] = useState<any>(null);
   const unsell = trpc.salesStock.setSold.useMutation({
     onSuccess: (_r, v) => { utils.salesStock.list.invalidate(); toast.success("Back on the forecourt"); },
     onError: (e) => toast.error(e.message || "Could not update this car"),
@@ -271,7 +273,7 @@ export default function SalesStock() {
                             : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-2 py-2 whitespace-nowrap text-slate-600">{fmtDate(c.createdAt) || <span className="text-slate-300">—</span>}</td>
-                        <td className="px-2 py-2"><MissingCell car={c} /></td>
+                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
                         <td className="px-2 py-2">
@@ -340,7 +342,7 @@ export default function SalesStock() {
                         {c.views7d != null && <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{c.views7d}/wk</span>}
                         {c.purchasedOn && <span title={`Bought in${c.purchasedFrom ? ` from ${c.purchasedFrom}` : ""}`}>bought {fmtDate(c.purchasedOn)}</span>}
                       </div>
-                      <MissingCell car={c} block />
+                      <div onClick={(e) => e.stopPropagation()}><MissingCell car={c} block onFix={setFixTarget} /></div>
                       <div className="flex flex-col gap-1.5 mt-auto pt-1">
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
@@ -370,6 +372,14 @@ export default function SalesStock() {
             </div>
           )}
       </div>
+
+      {fixTarget && (
+        <PurchaseFillDialog
+          car={fixTarget}
+          onClose={() => setFixTarget(null)}
+          onSaved={() => setFixTarget(null)}
+        />
+      )}
 
       {soldTarget && (
         <MarkSoldDialog
@@ -541,28 +551,132 @@ function InvoiceKindDialog({
   );
 }
 
+/** Fill in the buying side without leaving the stock list.
+ *
+ * The amber chip already said exactly what was missing; it just wasn't clickable, so correcting
+ * a blank meant finding the car again over in the trading ledger. Only the three fields the
+ * chip complains about are here, plus the on-costs, because anything more turns a ten-second
+ * correction back into a form.
+ *
+ * A car with NO deal at all gets one created and linked to this stock row — the link matters,
+ * or the ledger sync would spawn a second stock entry for a car already sitting in the list.
+ */
+function PurchaseFillDialog({ car, onClose, onSaved }: { car: any; onClose: () => void; onSaved: () => void }) {
+  const SOURCES = ["BCA", "Manheim", "Aston Barclay", "Eastbourne", "Customer", "Part-exchange", "Trade", "Other"];
+  const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+  const [date, setDate] = useState(iso(car.purchasedOn));
+  const [price, setPrice] = useState(car.purchasedFor != null ? String(car.purchasedFor) : "");
+  const [source, setSource] = useState(car.purchasedFrom || "");
+  const [onCosts, setOnCosts] = useState(car.purchaseOnCosts != null ? String(car.purchaseOnCosts) : "");
+  const [saving, setSaving] = useState(false);
+  const utils = trpc.useUtils();
+  const upsert = trpc.expenditure.upsertCarDeal.useMutation();
+
+  const custom = !!source && !SOURCES.includes(source);
+  const num = (v: string) => (v.trim() === "" ? null : Number(v));
+
+  const save = async () => {
+    const p = num(price), oc = num(onCosts);
+    if ((p != null && !isFinite(p)) || (oc != null && !isFinite(oc))) { toast.error("Enter a valid amount"); return; }
+    setSaving(true);
+    try {
+      await upsert.mutateAsync({
+        id: car.dealId ?? undefined,
+        // Only sent when creating, so an existing deal's reg/link are never rewritten from here.
+        ...(car.dealId ? {} : { registration: car.registration, salesStockId: car.id, status: "in_stock" as const }),
+        purchaseDate: date || null,
+        purchaseCost: p,
+        source: source || null,
+        ...(onCosts.trim() === "" ? {} : { reconditioningCost: oc }),
+      });
+      await utils.salesStock.list.invalidate();
+      toast.success(`Purchase details saved for ${car.registration}`);
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't save the purchase details");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <div className="font-semibold text-slate-800">Purchase details</div>
+          <div className="text-[12px] text-slate-500">{car.registration} · {[car.make, car.model].filter(Boolean).join(" ")}</div>
+        </div>
+
+        <div>
+          <label className="text-[11px] text-slate-500">Date bought</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+        </div>
+        <div>
+          <label className="text-[11px] text-slate-500">Price paid for the car</label>
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Vehicle only, before fees"
+            className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+        </div>
+        <div>
+          <label className="text-[11px] text-slate-500">Bought from</label>
+          <select value={custom ? "__other" : source} onChange={(e) => setSource(e.target.value === "__other" ? " " : e.target.value)}
+            className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500">
+            <option value="">Choose…</option>
+            {SOURCES.map((x) => <option key={x} value={x}>{x}</option>)}
+            <option value="__other">Something else…</option>
+          </select>
+          {custom && (
+            <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Who from"
+              className="mt-1 w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500" autoFocus />
+          )}
+        </div>
+        <div>
+          <label className="text-[11px] text-slate-500">Fees &amp; delivery <span className="text-slate-400">(optional)</span></label>
+          <input value={onCosts} onChange={(e) => setOnCosts(e.target.value)} inputMode="decimal" placeholder="Buyer fee, assured, delivery"
+            className="w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+          <div className="mt-0.5 text-[10px] text-slate-400">Kept apart from the car price — on-costs don't count towards the VAT margin.</div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={save} disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-700 px-4 py-1.5 text-sm text-white hover:bg-violet-800 disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * What this car is still short of — kept in two groups because they're different jobs: the buying
  * side is bookkeeping (what you paid, when, who from), the invoice side is what the sales form
  * can't fill in on its own.
  */
-function MissingCell({ car, block }: { car: any; block?: boolean }) {
+function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?: (car: any) => void }) {
   const { purchase, invoice, noDeal } = missingBits(car);
   if (!purchase.length && !invoice.length) {
     return <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-green-700" title="Purchase logged and everything the sales invoice needs is on file"><ShieldCheck className="h-3 w-3" />complete</span>;
   }
-  const Tag = ({ kind, gaps, tone, hint }: { kind: string; gaps: string[]; tone: string; hint: string }) => (
-    <span title={hint} className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
+  // The buying-side chips are clickable — they name the gap, so they may as well fix it.
+  const Tag = ({ kind, gaps, tone, hint, fixable }: { kind: string; gaps: string[]; tone: string; hint: string; fixable?: boolean }) => {
+    const inner = (<>
       <AlertTriangle className="h-3 w-3 shrink-0" />
       <span className="truncate"><b className="font-semibold">{kind}</b> {gaps.join(", ")}</span>
-    </span>
-  );
+    </>);
+    const cls = `inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`;
+    if (!fixable || !onFix) return <span title={hint} className={cls}>{inner}</span>;
+    return (
+      <button type="button" title={`${hint} — click to fill it in`}
+        onClick={(e) => { e.stopPropagation(); onFix(car); }}
+        className={`${cls} cursor-pointer hover:brightness-95`}>{inner}</button>
+    );
+  };
   return (
     <span className={`${block ? "flex" : "inline-flex"} flex-wrap items-center gap-1`}>
       {noDeal
-        ? <Tag kind="not bought in" gaps={["no purchase logged"]} tone="border-red-300 bg-red-50 text-red-800"
+        ? <Tag kind="not bought in" gaps={["no purchase logged"]} tone="border-red-300 bg-red-50 text-red-800" fixable
             hint="No car deal exists for this car — there's no record of what was paid for it or who from." />
-        : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800"
+        : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800" fixable
             hint={`Missing from the purchase record: ${purchase.join(", ")}`} />}
       {invoice.length > 0 && <Tag kind="invoice" gaps={invoice} tone="border-sky-300 bg-sky-50 text-sky-800"
         hint={`The sales invoice can't fill these in: ${invoice.join(", ")}`} />}

@@ -2834,11 +2834,12 @@ export async function getSalesStock() {
   const res: any = await db.execute(sql`
     SELECT s.*,
            d."purchaseDate" "purchasedOn", d."purchaseCost" "purchasedFor", d."source" "purchasedFrom",
+           d."id" "dealId", d."reconditioningCost" "purchaseOnCosts", d."onCostVat" "purchaseOnCostVat",
            v."engineNo" "vehEngineNo", v."vin" "vehVin",
            v."dateOfRegistration" "vehFirstRegistered", v."derivative" "vehDerivative"
     FROM "salesStock" s
     LEFT JOIN LATERAL (
-      SELECT cd."purchaseDate", cd."purchaseCost", cd."source" FROM "carDeals" cd
+      SELECT cd."id", cd."purchaseDate", cd."purchaseCost", cd."source", cd."reconditioningCost", cd."onCostVat" FROM "carDeals" cd
       WHERE cd."salesStockId" = s."id"
       ORDER BY cd."purchaseDate" ASC NULLS LAST, cd."id" ASC LIMIT 1
     ) d ON TRUE
