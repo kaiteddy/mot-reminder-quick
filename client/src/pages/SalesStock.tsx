@@ -85,7 +85,11 @@ export default function SalesStock() {
   // compliance data — always fetch fresh on open so MOT/tax can never show a stale value
   const { data, isLoading } = trpc.salesStock.list.useQuery(undefined, { staleTime: 0, refetchOnMount: "always" });
   const refresh = trpc.salesStock.refresh.useMutation({
-    onSuccess: (r) => { toast.success(`Refreshed MOT/tax on ${r.updated} cars`); utils.salesStock.list.invalidate(); },
+    onSuccess: (r: any) => {
+      const gaps = Object.entries(r.gapsFilled || {}).map(([k, v]) => `${v} ${k}`).join(", ");
+      toast.success(`Refreshed MOT/tax on ${r.updated} cars${r.filled ? ` · filled ${r.filled} blanks from DVLA/DVSA (${gaps})` : ""}`);
+      utils.salesStock.list.invalidate();
+    },
     onError: (e) => toast.error(e.message || "Refresh failed"),
   });
 
