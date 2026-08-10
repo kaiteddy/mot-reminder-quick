@@ -1945,10 +1945,35 @@ export async function globalSearch(query: string, full = false) {
 }
 
 // Sales forecourt stock with DVLA MOT/tax. Imported via scripts/import-sales-stock.ts.
+/**
+ * Stock list, plus the two things the forecourt view needs that aren't on the stock row itself:
+ * when the car was bought (from its car deal) and the details the sales invoice needs — some of
+ * which only exist on the garage's own vehicle record, as the stocklist carries no engine number.
+ *
+ * Both joins are LATERAL so a car with more than one deal, or a duplicate vehicle row, still
+ * yields exactly one row per stock car rather than silently multiplying the list.
+ */
 export async function getSalesStock() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(salesStock).orderBy(desc(salesStock.price));
+  const res: any = await db.execute(sql`
+    SELECT s.*,
+           d."purchaseDate" "purchasedOn", d."purchaseCost" "purchasedFor", d."source" "purchasedFrom",
+           v."engineNo" "vehEngineNo", v."vin" "vehVin",
+           v."dateOfRegistration" "vehFirstRegistered", v."derivative" "vehDerivative"
+    FROM "salesStock" s
+    LEFT JOIN LATERAL (
+      SELECT cd."purchaseDate", cd."purchaseCost", cd."source" FROM "carDeals" cd
+      WHERE cd."salesStockId" = s."id"
+      ORDER BY cd."purchaseDate" ASC NULLS LAST, cd."id" ASC LIMIT 1
+    ) d ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT vv."engineNo", vv."vin", vv."dateOfRegistration", vv."derivative" FROM "vehicles" vv
+      WHERE UPPER(REPLACE(vv."registration", ' ', '')) = UPPER(REPLACE(COALESCE(s."registration", ''), ' ', ''))
+      LIMIT 1
+    ) v ON TRUE
+    ORDER BY s."price" DESC NULLS LAST`);
+  return res.rows || [];
 }
 
 // Re-fetch DVLA MOT expiry + tax status for every stock car (free). Used by the "Refresh" button.
