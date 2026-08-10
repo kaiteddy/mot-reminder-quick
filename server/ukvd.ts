@@ -8,6 +8,10 @@ const UKVD_CONFIG = {
 export interface UKVDResponse {
     vrm: string;
     vin?: string;
+    /** Stamped on the engine itself. Nothing free returns this — only the paid lookup. */
+    engineNumber?: string;
+    /** First registered in the UK, as a full date. DVLA's free API only ever gives the month. */
+    firstRegisteredUk?: string;
     make?: string;
     model?: string;
     engineSize?: number;
@@ -127,6 +131,11 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
         const mapped: UKVDResponse = {
             vrm: cleanVRM,
             vin: nz(vehicleDetails?.VehicleIdentification?.Vin),
+            engineNumber: nz(vehicleDetails?.VehicleIdentification?.EngineNumber),
+            // Registered-in-the-UK is the one the sales invoice asks for; an import's first
+            // registration abroad is earlier and would be the wrong date to print.
+            firstRegisteredUk: nz(vehicleDetails?.VehicleIdentification?.DateFirstRegisteredInUk)
+                ?? nz(vehicleDetails?.VehicleIdentification?.DateFirstRegistered),
             make: nz(modelId?.Make),
             model: nz(modelId?.Model),
             engineSize: dvlaTech?.EngineCapacityCc || modelDetails?.Powertrain?.IceDetails?.EngineCapacityCc,

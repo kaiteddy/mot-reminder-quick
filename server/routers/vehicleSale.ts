@@ -148,7 +148,9 @@ export const vehicleSaleRouter = router({
         vehicleType: type.toUpperCase(),
         registrationNumber: car.registration || "",
         chassisNumber: car.vin || veh?.vin || "",
-        engineNumber: veh?.engineNo || "",
+        // The stock row's own engine number comes from the paid UKVD lookup and exists even for a
+        // car with no workshop history, so it leads; the vehicle record is the fallback.
+        engineNumber: car.engineNo || veh?.engineNo || "",
         firstRegisteredUK: ukDate(car.registrationDate || veh?.dateOfRegistration),
         mileage: car.mileage != null ? Number(car.mileage).toLocaleString("en-GB") : "",
         grossPrice: money(car.price),

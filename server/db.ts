@@ -1984,9 +1984,11 @@ export async function refreshSalesStockMotTax() {
     id: salesStock.id, registration: salesStock.registration,
     mileage: salesStock.mileage, registrationDate: salesStock.registrationDate,
     make: salesStock.make, model: salesStock.model, colour: salesStock.colour, fuelType: salesStock.fuelType,
+    vin: salesStock.vin, engineNo: salesStock.engineNo,
   }).from(salesStock);
   const { getVehicleDetails } = await import("./dvlaApi");
   const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+  const { fetchUKVDData } = await import("./ukvd");
   const toDate = (x: any) => { if (!x) return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d.getTime()) ? null : d; };
   let updated = 0, filled = 0;
   const gapsFilled: Record<string, number> = {};
@@ -2017,9 +2019,20 @@ export async function refreshSalesStockMotTax() {
         const miles = Number(String(readings[0]?.odometerValue || "").replace(/\D/g, ""));
         if (Number.isFinite(miles) && miles > 0) fill("mileage", miles);
       }
+
+      // Chassis and engine number exist on no free source — only the paid UKVD lookup returns
+      // them. It is billed per call, so it only fires for a car actually short of something it
+      // can supply; a Refresh over complete stock costs nothing.
+      const wantsUkvd = !car.vin || !car.engineNo || !car.registrationDate;
+      const ukvd: any = wantsUkvd ? await fetchUKVDData(reg).catch(() => null) : null;
+      if (!car.vin) fill("vin", ukvd?.vin);
+      if (!car.engineNo) fill("engineNo", ukvd?.engineNumber);
+
       if (!car.registrationDate) {
-        // DVSA gives a full date; DVLA only ever gives the month, so it's the fallback.
-        fill("registrationDate", toDate(mot?.firstUsedDate)
+        // Registered-in-the-UK from the paid lookup is the date the invoice asks for and the only
+        // full one; DVSA's first-use date is next, and DVLA's month-only value is the last resort.
+        fill("registrationDate", toDate(ukvd?.firstRegisteredUk)
+          ?? toDate(mot?.firstUsedDate)
           ?? (d?.monthOfFirstRegistration ? toDate(`${d.monthOfFirstRegistration}-01`) : null));
       }
       if (!car.make) fill("make", (d?.make || mot?.make || "").toUpperCase() || null);
