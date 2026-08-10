@@ -8,6 +8,40 @@ import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldChec
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
 
+/**
+ * What the used-car sales invoice needs but this car can't supply yet.
+ *
+ * These are the fields createFromStock pre-fills, so anything listed here is a blank the invoice
+ * can't fill on its own — the car is stuck until someone finds it. Chassis and first-registration
+ * date can come from either the stocklist or the garage's own vehicle record, so a car is only
+ * short of them when BOTH are empty.
+ *
+ * Engine number is deliberately NOT here. The printed form asks for it "(if any)", and it only
+ * ever reaches us on the garage's own vehicle record — 17 of the 24 stock cars lack one, so
+ * treating it as a blocker would bury the handful of cars that genuinely are stuck.
+ */
+function missingBits(c: any): { purchase: string[]; invoice: string[]; noDeal: boolean } {
+  const purchase: string[] = [];
+  if (!c.purchasedOn) purchase.push("date");
+  if (c.purchasedFor == null || Number(c.purchasedFor) <= 0) purchase.push("price paid");
+  if (!c.purchasedFrom) purchase.push("source");
+
+  const invoice: string[] = [];
+  if (!c.registration) invoice.push("reg");
+  if (!c.make) invoice.push("make");
+  if (!c.model && !c.variant && !c.vehDerivative) invoice.push("model");
+  if (!c.vin && !c.vehVin) invoice.push("chassis");
+  if (!c.registrationDate && !c.vehFirstRegistered) invoice.push("first reg");
+  if (c.mileage == null) invoice.push("mileage");
+  if (Number(c.price) <= 0) invoice.push("sale price");
+
+  // Nothing at all on the buying side means no car deal exists — the car is in stock with no
+  // record of what was paid for it, which is a bigger hole than any single blank field.
+  const noDeal = !c.purchasedOn && c.purchasedFor == null && !c.purchasedFrom;
+  return { purchase, invoice, noDeal };
+}
+const missingCount = (c: any) => { const m = missingBits(c); return m.purchase.length + m.invoice.length; };
+
 function motStatus(motExpiryDate: any) {
   if (!motExpiryDate) return { label: "No MOT data", tone: "slate" as const, bad: false };
   const days = Math.round((new Date(motExpiryDate).getTime() - Date.now()) / 86400000);
@@ -43,6 +77,8 @@ function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "p
 export default function SalesStock() {
   const [, setLocation] = useLocation();
   const [filter, setFilter] = useState("");
+  // "Which cars are we stuck on" — narrows the list to those the invoice can't be raised for yet.
+  const [onlyStuck, setOnlyStuck] = useState(false);
   const [view, setView] = useState<"grid" | "list">(() => (localStorage.getItem("salesStockView") as "grid" | "list") || "grid");
   const setViewPersist = (v: "grid" | "list") => { setView(v); localStorage.setItem("salesStockView", v); };
   const utils = trpc.useUtils();
@@ -92,11 +128,13 @@ export default function SalesStock() {
   };
 
   const cars = (data as any[]) || [];
+  const stuckCount = useMemo(() => cars.filter((c) => missingCount(c) > 0).length, [cars]);
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    if (!f) return cars;
-    return cars.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
-  }, [cars, filter]);
+    let out = onlyStuck ? cars.filter((c) => missingCount(c) > 0) : cars;
+    if (f) out = out.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
+    return out;
+  }, [cars, filter, onlyStuck]);
 
   const sorted = useMemo(() => {
     const VAL: Record<string, (c: any) => any> = {
@@ -107,6 +145,11 @@ export default function SalesStock() {
       days: (c) => Number(c.daysInStock) || 0,
       mot: (c) => (c.motExpiryDate ? new Date(c.motExpiryDate).getTime() : 0),
       tax: (c) => (/^taxed$/i.test(c.taxStatus || "") ? 1 : 0), // untaxed/SORN sort first when asc
+      // Never-purchased and never-dated cars sort to the far end either way rather than clumping
+      // with the oldest, which would read as "bought in 1970".
+      purchased: (c) => (c.purchasedOn ? new Date(c.purchasedOn).getTime() : -Infinity),
+      added: (c) => (c.createdAt ? new Date(c.createdAt).getTime() : -Infinity),
+      missing: (c) => missingCount(c),
     };
     const get = VAL[sortKey] || VAL.price;
     const arr = [...shown];
@@ -160,10 +203,20 @@ export default function SalesStock() {
           <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "red" : "green"} />
         </div>
 
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by reg, make, model, colour…"
-            className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 bg-white text-[14px] outline-none focus:border-violet-500" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative max-w-sm flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by reg, make, model, colour…"
+              className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 bg-white text-[14px] outline-none focus:border-violet-500" />
+          </div>
+          <button
+            onClick={() => setOnlyStuck((v) => !v)}
+            title="Cars the sales invoice can't be raised for yet — something it needs is missing"
+            className={`h-9 rounded-lg border px-3 text-[13px] font-medium whitespace-nowrap ${onlyStuck ? "border-amber-400 bg-amber-100 text-amber-900" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+          >
+            <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
+            Missing invoice info {stuckCount}
+          </button>
         </div>
 
         {isLoading ? <div className="text-center text-slate-400 py-12"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
@@ -178,6 +231,9 @@ export default function SalesStock() {
                     <SortHead label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
                     <SortHead label="Mileage" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
                     <SortHead label="Days" k="days" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="center" />
+                    <SortHead label="Purchased" k="purchased" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    <SortHead label="Added" k="added" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    <SortHead label="Needs" k="missing" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="MOT" k="mot" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Tax" k="tax" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <th className="text-left font-semibold px-2 py-2">Status</th>
@@ -205,6 +261,13 @@ export default function SalesStock() {
                         <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">£{money(c.price)}</td>
                         <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{money(c.mileage)}</td>
                         <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-slate-600">
+                          {c.purchasedOn
+                            ? <>{fmtDate(c.purchasedOn)}{c.purchasedFrom && <span className="block text-[11px] text-slate-400">{c.purchasedFrom}</span>}</>
+                            : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-2 py-2 whitespace-nowrap text-slate-600">{fmtDate(c.createdAt) || <span className="text-slate-300">—</span>}</td>
+                        <td className="px-2 py-2"><MissingCell car={c} /></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
                         <td className="px-2 py-2">
@@ -271,7 +334,9 @@ export default function SalesStock() {
                         {c.owners != null && <span>{c.owners} owner{c.owners === 1 ? "" : "s"}</span>}
                         {c.daysInStock != null && <span>{c.daysInStock}d in stock</span>}
                         {c.views7d != null && <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{c.views7d}/wk</span>}
+                        {c.purchasedOn && <span title={`Bought in${c.purchasedFrom ? ` from ${c.purchasedFrom}` : ""}`}>bought {fmtDate(c.purchasedOn)}</span>}
                       </div>
+                      <MissingCell car={c} block />
                       <div className="flex flex-col gap-1.5 mt-auto pt-1">
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
@@ -469,6 +534,35 @@ function InvoiceKindDialog({
         <button onClick={onClose} className="mt-3 w-full rounded-md py-1.5 text-[12px] text-slate-500 hover:bg-slate-100">Cancel</button>
       </div>
     </div>
+  );
+}
+
+/**
+ * What this car is still short of — kept in two groups because they're different jobs: the buying
+ * side is bookkeeping (what you paid, when, who from), the invoice side is what the sales form
+ * can't fill in on its own.
+ */
+function MissingCell({ car, block }: { car: any; block?: boolean }) {
+  const { purchase, invoice, noDeal } = missingBits(car);
+  if (!purchase.length && !invoice.length) {
+    return <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-green-700" title="Purchase logged and everything the sales invoice needs is on file"><ShieldCheck className="h-3 w-3" />complete</span>;
+  }
+  const Tag = ({ kind, gaps, tone, hint }: { kind: string; gaps: string[]; tone: string; hint: string }) => (
+    <span title={hint} className={`inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
+      <AlertTriangle className="h-3 w-3 shrink-0" />
+      <span className="truncate"><b className="font-semibold">{kind}</b> {gaps.join(", ")}</span>
+    </span>
+  );
+  return (
+    <span className={`${block ? "flex" : "inline-flex"} flex-wrap items-center gap-1`}>
+      {noDeal
+        ? <Tag kind="not bought in" gaps={["no purchase logged"]} tone="border-red-300 bg-red-50 text-red-800"
+            hint="No car deal exists for this car — there's no record of what was paid for it or who from." />
+        : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800"
+            hint={`Missing from the purchase record: ${purchase.join(", ")}`} />}
+      {invoice.length > 0 && <Tag kind="invoice" gaps={invoice} tone="border-sky-300 bg-sky-50 text-sky-800"
+        hint={`The sales invoice can't fill these in: ${invoice.join(", ")}`} />}
+    </span>
   );
 }
 
