@@ -1069,9 +1069,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
       // Measure the summary column so the vehicle name can never run underneath it.
       doc.font('Helvetica').fontSize(10);
-      const summaryW =
-        Math.max(doc.widthOfString('TOTAL SERVICE VISITS'), doc.widthOfString('MAINTENANCE INVESTMENT')) +
-        INSET + 12;
+      const summaryW = doc.widthOfString('TOTAL SERVICE VISITS') + INSET + 12;
       const nameW = CW - PAD - summaryW;
 
       // Long names ("MERCEDES-BENZ GLA-CLASS GLA 200 AMG LINE") shrink to fit one line.
@@ -1110,10 +1108,9 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
       doc.font('Helvetica').fontSize(16).fillColor(BRAND_BLUE);
       doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - INSET, align: 'right' });
 
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - INSET, align: 'right' });
-      doc.font('Helvetica').fontSize(12).fillColor(BRAND_BLUE);
-      doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - INSET, align: 'right' });
+      // No cumulative spend. This document goes to owners and to buyers of the car, and what it
+      // needs to show is that the car was looked after — not a running total of what it cost.
+      // The per-visit figures stay; only the headline "investment" number is gone.
 
       y += boxH + 25;
 
@@ -1175,7 +1172,32 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     y += 18;
 
     const PAD_T = 5, PAD_B = 6;
+    // Grouped by year. A flat run of 25 visits is hard to place in time — "what did it have done
+    // in 2024?" means scanning dates — so each year gets a band, with the number of visits in it.
+    // Entries arrive newest-first and stay that way; the year is taken from the row's own date so
+    // an unparseable one falls into "Undated" rather than silently joining the previous year.
+    const yearOf = (e: any) => {
+      const m = String(e.date || '').match(/\b(19|20)\d{2}\b/);
+      return m ? m[0] : 'Undated';
+    };
+    const yearCounts = new Map<string, number>();
+    for (const e of entries) yearCounts.set(yearOf(e), (yearCounts.get(yearOf(e)) || 0) + 1);
+    let lastYear: string | null = null;
+
     entries.forEach((e: any, i: number) => {
+      const yr = yearOf(e);
+      if (yr !== lastYear) {
+        lastYear = yr;
+        const n = yearCounts.get(yr) || 0;
+        y = checkBreak(20 + MIN_ROW_H);   // never leave a year band stranded at the foot of a page
+        doc.save().rect(PAGE_M, y, CW, 16).fill('#e8edf3').restore();
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_BLUE);
+        doc.text(yr, PAGE_M + 6, y + 4, { lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor('#6b7280');
+        doc.text(`${n} visit${n === 1 ? '' : 's'}`, PAGE_M, y + 4.5, { width: CW - 6, align: 'right' });
+        y += 16;
+      }
+
       // The write-up is a heading followed by the steps taken. Drawn as one blob it reads as a
       // wall of grey, so the heading keeps the row scannable in bold and the steps sit under it
       // a size down and indented — the same shape as the job sheet the customer signed.
@@ -1198,7 +1220,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
       const clipped = stepsH > stepsRoom;
 
       y = checkBreak(rowH + 4);
-      if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#f4f6f8').restore(); }
+      if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#fbfcfd').restore(); }
 
       const dp = String(e.date || '').split(' ');
       const shortDate = dp.length === 3 ? `${dp[0]} ${dp[1].slice(0, 3)} ${dp[2]}` : (e.date || '');
@@ -1225,10 +1247,9 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     y += 4;
     doc.save().strokeColor(MID_GREY).lineWidth(1).moveTo(PAGE_M, y).lineTo(PW - PAGE_M, y).stroke().restore();
     y += 8;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
-    doc.text('Total invoiced', colWork - 60, y, { width: workW + 60, align: 'right' });
-    doc.text(data.cumulative_spend || '', PAGE_M, y, { width: CW - 6, align: 'right' });
-    y += 18;
+    doc.font('Helvetica').fontSize(9).fillColor('#6b7280');
+    doc.text(`${entries.length} visit${entries.length === 1 ? '' : 's'} recorded`, PAGE_M, y, { width: CW - 6, align: 'right' });
+    y += 16;
     if (data.invoicesFollow) {
       doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
       doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
