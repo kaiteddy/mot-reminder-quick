@@ -280,7 +280,14 @@ function Blank({
 }
 
 /** The pre-printed artwork: branding, rules, captions and the fixed seller block. */
-function Artwork({ kind }: { kind: "white" | "yellow" }) {
+/**
+ * The two name blocks swap round on a purchase. Buying a customer's car makes them the seller and
+ * ELI the purchaser, so leaving the printed pad's wording would label both parties "seller" — the
+ * correction Adam has been making by hand on invoice 6000.
+ */
+function Artwork({ kind, docKind = "sale" }: { kind: "white" | "yellow"; docKind?: DocKind }) {
+  const theirs = docKind === "purchase" ? "Seller's Name" : "Purchaser's Name";
+  const ours = docKind === "purchase" ? "Purchaser's Name" : "Seller's Name";
   const suffix = kind === "yellow" ? "yellow" : "white";
   return (
     <svg className="vs-art" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
@@ -308,7 +315,7 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <line className="major-line" x1="18" y1="1074" x2="2390" y2="1074" />
 
       {/* purchaser */}
-      <text className="print-label" x="22" y="1142">Purchaser's Name</text>
+      <text className="print-label" x="22" y="1142">{theirs}</text>
       <line className="field-line" x1="385" y1="1135" x2="1205" y2="1135" />
       <text className="print-label" x="22" y="1225">Address</text>
       <line className="field-line" x1="185" y1="1218" x2="1205" y2="1218" />
@@ -324,7 +331,7 @@ function Artwork({ kind }: { kind: "white" | "yellow" }) {
       <line className="field-line" x1="560" y1="1418" x2="1205" y2="1418" />
 
       {/* seller — pre-printed, not editable */}
-      <text className="print-label" x="1260" y="1142">Seller's Name</text>
+      <text className="print-label" x="1260" y="1142">{ours}</text>
       <line className="field-line" x1="1515" y1="1135" x2="2380" y2="1135" />
       <text className="fixed-value" x="1608" y="1126">{SELLER.name}</text>
       <text className="print-label" x="1260" y="1225">Address</text>
@@ -569,8 +576,15 @@ function Page({
   const purchase = docKind === "purchase";
   return (
     <div className="vs-page" data-kind={kind}>
-      <Artwork kind={kind} />
-      {FIELDS.filter((f) => !(purchase && f.key === "lastOwnerDetails")).map((f) => (
+      <Artwork kind={kind} docKind={docKind} />
+      {FIELDS
+        .filter((f) => !(purchase && f.key === "lastOwnerDetails"))
+        // On a purchase the other party is the seller, so the labels on their block follow the
+        // printed captions rather than still reading "Purchaser's".
+        .map((f) => (purchase && f.title.startsWith("Purchaser's")
+          ? { ...f, title: f.title.replace("Purchaser's", "Seller's") }
+          : f))
+        .map((f) => (
         f.pence ? (
           <MoneyBlank
             key={f.key}
