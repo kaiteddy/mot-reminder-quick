@@ -88,6 +88,14 @@ export const appRouter = router({
   }),
 
   priceGuide: router({
+    /** Our banded service labour, for anything that needs to price a service — the job sheet as
+     *  well as the guide. One source, so the two can't drift the way the MOT price did. */
+    labourBands: publicProcedure
+      .input(z.object({ jobKey: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getServiceLabourBands } = await import("./db");
+        return getServiceLabourBands(input?.jobKey || "interimService");
+      }),
     forRegistration: publicProcedure
       .input(z.object({ registration: z.string(), years: z.number().optional() }))
       .query(async ({ input }) => {

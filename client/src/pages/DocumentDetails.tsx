@@ -2678,7 +2678,11 @@ function priceListMatch(desc: string, priceList: { description: string; unitPric
   return hit ? { unitPrice: Number(hit.unitPrice), vatRate: hit.vatRate != null ? Number(hit.vatRate) : undefined } : {};
 }
 
-// Small Service labour is a flat rate by engine size — under 2000cc counts as a "smaller" car.
+// Fallback only. Service labour is banded by engine size in the serviceLabourBands table, which
+// the picker reads below — these two tiers are what's used if that query hasn't answered yet.
+// They were the ONLY rule until now, and being a separate copy is exactly why a 1997cc CR-V
+// priced at £124: their cutoff is "under 2000cc", while the real bands break at 1500 and 2000,
+// putting anything over 1.5L up to 2.0L at £144.
 const SMALL_SERVICE_LABOUR_CC_CUTOFF = 2000;
 const SMALL_SERVICE_LABOUR_SMALL = 124;
 const SMALL_SERVICE_LABOUR_LARGE = 144;
@@ -2694,6 +2698,8 @@ function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
 
   const { data: priceListData } = trpc.partsPriceList.list.useQuery({});
   const priceList = (priceListData as any[]) || [];
+  // The banded labour rule, straight from the table Adam maintains.
+  const { data: labourBands } = trpc.priceGuide.labourBands.useQuery({}, { staleTime: 5 * 60_000 });
   const priced = (description: string, quantity: number) => ({ description, quantity, ...priceListMatch(description, priceList) });
 
   const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
@@ -2704,8 +2710,17 @@ function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
   const acGas = priced(`Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), 1);
 
   const cc = parseFloat(String(engineCC ?? "").replace(/[^0-9.]/g, "")) || 0;
+  // Bands are ordered by their ceiling, with the last one open-ended, so the first whose maxCC
+  // the engine fits under is the right one. Falls back to the old two-tier constants only if
+  // the query hasn't answered.
+  const bandLabour = (() => {
+    const bands = (labourBands as any[]) || [];
+    if (!bands.length) return cc < SMALL_SERVICE_LABOUR_CC_CUTOFF ? SMALL_SERVICE_LABOUR_SMALL : SMALL_SERVICE_LABOUR_LARGE;
+    const hit = bands.find((b) => b.maxCC == null || cc <= Number(b.maxCC));
+    return Number(hit?.labour ?? SMALL_SERVICE_LABOUR_SMALL);
+  })();
   const smallServiceLabour = cc > 0
-    ? { description: "Small Service Labour", unitPrice: cc < SMALL_SERVICE_LABOUR_CC_CUTOFF ? SMALL_SERVICE_LABOUR_SMALL : SMALL_SERVICE_LABOUR_LARGE }
+    ? { description: "Small Service Labour", unitPrice: bandLabour }
     : undefined; // engine size not known yet — leave labour for staff to add manually rather than guess
 
   // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
