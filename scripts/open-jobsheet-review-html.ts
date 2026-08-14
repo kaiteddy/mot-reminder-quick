@@ -57,7 +57,8 @@ async function main() {
       <p class="work">${esc(work || "(nothing written on the card)")}</p>
       ${[r.make, r.model].filter(Boolean).length ? `<p class="car">${esc([r.make, r.model].filter(Boolean).join(" "))}</p>` : ""}
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-${esc(r.docNo)}" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-${esc(r.docNo)}" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-${esc(r.docNo)}" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-${esc(r.docNo)}" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-${esc(r.docNo)}" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -90,7 +91,8 @@ async function main() {
   .opt { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer; background:#fff; }
   .opt:hover { background:#f1f5f9; }
   .opt input { margin:0; }
-  .opt.close:has(input:checked)   { background:#f1f5f9; border-color:#94a3b8; font-weight:600; }
+  .opt.delete:has(input:checked)  { background:#fef2f2; border-color:#f87171; font-weight:600; }
+  .opt.record:has(input:checked)  { background:#f1f5f9; border-color:#94a3b8; font-weight:600; }
   .opt.invoice:has(input:checked) { background:#ecfdf5; border-color:#34d399; font-weight:600; }
   .opt.chase:has(input:checked)   { background:#fff7ed; border-color:#fb923c; font-weight:600; }
   .note { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; }
@@ -107,6 +109,7 @@ async function main() {
 <header>
   <h1>Open Job Cards — review</h1>
   <p>${rows.rows.length} cards opened over a fortnight ago, never priced, and with no invoice for that car since. Tick a decision, add a note if it helps, then press <strong>Copy for Claude</strong> and paste it into the chat.</p>
+  <p style="margin-top:6px;font-size:12px;opacity:.8"><strong>Delete</strong> bins the card entirely. <strong>Issue blank</strong> raises a £0 invoice instead, so the visit still shows on the customer's history — use it where you want the record even though there's nothing to charge.</p>
 </header>
 <main>${cards}</main>
 <footer>
@@ -164,7 +167,7 @@ async function main() {
 
   // A compact, pasteable summary — grouped by decision so it reads as instructions, not a dump.
   function summary() {
-    var groups = { close: [], invoice: [], chase: [] };
+    var groups = { delete: [], record: [], invoice: [], chase: [] };
     document.querySelectorAll(".card").forEach(function (card) {
       var doc = card.getAttribute("data-doc");
       var s = state[doc]; if (!s || !s.decision) return;
@@ -172,8 +175,13 @@ async function main() {
       groups[s.decision].push(doc + " " + reg.trim() + (s.note ? "  — " + s.note : ""));
     });
     var out = ["OPEN JOB CARD DECISIONS"];
-    var labels = { close: "CLOSE (nothing to bill)", invoice: "INVOICE", chase: "STILL LIVE / CHASE" };
-    ["close", "invoice", "chase"].forEach(function (k) {
+    var labels = {
+      delete: "DELETE (nothing to bill, no record kept)",
+      record: "ISSUE BLANK (£0 invoice, keeps the visit on record)",
+      invoice: "INVOICE",
+      chase: "STILL LIVE / CHASE"
+    };
+    ["delete", "record", "invoice", "chase"].forEach(function (k) {
       if (!groups[k].length) return;
       out.push("", labels[k] + " (" + groups[k].length + "):");
       groups[k].forEach(function (l) { out.push("  " + l); });

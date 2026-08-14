@@ -59,7 +59,10 @@ async function main() {
     doc.save().strokeColor(BLUE).lineWidth(1.2).moveTo(M, M + 48).lineTo(PW - M, M + 48).stroke().restore();
     // Column captions for the tick boxes, so the sheet explains itself at the counter.
     doc.font("Helvetica-Bold").fontSize(7.5).fillColor(GREY);
-    doc.text("CLOSE", PW - M - 132, M + 54, { width: 40, align: "center" });
+    // Four now: deleting a card loses the visit, so "keep a record" (a £0 invoice) is its own
+    // choice rather than being bundled in with "nothing to bill".
+    doc.text("DELETE", PW - M - 176, M + 54, { width: 40, align: "center" });
+    doc.text("RECORD", PW - M - 132, M + 54, { width: 40, align: "center" });
     doc.text("INVOICE", PW - M - 90, M + 54, { width: 44, align: "center" });
     doc.text("CHASE", PW - M - 44, M + 54, { width: 40, align: "center" });
     return M + 66;
@@ -78,10 +81,10 @@ async function main() {
       || "(nothing written on the card)";
 
     doc.font("Helvetica").fontSize(8.5);
-    const workH = doc.heightOfString(work, { width: CW - 150 - 44 });
+    const workH = doc.heightOfString(work, { width: CW - 194 - 44 });
     // The make/model caption sits BELOW the work text, so the row has to allow for it too —
     // without it, a long write-up pushed the model line into the next card's registration.
-    const carH = car ? 10 : 0;
+    const carH = (car || r.tel) ? 10 : 0;
     const rowH = Math.max(34, Math.ceil(workH) + carH + 24);
 
     if (y + rowH > doc.page.height - 40) { footer(); doc.addPage(); page++; y = header(); }
@@ -93,19 +96,24 @@ async function main() {
       .text(String(r.reg || "—"), M + 44, y, { width: 66, lineBreak: false });
     doc.font("Helvetica").fontSize(8).fillColor(GREY)
       .text(`${r.dt}  ·  ${r.age} days open`, M + 112, y + 1, { width: 110, lineBreak: false });
+    // Name only on the top line — with four tick boxes the column is too narrow for a phone
+    // number as well, and pdfkit wrapped it into the work text below. The phone moves down to
+    // sit with the vehicle, where there's room.
     doc.font("Helvetica").fontSize(8).fillColor("#1f2937")
-      .text([r.cust, r.tel].filter(Boolean).join("  ·  ") || "—", M + 224, y + 1, { width: CW - 224 - 140, lineBreak: false });
+      .text(String(r.cust || "no customer on the card"), M + 224, y + 1, { width: CW - 224 - 190, height: 10, ellipsis: true });
 
     doc.font("Helvetica").fontSize(8.5).fillColor("#374151")
-      .text(work, M + 44, y + 14, { width: CW - 150 - 44 });
-    if (car) doc.font("Helvetica").fontSize(7.5).fillColor("#9ca3af").text(car, M + 44, y + 14 + workH + 1, { width: 200, lineBreak: false });
+      .text(work, M + 44, y + 14, { width: CW - 194 - 44 });
+    const tail = [car, r.tel].filter(Boolean).join("   ·   ");
+    if (tail) doc.font("Helvetica").fontSize(7.5).fillColor("#9ca3af")
+      .text(tail, M + 44, y + 14 + workH + 1, { width: CW - 194 - 44, height: 9, ellipsis: true });
 
-    // Three boxes to tick, and a line to write on.
-    for (let i = 0; i < 3; i++) {
-      doc.save().roundedRect(PW - M - 122 + i * 44, y + 1, 11, 11, 2).strokeColor("#9ca3af").lineWidth(0.8).stroke().restore();
+    // Four boxes to tick, and a line to write on.
+    for (let i = 0; i < 4; i++) {
+      doc.save().roundedRect(PW - M - 166 + i * 44, y + 1, 11, 11, 2).strokeColor("#9ca3af").lineWidth(0.8).stroke().restore();
     }
     doc.save().strokeColor("#e5e7eb").lineWidth(0.5)
-      .moveTo(PW - M - 132, y + 22).lineTo(PW - M, y + 22).stroke().restore();
+      .moveTo(PW - M - 176, y + 22).lineTo(PW - M, y + 22).stroke().restore();
 
     doc.save().strokeColor(LINE).lineWidth(0.4).moveTo(M, y + rowH - 5).lineTo(PW - M, y + rowH - 5).stroke().restore();
     y += rowH;

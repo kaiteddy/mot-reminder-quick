@@ -23,7 +23,8 @@
   .opt { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer; background:#fff; }
   .opt:hover { background:#f1f5f9; }
   .opt input { margin:0; }
-  .opt.close:has(input:checked)   { background:#f1f5f9; border-color:#94a3b8; font-weight:600; }
+  .opt.delete:has(input:checked)  { background:#fef2f2; border-color:#f87171; font-weight:600; }
+  .opt.record:has(input:checked)  { background:#f1f5f9; border-color:#94a3b8; font-weight:600; }
   .opt.invoice:has(input:checked) { background:#ecfdf5; border-color:#34d399; font-weight:600; }
   .opt.chase:has(input:checked)   { background:#fff7ed; border-color:#fb923c; font-weight:600; }
   .note { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit; }
@@ -39,7 +40,8 @@
 <body>
 <header>
   <h1>Open Job Cards — review</h1>
-  <p>27 cards opened over a fortnight ago, never priced, and with no invoice for that car since. Tick a decision, add a note if it helps, then press <strong>Copy for Claude</strong> and paste it into the chat.</p>
+  <p>26 cards opened over a fortnight ago, never priced, and with no invoice for that car since. Tick a decision, add a note if it helps, then press <strong>Copy for Claude</strong> and paste it into the chat.</p>
+  <p style="margin-top:6px;font-size:12px;opacity:.8"><strong>Delete</strong> bins the card entirely. <strong>Issue blank</strong> raises a £0 invoice instead, so the visit still shows on the customer's history — use it where you want the record even though there's nothing to charge.</p>
 </header>
 <main>
     <article class="card" data-doc="92464">
@@ -54,7 +56,8 @@
       <p class="work">Investigate Clutch &amp; Starter Motor</p>
       <p class="car">NISSAN Micra Se</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-92464" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-92464" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-92464" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-92464" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-92464" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -72,7 +75,8 @@
       <p class="work">Major Parking Brake Efficiency Below Requirements (1.4.2 (A) (I)) Major Nearside Front Bumper Damaged And Likely To Cause Injury When Grazed Or Contacted (6.1.4 (A) (I)) Major Offside Rear Fog Lamp Not Working (4.5.1 (A) (Ii)) Major Offside Rear Direction Indicator Incorrect Colour (4.4.3 (A)) Advisory Nearside Rear Direction Indicator Slightly Discoloured (4.4.3 (A)) Advisory Tyre Worn Close To Legal Limit/Worn On Edge And Has Nail, Offside Rear (5.2.3 (E)) Major Nearside Front Outer Drive Shaft Joint Constant Velocity Boot Split Or Insecure, No Longer Prevents The Ingress Of Dirt (6.1.7 (G) (Ii)) Major Oil Leaking Excessively From Engine (8.4.1 (A) (I)) Major Oil Leaking Excessively From Transmission (8.4.1 (A) (I)) Advisory Nearside Play In Steering Rack Inner Joint(S)</p>
       <p class="car">HYUNDAI Ix20 Active</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-92726" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-92726" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-92726" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-92726" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-92726" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -90,7 +94,8 @@
       <p class="work">Investigate Hand Brake Lever Not Holding</p>
       <p class="car">HYUNDAI Trajet Gsi Special Edition</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-92857" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-92857" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-92857" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-92857" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-92857" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -108,7 +113,8 @@
       <p class="work">Check Aircon</p>
       <p class="car">TOYOTA Verso T2 Valvematic</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-92979" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-92979" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-92979" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-92979" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-92979" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -126,7 +132,8 @@
       <p class="work">Carry Out Pre-Sales Inspection Check for faults or warning lights Check tyre condition and pressures Check brakes and suspension</p>
       <p class="car">HONDA Hr-V I-Vtec Ex</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93010" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93010" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93010" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93010" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93010" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -144,7 +151,8 @@
       <p class="work">Check Brakes</p>
       <p class="car">MERCEDES-BENZ Glc-Class Glc 300 De 4matic Amg Line Premium</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93017" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93017" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93017" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93017" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93017" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -162,7 +170,8 @@
       <p class="work">Check Rear Brakes</p>
       <p class="car">Hyundai Santa Fe Ultimate</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93025" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93025" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93025" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93025" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93025" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -180,7 +189,8 @@
       <p class="work">Investigate Noise Coming From The Front</p>
       <p class="car">FORD Fiesta Studio</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93022" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93022" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93022" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93022" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93022" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -198,7 +208,8 @@
       <p class="work">Investigate Bodywork For Bumper, Headlight Bracket And Nearside Front Panel</p>
       <p class="car">TOYOTA Verso Valvematic Icon</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93053" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93053" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93053" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93053" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93053" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -216,7 +227,8 @@
       <p class="work">Ns Door Lock</p>
       <p class="car">SKODA Kodiaq Edition Tsi Dsg</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93063" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93063" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93063" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93063" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93063" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -234,29 +246,12 @@
       <p class="work">Left Wing Mirror Glass</p>
       <p class="car">HONDA Jazz i-VTec EX CVT</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93105" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93105" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93105" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93105" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93105" value="chase"><span>Still live / chase</span></label>
       </div>
       <input class="note" type="text" placeholder="Note (what to charge, who to ring, anything I should know)…" data-doc="93105">
-    </article>
-    <article class="card" data-doc="93098">
-      <div class="top">
-        <div class="ids">
-          <span class="doc">93098</span>
-          <span class="reg">DA54 NTT</span>
-          <span class="age" title="Opened 16/06/2026">59 days open</span>
-        </div>
-        <div class="who">Miss Deborah Davis · +447749049772</div>
-      </div>
-      <p class="work">Investigate Brakes Squeaking</p>
-      <p class="car">TOYOTA Yaris T Spirit Vvt-I</p>
-      <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93098" value="close"><span>Close — nothing to bill</span></label>
-        <label class="opt invoice"><input type="radio" name="d-93098" value="invoice"><span>Invoice it</span></label>
-        <label class="opt chase"><input type="radio" name="d-93098" value="chase"><span>Still live / chase</span></label>
-      </div>
-      <input class="note" type="text" placeholder="Note (what to charge, who to ring, anything I should know)…" data-doc="93098">
     </article>
     <article class="card" data-doc="93122">
       <div class="top">
@@ -270,7 +265,8 @@
       <p class="work">Investigate tailgate struts which one is failing</p>
       <p class="car">LAND ROVER Discovery Sport SE Auto</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93122" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93122" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93122" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93122" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93122" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -288,7 +284,8 @@
       <p class="work">Investigate Compressor not activating Topped up Gas on 23/06/26</p>
       <p class="car">KIA Picanto Halo EcoDynamics</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93131" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93131" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93131" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93131" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93131" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -306,7 +303,8 @@
       <p class="work">(nothing written on the card)</p>
       <p class="car">NISSAN Qashqai Tekna CVT</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93142" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93142" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93142" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93142" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93142" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -324,7 +322,8 @@
       <p class="work">Investigate the report from breakdown</p>
       <p class="car">TOYOTA Prius+ T4 CVT</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93137" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93137" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93137" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93137" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93137" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -342,7 +341,8 @@
       <p class="work">Check front and rear brakes</p>
       <p class="car">NISSAN Qashqai Tekna CVT</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93148" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93148" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93148" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93148" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93148" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -360,7 +360,8 @@
       <p class="work">Check Air con topped up a couple of months ago but may have a leak or compressor/condenser</p>
       <p class="car">SUZUKI SX4 GLX Auto</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93185" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93185" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93185" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93185" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93185" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -378,7 +379,8 @@
       <p class="work">- Small Service A/C Condenser Replacement - Park vehicle safely and apply handbrake - Disconnect battery negative terminal - Recover and properly dispose of A/C refrigerant - Remove front grille and intake trims for access - Remove undertray splash shield as needed - Remove front bumper cover retaining fixings - Loosen bumper to gain condenser access - Disconnect condenser-to-hose refrigerant fittings - Remove A/C condenser mounting bolts - Remove condenser and extract from vehicle - Transfer any clips/dry seals/retainers to new condenser - Fit new condenser to mounting points - Reconnect condenser refrigerant fittings - Tighten fittings to specified torque - Check all unions for correct seating and leak path - Reinstall bumper cover and trims - Refit undertray splash shield - Reconnect battery negative terminal - Evacuate A/C system using vacuum pump - Charge A/C system with correct refrigerant mass spec for vehicle/model year</p>
       <p class="car">NISSAN Qashqai Tekna Dig-T Xtronic</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93229" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93229" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93229" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93229" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93229" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -396,7 +398,8 @@
       <p class="work">- No Coolant In The Expasnsion Bottle At All - For Temporary Solution, We Added Special Addidtive To Seal The Leak - Return In A Few Weeks To Check Coolant</p>
       <p class="car">MINI Cooper Auto</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93231" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93231" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93231" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93231" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93231" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -414,7 +417,8 @@
       <p class="work">Carried Out Air Conditioning Service - Evacuated and recharged system - Checked for leaks and correct operation - Replaced refrigerant and lubricant to specification</p>
       <p class="car">VAUXHALL Insignia SRi</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93264" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93264" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93264" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93264" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93264" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -432,7 +436,8 @@
       <p class="work">Check Front Brake Pads (Warning Light On)</p>
       <p class="car">BMW X1 sDrive 18d XLine Auto</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93300" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93300" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93300" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93300" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93300" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -450,7 +455,8 @@
       <p class="work">Front Panel Bodywork</p>
       <p class="car">VAUXHALL Corsa GS Turbo</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93348" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93348" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93348" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93348" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93348" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -468,7 +474,8 @@
       <p class="work">Investigate fan belt contaminated with oil Steam clean front of engine To obtain access to auxiliary belt To supply and fit major auxiliary belt Reassemble as per removal Requires further diagnostic on Air Suspension Management Light Glow plug light on, front and rear suspension low and air suspension management light on We found fault with the front and rear suspension air system Requires front brake discs and pads replacement.</p>
       <p class="car">MERCEDES-BENZ GL320 CDi 4Matic Auto</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93351" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93351" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93351" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93351" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93351" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -486,7 +493,8 @@
       <p class="work">Drivers side shock absorber been replaced Had a knock on the motorway</p>
       <p class="car">LEXUS RX 400 H SE CVT</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93369" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93369" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93369" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93369" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93369" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -504,7 +512,8 @@
       <p class="work">Investigate under shield needs to be reattached Also the tyre pressure light comes on might be faulty TPMS</p>
       <p class="car">HONDA Jazz I-Vtec Ex Navi</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93377" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93377" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93377" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93377" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93377" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -522,7 +531,8 @@
       <p class="work">Carry out MOT Test</p>
       <p class="car">VAUXHALL Insignia Emergency Services Cdti S/S</p>
       <div class="actions">
-        <label class="opt close"><input type="radio" name="d-93415" value="close"><span>Close — nothing to bill</span></label>
+        <label class="opt delete"><input type="radio" name="d-93415" value="delete"><span>Delete — no record needed</span></label>
+        <label class="opt record"><input type="radio" name="d-93415" value="record"><span>Issue blank — keep the visit on record</span></label>
         <label class="opt invoice"><input type="radio" name="d-93415" value="invoice"><span>Invoice it</span></label>
         <label class="opt chase"><input type="radio" name="d-93415" value="chase"><span>Still live / chase</span></label>
       </div>
@@ -583,7 +593,7 @@
 
   // A compact, pasteable summary — grouped by decision so it reads as instructions, not a dump.
   function summary() {
-    var groups = { close: [], invoice: [], chase: [] };
+    var groups = { delete: [], record: [], invoice: [], chase: [] };
     document.querySelectorAll(".card").forEach(function (card) {
       var doc = card.getAttribute("data-doc");
       var s = state[doc]; if (!s || !s.decision) return;
@@ -591,8 +601,13 @@
       groups[s.decision].push(doc + " " + reg.trim() + (s.note ? "  — " + s.note : ""));
     });
     var out = ["OPEN JOB CARD DECISIONS"];
-    var labels = { close: "CLOSE (nothing to bill)", invoice: "INVOICE", chase: "STILL LIVE / CHASE" };
-    ["close", "invoice", "chase"].forEach(function (k) {
+    var labels = {
+      delete: "DELETE (nothing to bill, no record kept)",
+      record: "ISSUE BLANK (£0 invoice, keeps the visit on record)",
+      invoice: "INVOICE",
+      chase: "STILL LIVE / CHASE"
+    };
+    ["delete", "record", "invoice", "chase"].forEach(function (k) {
       if (!groups[k].length) return;
       out.push("", labels[k] + " (" + groups[k].length + "):");
       groups[k].forEach(function (l) { out.push("  " + l); });
