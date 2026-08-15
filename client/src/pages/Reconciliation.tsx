@@ -991,7 +991,7 @@ function EditCell({ v, onSave, type, w, placeholder, align, disabled }: any) {
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // Where a car came from — a dropdown of the usual sources, plus "Other…" to type anything.
-const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay", "Emotive - Ashely Feldman"];
+const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay", "Emotive - Ashley Feldman"];
 function SourceCell({ v, disabled, onSave }: { v: any; disabled?: boolean; onSave: (v: string | null) => void }) {
   const isPreset = !!v && CAR_SOURCES.includes(v);
   const [other, setOther] = useState<boolean>(!!v && !isPreset);

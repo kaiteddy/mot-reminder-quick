@@ -694,7 +694,7 @@ export async function linkPurchase(input: { txnId: number; carDealId: number | n
                 WHEN "counterparty" ~* 'manheim' THEN 'Manheim'
                 WHEN "counterparty" ~* 'aston ?barclay' THEN 'Aston Barclay'
                 WHEN "counterparty" ~* 'eastbourne' THEN 'Eastbourne'
-                WHEN "counterparty" ~* 'emotive|feldman' THEN 'Emotive - Ashely Feldman'
+                WHEN "counterparty" ~* 'emotive|feldman' THEN 'Emotive - Ashley Feldman'
               END) src
             FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
       WHERE d."id"=${input.carDealId}`);
