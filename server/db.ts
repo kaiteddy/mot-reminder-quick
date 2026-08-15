@@ -1288,11 +1288,42 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       };
     }
     case "mot-sales-summary": {
-      const r: any = (await db.select({
-        count: sql<number>`COUNT(*)`, net: _moneySum(serviceHistory.subMotNet), tax: _moneySum(serviceHistory.subMotTax), gross: _moneySum(serviceHistory.subMotGross),
-      }).from(serviceHistory).where(and(inRange, sql`${_numExpr(serviceHistory.subMotGross)} > 0`)))[0];
+      // "MOT done" is recorded three different ways depending on where the invoice came from:
+      //   motStatus  — set whenever the MOT option is used on the invoice (Pass/Fail/Retest)
+      //   subMot*    — GA4's calculated sub-totals; stopped being written in June 2026
+      //   line item  — itemType 'MOT', how the web app records it (DocumentDetails Extras)
+      // Count a document if ANY of them is present, or MOTs go missing: July 2026 has 71
+      // documents with motStatus but 0 with subMot*, and only 41 with a line item.
+      const hasSubMot = sql`${_numExpr(serviceHistory.subMotGross)} > 0`;
+      const hasStatus = sql`NULLIF(TRIM(${serviceHistory.motStatus}), '') IS NOT NULL`;
+      const res: any = await db.execute(sql`
+        WITH mot AS (
+          SELECT
+            CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotNet)}   ELSE COALESCE(li.net, 0) END AS net,
+            CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotTax)}   ELSE COALESCE(li.tax, 0) END AS tax,
+            CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotGross)} ELSE COALESCE(li.net, 0) + COALESCE(li.tax, 0) END AS gross,
+            (${hasSubMot} OR li."documentId" IS NOT NULL) AS priced
+          FROM ${serviceHistory}
+          LEFT JOIN (
+            SELECT "documentId", SUM(COALESCE("subNet", 0)) AS net, SUM(COALESCE("taxAmount", 0)) AS tax
+            FROM "serviceLineItems" WHERE "itemType" = 'MOT' GROUP BY "documentId"
+          ) li ON li."documentId" = ${serviceHistory.id}
+          WHERE ${inRange}
+            AND ${inArray(serviceHistory.docType, ["SI", "XS"])}
+            AND (${hasSubMot} OR li."documentId" IS NOT NULL OR ${hasStatus})
+        )
+        SELECT COUNT(*)::int AS count, COALESCE(SUM(net), 0) AS net,
+               COALESCE(SUM(tax), 0) AS tax, COALESCE(SUM(gross), 0) AS gross,
+               COUNT(*) FILTER (WHERE NOT priced)::int AS unpriced
+        FROM mot`);
+      const r: any = (res.rows ?? res)[0];
+      const unpriced = Number(r.unpriced) || 0;
       return {
         title: "MOT Sales — Summary",
+        // Some documents record that an MOT happened without storing what it was charged at
+        // (motCost is empty across the whole table), so say so rather than let the money read
+        // as though it covered every MOT counted.
+        ...(unpriced ? { subtitle: `${unpriced} of ${Number(r.count)} MOT(s) have no MOT amount recorded, so the values below exclude them.` } : {}),
         columns: [{ key: "period", label: "Period" }, { key: "count", label: "MOTs", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
         rows: [{ period: `${opts.from} → ${opts.to}`, count: Number(r.count), net: Number(r.net), tax: Number(r.tax), gross: Number(r.gross) }],
       };
