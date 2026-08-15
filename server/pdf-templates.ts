@@ -1263,3 +1263,148 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `Vehicle_History_${data.vehicle_reg || 'Report'}.pdf` };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// SALES SUMMARY  (mirrors GA4's printed "Summary of Sales Issued")
+// ═══════════════════════════════════════════════════════════════
+
+/** Rebuild of GA4's "Summary of Sales Issued" print-out, section for section, from our own
+ *  documents. GA4's copy only covers invoices that reached GA4; this covers everything the
+ *  web app holds, which is now the system of record. Fed by getSalesSummaryIssued(). */
+export async function generateSalesSummaryPDF(data: any): Promise<{ content: string; filename: string }> {
+  const { doc, finish } = makePDF();
+  doc.page.margins.bottom = 0;
+
+  const PM = 45;                       // page margin
+  const RIGHT = PW - PM;               // right edge of the numeric columns
+  const COL_W = 118;                   // width of each of the three numeric columns
+  const C3 = RIGHT - COL_W;            // Gross / third column
+  const C2 = C3 - COL_W;               // Tax / second column
+  const C1 = C2 - COL_W;               // Net / first column
+  const INK = '#000000';
+  const RULE = '#9ca3af';
+
+  const money = (v: any) =>
+    (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const ukDate = (s: string) => { const [y, m, d] = String(s).split('-'); return `${d}/${m}/${y}`; };
+
+  let y = PM;
+
+  /** Section heading with the three column captions above the rows. */
+  const sectionHead = (title: string, c1: string, c2: string, c3: string) => {
+    y += 14;
+    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
+    doc.text(title, PM, y, { lineBreak: false });
+    doc.font('Helvetica').fontSize(9).fillColor(INK);
+    doc.text(c1, C1, y, { width: COL_W, align: 'right', lineBreak: false });
+    doc.text(c2, C2, y, { width: COL_W, align: 'right', lineBreak: false });
+    doc.text(c3, C3, y, { width: COL_W, align: 'right', lineBreak: false });
+    y += 14;
+  };
+
+  /** One labelled row of up to three values (pass null to leave a column blank, as GA4 does). */
+  const row = (label: string, v1: any, v2: any, v3: any, opts: { bold?: boolean; indent?: number } = {}) => {
+    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(INK);
+    doc.text(label, PM + (opts.indent ?? 8), y, { lineBreak: false });
+    for (const [x, v] of [[C1, v1], [C2, v2], [C3, v3]] as [number, any][]) {
+      if (v === null || v === undefined) continue;
+      doc.text(typeof v === 'number' ? money(v) : String(v), x, y, { width: COL_W, align: 'right', lineBreak: false });
+    }
+    y += 13;
+  };
+
+  const rule = () => {
+    doc.save().strokeColor(RULE).lineWidth(0.5).moveTo(PM, y).lineTo(RIGHT, y).stroke().restore();
+    y += 4;
+  };
+
+  // ── Header
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(INK);
+  doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PM, y, { lineBreak: false });
+  y += 20;
+  doc.font('Helvetica').fontSize(10.5);
+  doc.text(`Summary of Sales Issued between ${ukDate(data.from)} and ${ukDate(data.to)}`,
+    PM, y, { width: RIGHT - PM, align: 'center' });
+  y += 24;
+
+  // ── Summary: invoice / credit-note counts, then their gross values
+  doc.font('Helvetica').fontSize(9).fillColor(INK);
+  doc.text('Invoices', C1, y, { width: COL_W, align: 'right', lineBreak: false });
+  doc.text('Credit Notes', C2, y, { width: COL_W, align: 'right', lineBreak: false });
+  y += 13;
+  doc.font('Helvetica').fontSize(10);
+  doc.text(String(data.invoices?.count ?? 0), C1, y, { width: COL_W, align: 'right', lineBreak: false });
+  doc.text(String(data.credits?.count ?? 0), C2, y, { width: COL_W, align: 'right', lineBreak: false });
+  doc.font('Helvetica').fontSize(9);
+  doc.text('Total Gross', C3, y, { width: COL_W, align: 'right', lineBreak: false });
+  y += 14;
+  row('Summary', data.invoices?.gross ?? 0, data.credits?.gross ?? 0, data.totalGross ?? 0, { bold: true, indent: 4 });
+
+  sectionHead('', 'Net', 'Tax', 'Gross');
+  row('Discounts Given', data.discounts?.net ?? 0, data.discounts?.tax ?? 0, data.discounts?.gross ?? 0);
+
+  // ── MOT counts
+  sectionHead('MOT Counts', 'Full', 'Retest', 'Duplicate');
+  // Counts, not money — pass strings so they skip the 2dp money formatting.
+  row("MOT's", String(data.mot?.full ?? 0),
+    data.mot?.retest ? String(data.mot.retest) : null,
+    data.mot?.duplicate ? String(data.mot.duplicate) : null);
+
+  // ── Sales breakdown, one row per category, then the total
+  sectionHead('Sales Breakdown', 'Net', 'Tax', 'Gross');
+  for (const b of (data.breakdown || [])) {
+    const label = b.qty !== undefined ? `${b.label}` : b.label;
+    if (b.qty !== undefined) {
+      doc.font('Helvetica').fontSize(9).fillColor(INK);
+      doc.text(`Qty   ${money(b.qty)}`, PM + 70, y, { lineBreak: false });
+    }
+    row(label, b.net, b.tax, b.gross);
+  }
+  rule();
+  row('Total', data.totals?.net ?? 0, data.totals?.tax ?? 0, data.totals?.gross ?? 0, { bold: true, indent: 120 });
+
+  // ── Profit sections. Cost prices aren't stored, so these show sales only.
+  const profit = (title: string, p: any, costLabel: string, salesLabel: string) => {
+    sectionHead(title, 'Net', 'Tax', 'Gross');
+    row(costLabel, p?.cost ?? 0, p?.cost ?? 0, p?.cost ?? 0);
+    row(salesLabel, p?.salesNet ?? 0, p?.salesTax ?? 0, p?.salesGross ?? 0);
+    rule();
+    row('Total', p?.salesNet ?? 0, null, p?.salesGross ?? 0, { bold: true, indent: 120 });
+  };
+  profit('Labour Profit', data.labourProfit, 'Labour Cost', 'Labour Sales');
+  profit('Parts Profit', data.partsProfit, 'Parts Cost', 'Parts Sales');
+
+  // ── Receipts
+  sectionHead('Receipts Breakdown', 'Receipts', 'Refunds', 'Total');
+  row('Cash', data.receipts?.cash ?? 0, null, null);
+  row('Cheque', data.receipts?.cheque ?? 0, null, null);
+  row('Digital', data.receipts?.digital ?? 0, null, null);
+  rule();
+  row('Total', null, null, data.receipts?.total ?? 0, { bold: true, indent: 120 });
+  row('', null, 'Credited', data.receipts?.credited ?? 0);
+  y += 4;
+  doc.font('Helvetica').fontSize(7.5).fillColor('#4b5563');
+  doc.text('Receipt breakdown includes all transactions for the invoices', PM, y, { lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
+  doc.text('Outstanding', C2, y, { width: COL_W, align: 'right', lineBreak: false });
+  doc.text(money(data.receipts?.outstanding ?? 0), C3, y, { width: COL_W, align: 'right', lineBreak: false });
+  y += 10;
+  doc.font('Helvetica').fontSize(7.5).fillColor('#4b5563');
+  doc.text('included in this report, regardless of receipt dates.', PM, y, { lineBreak: false });
+  y += 18;
+
+  if (data.costsUnavailable) {
+    doc.font('Helvetica-Oblique').fontSize(7.5).fillColor('#6b7280');
+    doc.text('Cost prices are not recorded against line items, so the profit sections show sales only.',
+      PM, y, { width: RIGHT - PM });
+    y += 12;
+  }
+
+  const now = new Date();
+  doc.font('Helvetica').fontSize(8).fillColor('#6b7280');
+  doc.text(`Created: ${now.toLocaleDateString('en-GB')} at ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
+    PM, PH - 60, { width: RIGHT - PM, align: 'center' });
+
+  const buf = await finish();
+  return { content: buf.toString('base64'), filename: `Summary From ${data.from} to ${data.to}.pdf` };
+}

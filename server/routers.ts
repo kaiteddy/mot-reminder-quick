@@ -561,6 +561,28 @@ export const appRouter = router({
       const { getReportFilters } = await import("./db");
       return getReportFilters();
     }),
+    /** GA4's "Summary of Sales Issued", rebuilt over the web app's own documents. */
+    salesSummary: publicProcedure
+      .input(z.object({
+        from: z.string(), to: z.string(),
+        basedOn: z.enum(["issue", "created"]).optional(),
+        department: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getSalesSummaryIssued } = await import("./db");
+        return getSalesSummaryIssued(input);
+      }),
+    salesSummaryPDF: publicProcedure
+      .input(z.object({
+        from: z.string(), to: z.string(),
+        basedOn: z.enum(["issue", "created"]).optional(),
+        department: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getSalesSummaryIssued } = await import("./db");
+        const { generateSalesSummaryPDF } = await import("./pdf-templates");
+        return generateSalesSummaryPDF(await getSalesSummaryIssued(input));
+      }),
   }),
 
   descriptionPresets: router({
