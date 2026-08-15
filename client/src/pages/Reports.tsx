@@ -15,6 +15,7 @@ const SALES: Group[] = [
   { grouping: "All", reports: [
     { id: "sales-summary", label: "Sales - Summary (On screen view)", impl: true, viewOnly: true },
     { id: "sales-summary", label: "Sales - Summary", impl: true },
+    { id: "sales-summary-issued", label: "Sales - Summary of Sales Issued (GA4 format)", impl: true },
     { id: "sales-by-month", label: "Sales - Issued (by Month)", impl: true },
     { id: "sales-summary-extended", label: "Sales - Summary Extended", impl: false },
   ] },
@@ -61,8 +62,28 @@ export default function Reports() {
   const filters = trpc.reports.filters.useQuery(undefined, { staleTime: 5 * 60_000 });
   const departments: string[] = (filters.data as any)?.departments ?? [];
 
-  const run = (r: Report, mode: "view" | "print" | "pdf") => {
+  const utils = trpc.useUtils();
+
+  const run = async (r: Report, mode: "view" | "print" | "pdf") => {
     if (!r.impl) { toast.message(`“${r.label}” isn't built yet — tell me and I'll add it.`); return; }
+    // This one has a server-rendered PDF that reproduces GA4's own layout, so the PDF button
+    // downloads that rather than printing the on-screen table.
+    if (mode === "pdf" && r.id === "sales-summary-issued") {
+      try {
+        const res: any = await utils.reports.salesSummaryPDF.fetch({ from, to, basedOn, department: department || undefined });
+        const bytes = atob(res.content);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = res.filename || "Sales Summary.pdf";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      } catch (e: any) {
+        toast.error("Couldn't build the PDF: " + (e?.message || ""));
+      }
+      return;
+    }
     setActive({ id: r.id, autoPrint: mode !== "view" });
   };
 

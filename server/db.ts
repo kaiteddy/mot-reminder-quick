@@ -2132,6 +2132,57 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
         totals: { customer: "Total", balance: gB, net: gN, tax: gT, gross: gG, running },
       };
     }
+    case "sales-summary-issued": {
+      // GA4's printed "Summary of Sales Issued", section for section, over our own documents.
+      // The PDF version (reports.salesSummaryPDF) renders the same figures in GA4's layout.
+      const s = await getSalesSummaryIssued(opts);
+      const rows: any[] = [];
+      rows.push({ _group: "Summary" });
+      rows.push({ item: "Invoices", count: s.invoices.count, net: null, tax: null, gross: s.invoices.gross });
+      rows.push({ item: "Credit Notes", count: s.credits.count, net: null, tax: null, gross: s.credits.gross });
+      rows.push({ item: "Total Gross", count: null, net: null, tax: null, gross: s.totalGross });
+      rows.push({ item: "Discounts Given", count: null, net: s.discounts.net, tax: s.discounts.tax, gross: s.discounts.gross });
+
+      rows.push({ _group: "MOT Counts" });
+      rows.push({ item: "Full", count: s.mot.full, net: null, tax: null, gross: null });
+      rows.push({ item: "Retest", count: s.mot.retest, net: null, tax: null, gross: null });
+      rows.push({ item: "Duplicate", count: s.mot.duplicate, net: null, tax: null, gross: null });
+
+      rows.push({ _group: "Sales Breakdown" });
+      for (const b of s.breakdown) {
+        rows.push({ item: b.label + (b.qty !== undefined ? `  (Qty ${b.qty})` : ""), count: null, net: b.net, tax: b.tax, gross: b.gross });
+      }
+      rows.push({ item: "Total", count: null, net: s.totals.net, tax: s.totals.tax, gross: s.totals.gross });
+
+      rows.push({ _group: "Labour Profit" });
+      rows.push({ item: "Labour Cost", count: null, net: s.labourProfit.cost, tax: null, gross: null });
+      rows.push({ item: "Labour Sales", count: null, net: s.labourProfit.salesNet, tax: s.labourProfit.salesTax, gross: s.labourProfit.salesGross });
+
+      rows.push({ _group: "Parts Profit" });
+      rows.push({ item: "Parts Cost", count: null, net: s.partsProfit.cost, tax: null, gross: null });
+      rows.push({ item: "Parts Sales", count: null, net: s.partsProfit.salesNet, tax: s.partsProfit.salesTax, gross: s.partsProfit.salesGross });
+
+      rows.push({ _group: "Receipts Breakdown" });
+      rows.push({ item: "Cash", count: null, net: null, tax: null, gross: s.receipts.cash });
+      rows.push({ item: "Cheque", count: null, net: null, tax: null, gross: s.receipts.cheque });
+      rows.push({ item: "Digital", count: null, net: null, tax: null, gross: s.receipts.digital });
+      rows.push({ item: "Total Received", count: null, net: null, tax: null, gross: s.receipts.total });
+      rows.push({ item: "Credited", count: null, net: null, tax: null, gross: s.receipts.credited });
+      rows.push({ item: "Outstanding", count: null, net: null, tax: null, gross: s.receipts.outstanding });
+
+      return {
+        title: "Sales — Summary of Sales Issued",
+        subtitle: "Built from web app documents, so it includes invoices GA4 never received. Cost prices aren't stored, so the profit sections show sales only.",
+        columns: [
+          { key: "item", label: "" },
+          { key: "count", label: "Count", align: "right", kind: "int" },
+          { key: "net", label: "Net", align: "right", kind: "money" },
+          { key: "tax", label: "Tax", align: "right", kind: "money" },
+          { key: "gross", label: "Gross", align: "right", kind: "money" },
+        ],
+        rows,
+      };
+    }
     case "mot-sales-summary": {
       // "MOT done" is recorded three different ways depending on where the invoice came from:
       //   motStatus  — set whenever the MOT option is used on the invoice (Pass/Fail/Retest)
