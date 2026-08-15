@@ -988,8 +988,10 @@ function EditCell({ v, onSave, type, w, placeholder, align, disabled }: any) {
   );
 }
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 // Where a car came from — a dropdown of the usual sources, plus "Other…" to type anything.
-const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay"];
+const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay", "Emotive - Ashely Feldman"];
 function SourceCell({ v, disabled, onSave }: { v: any; disabled?: boolean; onSave: (v: string | null) => void }) {
   const isPreset = !!v && CAR_SOURCES.includes(v);
   const [other, setOther] = useState<boolean>(!!v && !isPreset);
@@ -1097,6 +1099,18 @@ function CarTradingTab() {
     return std ? (r.salePrice || 0) / 6 : Math.max((r.salePrice || 0) - (r.effectiveCost || 0), 0) / 6;
   };
 
+  const [sourceFilter, setSourceFilter] = useState("");   // "" = any source
+  const [monthFilter, setMonthFilter] = useState("");     // "" = any month, else "YYYY-MM"
+  // Offer the sources and purchase months actually present, so the dropdowns can't point at
+  // something with no cars behind it. Blank source shows as "—", matching the table cell.
+  const sourceOptions = useMemo(
+    () => Array.from(new Set(rowsRaw.map((r) => (r.source || "").trim()).filter(Boolean))).sort(),
+    [rowsRaw]);
+  const monthOptions = useMemo(
+    () => Array.from(new Set(rowsRaw.map((r) => String(r.purchaseDate || "").slice(0, 7)).filter(Boolean)))
+      .sort().reverse(),
+    [rowsRaw]);
+
   const [sortKey, setSortKey] = useState<"saleDate" | "purchaseDate" | "margin" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sortBy = (k: NonNullable<typeof sortKey>) => {
@@ -1115,7 +1129,7 @@ function CarTradingTab() {
       return av === bv ? 0 : (av < bv ? -1 : 1) * dir;
     });
   }, [rowsRaw, sortKey, sortDir]);
-  const filterActive = needsData || statusFilter !== "all" || cq !== "";
+  const filterActive = needsData || statusFilter !== "all" || cq !== "" || sourceFilter !== "" || monthFilter !== "";
   // Freeze WHICH rows are shown while a filter is active, recomputing only when the filter itself
   // changes (a button or the search box) — NOT when a row's data changes. So filling in a row won't
   // drop it out of view and make you relocate it; the search box still re-filters live as you type.
@@ -1125,12 +1139,14 @@ function CarTradingTab() {
     for (const r of rows) {
       if (statusFilter !== "all" && r.status !== statusFilter) continue;
       if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
+      if (sourceFilter && (r.source || "").trim() !== sourceFilter) continue;
+      if (monthFilter && String(r.purchaseDate || "").slice(0, 7) !== monthFilter) continue;
       if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
       s.add(r.id);
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, needsData, cq]);
+  }, [statusFilter, needsData, cq, sourceFilter, monthFilter]);
 
   if (deals.isLoading) return <Loading />;
   // pin the just-added row to the top so it doesn't re-order while you're filling it in
@@ -1203,6 +1219,31 @@ function CarTradingTab() {
             <Button type="button" variant={needsData ? "default" : "outline"} size="sm" className={`h-9 ${needsData ? "" : "text-amber-700"}`} title="Cars missing a purchase price or purchase date (sold ones overstate the margin)" onClick={() => setNeedsData((v) => !v)}>
               <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
             </Button>
+            <select
+              value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
+              title="Filter by where the car came from"
+              className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            >
+              <option value="">All sources</option>
+              {sourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
+              title="Filter by the month the car was bought"
+              className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            >
+              <option value="">All months</option>
+              {monthOptions.map((m) => {
+                const [y, mo] = m.split("-");
+                return <option key={m} value={m}>{MONTH_NAMES[Number(mo) - 1]} {y}</option>;
+              })}
+            </select>
+            {filterActive && (
+              <Button type="button" variant="ghost" size="sm" className="h-9 text-slate-500"
+                title="Clear every filter and show all cars"
+                onClick={() => { setStatusFilter("all"); setNeedsData(false); setCarSearch(""); setSourceFilter(""); setMonthFilter(""); }}
+              >Clear filters</Button>
+            )}
           </div>
           <Button variant="outline" size="sm" className="h-9" onClick={exportCsv} title="Download the listed cars as CSV (filter to Needs data first for the incomplete list)"><Download className="mr-1 h-4 w-4" />Export</Button>
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>

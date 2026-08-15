@@ -674,7 +674,7 @@ export async function getVehiclePurchases() {
 }
 
 /** Link (or unlink with null) a purchase transaction to a car deal; auto-fills the purchase DATE and,
- *  when the payee is a recognised auction, the SOURCE (BCA/Manheim/Aston Barclay/Eastbourne) — only if
+ *  when the payee is a recognised source (BCA/Manheim/Aston Barclay/Eastbourne/Emotive) — only if
  *  those are still blank, so a manual entry is never overwritten. Deliberately does NOT auto-fill
  *  purchaseCost: a linked payment is the TOTAL invoice (vehicle + fees + delivery), whereas purchaseCost
  *  must be the vehicle-only price that drives the margin (shown as a greyed hint so the user can split it). */
@@ -694,6 +694,7 @@ export async function linkPurchase(input: { txnId: number; carDealId: number | n
                 WHEN "counterparty" ~* 'manheim' THEN 'Manheim'
                 WHEN "counterparty" ~* 'aston ?barclay' THEN 'Aston Barclay'
                 WHEN "counterparty" ~* 'eastbourne' THEN 'Eastbourne'
+                WHEN "counterparty" ~* 'emotive|feldman' THEN 'Emotive - Ashely Feldman'
               END) src
             FROM "bankTransactions" WHERE "carDealId"=${input.carDealId}) x
       WHERE d."id"=${input.carDealId}`);
