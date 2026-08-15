@@ -1886,6 +1886,7 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     mot: { full: 0, retest: 0, duplicate: 0 },
     breakdown: [] as { label: string; qty?: number; net: number; tax: number; gross: number }[],
     totals: { net: 0, tax: 0, gross: 0 },
+    taxBreakdown: [] as { code: string; rate: number; net: number; tax: number; gross: number }[],
     labourProfit: { cost: 0, salesNet: 0, salesTax: 0, salesGross: 0 },
     partsProfit: { cost: 0, salesNet: 0, salesTax: 0, salesGross: 0 },
     receipts: { cash: 0, cheque: 0, digital: 0, total: 0, credited: 0, outstanding: 0 },
@@ -1957,6 +1958,19 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     net: round2(a.net + r.net), tax: round2(a.tax + r.tax), gross: round2(a.gross + r.gross),
   }), { net: 0, tax: 0, gross: 0 });
 
+  // ── Tax breakdown by GA4 tax code: T0 is zero-rated (MOT), T1 the 20% standard rate.
+  const taxRows: any[] = (await db.execute(sql`
+    SELECT COALESCE(li."vatRate", 0) AS rate,
+           COALESCE(SUM(li."subNet"), 0) AS net, COALESCE(SUM(li."taxAmount"), 0) AS tax
+    FROM ${serviceHistory} JOIN "serviceLineItems" li ON li."documentId" = ${serviceHistory.id}
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}
+    GROUP BY 1 ORDER BY 1`)).rows ?? [];
+  const taxBreakdown = taxRows.map((t: any) => {
+    const rate = Number(t.rate) || 0;
+    const net = n(t.net), tax = n(t.tax);
+    return { code: rate === 0 ? "T0" : "T1", rate, net, tax, gross: round2(net + tax) };
+  });
+
   // ── Receipts against those documents, mapped onto GA4's Cash / Cheque / Digital buckets
   const payRows: any[] = (await db.execute(sql`
     SELECT COALESCE(NULLIF(TRIM(p.method), ''), 'Unknown') AS method, COALESCE(SUM(p.amount), 0) AS amount
@@ -1985,7 +1999,7 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     totalGross: round2(n(head.inv_gross) - n(head.cr_gross)),
     discounts: { net: n(head.disc_net), tax: round2(n(head.disc_gross) - n(head.disc_net)), gross: n(head.disc_gross) },
     mot: { full: n(motRow.full), retest: n(motRow.retest), duplicate: n(motRow.duplicate) },
-    breakdown, totals,
+    breakdown, totals, taxBreakdown,
     // Cost prices aren't stored on line items, so the profit sections show sales only — the same
     // figures GA4 prints when it has no cost data.
     labourProfit: { cost: 0, salesNet: labour.net, salesTax: labour.tax, salesGross: labour.gross },
@@ -2070,6 +2084,67 @@ export function buildSalesSummarySections(s: any): SalesSummarySection[] {
         { label: "", v: [null, "Credited", s.receipts.credited], kind: "money", bold: true },
         { label: "", v: [null, "Outstanding", s.receipts.outstanding], kind: "money", bold: true },
       ],
+    },
+  ];
+}
+
+/** GA4's "Sales Summary Extended" — the plain summary plus the extra blocks it prints: a titled
+ *  Discount section, a labelled Labour Cost line, the Lab/Part/MOT cost total, receipts and
+ *  refunds split by type, and the tax-code breakdown. */
+export function buildSalesSummaryExtendedSections(s: any): SalesSummarySection[] {
+  const base = buildSalesSummarySections(s);
+  const blank = (v: number) => (v ? v : null);
+
+  // Extended titles its Discount block and labels the labour cost line; the plain summary doesn't.
+  const discount = { ...base[1], title: "Discount" };
+  const labour = {
+    ...base[4],
+    rows: base[4].rows.map((r, i) => (i === 0 ? { ...r, label: "Labour Cost" } : r)),
+  };
+
+  const rcpt = s.receipts;
+  // GA4 splits receipts into Standard vs Account columns. We don't record which ledger a receipt
+  // was taken against, so everything lands in Standard and Account stays blank rather than
+  // implying a split we can't evidence.
+  const byType = (title: string, cash: number, cheque: number, digital: number, total: number): SalesSummarySection => ({
+    title, captions: ["Standard", "Account", "Total"],
+    rows: [
+      { label: "Cash", v: [blank(cash), null, null], kind: "money" },
+      { label: "Cheque", v: [blank(cheque), null, null], kind: "money" },
+      { label: "Digital", v: [blank(digital), null, null], kind: "money" },
+      { label: "Total", v: [total, null, total], kind: "money", bold: true, total: true },
+    ],
+  });
+
+  return [
+    base[0],                       // Summary
+    discount,                      // Discount
+    base[2],                       // MOT Counts
+    base[3],                       // Sales Breakdown
+    labour,                        // Labour Profit
+    base[5],                       // Parts Profit
+    {
+      title: "Sales - Lab,Part & Mot Cost",
+      captions: ["Net", "Tax", "Gross"],
+      rows: [{ label: "Total", v: [s.totals.net, null, s.totals.gross], kind: "money", bold: true, total: true }],
+    },
+    byType("Receipts by Type", rcpt.cash, rcpt.cheque, rcpt.digital, rcpt.total),
+    byType("Refunds by Type", 0, 0, 0, 0),
+    {
+      title: "Total Receipts / Refunds",
+      captions: ["Standard", "Account", "Total"],
+      rows: [
+        { label: "Grand Total", v: [rcpt.total, null, rcpt.total], kind: "money", bold: true, total: true },
+        { label: "", v: [null, "Credited", rcpt.credited], kind: "money", bold: true },
+        { label: "", v: [null, "Outstanding", rcpt.outstanding], kind: "money", bold: true },
+      ],
+    },
+    {
+      title: "Tax Breakdown",
+      captions: ["Net", "Tax", "Gross"],
+      rows: (s.taxBreakdown || []).map((t: any) => ({
+        label: t.code, v: [t.net, t.tax || null, t.gross], kind: "money" as const,
+      })),
     },
   ];
 }
@@ -2227,6 +2302,57 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
         sections: buildSalesSummarySections(s),
         columns: [], rows: [],
       } as any;
+    }
+    case "sales-summary-extended": {
+      const s = await getSalesSummaryIssued(opts);
+      return {
+        title: "Summary of Sales Issued — Extended",
+        subtitle: "Built from web app documents, so it includes invoices GA4 never received. Cost prices aren't stored against line items, so the profit sections show sales only, and receipts aren't split Standard/Account because we don't record which ledger they were taken against.",
+        sections: buildSalesSummaryExtendedSections(s),
+        columns: [], rows: [],
+      } as any;
+    }
+    case "sales-ledger-month": {
+      // GA4's "Summary Ledger ... grouped by Month": one line per period, with a running total.
+      const { rows: items } = await getSalesListing(opts);
+      const buckets = new Map<string, { period: string; invoices: number; receipts: number; balance: number; net: number; tax: number; gross: number }>();
+      for (const it of items) {
+        const d = new Date(it.date as any);
+        const key = `${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+        const b = buckets.get(key) ?? { period: key, invoices: 0, receipts: 0, balance: 0, net: 0, tax: 0, gross: 0 };
+        b.invoices += 1;
+        b.receipts = round2(b.receipts + (it.gross - it.balance));
+        b.balance = round2(b.balance + it.balance);
+        b.net = round2(b.net + it.net);
+        b.tax = round2(b.tax + it.tax);
+        b.gross = round2(b.gross + it.gross);
+        buckets.set(key, b);
+      }
+      const ordered = Array.from(buckets.values()).sort((a, b) => {
+        const [am, ay] = a.period.split("."), [bm, by] = b.period.split(".");
+        return ay === by ? Number(am) - Number(bm) : Number(ay) - Number(by);
+      });
+      let running = 0;
+      const rows = ordered.map((b) => { running = round2(running + b.gross); return { ...b, running }; });
+      const tot = ordered.reduce((a, b) => ({
+        invoices: a.invoices + b.invoices, receipts: round2(a.receipts + b.receipts), balance: round2(a.balance + b.balance),
+        net: round2(a.net + b.net), tax: round2(a.tax + b.tax), gross: round2(a.gross + b.gross),
+      }), { invoices: 0, receipts: 0, balance: 0, net: 0, tax: 0, gross: 0 });
+      return {
+        title: "Sales — Summary Ledger (grouped by Month)",
+        columns: [
+          { key: "period", label: "Period" },
+          { key: "invoices", label: "Invoices", align: "right", kind: "int" },
+          { key: "receipts", label: "Receipts", align: "right", kind: "money" },
+          { key: "balance", label: "Balance", align: "right", kind: "money" },
+          { key: "net", label: "Net", align: "right", kind: "money" },
+          { key: "tax", label: "VAT", align: "right", kind: "money" },
+          { key: "gross", label: "Gross", align: "right", kind: "money" },
+          { key: "running", label: "Running Total", align: "right", kind: "money" },
+        ],
+        rows,
+        totals: { period: "Grand Totals", ...tot, running: tot.gross },
+      };
     }
     case "mot-sales-summary": {
       // "MOT done" is recorded three different ways depending on where the invoice came from:

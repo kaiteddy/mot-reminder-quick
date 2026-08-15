@@ -1298,18 +1298,30 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
 
   let y = PM;
 
-  // ── Header
-  doc.font('Helvetica-Bold').fontSize(19).fillColor(INK);
-  doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PM, y, { lineBreak: false });
-  y += 26;
-  doc.font('Helvetica-Bold').fontSize(10);
-  doc.text(`Summary of Sales Issued between ${ukDate(data.from)} and ${ukDate(data.to)}`,
-    PM, y, { width: RIGHT - PM, align: 'center' });
-  y += 20;
-  doc.save().strokeColor(LINE).lineWidth(0.5).moveTo(PM, y).lineTo(RIGHT, y).stroke().restore();
-  y += 10;
+  // ── Header, repeated on each page the way GA4 repeats it
+  const header = () => {
+    y = PM;
+    doc.font('Helvetica-Bold').fontSize(19).fillColor(INK);
+    doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PM, y, { lineBreak: false });
+    y += 26;
+    doc.font('Helvetica-Bold').fontSize(10);
+    doc.text(`Summary of Sales Issued between ${ukDate(data.from)} and ${ukDate(data.to)}`,
+      PM, y, { width: RIGHT - PM, align: 'center' });
+    y += 20;
+    doc.save().strokeColor(LINE).lineWidth(0.5).moveTo(PM, y).lineTo(RIGHT, y).stroke().restore();
+    y += 10;
+  };
+  header();
+
+  const BOTTOM_LIMIT = PH - 80;   // leave room for the footer note and "Created:" line
 
   for (const sec of (data.sections || [])) {
+    // Keep a block whole: if it won't fit below, start a fresh page first.
+    if (y + CAP_H + sec.rows.length * ROW_H + GAP > BOTTOM_LIMIT) {
+      doc.addPage();
+      doc.page.margins.bottom = 0;
+      header();
+    }
     // Section title (left) and this block's three column captions
     doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
     if (sec.title) doc.text(sec.title, X0, y + 4, { lineBreak: false });
