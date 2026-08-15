@@ -16,8 +16,9 @@ const SALES: Group[] = [
     { id: "sales-summary", label: "Sales - Summary (On screen view)", impl: true, viewOnly: true },
     { id: "sales-summary", label: "Sales - Summary", impl: true },
     { id: "sales-summary-issued", label: "Sales - Summary of Sales Issued (GA4 format)", impl: true },
-    { id: "sales-by-month", label: "Sales - Issued (by Month)", impl: true },
-    { id: "sales-summary-extended", label: "Sales - Summary Extended", impl: false },
+    { id: "sales-summary-extended", label: "Sales - Summary Extended", impl: true },
+    { id: "sales-ledger-month", label: "Sales - Summary Ledger (by Month)", impl: true },
+    { id: "sales-by-month", label: "Sales - Detailed Ledger (by Month)", impl: true },
   ] },
   { grouping: "All", reports: [{ id: "mot-sales-summary", label: "MOT Sales - Summary", impl: true }] },
   { grouping: "Day", reports: [
@@ -68,9 +69,12 @@ export default function Reports() {
     if (!r.impl) { toast.message(`“${r.label}” isn't built yet — tell me and I'll add it.`); return; }
     // This one has a server-rendered PDF that reproduces GA4's own layout, so the PDF button
     // downloads that rather than printing the on-screen table.
-    if (mode === "pdf" && r.id === "sales-summary-issued") {
+    if (mode === "pdf" && (r.id === "sales-summary-issued" || r.id === "sales-summary-extended")) {
       try {
-        const res: any = await utils.reports.salesSummaryPDF.fetch({ from, to, basedOn, department: department || undefined });
+        const res: any = await utils.reports.salesSummaryPDF.fetch({
+          from, to, basedOn, department: department || undefined,
+          extended: r.id === "sales-summary-extended",
+        });
         const bytes = atob(res.content);
         const arr = new Uint8Array(bytes.length);
         for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);

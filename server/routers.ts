@@ -459,12 +459,16 @@ export const appRouter = router({
         from: z.string(), to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
         department: z.string().optional(),
+        extended: z.boolean().optional(),
       }))
       .query(async ({ input }) => {
-        const { getSalesSummaryIssued, buildSalesSummarySections } = await import("./db");
+        const { getSalesSummaryIssued, buildSalesSummarySections, buildSalesSummaryExtendedSections } = await import("./db");
         const { generateSalesSummaryPDF } = await import("./pdf-templates");
         const summary = await getSalesSummaryIssued(input);
-        return generateSalesSummaryPDF({ ...summary, sections: buildSalesSummarySections(summary) });
+        const sections = input.extended
+          ? buildSalesSummaryExtendedSections(summary)
+          : buildSalesSummarySections(summary);
+        return generateSalesSummaryPDF({ ...summary, sections, extended: !!input.extended });
       }),
   }),
 
