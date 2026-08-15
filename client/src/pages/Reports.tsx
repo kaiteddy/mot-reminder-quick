@@ -212,7 +212,7 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800">{data?.title || "Report"}</h3>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => handlePrint()} disabled={!data?.rows?.length} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-300 text-[13px] hover:bg-slate-50 disabled:opacity-50"><Printer className="w-4 h-4" /> Print</button>
+            <button type="button" onClick={() => handlePrint()} disabled={!data?.rows?.length && !data?.sections?.length} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-300 text-[13px] hover:bg-slate-50 disabled:opacity-50"><Printer className="w-4 h-4" /> Print</button>
             <button type="button" onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
           </div>
         </div>
@@ -223,6 +223,8 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
             <div className="py-10 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Running report…</div>
           ) : data?.note ? (
             <p className="py-8 text-center text-slate-500 text-sm">{data.note}</p>
+          ) : data?.sections ? (
+            <GA4Summary sections={data.sections} />
           ) : !data?.rows?.length ? (
             <p className="py-8 text-center text-slate-400 text-sm">No data for this period.</p>
           ) : (
@@ -264,4 +266,59 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="flex flex-col gap-1"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">{label}</span>{children}</div>;
+}
+
+/** GA4's "Summary of Sales Issued" layout: one boxed block per section, each with its own three
+ *  column captions. Renders the same `sections` payload the PDF uses, so screen and print agree. */
+function GA4Summary({ sections }: { sections: any[] }) {
+  const fmt = (v: any, kind?: string) => {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string") return v;
+    if (kind === "int") return Number(v).toLocaleString("en-GB");
+    const num = Number(v);
+    return `${num < 0 ? "-" : ""}${Math.abs(num).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+  const cellBase = "px-2 py-1 text-[13px] tabular-nums text-right align-middle";
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-3">
+      {sections.map((sec, si) => (
+        <div key={si}>
+          <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))] items-end pb-1">
+            <div className="text-[13px] font-semibold text-slate-800">{sec.title ?? ""}</div>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="text-[12px] text-slate-500 text-center">{sec.captions?.[i] ?? ""}</div>
+            ))}
+          </div>
+          <div className="border-l border-slate-300">
+            {sec.rows.map((r: any, ri: number) => (
+              <div key={ri} className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+                <div className={`px-2 py-1 text-[13px] flex items-center gap-2 ${r.label || r.qty !== undefined ? "border border-slate-200 border-l-0" : ""} ${r.total ? "justify-end font-semibold" : ""} ${r.bold && !r.total ? "font-semibold" : ""}`}>
+                  <span className={r.total ? "" : "text-slate-700"}>{r.label}</span>
+                  {r.qty !== undefined && (
+                    <span className="ml-auto flex items-baseline gap-1">
+                      <span className="text-[10px] text-slate-400">Qty</span>
+                      <span className="text-[12px] italic tabular-nums">{fmt(r.qty)}</span>
+                    </span>
+                  )}
+                </div>
+                {[0, 1, 2].map((i) => {
+                  const v = r.v?.[i];
+                  const filled = v !== null && v !== undefined;
+                  return (
+                    <div key={i} className={`${cellBase} ${filled ? "border border-slate-200 border-l-0" : ""} ${r.bold ? "font-semibold text-slate-900" : "text-slate-700"}`}>
+                      {fmt(v, r.kind)}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="text-[11px] italic text-slate-400 pt-1">
+        Receipt breakdown includes all transactions for the invoices included in this report, regardless of receipt dates.
+      </p>
+    </div>
+  );
 }

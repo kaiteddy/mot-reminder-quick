@@ -1187,6 +1187,7 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
       COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (WHERE ${serviceHistory.docType} = 'CR'), 0) AS cr_gross,
       COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountNet)}), 0) AS disc_net,
       COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountGross)}), 0) AS disc_gross,
+      COALESCE(SUM(${_numExpr(serviceHistory.excessDiscount)}), 0) AS excess_disc,
       COALESCE(SUM(${_numExpr(serviceHistory.balance)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS outstanding
     FROM ${serviceHistory}
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}`)).rows?.[0] ?? {};
@@ -1222,12 +1223,16 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     GROUP BY 1`)).rows ?? [];
 
   const byLabel = new Map(catRows.map((r: any) => [r.label, r]));
+  // Same rows, in the same order, as GA4's printed Sales Breakdown — including the trailing
+  // "Minus Excess" deduction, which GA4 lists separately from the Excess charge itself.
   const ORDER = ["Labour", "Parts", "Sundries", "Lubricants", "Paint & Mat.", "MOT", "Surcharge", "Excess"];
   const breakdown = ORDER.map((label) => {
     const r: any = byLabel.get(label);
     const net = n(r?.net), tax = n(r?.tax);
     return { label, ...(label === "Labour" ? { qty: n(r?.qty) } : {}), net, tax, gross: round2(net + tax) };
   });
+  const excessDisc = n(head.excess_disc);
+  breakdown.push({ label: "Minus Excess", net: -excessDisc, tax: 0, gross: -excessDisc });
   const totals = breakdown.reduce((a, r) => ({
     net: round2(a.net + r.net), tax: round2(a.tax + r.tax), gross: round2(a.gross + r.gross),
   }), { net: 0, tax: 0, gross: 0 });
@@ -1268,6 +1273,85 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     receipts,
     costsUnavailable: true,
   };
+}
+
+export type SalesSummaryRow = {
+  label: string;
+  qty?: number;
+  /** Up to three column values; null leaves the cell blank, as GA4 does for unused columns. */
+  v: (number | string | null)[];
+  kind?: "money" | "int" | "text";
+  bold?: boolean;
+  /** Right-align the label and indent it, the way GA4 prints its "Total" rows. */
+  total?: boolean;
+};
+export type SalesSummarySection = { title?: string; captions: (string | null)[]; rows: SalesSummaryRow[] };
+
+/** Lay the summary out exactly as GA4 prints it — one section per boxed block, each with its own
+ *  three column captions. Both the PDF and the on-screen report render from this, so the two
+ *  can't drift apart. */
+export function buildSalesSummarySections(s: any): SalesSummarySection[] {
+  const blank = (v: number) => (v ? v : null); // GA4 leaves a cell empty rather than printing 0
+  return [
+    {
+      captions: ["Invoices", "Credit Notes", null],
+      rows: [
+        { label: "", v: [String(s.invoices.count), String(s.credits.count), "Total Gross"], kind: "text" },
+        { label: "Summary", v: [s.invoices.gross, s.credits.gross, s.totalGross], kind: "money", bold: true },
+      ],
+    },
+    {
+      captions: ["Net", "Tax", "Gross"],
+      rows: [{ label: "Discounts Given", v: [s.discounts.net, s.discounts.tax, s.discounts.gross], kind: "money" }],
+    },
+    {
+      title: "MOT Counts",
+      captions: ["Full", "Retest", "Duplicate"],
+      rows: [{ label: "MOT's", v: [blank(s.mot.full), blank(s.mot.retest), blank(s.mot.duplicate)], kind: "int" }],
+    },
+    {
+      title: "Sales Breakdown",
+      captions: ["Net", "Tax", "Gross"],
+      rows: [
+        ...s.breakdown.map((b: any) => ({
+          label: b.label, ...(b.qty !== undefined ? { qty: b.qty } : {}),
+          v: [b.net, b.tax, b.gross], kind: "money" as const,
+        })),
+        { label: "Total", v: [s.totals.net, s.totals.tax, s.totals.gross], kind: "money", bold: true, total: true },
+      ],
+    },
+    {
+      title: "Labour Profit",
+      captions: ["Net", "Tax", "Gross"],
+      rows: [
+        // GA4 prints the cost line unlabelled when it has no cost data; ours never does.
+        { label: "", v: [s.labourProfit.cost, s.labourProfit.cost, s.labourProfit.cost], kind: "money" },
+        { label: "Labour Sales", v: [s.labourProfit.salesNet, s.labourProfit.salesTax, s.labourProfit.salesGross], kind: "money" },
+        { label: "Total", v: [s.labourProfit.salesNet, null, s.labourProfit.salesGross], kind: "money", bold: true, total: true },
+      ],
+    },
+    {
+      title: "Parts Profit",
+      captions: ["Net", "Tax", "Gross"],
+      rows: [
+        { label: "Parts Cost", v: [s.partsProfit.cost, s.partsProfit.cost, s.partsProfit.cost], kind: "money" },
+        { label: "Parts Sales", v: [s.partsProfit.salesNet, s.partsProfit.salesTax, s.partsProfit.salesGross], kind: "money" },
+        { label: "Total", v: [s.partsProfit.salesNet, null, s.partsProfit.salesGross], kind: "money", bold: true, total: true },
+      ],
+    },
+    {
+      title: "Receipts Breakdown",
+      captions: ["Receipts", "Refunds", "Total"],
+      rows: [
+        { label: "Cash", v: [blank(s.receipts.cash), null, null], kind: "money" },
+        { label: "Cheque", v: [blank(s.receipts.cheque), null, null], kind: "money" },
+        { label: "Digital", v: [blank(s.receipts.digital), null, null], kind: "money" },
+        { label: "Total", v: [null, null, s.receipts.total], kind: "money", bold: true, total: true },
+        { label: "", v: [null, "Credited", s.receipts.credited], kind: "money", bold: true },
+        { label: "", v: [null, "Outstanding", s.receipts.outstanding], kind: "money", bold: true },
+      ],
+    },
+  ];
 }
 
 /** Sales summary for a date range: per document-type totals (count/net/VAT/gross) + a parts /
@@ -1416,52 +1500,13 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       // GA4's printed "Summary of Sales Issued", section for section, over our own documents.
       // The PDF version (reports.salesSummaryPDF) renders the same figures in GA4's layout.
       const s = await getSalesSummaryIssued(opts);
-      const rows: any[] = [];
-      rows.push({ _group: "Summary" });
-      rows.push({ item: "Invoices", count: s.invoices.count, net: null, tax: null, gross: s.invoices.gross });
-      rows.push({ item: "Credit Notes", count: s.credits.count, net: null, tax: null, gross: s.credits.gross });
-      rows.push({ item: "Total Gross", count: null, net: null, tax: null, gross: s.totalGross });
-      rows.push({ item: "Discounts Given", count: null, net: s.discounts.net, tax: s.discounts.tax, gross: s.discounts.gross });
-
-      rows.push({ _group: "MOT Counts" });
-      rows.push({ item: "Full", count: s.mot.full, net: null, tax: null, gross: null });
-      rows.push({ item: "Retest", count: s.mot.retest, net: null, tax: null, gross: null });
-      rows.push({ item: "Duplicate", count: s.mot.duplicate, net: null, tax: null, gross: null });
-
-      rows.push({ _group: "Sales Breakdown" });
-      for (const b of s.breakdown) {
-        rows.push({ item: b.label + (b.qty !== undefined ? `  (Qty ${b.qty})` : ""), count: null, net: b.net, tax: b.tax, gross: b.gross });
-      }
-      rows.push({ item: "Total", count: null, net: s.totals.net, tax: s.totals.tax, gross: s.totals.gross });
-
-      rows.push({ _group: "Labour Profit" });
-      rows.push({ item: "Labour Cost", count: null, net: s.labourProfit.cost, tax: null, gross: null });
-      rows.push({ item: "Labour Sales", count: null, net: s.labourProfit.salesNet, tax: s.labourProfit.salesTax, gross: s.labourProfit.salesGross });
-
-      rows.push({ _group: "Parts Profit" });
-      rows.push({ item: "Parts Cost", count: null, net: s.partsProfit.cost, tax: null, gross: null });
-      rows.push({ item: "Parts Sales", count: null, net: s.partsProfit.salesNet, tax: s.partsProfit.salesTax, gross: s.partsProfit.salesGross });
-
-      rows.push({ _group: "Receipts Breakdown" });
-      rows.push({ item: "Cash", count: null, net: null, tax: null, gross: s.receipts.cash });
-      rows.push({ item: "Cheque", count: null, net: null, tax: null, gross: s.receipts.cheque });
-      rows.push({ item: "Digital", count: null, net: null, tax: null, gross: s.receipts.digital });
-      rows.push({ item: "Total Received", count: null, net: null, tax: null, gross: s.receipts.total });
-      rows.push({ item: "Credited", count: null, net: null, tax: null, gross: s.receipts.credited });
-      rows.push({ item: "Outstanding", count: null, net: null, tax: null, gross: s.receipts.outstanding });
-
       return {
-        title: "Sales — Summary of Sales Issued",
-        subtitle: "Built from web app documents, so it includes invoices GA4 never received. Cost prices aren't stored, so the profit sections show sales only.",
-        columns: [
-          { key: "item", label: "" },
-          { key: "count", label: "Count", align: "right", kind: "int" },
-          { key: "net", label: "Net", align: "right", kind: "money" },
-          { key: "tax", label: "Tax", align: "right", kind: "money" },
-          { key: "gross", label: "Gross", align: "right", kind: "money" },
-        ],
-        rows,
-      };
+        title: "Summary of Sales Issued",
+        subtitle: "Built from web app documents, so it includes invoices GA4 never received. Cost prices aren't stored against line items, so the profit sections show sales only.",
+        // Rendered by the GA4-layout view in Reports.tsx rather than the generic table.
+        sections: buildSalesSummarySections(s),
+        columns: [], rows: [],
+      } as any;
     }
     case "mot-sales-summary": {
       // "MOT done" is recorded three different ways depending on where the invoice came from:

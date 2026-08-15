@@ -461,9 +461,10 @@ export const appRouter = router({
         department: z.string().optional(),
       }))
       .query(async ({ input }) => {
-        const { getSalesSummaryIssued } = await import("./db");
+        const { getSalesSummaryIssued, buildSalesSummarySections } = await import("./db");
         const { generateSalesSummaryPDF } = await import("./pdf-templates");
-        return generateSalesSummaryPDF(await getSalesSummaryIssued(input));
+        const summary = await getSalesSummaryIssued(input);
+        return generateSalesSummaryPDF({ ...summary, sections: buildSalesSummarySections(summary) });
       }),
   }),
 
