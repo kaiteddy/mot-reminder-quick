@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { round2 } from "@/lib/utils";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1089,7 +1090,8 @@ function EditCell({ v, onSave, type, w, placeholder, align, disabled }: any) {
 }
 
 // Where a car came from — a dropdown of the usual sources, plus "Other…" to type anything.
-const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay"];
+const CAR_SOURCES = ["BCA", "Manheim", "Customer", "Eastbourne", "Aston Barclay", "Emotive - Ashley Feldman"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function SourceCell({ v, disabled, onSave }: { v: any; disabled?: boolean; onSave: (v: string | null) => void }) {
   const isPreset = !!v && CAR_SOURCES.includes(v);
   const [other, setOther] = useState<boolean>(!!v && !isPreset);
@@ -1135,6 +1137,7 @@ function CarTradingTab() {
   // Cars bought at auction should carry buyer fees; a customer/part-ex won't. "No fees" surfaces
   // auction buys recorded at hammer price only (that's how £2.3k of cost went missing).
   const [noFeesOnly, setNoFeesOnly] = useState(false);
+  const [monthFilter, setMonthFilter] = useState("");     // "" = any purchase month, else "YYYY-MM"
   const [needsData, setNeedsData] = useState(false);
   const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
   const [splitFor, setSplitFor] = useState<{ carId: number; total: number; payee: string } | null>(null); // auction fee-split prompt
@@ -1180,9 +1183,50 @@ function CarTradingTab() {
     } catch (e: any) { toast.error("Lookup failed: " + (e?.message || "unknown"), { id: t }); }
   };
 
-  const rows: any[] = deals.data || [];
+  const rowsRaw: any[] = deals.data || [];
   const cq = carSearch.trim().toLowerCase();
-  const filterActive = needsData || statusFilter !== "all" || sourceFilter !== "all" || noFeesOnly || cq !== "";
+
+  // What stops this car being a complete record. Drives both the red tint on the row and the
+  // Missing column in the CSV, so the screen and the export always agree on what needs fixing.
+  const missingOf = (r: any): string[] => [
+    r.purchaseCost == null ? "price" : null,
+    r.purchaseDate == null ? "purchase date" : null,
+    r.status === "sold" && r.saleDate == null ? "sale date" : null,
+    r.status === "sold" && r.salePrice == null ? "sale price" : null,
+  ].filter(Boolean) as string[];
+
+  // Output VAT per car. Standard-rated (VAT-qualifying) cars pay on the whole sale price;
+  // everything else is the second-hand margin scheme — a sixth of the margin, and nothing at all
+  // on a loss. Same rule as the AI export and the accountant's quarterly margin schedules.
+  const vatOf = (r: any): number => {
+    if (r.status !== "sold" || r.salePrice == null) return 0;
+    const std = r.stdRated === 1 || /STD|standard-rated/i.test(r.notes || "");
+    return std ? (r.salePrice || 0) / 6 : Math.max((r.salePrice || 0) - (r.effectiveCost || 0), 0) / 6;
+  };
+
+  const [sortKey, setSortKey] = useState<"saleDate" | "purchaseDate" | "margin" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const sortBy = (k: NonNullable<typeof sortKey>) => {
+    if (sortKey === k) { setSortDir(sortDir === "asc" ? "desc" : "asc"); return; }
+    setSortKey(k); setSortDir("desc");
+  };
+  const rows: any[] = useMemo(() => {
+    if (!sortKey) return rowsRaw;
+    const dir = sortDir === "asc" ? 1 : -1;
+    const val = (r: any) => sortKey === "margin" ? (r.margin ?? null) : (r[sortKey] || null);
+    return [...rowsRaw].sort((a, b) => {
+      const av = val(a), bv = val(b);
+      // Blanks always last: they're what you're hunting for, not noise to wade past at the top.
+      if ((av == null) !== (bv == null)) return av == null ? 1 : -1;
+      if (av == null) return 0;
+      return av === bv ? 0 : (av < bv ? -1 : 1) * dir;
+    });
+  }, [rowsRaw, sortKey, sortDir]);
+  const monthOptions = useMemo(
+    () => Array.from(new Set(rowsRaw.map((r) => String(r.purchaseDate || "").slice(0, 7)).filter(Boolean))).sort().reverse(),
+    [rowsRaw]);
+
+  const filterActive = needsData || statusFilter !== "all" || sourceFilter !== "all" || noFeesOnly || cq !== "" || monthFilter !== "";
   // Freeze WHICH rows are shown while a filter is active, recomputing only when the filter itself
   // changes (a button or the search box) — NOT when a row's data changes. So filling in a row won't
   // drop it out of view and make you relocate it; the search box still re-filters live as you type.
@@ -1193,13 +1237,14 @@ function CarTradingTab() {
       if (statusFilter !== "all" && r.status !== statusFilter) continue;
       if (sourceFilter !== "all" && (r.source || "(none)") !== sourceFilter) continue;
       if (noFeesOnly && r.feeBreakdown) continue;
+      if (monthFilter && String(r.purchaseDate || "").slice(0, 7) !== monthFilter) continue;
       if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
       if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
       s.add(r.id);
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, sourceFilter, noFeesOnly, needsData, cq]);
+  }, [statusFilter, sourceFilter, noFeesOnly, needsData, cq, monthFilter]);
 
   if (deals.isLoading) return <Loading />;
   // pin the just-added row to the top so it doesn't re-order while you're filling it in
@@ -1218,13 +1263,31 @@ function CarTradingTab() {
   const toLink = purch.filter((p) => !p.carDealId).length;
   // export the currently-filtered cars to CSV (use the Needs-data filter to get the incomplete list)
   const exportCsv = () => {
-    const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Source", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "Missing", "Linked payment total"];
+    const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Source", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "VAT basis", "VAT on margin", "Net margin", "Missing", "Linked payment total"];
     const esc = (v: any) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    // round2, not toFixed — toFixed rounds a half-penny DOWN and drifts the VAT off GA4. The
+    // totals accumulate the ROUNDED per-row figures so the sheet foots against the pennies
+    // printed above it rather than against unrounded values nobody can see.
+    const p2 = (n: number) => round2(n).toFixed(2);
+    let tMargin = 0, tVat = 0, tNet = 0;
     const lines = [cols.join(",")];
     for (const r of filtered) {
-      const missing = [r.purchaseCost == null ? "price" : null, r.purchaseDate == null ? "date" : null].filter(Boolean).join("+");
-      lines.push([r.registration, r.description, r.status, r.purchaseCost, r.purchaseDate, r.source, r.reconditioningCost, r.onCostVat, r.salePrice, r.saleDate, r.margin, missing, r.linkedPurchaseTotal || ""].map(esc).join(","));
+      const sold = r.status === "sold" && r.salePrice != null;
+      const std = r.stdRated === 1 || /STD|standard-rated/i.test(r.notes || "");
+      const vat = round2(vatOf(r));
+      // Net margin is what's left after handing over the output VAT — the figure to plan around.
+      const net = sold ? round2((r.margin || 0) - vat) : null;
+      if (sold) { tMargin = round2(tMargin + (r.margin || 0)); tVat = round2(tVat + vat); tNet = round2(tNet + (net || 0)); }
+      lines.push([
+        r.registration, r.description, r.status, r.purchaseCost, r.purchaseDate, r.source,
+        r.reconditioningCost, r.onCostVat, r.salePrice, r.saleDate, r.margin,
+        sold ? (std ? "Standard-rated (sale/6)" : "Margin scheme (margin/6)") : "",
+        sold ? p2(vat) : "", net == null ? "" : p2(net),
+        missingOf(r).join("+"), r.linkedPurchaseTotal || "",
+      ].map(esc).join(","));
     }
+    // A totals line so the sheet foots without anyone re-adding it by hand.
+    lines.push(["TOTAL (sold)", "", "", "", "", "", "", "", "", "", p2(tMargin), "", p2(tVat), p2(tNet), "", ""].map(esc).join(","));
     const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1260,6 +1323,14 @@ function CarTradingTab() {
                   .map(([src, n]) => <SelectItem key={src} value={src}>{src} ({n})</SelectItem>)}
               </SelectContent>
             </Select>
+            <select
+              value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
+              title="Filter by the month the car was bought"
+              className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            >
+              <option value="">All months</option>
+              {monthOptions.map((m) => { const [y, mo] = m.split("-"); return <option key={m} value={m}>{MONTH_NAMES[Number(mo) - 1]} {y}</option>; })}
+            </select>
             <Button type="button" variant={noFeesOnly ? "default" : "outline"} size="sm" className={`h-9 ${noFeesOnly ? "" : "text-orange-700"}`} title="Auction cars with no fee breakdown — their cost may be the hammer price only" onClick={() => setNoFeesOnly((v) => !v)}>
               No fees <span className="ml-1 opacity-60">{rows.filter((r: any) => !r.feeBreakdown).length}</span>
             </Button>
@@ -1276,20 +1347,41 @@ function CarTradingTab() {
             <TableHeader className="sticky top-0 z-20 [&_th]:bg-slate-50">
               <TableRow>
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
-                <TableHead>Purchase date</TableHead>
+                <TableHead>
+                  <button type="button" onClick={() => sortBy("purchaseDate")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by purchase date">
+                    Purchase date{sortKey === "purchaseDate" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                  </button>
+                </TableHead>
                 <TableHead title="Where the car came from — pick a common source or type any other">Source</TableHead>
                 <TableHead className="text-right" title="Vehicle price only — the VAT margin is based on this">Vehicle £</TableHead>
                 <TableHead className="text-right" title="Fees, delivery & prep — cost of sales, but NOT part of the margin">Fees &amp; delivery £</TableHead>
                 <TableHead className="text-right" title="Reclaimable input VAT on the fees/delivery (the vehicle itself carries none under the margin scheme)">Fee VAT £</TableHead>
-                <TableHead className="text-right">Sale £</TableHead><TableHead>Sale date</TableHead>
-                <TableHead className="text-right">Margin</TableHead><TableHead></TableHead>
+                <TableHead className="text-right">Sale £</TableHead>
+                <TableHead>
+                  <button type="button" onClick={() => sortBy("saleDate")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by sold date">
+                    Sale date{sortKey === "saleDate" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                  </button>
+                </TableHead>
+                <TableHead className="text-right">
+                  <button type="button" onClick={() => sortBy("margin")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by margin">
+                    Margin{sortKey === "margin" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                  </button>
+                </TableHead><TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((r) => {
                 const locked = isLocked(r);
                 return (
-                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : undefined} className={r.id === newCarId ? "bg-amber-100 hover:bg-amber-100" : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100" : locked ? "bg-slate-50 hover:bg-slate-50" : r.status === "sold" ? "bg-green-50/40" : ""}>
+                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : missingOf(r).length ? `Missing ${missingOf(r).join(", ")}` : undefined} className={
+                  // Sold with no purchase price is the worst case — it overstates the margin — so it
+                  // keeps the strong red. Anything else incomplete gets a lighter tint so it's
+                  // findable without shouting over it.
+                  r.id === newCarId ? "bg-amber-100 hover:bg-amber-100"
+                  : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100"
+                  : missingOf(r).length ? "bg-red-50 hover:bg-red-50"
+                  : locked ? "bg-slate-50 hover:bg-slate-50"
+                  : r.status === "sold" ? "bg-green-50/40" : ""}>
                   <TableCell><EditCell v={r.registration} disabled={locked} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
                   <TableCell><EditCell v={r.description} disabled={locked} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
