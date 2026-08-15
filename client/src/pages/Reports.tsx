@@ -204,7 +204,31 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
   const res = trpc.reports.run.useQuery({ reportId, ...params }, { staleTime: 10_000 });
   const data = res.data as any;
   const printRef = useRef<HTMLDivElement>(null);
-  const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: data?.title || "Report" });
+
+  // Shrink the report to fit a single A4 sheet. Measure at the printed width (a sheet is much
+  // narrower than the modal, so on-screen height would under-estimate), then hand the ratio to
+  // the print stylesheet as a zoom. `zoom` is used rather than `transform: scale()` because it
+  // actually reduces layout height — a transform leaves the original height behind and the page
+  // still breaks in two.
+  const fitToOnePage = () => {
+    const el = printRef.current;
+    if (!el) return;
+    const PAGE_W = 718;   // A4 portrait at 96dpi (794px) less 10mm margins each side
+    const PAGE_H = 1047;  // A4 portrait (1123px) less 10mm top and bottom
+    const prevWidth = el.style.width;
+    el.style.width = `${PAGE_W}px`;
+    const needed = el.scrollHeight;
+    el.style.width = prevWidth;
+    // Never enlarge, and don't shrink past legibility — a long listing is allowed to run on.
+    const scale = Math.max(0.55, Math.min(1, (PAGE_H - 8) / Math.max(needed, 1)));
+    el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
+  };
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: data?.title || "Report",
+    onBeforePrint: () => { fitToOnePage(); return Promise.resolve(); },
+  });
   const printedRef = useRef(false);
   useEffect(() => { if (autoPrint && data && !res.isFetching && !printedRef.current) { printedRef.current = true; setTimeout(() => handlePrint(), 300); } }, [autoPrint, data, res.isFetching]);
 
@@ -220,7 +244,18 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
             <button type="button" onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
           </div>
         </div>
-        <div ref={printRef} className="p-5">
+        <div ref={printRef} className="p-5 report-print">
+          <style>{`
+            @media print {
+              @page { size: A4 portrait; margin: 10mm; }
+              /* Scale set by fitToOnePage() just before the dialog opens. */
+              .report-print { zoom: var(--print-scale, 1); padding: 0 !important; }
+              /* Keep a block and its heading together, and never split a row across sheets. */
+              .report-print .ga4-block { break-inside: avoid; page-break-inside: avoid; }
+              .report-print tr, .report-print .ga4-row { break-inside: avoid; page-break-inside: avoid; }
+              .report-print thead { display: table-header-group; }
+            }
+          `}</style>
           <h2 className="text-lg font-bold text-slate-800 hidden print:block mb-1">{data?.title}</h2>
           <p className="text-[12px] text-slate-500 mb-3">{params.from} → {params.to} · by {params.basedOn === "created" ? "created" : "issue"} date{data?.subtitle ? ` — ${data.subtitle}` : ""}</p>
           {res.isFetching && !data ? (
@@ -287,7 +322,7 @@ function GA4Summary({ sections }: { sections: any[] }) {
   return (
     <div className="max-w-3xl mx-auto space-y-3">
       {sections.map((sec, si) => (
-        <div key={si}>
+        <div key={si} className="ga4-block">
           <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))] items-end pb-1">
             <div className="text-[13px] font-semibold text-slate-800">{sec.title ?? ""}</div>
             {[0, 1, 2].map((i) => (
@@ -296,7 +331,7 @@ function GA4Summary({ sections }: { sections: any[] }) {
           </div>
           <div className="border-l border-slate-300">
             {sec.rows.map((r: any, ri: number) => (
-              <div key={ri} className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+              <div key={ri} className="ga4-row grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
                 <div className={`px-2 py-1 text-[13px] flex items-center gap-2 ${r.label || r.qty !== undefined ? "border border-slate-200 border-l-0" : ""} ${r.total ? "justify-end font-semibold" : ""} ${r.bold && !r.total ? "font-semibold" : ""}`}>
                   <span className={r.total ? "" : "text-slate-700"}>{r.label}</span>
                   {r.qty !== undefined && (
