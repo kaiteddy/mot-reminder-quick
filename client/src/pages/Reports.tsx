@@ -83,6 +83,16 @@ export default function Reports() {
   const setFromManual = (v: string) => { setMonths([]); setFrom(v); };
   const setToManual = (v: string) => { setMonths([]); setTo(v); };
 
+  // Tick more than one month and each is reported separately rather than as one long range —
+  // three months gives three reports, each starting on its own sheet when printed.
+  const periods = months.length > 1
+    ? months.map((m) => ({
+        from: toISO(new Date(year, m, 1)),
+        to: toISO(new Date(year, m + 1, 0)),
+        label: `${MONTHS[m]} ${year}`,
+      }))
+    : null;
+
   const filters = trpc.reports.filters.useQuery(undefined, { staleTime: 5 * 60_000 });
   const departments: string[] = (filters.data as any)?.departments ?? [];
 
@@ -218,7 +228,7 @@ export default function Reports() {
         )}
       </div>
 
-      {active && <ReportModal reportId={active.id} autoPrint={active.autoPrint} params={{ from, to, basedOn, department: department || undefined }} onClose={() => setActive(null)} />}
+      {active && <ReportModal reportId={active.id} autoPrint={active.autoPrint} periods={periods} params={{ from, to, basedOn, department: department || undefined }} onClose={() => setActive(null)} />}
     </DashboardLayout>
   );
 }
@@ -263,9 +273,18 @@ function IconBtn({ icon, title, onClick, disabled }: { icon: React.ReactNode; ti
   );
 }
 
-function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: string; params: any; autoPrint: boolean; onClose: () => void }) {
-  const res = trpc.reports.run.useQuery({ reportId, ...params }, { staleTime: 10_000 });
-  const data = res.data as any;
+function ReportModal({ reportId, params, autoPrint, periods, onClose }: { reportId: string; params: any; autoPrint: boolean; periods: { from: string; to: string; label: string }[] | null; onClose: () => void }) {
+  const multi = !!periods?.length;
+  // Only one of these actually runs — the other is disabled so it never fires a second query.
+  const single = trpc.reports.run.useQuery({ reportId, ...params }, { staleTime: 10_000, enabled: !multi });
+  const many = trpc.reports.runMulti.useQuery(
+    { reportId, periods: periods || [], basedOn: params.basedOn, department: params.department },
+    { staleTime: 10_000, enabled: multi });
+  const res = multi ? many : single;
+  const parts: { label: string; from: string; to: string; result: any }[] = multi
+    ? ((many.data as any[]) || [])
+    : (single.data ? [{ label: "", from: params.from, to: params.to, result: single.data }] : []);
+  const data = parts[0]?.result as any;
   const printRef = useRef<HTMLDivElement>(null);
 
   // Shrink the report to fit a single A4 sheet. Measure at the printed width (a sheet is much
@@ -280,7 +299,12 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
     const PAGE_H = 1047;  // A4 portrait (1123px) less 10mm top and bottom
     const prevWidth = el.style.width;
     el.style.width = `${PAGE_W}px`;
-    const needed = el.scrollHeight;
+    // With several months each gets its own sheet, so scale to the TALLEST month rather than to
+    // the combined height — otherwise three months would shrink to a third of the size.
+    const periodEls = Array.from(el.querySelectorAll<HTMLElement>(".report-period"));
+    const needed = periodEls.length > 1
+      ? Math.max(...periodEls.map((p) => p.scrollHeight))
+      : el.scrollHeight;
     el.style.width = prevWidth;
     // Never enlarge, and don't shrink past legibility — a long listing is allowed to run on.
     const scale = Math.max(0.55, Math.min(1, (PAGE_H - 8) / Math.max(needed, 1)));
@@ -313,23 +337,45 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
               @page { size: A4 portrait; margin: 10mm; }
               /* Scale set by fitToOnePage() just before the dialog opens. */
               .report-print { zoom: var(--print-scale, 1); padding: 0 !important; }
+              /* Each month starts a fresh sheet, so three months print as three reports. */
+              .report-print .report-period + .report-period { break-before: page; page-break-before: always; }
               /* Keep a block and its heading together, and never split a row across sheets. */
               .report-print .ga4-block { break-inside: avoid; page-break-inside: avoid; }
               .report-print tr, .report-print .ga4-row { break-inside: avoid; page-break-inside: avoid; }
               .report-print thead { display: table-header-group; }
             }
           `}</style>
-          <h2 className="text-lg font-bold text-slate-800 hidden print:block mb-1">{data?.title}</h2>
-          <p className="text-[12px] text-slate-500 mb-3">{params.from} → {params.to} · by {params.basedOn === "created" ? "created" : "issue"} date{data?.subtitle ? ` — ${data.subtitle}` : ""}</p>
-          {res.isFetching && !data ? (
-            <div className="py-10 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Running report…</div>
-          ) : data?.note ? (
-            <p className="py-8 text-center text-slate-500 text-sm">{data.note}</p>
-          ) : data?.sections ? (
-            <GA4Summary sections={data.sections} />
-          ) : !data?.rows?.length ? (
-            <p className="py-8 text-center text-slate-400 text-sm">No data for this period.</p>
-          ) : (
+          {res.isFetching && !parts.length ? (
+            <div className="py-10 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Running report{multi ? `s for ${periods!.length} months` : ""}…</div>
+          ) : parts.map((p, pi) => {
+            const d = p.result as any;
+            return (
+            <div key={pi} className="report-period">
+              <h2 className={`text-lg font-bold text-slate-800 mb-1 ${multi ? "" : "hidden print:block"}`}>
+                {d?.title}{p.label ? ` — ${p.label}` : ""}
+              </h2>
+              <p className="text-[12px] text-slate-500 mb-3">{p.from} → {p.to} · by {params.basedOn === "created" ? "created" : "issue"} date{d?.subtitle ? ` — ${d.subtitle}` : ""}</p>
+              {d?.note ? (
+                <p className="py-8 text-center text-slate-500 text-sm">{d.note}</p>
+              ) : d?.sections ? (
+                <GA4Summary sections={d.sections} />
+              ) : !d?.rows?.length ? (
+                <p className="py-8 text-center text-slate-400 text-sm">No data for this period.</p>
+              ) : (
+                <ReportTable data={d} cell={cell} />
+              )}
+            </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The generic column/row table — one report's worth. */
+function ReportTable({ data, cell }: { data: any; cell: (v: any, kind?: string) => any }) {
+  return (
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -359,10 +405,6 @@ function ReportModal({ reportId, params, autoPrint, onClose }: { reportId: strin
               </tbody>
             </table>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 
