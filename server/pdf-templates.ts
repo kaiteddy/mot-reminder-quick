@@ -1334,10 +1334,12 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
 
     const top = y;
     for (const r of sec.rows) {
-      // Cell borders, GA4-style. A labelled row is ruled right across, empty cells included —
-      // Cash/Cheque with no takings still get their boxes. Only the trailing caption rows
-      // (Credited, Outstanding), which carry no label, box just the cells they use.
-      const boxAll = r.label !== '' || r.qty !== undefined;
+      // Cell borders, GA4-style. A row is "caption style" when it has no label and parks a word
+      // in one of the value columns (Credited, Outstanding, Total Gross) — those sit clear of the
+      // grid. Every other row is ruled right across, label cell included even when blank, or the
+      // left rule breaks and the block comes apart.
+      const caption = !r.label && (r.v || []).some((x: any) => typeof x === 'string');
+      const boxAll = !caption;
       doc.save().strokeColor(LINE).lineWidth(0.5);
       if (boxAll) doc.rect(X0, y, LABEL_W, ROW_H).stroke();
       [X1, X2, X3].forEach((x, i) => {
