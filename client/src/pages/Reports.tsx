@@ -296,20 +296,40 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
   const fitToOnePage = () => {
     const el = printRef.current;
     if (!el) return;
-    const PAGE_W = 718;   // A4 portrait at 96dpi (794px) less 10mm margins each side
-    const PAGE_H = 1047;  // A4 portrait (1123px) less 10mm top and bottom
+    // A4 at 96dpi less 10mm margins, both ways round.
+    const PORTRAIT = { w: 718, h: 1047 };
+    const LANDSCAPE = { w: 1047, h: 718 };
+
     const prevWidth = el.style.width;
-    el.style.width = `${PAGE_W}px`;
+    el.style.width = `${PORTRAIT.w}px`;
+    // A ledger with a dozen columns is wider than a portrait sheet. Measure what the widest table
+    // actually needs: squeezing it onto portrait would either clip it (overflow-x scrolls on
+    // screen but is simply cut off on paper) or shrink the whole report to fit the width.
+    const tables = Array.from(el.querySelectorAll<HTMLElement>("table"));
+    const widest = tables.length ? Math.max(...tables.map((t) => t.scrollWidth)) : 0;
     // With several months each gets its own sheet, so scale to the TALLEST month rather than to
     // the combined height — otherwise three months would shrink to a third of the size.
     const periodEls = Array.from(el.querySelectorAll<HTMLElement>(".report-period"));
-    const needed = periodEls.length > 1
+    const tallest = periodEls.length > 1
       ? Math.max(...periodEls.map((p) => p.scrollHeight))
       : el.scrollHeight;
     el.style.width = prevWidth;
-    // Never enlarge, and don't shrink past legibility — a long listing is allowed to run on.
-    const scale = Math.max(0.55, Math.min(1, (PAGE_H - 8) / Math.max(needed, 1)));
+
+    const landscape = widest > PORTRAIT.w;
+    const page = landscape ? LANDSCAPE : PORTRAIT;
+
+    // Width must fit — anything wider is guillotined off the sheet.
+    const wScale = widest ? Math.min(1, page.w / widest) : 1;
+    // Height is different: shrinking only earns anything if it gets the report onto ONE sheet.
+    // A 61-row ledger can't fit however small it goes, so shrinking it just makes it unreadable
+    // across the same number of sheets — print those at full size and let them paginate.
+    const hFit = (page.h - 8) / Math.max(tallest, 1);
+    const scale = hFit >= 0.55 ? Math.min(wScale, 1, hFit) : wScale;
+
     el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
+    // @page can't be toggled by class, so the rule itself is rewritten before the dialog opens.
+    const sizeEl = document.getElementById("report-page-size");
+    if (sizeEl) sizeEl.textContent = `@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }`;
   };
 
   const handlePrint = useReactToPrint({
@@ -333,11 +353,15 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
           </div>
         </div>
         <div ref={printRef} className="p-5 report-print">
+          {/* Rewritten by fitToOnePage() — a wide ledger prints landscape rather than clipped. */}
+          <style id="report-page-size">{`@page { size: A4 portrait; margin: 10mm; }`}</style>
           <style>{`
             @media print {
-              @page { size: A4 portrait; margin: 10mm; }
               /* Scale set by fitToOnePage() just before the dialog opens. */
               .report-print { zoom: var(--print-scale, 1); padding: 0 !important; }
+              /* On screen the table scrolls sideways; on paper that would guillotine the
+                 right-hand columns, so let it lay out in full at the scaled size. */
+              .report-print .overflow-x-auto { overflow: visible !important; }
               /* Each month starts a fresh sheet, so three months print as three reports. */
               .report-print .report-period + .report-period { break-before: page; page-break-before: always; }
               /* Keep a block and its heading together, and never split a row across sheets. */
