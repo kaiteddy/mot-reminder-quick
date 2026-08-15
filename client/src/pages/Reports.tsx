@@ -107,6 +107,7 @@ export default function Reports() {
         const res: any = await utils.reports.salesSummaryPDF.fetch({
           from, to, basedOn, department: department || undefined,
           extended: r.id === "sales-summary-extended",
+          periods: periods || undefined,   // ticked months → one report per month
         });
         const bytes = atob(res.content);
         const arr = new Uint8Array(bytes.length);
