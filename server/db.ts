@@ -1583,6 +1583,106 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
         columns: [], rows: [],
       } as any;
     }
+    case "sales-breakdown-month":
+    case "sales-tax-breakdown-month": {
+      // GA4's two per-invoice ledger variants. "Breakdown" splits each invoice's gross into
+      // Labour / Parts / Fixed-price (the Extras panel less the MOT, which is listed separately
+      // because it's zero-rated); "Customer - Tax Breakdown" splits net and VAT by tax code.
+      const taxVariant = opts.reportId === "sales-tax-breakdown-month";
+      const custNameExpr = sql<string>`COALESCE(NULLIF(${serviceHistory.customerName}, ''), NULLIF(TRIM(CONCAT_WS(' ', ${serviceHistory.custTitle}, ${serviceHistory.custForename}, ${serviceHistory.custSurname})), ''), NULLIF(${customers.name}, ''))`;
+      const res: any = await db.execute(sql`
+        SELECT ${dateCol} AS date, ${serviceHistory.docType} AS "docType", ${serviceHistory.docNo} AS "docNo",
+               ${serviceHistory.accountNumber} AS acc, ${custNameExpr} AS customer,
+               ${serviceHistory.registration} AS reg,
+               TRIM(CONCAT_WS(' ', ${vehicles.make}, ${vehicles.model})) AS "makeModel",
+               ${_numExpr(serviceHistory.totalNet)} AS net, ${_numExpr(serviceHistory.totalTax)} AS tax,
+               ${_numExpr(serviceHistory.totalGross)} AS gross,
+               COALESCE(li.labour, 0) AS labour, COALESCE(li.parts, 0) AS parts, COALESCE(li.fixed, 0) AS fixed,
+               COALESCE(li.net0, 0) AS net0, COALESCE(li.vat0, 0) AS vat0,
+               COALESCE(li.net1, 0) AS net1, COALESCE(li.vat1, 0) AS vat1
+        FROM ${serviceHistory}
+        LEFT JOIN ${customers} ON ${customers.id} = ${serviceHistory.customerId}
+        LEFT JOIN ${vehicles} ON ${vehicles.id} = ${serviceHistory.vehicleId}
+        LEFT JOIN (
+          SELECT "documentId",
+                 SUM(CASE WHEN "itemType" = 'Labour' THEN COALESCE("subNet",0) + COALESCE("taxAmount",0) ELSE 0 END) AS labour,
+                 SUM(CASE WHEN "itemType" = 'Part'   THEN COALESCE("subNet",0) + COALESCE("taxAmount",0) ELSE 0 END) AS parts,
+                 SUM(CASE WHEN "itemType" IN ('Sundries','Lubricant','Paint','Excess') THEN COALESCE("subNet",0) + COALESCE("taxAmount",0) ELSE 0 END) AS fixed,
+                 SUM(CASE WHEN COALESCE("vatRate",0) = 0 THEN COALESCE("subNet",0) ELSE 0 END) AS net0,
+                 SUM(CASE WHEN COALESCE("vatRate",0) = 0 THEN COALESCE("taxAmount",0) ELSE 0 END) AS vat0,
+                 SUM(CASE WHEN COALESCE("vatRate",0) > 0 THEN COALESCE("subNet",0) ELSE 0 END) AS net1,
+                 SUM(CASE WHEN COALESCE("vatRate",0) > 0 THEN COALESCE("taxAmount",0) ELSE 0 END) AS vat1
+          FROM "serviceLineItems" GROUP BY "documentId"
+        ) li ON li."documentId" = ${serviceHistory.id}
+        WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}
+        ORDER BY ${dateCol} ASC, ${serviceHistory.docNo} ASC`);
+
+      const src: any[] = res.rows ?? res;
+      const nn = (v: any) => Number(v) || 0;
+      const MN = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+      const out: any[] = [];
+      let running = 0, curMonth = "";
+      const tot: any = { count: 0, labour: 0, parts: 0, fixed: 0, net0: 0, vat0: 0, net1: 0, vat1: 0, net: 0, tax: 0, gross: 0 };
+      const sub: any = { labour: 0, parts: 0, fixed: 0, net0: 0, vat0: 0, net1: 0, vat1: 0, net: 0, tax: 0, gross: 0 };
+      const flushSub = () => {
+        if (!curMonth) return;
+        out.push({ _subtotal: true, ...Object.fromEntries(Object.keys(sub).map((k) => [k, sub[k]])), running });
+        for (const k of Object.keys(sub)) sub[k] = 0;
+      };
+      for (const r of src) {
+        const d = new Date(r.date);
+        const mk = `${MN[d.getMonth()]}.${d.getFullYear()}`;
+        if (mk !== curMonth) { flushSub(); curMonth = mk; out.push({ _group: mk }); }
+        running = round2(running + nn(r.gross));
+        const row: any = {
+          date: d.toLocaleDateString("en-GB"), docType: r.docType, docNo: r.docNo, acc: r.acc || "",
+          customer: r.customer || "—",
+          description: [r.reg, r.makeModel].filter(Boolean).join(" ") || "—",
+          labour: nn(r.labour), parts: nn(r.parts), fixed: nn(r.fixed),
+          net0: nn(r.net0), vat0: nn(r.vat0), net1: nn(r.net1), vat1: nn(r.vat1),
+          net: nn(r.net), tax: nn(r.tax), gross: nn(r.gross), running,
+        };
+        out.push(row);
+        for (const k of Object.keys(sub)) sub[k] = round2(sub[k] + nn(row[k]));
+        for (const k of Object.keys(tot)) if (k !== "count") tot[k] = round2(tot[k] + nn(row[k]));
+        tot.count += 1;
+      }
+      flushSub();
+
+      const cols: ReportColumn[] = taxVariant
+        ? [
+            { key: "date", label: "Date" }, { key: "docType", label: "Type" }, { key: "docNo", label: "No." },
+            { key: "acc", label: "Acc Number" }, { key: "customer", label: "Customer" },
+            { key: "net0", label: "Net (T0)", align: "right", kind: "money" }, { key: "vat0", label: "VAT (T0)", align: "right", kind: "money" },
+            { key: "net1", label: "Net (T1)", align: "right", kind: "money" }, { key: "vat1", label: "VAT (T1)", align: "right", kind: "money" },
+            { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" },
+            { key: "gross", label: "Gross", align: "right", kind: "money" }, { key: "running", label: "Running Total", align: "right", kind: "money" },
+          ]
+        : [
+            { key: "date", label: "Date" }, { key: "docType", label: "Type" }, { key: "docNo", label: "No." },
+            { key: "acc", label: "Acc Number" }, { key: "description", label: "Description" },
+            { key: "labour", label: "Labour Gross", align: "right", kind: "money" },
+            { key: "parts", label: "Parts Gross", align: "right", kind: "money" },
+            { key: "fixed", label: "Fixed P. Gross", align: "right", kind: "money" },
+            { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" },
+            { key: "gross", label: "Gross", align: "right", kind: "money" }, { key: "running", label: "Running Total", align: "right", kind: "money" },
+          ];
+
+      return {
+        title: taxVariant
+          ? "Sales — Customer Tax Breakdown (grouped by Month)"
+          : "Sales — Breakdown (grouped by Month)",
+        subtitle: taxVariant
+          ? "T0 is the zero-rated portion (MOTs), T1 the standard-rated remainder."
+          : "Labour, Parts and Fixed-price are gross. They exclude the MOT, which is zero-rated and shown only in the Net/Gross totals — the same way GA4 prints it.",
+        columns: cols,
+        rows: out,
+        totals: { date: "Grand Totals", docType: "", docNo: `${tot.count} doc(s)`, acc: "", customer: "", description: "",
+          labour: tot.labour, parts: tot.parts, fixed: tot.fixed,
+          net0: tot.net0, vat0: tot.vat0, net1: tot.net1, vat1: tot.vat1,
+          net: tot.net, tax: tot.tax, gross: tot.gross, running: tot.gross },
+      };
+    }
     case "sales-summary-extended": {
       const s = await getSalesSummaryIssued(opts);
       return {
@@ -1649,7 +1749,11 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
             CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotNet)}   ELSE COALESCE(li.net, 0) END AS net,
             CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotTax)}   ELSE COALESCE(li.tax, 0) END AS tax,
             CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotGross)} ELSE COALESCE(li.net, 0) + COALESCE(li.tax, 0) END AS gross,
-            (${hasSubMot} OR li."documentId" IS NOT NULL) AS priced
+            (${hasSubMot} OR li."documentId" IS NOT NULL) AS priced,
+            ${serviceHistory.motStatus} AS status,
+            ${serviceHistory.motClass} AS class,
+            -- An MOT is normally zero-rated; only treat it as taxable if VAT was actually charged.
+            (COALESCE(li.tax, ${_numExpr(serviceHistory.subMotTax)}) > 0) AS taxable
           FROM ${serviceHistory}
           LEFT JOIN (
             SELECT "documentId", SUM(COALESCE("subNet", 0)) AS net, SUM(COALESCE("taxAmount", 0)) AS tax
@@ -1659,21 +1763,64 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
             AND ${inArray(serviceHistory.docType, ["SI", "XS"])}
             AND (${hasSubMot} OR li."documentId" IS NOT NULL OR ${hasStatus})
         )
-        SELECT COUNT(*)::int AS count, COALESCE(SUM(net), 0) AS net,
-               COALESCE(SUM(tax), 0) AS tax, COALESCE(SUM(gross), 0) AS gross,
-               COUNT(*) FILTER (WHERE NOT priced)::int AS unpriced
-        FROM mot`);
-      const r: any = (res.rows ?? res)[0];
-      const unpriced = Number(r.unpriced) || 0;
+        SELECT net, tax, gross, priced, status, class, taxable FROM mot`);
+      const rows: any[] = res.rows ?? res;
+      const n = (v: any) => Number(v) || 0;
+      const isRetest = (s: string) => /retest/i.test(s || "");
+      const count = rows.length;
+      const unpriced = rows.filter((r) => !r.priced).length;
+
+      // GA4 prints three blocks: the counts, the split between the zero-rated and taxable MOT
+      // money, and a per-class table with quantities.
+      const full = rows.filter((r) => !isRetest(r.status)).length;
+      const retest = rows.filter((r) => isRetest(r.status)).length;
+      const sum = (rs: any[], k: string) => round2(rs.reduce((a, r) => a + n(r[k]), 0));
+      const exempt = rows.filter((r) => !r.taxable);
+      const taxable = rows.filter((r) => r.taxable);
+
+      const byClass = new Map<string, { qty: number; net: number; tax: number }>();
+      for (const r of rows) {
+        const raw = String(r.class || "").trim();
+        // We store the bare MOT class ("4"); GA4 spells its own out ("TYPE A - RETAIL"). Label a
+        // bare number so the column reads as something rather than a stray digit.
+        const k = raw ? (/^\d+$/.test(raw) ? `Class ${raw}` : raw) : "(no class recorded)";
+        const b = byClass.get(k) ?? { qty: 0, net: 0, tax: 0 };
+        b.qty += 1; b.net = round2(b.net + n(r.net)); b.tax = round2(b.tax + n(r.tax));
+        byClass.set(k, b);
+      }
+      const classRows = Array.from(byClass.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
       return {
-        title: "MOT Sales — Summary",
+        title: "Summary of MOT Sales Issued",
         // Some documents record that an MOT happened without storing what it was charged at
         // (motCost is empty across the whole table), so say so rather than let the money read
         // as though it covered every MOT counted.
-        ...(unpriced ? { subtitle: `${unpriced} of ${Number(r.count)} MOT(s) have no MOT amount recorded, so the values below exclude them.` } : {}),
-        columns: [{ key: "period", label: "Period" }, { key: "count", label: "MOTs", align: "right", kind: "int" }, { key: "net", label: "Net", align: "right", kind: "money" }, { key: "tax", label: "VAT", align: "right", kind: "money" }, { key: "gross", label: "Gross", align: "right", kind: "money" }],
-        rows: [{ period: `${opts.from} → ${opts.to}`, count: Number(r.count), net: Number(r.net), tax: Number(r.tax), gross: Number(r.gross) }],
-      };
+        ...(unpriced ? { subtitle: `${unpriced} of ${count} MOT(s) have no MOT amount recorded, so the values below exclude them.` } : {}),
+        sections: [
+          {
+            title: "MOT Counts", captions: ["Full", "Retest", "Duplicate"],
+            rows: [{ label: "MOT's", v: [full || null, retest || null, null], kind: "int" }],
+          },
+          {
+            title: "Breakdown by Tax", captions: ["Net", "Tax", "Gross"],
+            rows: [
+              { label: "MOT (tax exempt)", v: [sum(exempt, "net"), null, sum(exempt, "gross")], kind: "money" },
+              { label: "MOT (taxable)", v: [sum(taxable, "net"), sum(taxable, "tax"), sum(taxable, "gross")], kind: "money" },
+              { label: "Total", v: [sum(rows, "net"), sum(rows, "tax"), sum(rows, "gross")], kind: "money", bold: true, total: true },
+            ],
+          },
+          {
+            title: "Breakdown by Class", captions: ["Net", "Tax", "Gross"],
+            rows: [
+              ...classRows.map(([label, b]) => ({
+                label, qty: b.qty, v: [b.net, b.tax, round2(b.net + b.tax)], kind: "money" as const,
+              })),
+              { label: "Total", v: [sum(rows, "net"), sum(rows, "tax"), sum(rows, "gross")], kind: "money", bold: true, total: true },
+            ],
+          },
+        ],
+        columns: [], rows: [],
+      } as any;
     }
     case "payments-summary": {
       const conds: any[] = [gte(payments.paymentDate, from), lte(payments.paymentDate, to)];
