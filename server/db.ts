@@ -1145,6 +1145,131 @@ export async function getDocumentStats() {
 // blanks as 0, then SUM. (GA4-imported totals are text.)
 const _moneySum = (c: any) => sql<string>`COALESCE(SUM(COALESCE(NULLIF(regexp_replace(${c}::text, '[^0-9.\-]', '', 'g'), '')::numeric, 0)), 0)`;
 
+/** Every section of GA4's printed "Summary of Sales Issued", computed from our own documents.
+ *
+ *  GA4's own copy of this report only covers invoices that reached GA4 — for 01-15 Aug 2026 that
+ *  was 23 of the 59 we issued — so this rebuilds it over everything we hold. The category split
+ *  comes from line items rather than the sub* sub-total columns, which stopped being written in
+ *  June 2026 (see the mot-sales-summary report for the same problem).
+ *
+ *  Documents are unique by docNo (verified: no clashes across SI/XS/CR), so nothing is deduped
+ *  away; every document in the range is counted exactly once.
+ */
+export async function getSalesSummaryIssued(opts: { from: string; to: string; basedOn?: "issue" | "created"; department?: string }) {
+  const db = await getDb();
+  const from = new Date(opts.from + "T00:00:00");
+  const to = new Date(opts.to + "T23:59:59.999");
+  const blank = {
+    from: opts.from, to: opts.to,
+    invoices: { count: 0, gross: 0 }, credits: { count: 0, gross: 0 }, totalGross: 0,
+    discounts: { net: 0, tax: 0, gross: 0 },
+    mot: { full: 0, retest: 0, duplicate: 0 },
+    breakdown: [] as { label: string; qty?: number; net: number; tax: number; gross: number }[],
+    totals: { net: 0, tax: 0, gross: 0 },
+    labourProfit: { cost: 0, salesNet: 0, salesTax: 0, salesGross: 0 },
+    partsProfit: { cost: 0, salesNet: 0, salesTax: 0, salesGross: 0 },
+    receipts: { cash: 0, cheque: 0, digital: 0, total: 0, credited: 0, outstanding: 0 },
+    costsUnavailable: true,
+  };
+  if (!db) return blank;
+
+  const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
+  const inRange = and(gte(dateCol, from), lte(dateCol, to),
+    ...(opts.department ? [eq(serviceHistory.department, opts.department)] : []));
+  const n = (v: any) => Number(v) || 0;
+
+  // ── Header counts: invoices (SI/XS) vs credit notes (CR), plus discounts and what's still owed
+  const head: any = (await db.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS'))::int AS inv_count,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS inv_gross,
+      COUNT(*) FILTER (WHERE ${serviceHistory.docType} = 'CR')::int AS cr_count,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (WHERE ${serviceHistory.docType} = 'CR'), 0) AS cr_gross,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountNet)}), 0) AS disc_net,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountGross)}), 0) AS disc_gross,
+      COALESCE(SUM(${_numExpr(serviceHistory.balance)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS outstanding
+    FROM ${serviceHistory}
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}`)).rows?.[0] ?? {};
+
+  // ── MOT counts. motStatus is what the MOT option sets; a document with only an MOT line item
+  //    (web app) still counts as a full test. Duplicates are billed as a "DUP MOT" item.
+  const motRow: any = (await db.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE ${serviceHistory.motStatus} IN ('Pass','Fail')
+                          OR (NULLIF(TRIM(${serviceHistory.motStatus}), '') IS NULL AND li.id IS NOT NULL))::int AS full,
+      COUNT(*) FILTER (WHERE ${serviceHistory.motStatus} IN ('Pass Retest','Fail Retest'))::int AS retest,
+      COUNT(*) FILTER (WHERE dup.id IS NOT NULL)::int AS duplicate
+    FROM ${serviceHistory}
+    LEFT JOIN LATERAL (SELECT id FROM "serviceLineItems" WHERE "documentId" = ${serviceHistory.id}
+                        AND "itemType" = 'MOT' LIMIT 1) li ON TRUE
+    LEFT JOIN LATERAL (SELECT id FROM "serviceLineItems" WHERE "documentId" = ${serviceHistory.id}
+                        AND description ~* '^\\s*dup\\s+mot' LIMIT 1) dup ON TRUE
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows?.[0] ?? {};
+
+  // ── Category split, from line items. 'Other'/untyped fall into Surcharge so the rows always
+  //    add up to the documents' own totals rather than quietly dropping money.
+  const catRows: any[] = (await db.execute(sql`
+    SELECT CASE li."itemType"
+             WHEN 'Labour' THEN 'Labour' WHEN 'Part' THEN 'Parts'
+             WHEN 'Sundries' THEN 'Sundries' WHEN 'Lubricant' THEN 'Lubricants'
+             WHEN 'Paint' THEN 'Paint & Mat.' WHEN 'MOT' THEN 'MOT'
+             WHEN 'Excess' THEN 'Excess' ELSE 'Surcharge' END AS label,
+           COALESCE(SUM(li.quantity), 0) AS qty,
+           COALESCE(SUM(li."subNet"), 0) AS net,
+           COALESCE(SUM(li."taxAmount"), 0) AS tax
+    FROM ${serviceHistory} JOIN "serviceLineItems" li ON li."documentId" = ${serviceHistory.id}
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}
+    GROUP BY 1`)).rows ?? [];
+
+  const byLabel = new Map(catRows.map((r: any) => [r.label, r]));
+  const ORDER = ["Labour", "Parts", "Sundries", "Lubricants", "Paint & Mat.", "MOT", "Surcharge", "Excess"];
+  const breakdown = ORDER.map((label) => {
+    const r: any = byLabel.get(label);
+    const net = n(r?.net), tax = n(r?.tax);
+    return { label, ...(label === "Labour" ? { qty: n(r?.qty) } : {}), net, tax, gross: round2(net + tax) };
+  });
+  const totals = breakdown.reduce((a, r) => ({
+    net: round2(a.net + r.net), tax: round2(a.tax + r.tax), gross: round2(a.gross + r.gross),
+  }), { net: 0, tax: 0, gross: 0 });
+
+  // ── Receipts against those documents, mapped onto GA4's Cash / Cheque / Digital buckets
+  const payRows: any[] = (await db.execute(sql`
+    SELECT COALESCE(NULLIF(TRIM(p.method), ''), 'Unknown') AS method, COALESCE(SUM(p.amount), 0) AS amount
+    FROM ${payments} p JOIN ${serviceHistory} ON ${serviceHistory.id} = p."documentId"
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}
+    GROUP BY 1`)).rows ?? [];
+
+  const receipts = { cash: 0, cheque: 0, digital: 0, total: 0, credited: 0, outstanding: n(head.outstanding) };
+  for (const p of payRows) {
+    const m = String(p.method).toLowerCase();
+    const amt = n(p.amount);
+    if (m.includes("cash")) receipts.cash = round2(receipts.cash + amt);
+    else if (m.includes("cheque")) receipts.cheque = round2(receipts.cheque + amt);
+    else receipts.digital = round2(receipts.digital + amt); // card / BACS / everything else
+    receipts.total = round2(receipts.total + amt);
+  }
+  receipts.credited = n(head.cr_gross);
+
+  const labour = breakdown.find((b) => b.label === "Labour")!;
+  const parts = breakdown.find((b) => b.label === "Parts")!;
+
+  return {
+    from: opts.from, to: opts.to,
+    invoices: { count: n(head.inv_count), gross: n(head.inv_gross) },
+    credits: { count: n(head.cr_count), gross: n(head.cr_gross) },
+    totalGross: round2(n(head.inv_gross) - n(head.cr_gross)),
+    discounts: { net: n(head.disc_net), tax: round2(n(head.disc_gross) - n(head.disc_net)), gross: n(head.disc_gross) },
+    mot: { full: n(motRow.full), retest: n(motRow.retest), duplicate: n(motRow.duplicate) },
+    breakdown, totals,
+    // Cost prices aren't stored on line items, so the profit sections show sales only — the same
+    // figures GA4 prints when it has no cost data.
+    labourProfit: { cost: 0, salesNet: labour.net, salesTax: labour.tax, salesGross: labour.gross },
+    partsProfit: { cost: 0, salesNet: parts.net, salesTax: parts.tax, salesGross: parts.gross },
+    receipts,
+    costsUnavailable: true,
+  };
+}
+
 /** Sales summary for a date range: per document-type totals (count/net/VAT/gross) + a parts /
  *  labour / MOT split, filtered by issue or created date and optionally department. */
 export async function getSalesSummary(opts: { from: string; to: string; basedOn?: "issue" | "created"; department?: string }) {
