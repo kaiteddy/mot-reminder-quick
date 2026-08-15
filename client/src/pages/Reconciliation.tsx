@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download, ChevronsUpDown } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -1290,7 +1291,41 @@ function CarTradingTab() {
                   : r.status === "sold" ? "bg-green-50/40" : "";
                 return (
                 <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : missing.length ? `Missing ${missing.join(", ")}` : undefined} className={tint}>
-                  <TableCell><EditCell v={r.registration} disabled={locked} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" /></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <EditCell v={r.registration} disabled={locked} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" />
+                      {/* Red rows carry a marker beside the reg: hover it to see exactly which
+                          fields are absent, rather than guessing from the tint alone. */}
+                      {missing.length > 0 && (
+                        <HoverCard openDelay={80} closeDelay={80}>
+                          <HoverCardTrigger asChild>
+                            <button type="button" aria-label={`Missing: ${missing.join(", ")}`}
+                              className="shrink-0 rounded-full text-red-600 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+                              <AlertTriangle className="h-4 w-4" />
+                            </button>
+                          </HoverCardTrigger>
+                          <HoverCardContent side="right" align="start" className="w-64 p-3">
+                            <p className="text-[13px] font-semibold text-slate-800">
+                              {r.registration || "This car"} — missing {missing.length} detail{missing.length === 1 ? "" : "s"}
+                            </p>
+                            <ul className="mt-1.5 space-y-0.5">
+                              {missing.map((m) => (
+                                <li key={m} className="flex items-start gap-1.5 text-[12px] text-slate-600">
+                                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                                  <span className="capitalize">{m}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            {r.status === "sold" && r.purchaseCost == null && (
+                              <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-red-700">
+                                Sold with no purchase price, so this car&apos;s margin is overstated.
+                              </p>
+                            )}
+                          </HoverCardContent>
+                        </HoverCard>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell><EditCell v={r.description} disabled={locked} onSave={(v: any) => save(r.id, { description: v })} w="190px" /></TableCell>
                   <TableCell>
                     <Select value={r.status} disabled={locked} onValueChange={(v) => save(r.id, { status: v })}>
