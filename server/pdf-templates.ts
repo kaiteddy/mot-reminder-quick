@@ -1334,11 +1334,14 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
 
     const top = y;
     for (const r of sec.rows) {
-      // Cell borders, GA4-style: a box round the label and each populated value cell
+      // Cell borders, GA4-style. A labelled row is ruled right across, empty cells included —
+      // Cash/Cheque with no takings still get their boxes. Only the trailing caption rows
+      // (Credited, Outstanding), which carry no label, box just the cells they use.
+      const boxAll = r.label !== '' || r.qty !== undefined;
       doc.save().strokeColor(LINE).lineWidth(0.5);
-      if (r.label !== '' || r.qty !== undefined) doc.rect(X0, y, LABEL_W, ROW_H).stroke();
+      if (boxAll) doc.rect(X0, y, LABEL_W, ROW_H).stroke();
       [X1, X2, X3].forEach((x, i) => {
-        if (r.v[i] !== null && r.v[i] !== undefined) doc.rect(x, y, COL_W, ROW_H).stroke();
+        if (boxAll || (r.v[i] !== null && r.v[i] !== undefined)) doc.rect(x, y, COL_W, ROW_H).stroke();
       });
       doc.restore();
 
