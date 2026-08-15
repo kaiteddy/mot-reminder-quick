@@ -561,6 +561,29 @@ export const appRouter = router({
       const { getReportFilters } = await import("./db");
       return getReportFilters();
     }),
+    /** Run one report once per period, so several months come back separated rather than
+     *  aggregated into a single range. One round trip instead of a query per month. */
+    runMulti: publicProcedure
+      .input(z.object({
+        reportId: z.string(),
+        periods: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })).min(1).max(12),
+        basedOn: z.enum(["issue", "created"]).optional(),
+        department: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { runReport } = await import("./db");
+        const out: any[] = [];
+        for (const p of input.periods) {
+          out.push({
+            ...p,
+            result: await runReport({
+              reportId: input.reportId, from: p.from, to: p.to,
+              basedOn: input.basedOn, department: input.department,
+            }),
+          });
+        }
+        return out;
+      }),
     /** GA4's "Summary of Sales Issued", rebuilt over the web app's own documents. */
     salesSummary: publicProcedure
       .input(z.object({
