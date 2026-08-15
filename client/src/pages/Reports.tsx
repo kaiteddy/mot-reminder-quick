@@ -435,9 +435,17 @@ function GA4Summary({ sections }: { sections: any[] }) {
             ))}
           </div>
           <div className="border-l border-slate-300">
-            {sec.rows.map((r: any, ri: number) => (
+            {sec.rows.map((r: any, ri: number) => {
+              // A row is "caption style" when it has no label and parks a word in one of the value
+              // columns — Credited, Outstanding, Total Gross. Those sit clear of the grid, exactly
+              // as GA4 prints them. Every other row is ruled right across, label cell included,
+              // even when the label is blank: leaving it out breaks the left rule and the block
+              // comes apart visually (the Labour Profit cost line did this).
+              const caption = !r.label && (r.v || []).some((x: any) => typeof x === "string");
+              const boxRow = !caption;
+              return (
               <div key={ri} className="ga4-row grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
-                <div className={`px-2 py-1 text-[13px] flex items-center gap-2 ${r.label || r.qty !== undefined ? "border border-slate-200 border-l-0" : ""} ${r.total ? "justify-end font-semibold" : ""} ${r.bold && !r.total ? "font-semibold" : ""}`}>
+                <div className={`px-2 py-1 text-[13px] flex items-center gap-2 ${boxRow ? "border border-slate-200 border-l-0" : ""} ${r.total ? "justify-end font-semibold" : ""} ${r.bold && !r.total ? "font-semibold" : ""}`}>
                   <span className={r.total ? "" : "text-slate-700"}>{r.label}</span>
                   {r.qty !== undefined && (
                     <span className="ml-auto flex items-baseline gap-1">
@@ -449,10 +457,7 @@ function GA4Summary({ sections }: { sections: any[] }) {
                 </div>
                 {[0, 1, 2].map((i) => {
                   const v = r.v?.[i];
-                  // GA4 rules every cell of a labelled row, empty or not — Cash/Cheque with no
-                  // takings still get their boxes. Only the trailing caption rows (Credited,
-                  // Outstanding), which carry no label, box just the cells they use.
-                  const boxed = r.label ? true : v !== null && v !== undefined;
+                  const boxed = boxRow || (v !== null && v !== undefined);
                   return (
                     <div key={i} className={`${cellBase} ${boxed ? "border border-slate-200 border-l-0" : ""} ${r.bold ? "font-semibold text-slate-900" : "text-slate-700"}`}>
                       {fmt(v, r.kind)}
@@ -460,7 +465,8 @@ function GA4Summary({ sections }: { sections: any[] }) {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
