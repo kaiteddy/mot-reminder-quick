@@ -20,6 +20,8 @@ const SALES: Group[] = [
     { id: "sales-summary-extended", label: "Sales - Summary Extended", impl: true },
     { id: "sales-ledger-month", label: "Sales - Summary Ledger (by Month)", impl: true },
     { id: "sales-by-month", label: "Sales - Detailed Ledger (by Month)", impl: true },
+    { id: "sales-breakdown-month", label: "Sales - Breakdown (by Month)", impl: true },
+    { id: "sales-tax-breakdown-month", label: "Sales - Customer Tax Breakdown (by Month)", impl: true },
   ] },
   { grouping: "All", reports: [{ id: "mot-sales-summary", label: "MOT Sales - Summary", impl: true }] },
   { grouping: "Day", reports: [
@@ -398,7 +400,8 @@ function GA4Summary({ sections }: { sections: any[] }) {
                   {r.qty !== undefined && (
                     <span className="ml-auto flex items-baseline gap-1">
                       <span className="text-[10px] text-slate-400">Qty</span>
-                      <span className="text-[12px] italic tabular-nums">{fmt(r.qty)}</span>
+                      {/* Counts print whole (13 MOTs); labour hours keep their decimals (52.25). */}
+                      <span className="text-[12px] italic tabular-nums">{Number.isInteger(r.qty) ? String(r.qty) : fmt(r.qty)}</span>
                     </span>
                   )}
                 </div>

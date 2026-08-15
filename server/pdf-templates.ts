@@ -1356,7 +1356,9 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
         doc.font('Helvetica').fontSize(7).fillColor('#555555');
         doc.text('Qty', X0 + 78, y + 8, { lineBreak: false });
         doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(INK);
-        doc.text(money(Number(r.qty)), X0 + 96, y + 6, { width: 60, align: 'right', lineBreak: false });
+        // Counts print whole (13 MOTs); labour hours keep their decimals (52.25).
+        const q = Number(r.qty);
+        doc.text(Number.isInteger(q) ? String(q) : money(q), X0 + 96, y + 6, { width: 60, align: 'right', lineBreak: false });
       }
       doc.font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(INK);
       [X1, X2, X3].forEach((x, i) => {
