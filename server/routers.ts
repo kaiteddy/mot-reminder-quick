@@ -601,15 +601,25 @@ export const appRouter = router({
         basedOn: z.enum(["issue", "created"]).optional(),
         department: z.string().optional(),
         extended: z.boolean().optional(),
+        // Ticked months, so the PDF comes out as one report per month like the screen does.
+        periods: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })).max(12).optional(),
       }))
       .query(async ({ input }) => {
         const { getSalesSummaryIssued, buildSalesSummarySections, buildSalesSummaryExtendedSections } = await import("./db");
         const { generateSalesSummaryPDF } = await import("./pdf-templates");
-        const summary = await getSalesSummaryIssued(input);
-        const sections = input.extended
-          ? buildSalesSummaryExtendedSections(summary)
-          : buildSalesSummarySections(summary);
-        return generateSalesSummaryPDF({ ...summary, sections, extended: !!input.extended });
+        const build = (s: any) => (input.extended ? buildSalesSummaryExtendedSections(s) : buildSalesSummarySections(s));
+        const ranges = input.periods?.length
+          ? input.periods
+          : [{ from: input.from, to: input.to, label: "" }];
+        const periods: any[] = [];
+        for (const r of ranges) {
+          const s = await getSalesSummaryIssued({ ...input, from: r.from, to: r.to });
+          periods.push({ ...s, ...r, sections: build(s) });
+        }
+        return generateSalesSummaryPDF({
+          ...periods[0], periods, extended: !!input.extended,
+          from: ranges[0].from, to: ranges[ranges.length - 1].to,
+        });
       }),
   }),
 

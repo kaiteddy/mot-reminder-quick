@@ -1298,24 +1298,34 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
 
   let y = PM;
 
+  // One entry per reported period. Several ticked months come through as several entries and
+  // each starts a fresh sheet, so the PDF matches what the screen and the browser print do —
+  // three months as three reports, not one range added together.
+  const periods: any[] = data.periods?.length ? data.periods : [data];
+
   // ── Header, repeated on each page the way GA4 repeats it
+  let cur: any = periods[0];
   const header = () => {
     y = PM;
     doc.font('Helvetica-Bold').fontSize(19).fillColor(INK);
     doc.text((data.company_name || 'ELI MOTORS LIMITED').toUpperCase(), PM, y, { lineBreak: false });
     y += 26;
     doc.font('Helvetica-Bold').fontSize(10);
-    doc.text(`Summary of Sales Issued between ${ukDate(data.from)} and ${ukDate(data.to)}`,
+    doc.text(`Summary of Sales Issued between ${ukDate(cur.from)} and ${ukDate(cur.to)}`,
       PM, y, { width: RIGHT - PM, align: 'center' });
     y += 20;
     doc.save().strokeColor(LINE).lineWidth(0.5).moveTo(PM, y).lineTo(RIGHT, y).stroke().restore();
     y += 10;
   };
-  header();
 
   const BOTTOM_LIMIT = PH - 80;   // leave room for the footer note and "Created:" line
 
-  for (const sec of (data.sections || [])) {
+  periods.forEach((period: any, pi: number) => {
+  cur = period;
+  if (pi > 0) { doc.addPage(); doc.page.margins.bottom = 0; }
+  header();
+
+  for (const sec of (period.sections || [])) {
     // Keep a block whole: if it won't fit below, start a fresh page first.
     if (y + CAP_H + sec.rows.length * ROW_H + GAP > BOTTOM_LIMIT) {
       doc.addPage();
@@ -1389,7 +1399,11 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
   doc.font('Helvetica').fontSize(8).fillColor('#4b5563');
   doc.text(`Created: ${now.toLocaleDateString('en-GB')} at ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
     PM, PH - 55, { width: RIGHT - PM, align: 'center' });
+  });
 
   const buf = await finish();
-  return { content: buf.toString('base64'), filename: `Summary From ${data.from} to ${data.to}.pdf` };
+  const span = periods.length > 1
+    ? `${periods[0].label || periods[0].from} to ${periods[periods.length - 1].label || periods[periods.length - 1].to}`
+    : `${data.from} to ${data.to}`;
+  return { content: buf.toString('base64'), filename: `Summary ${span}.pdf` };
 }
