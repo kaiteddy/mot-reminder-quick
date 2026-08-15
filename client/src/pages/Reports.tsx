@@ -7,6 +7,7 @@ import { BarChart3, Printer, FileText, Eye, Loader2, X } from "lucide-react";
 
 const money = (n: number) => { const v = n || 0; return `${v < 0 ? "-" : ""}£${Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type Report = { id: string; label: string; impl: boolean; viewOnly?: boolean };
 type Group = { grouping: string; reports: Report[] };
@@ -60,6 +61,26 @@ export default function Reports() {
   const [department, setDepartment] = useState("");
   const [active, setActive] = useState<{ id: string; autoPrint: boolean } | null>(null);
 
+  // Pick a year and tick the months you want. The reports take a single date range, so the
+  // selection spans from the first ticked month to the last — tick May, June and July and you
+  // get 01 May → 31 Jul. The by-month reports then break that back out a row per month.
+  const [year, setYear] = useState(now.getFullYear());
+  const [months, setMonths] = useState<number[]>([]);
+  const years = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
+
+  const applyMonths = (sel: number[], y = year) => {
+    setMonths(sel);
+    if (!sel.length) return;
+    const lo = Math.min(...sel), hi = Math.max(...sel);
+    setFrom(toISO(new Date(y, lo, 1)));
+    setTo(toISO(new Date(y, hi + 1, 0)));   // day 0 of the next month = last day of this one
+  };
+  const toggleMonth = (m: number) =>
+    applyMonths(months.includes(m) ? months.filter((x) => x !== m) : [...months, m].sort((a, b) => a - b));
+  // Typing in the date boxes wins — drop the month selection so the two can't disagree.
+  const setFromManual = (v: string) => { setMonths([]); setFrom(v); };
+  const setToManual = (v: string) => { setMonths([]); setTo(v); };
+
   const filters = trpc.reports.filters.useQuery(undefined, { staleTime: 5 * 60_000 });
   const departments: string[] = (filters.data as any)?.departments ?? [];
 
@@ -109,8 +130,8 @@ export default function Reports() {
 
         {/* Date + filters */}
         <div className="rounded-xl border border-slate-200 bg-white p-3 flex flex-wrap items-end gap-3">
-          <Field label="From"><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-300 text-[13px]" /></Field>
-          <Field label="To"><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-300 text-[13px]" /></Field>
+          <Field label="From"><input type="date" value={from} onChange={(e) => setFromManual(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-300 text-[13px]" /></Field>
+          <Field label="To"><input type="date" value={to} onChange={(e) => setToManual(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-300 text-[13px]" /></Field>
           <Field label="Based on">
             <select value={basedOn} onChange={(e) => setBasedOn(e.target.value as any)} className="h-9 px-2 rounded-lg border border-slate-300 text-[13px] bg-white">
               <option value="issue">Issue Date</option>
@@ -135,6 +156,46 @@ export default function Reports() {
                 else { setFrom(toISO(new Date(t.getFullYear(), 0, 1))); setTo(toISO(t)); }
               }} className="h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[12px] hover:bg-slate-50">{label}</button>
             ))}
+          </div>
+
+          {/* Year + months: tick the months to report on */}
+          <div className="w-full border-t border-slate-100 pt-3 flex flex-wrap items-end gap-3">
+            <Field label="Year">
+              <select
+                value={year}
+                onChange={(e) => { const y = Number(e.target.value); setYear(y); applyMonths(months, y); }}
+                className="h-9 px-2 rounded-lg border border-slate-300 text-[13px] bg-white"
+              >
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </Field>
+            <Field label="Months">
+              <div className="flex flex-wrap items-center gap-1">
+                {MONTHS.map((label, m) => {
+                  const on = months.includes(m);
+                  return (
+                    <button
+                      key={m} type="button" onClick={() => toggleMonth(m)}
+                      aria-pressed={on}
+                      className={`h-9 w-11 rounded-lg border text-[12px] font-medium ${on
+                        ? "border-violet-600 bg-violet-600 text-white"
+                        : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >{label}</button>
+                  );
+                })}
+                <span className="w-2" />
+                <button type="button" onClick={() => applyMonths([0,1,2,3,4,5,6,7,8,9,10,11])}
+                  className="h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[12px] hover:bg-slate-50">Whole year</button>
+                <button type="button" onClick={() => setMonths([])} disabled={!months.length}
+                  className="h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[12px] hover:bg-slate-50 disabled:opacity-40">Clear</button>
+              </div>
+            </Field>
+            {months.length > 1 && (
+              <span className="text-[11px] text-slate-500 pb-2">
+                {MONTHS[Math.min(...months)]}–{MONTHS[Math.max(...months)]} {year}
+                {months.length !== Math.max(...months) - Math.min(...months) + 1 && " (range spans the gaps)"}
+              </span>
+            )}
           </div>
         </div>
 
