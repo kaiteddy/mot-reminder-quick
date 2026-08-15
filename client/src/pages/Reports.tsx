@@ -343,9 +343,12 @@ function GA4Summary({ sections }: { sections: any[] }) {
                 </div>
                 {[0, 1, 2].map((i) => {
                   const v = r.v?.[i];
-                  const filled = v !== null && v !== undefined;
+                  // GA4 rules every cell of a labelled row, empty or not — Cash/Cheque with no
+                  // takings still get their boxes. Only the trailing caption rows (Credited,
+                  // Outstanding), which carry no label, box just the cells they use.
+                  const boxed = r.label ? true : v !== null && v !== undefined;
                   return (
-                    <div key={i} className={`${cellBase} ${filled ? "border border-slate-200 border-l-0" : ""} ${r.bold ? "font-semibold text-slate-900" : "text-slate-700"}`}>
+                    <div key={i} className={`${cellBase} ${boxed ? "border border-slate-200 border-l-0" : ""} ${r.bold ? "font-semibold text-slate-900" : "text-slate-700"}`}>
                       {fmt(v, r.kind)}
                     </div>
                   );
