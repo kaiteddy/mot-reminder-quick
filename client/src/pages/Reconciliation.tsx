@@ -1313,6 +1313,14 @@ function CarTradingTab() {
                                 <li key={m} className="flex items-start gap-1.5 text-[12px] text-slate-600">
                                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                                   <span className="capitalize">{m}</span>
+                                  {/* The Vehicle £ box shows a greyed figure from the linked payment,
+                                      which reads like a saved price when it's only a suggestion.
+                                      Say so, otherwise the flag looks plain wrong. */}
+                                  {m === "price" && r.linkedPurchaseTotal ? (
+                                    <span className="text-slate-400">
+                                      — {money(r.linkedPurchaseTotal)} suggested from the linked payment, not yet confirmed
+                                    </span>
+                                  ) : null}
                                 </li>
                               ))}
                             </ul>
