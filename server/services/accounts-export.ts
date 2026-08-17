@@ -264,14 +264,76 @@ export async function generateSalesExport(opts: {
 }
 
 /** Expenses export — the webapp holds no expense-manager documents yet, so files are emitted empty. */
-export async function generateExpensesExport(opts: { toDate: string }): Promise<ExportResult> {
+export async function generateExpensesExport(opts: { toDate: string; fromDate?: string }): Promise<ExportResult> {
+  const db = await getDb();
+  if (!db) throw new Error("no db");
+  const cfg = await getAccountsConfig();
+
+  // Money out of the bank/card, categorised exactly as Profit & Cashbook does it, so the export
+  // and the P&L cannot disagree: the category is the per-row override, else the supplier's label,
+  // else "OTHER"; the VAT rate is the per-row override, else the category default, else 20; and
+  // Barclays amounts are VAT-INCLUSIVE, so net = gross x 100/(100+rate) and the rest is
+  // reclaimable input VAT. Contra categories (refunds/transfers in) are money-in and excluded.
+  const from = opts.fromDate ? `${opts.fromDate}` : "1900-01-01";
+  const rows: any[] = (await db.execute(sql`
+    SELECT t."id", t."txnDate", t."amount"::numeric AS amount, t."source", t."memo",
+           COALESCE(NULLIF(TRIM(t."counterparty"), ''), 'UNKNOWN') AS counterparty,
+           t."counterpartyKey" AS key,
+           COALESCE(t."categoryOverride", l."category", 'OTHER / to label') AS category,
+           COALESCE(t."vatRateOverride", c."vatRate", 20)::numeric AS rate
+    FROM "bankTransactions" t
+    LEFT JOIN "transactionLabels" l ON l."source" = t."source" AND l."counterpartyKey" = t."counterpartyKey"
+    LEFT JOIN "expenditureCategories" c ON c."name" = COALESCE(t."categoryOverride", l."category", 'OTHER / to label')
+    WHERE t."amount"::numeric < 0
+      AND COALESCE(c."isContra", 0) = 0
+      AND t."txnDate" >= ${from}::date
+      AND t."txnDate" < (${opts.toDate}::date + INTERVAL '1 day')
+    ORDER BY t."txnDate", t."id"`)).rows ?? [];
+
+  const supplierRef = (name: string) => {
+    // Sage account references are short; derive a stable one from the payee name.
+    const clean = String(name).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return (clean.slice(0, 6) || "SUPPL").padEnd(3, "X");
+  };
+  const nominalFor = (category: string) => {
+    const pair = cfg.expenseNominals[category] || cfg.expenseNominals.default;
+    return pair ? pair.std : "5000";
+  };
+
+  const dept = String(cfg.expenses.departmentOverride || "1");
+  const invRows: (string | number)[][] = [];
+  const payRows: (string | number)[][] = [];
+  const suppliers = new Map<string, string>();   // ref -> display name
+  let netTotal = 0, vatTotal = 0;
+
+  for (const r of rows) {
+    const gross = Math.abs(num(r.amount));              // money out, taken as a positive cost
+    const rate = num(r.rate);
+    const net = +(gross * 100 / (100 + rate)).toFixed(2);
+    const vat = +(gross - net).toFixed(2);
+    const ref = supplierRef(r.counterparty);
+    if (!suppliers.has(ref)) suppliers.set(ref, String(r.counterparty));
+    const date = ukDate(r.txnDate);
+    const reference = String(r.id);
+    const details = [r.category, r.memo].filter(Boolean).join(" - ").slice(0, 60);
+
+    // PI = purchase invoice, PP = purchase payment. One of each keeps the ledger square:
+    // the invoice books the cost and the VAT, the payment clears it.
+    invRows.push(["PI", ref, nominalFor(r.category), dept, date, reference, details, money(net), taxCode(net, vat), money(vat)]);
+    payRows.push(["PP", ref, cfg.bankNominal || "1200", dept, date, reference, details, money(gross), "T9", money(0)]);
+    netTotal += net; vatTotal += vat;
+  }
+
+  const supRows: (string | number)[][] = Array.from(suppliers.entries())
+    .map(([ref, name]) => [ref, name, "", "", "", "", "", "", "", ""]);
+
   return {
     files: [
-      { name: "Supplier Records.csv", content: csv(CUSTOMER_HEADERS, []) },
-      { name: "Audit Trail Invoices.csv", content: csv(AUDIT_HEADERS, []) },
-      { name: "Audit Trail Payments.csv", content: csv(AUDIT_HEADERS, []) },
+      { name: "Supplier Records.csv", content: csv(CUSTOMER_HEADERS, supRows) },
+      { name: "Audit Trail Invoices.csv", content: csv(AUDIT_HEADERS, invRows) },
+      { name: "Audit Trail Payments.csv", content: csv(AUDIT_HEADERS, payRows) },
     ],
-    counts: { customers: 0, invoices: 0, invoiceLines: 0, payments: 0 },
+    counts: { customers: supRows.length, invoices: invRows.length, invoiceLines: invRows.length, payments: payRows.length },
     folder: `Expenses ${ukDate(new Date()).replace(/\//g, "-")}`,
   };
 }

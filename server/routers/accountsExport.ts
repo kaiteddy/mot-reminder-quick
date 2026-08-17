@@ -41,10 +41,10 @@ export const accountsExportRouter = router({
     }),
 
   runExpenses: publicProcedure
-    .input(z.object({ toDate: z.string() }))
+    .input(z.object({ toDate: z.string(), fromDate: z.string().optional() }))
     .mutation(async ({ input }) => {
       const { generateExpensesExport } = await import("../services/accounts-export");
-      return generateExpensesExport({ toDate: input.toDate });
+      return generateExpensesExport({ toDate: input.toDate, fromDate: input.fromDate });
     }),
 
   markExported: publicProcedure
