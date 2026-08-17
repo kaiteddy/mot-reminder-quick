@@ -161,8 +161,12 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
         (errorData.message && errorData.message.toLowerCase().includes('whatsapp')) ||
         (errorData.message && errorData.message.toLowerCase().includes('channel could not find route'));
 
-      if (isWhatsAppRoutingError && params.useTemplate) {
-        console.log(`[SMS Service] Target number does not have WhatsApp or is unreachable via WhatsApp. Falling back to standard SMS...`);
+      // Any failed template send falls back to the text, not just the three routing codes above.
+      // A template awaiting WhatsApp approval, or one later paused or rejected, is refused with a
+      // different code entirely — and the old condition let those through as an outright failure,
+      // so the customer heard nothing. If we bothered to supply fallback wording, use it.
+      if (params.useTemplate && (isWhatsAppRoutingError || params.fallbackMessage)) {
+        console.log(`[SMS Service] Template send failed (code ${errorData.code}). Falling back to standard SMS...`);
 
         const fallbackBody = params.fallbackMessage || params.message || 'You have a new message. Please contact Eli Motors.';
         const smsFormData = new URLSearchParams({
