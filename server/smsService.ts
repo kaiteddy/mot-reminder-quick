@@ -555,3 +555,54 @@ export function formatCustomerName(params: {
   // Fallback
   return 'Customer';
 }
+
+/**
+ * "Your car is ready to collect."
+ *
+ * Deliberately carries no money: a job sheet is often still being edited when the car is
+ * finished, so a figure quoted here would be wrong as often as right.
+ */
+export function generateCarReadyMessage(params: {
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+  companyName?: string | null;
+  phone?: string | null;
+}): string {
+  // Greet by first name. Names arrive as "Mr Ben Rosenfeld", so drop a leading title first —
+  // taking the last word would address the customer by their surname.
+  const words = (params.customerName || "").trim().split(/\s+/).filter(Boolean);
+  if (/^(mr|mrs|ms|miss|dr|rev|prof|sir|mx)\.?$/i.test(words[0] || "") && words.length > 1) words.shift();
+  const first = words[0] || "there";
+  const vehicle = [params.vehicle, params.registration].filter(Boolean).join(" ").trim();
+  const who = params.companyName || "ELI MOTORS";
+  const tel = params.phone || "020 8203 6449";
+  return `Hi ${first}, your ${vehicle || "vehicle"} is ready to collect from ${who}. `
+    + `Any questions, call us on ${tel}.`;
+}
+
+/**
+ * Send the "car is ready" message. Uses the approved WhatsApp template when its ContentSid has
+ * been set in Settings (carReadyTemplateSid) — WhatsApp only allows templates outside the 24h
+ * window — and otherwise sends the same wording as plain text, which works over SMS and over
+ * WhatsApp while the window is open. So this is useful the day it ships, and upgrades to the
+ * template the moment Twilio approves one.
+ */
+export async function sendCarReadyMessage(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  message: string;
+  templateSid?: string | null;
+}): Promise<SendSMSResult> {
+  if (params.templateSid) {
+    return sendSMS({
+      to: params.to,
+      useTemplate: true,
+      templateSid: params.templateSid,
+      templateVariables: { '1': params.customerName, '2': params.registration },
+      fallbackMessage: params.message,
+    });
+  }
+  return sendSMS({ to: params.to, message: params.message });
+}
