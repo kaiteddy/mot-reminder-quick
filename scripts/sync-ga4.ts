@@ -236,10 +236,16 @@ await syncTable({
       description: extrasById.get(norm(m.externalId)) || null,
     };
   },
-  // docs have no GA4 modification timestamp — diff the mutable fields
+  // docs have no GA4 modification timestamp — diff the mutable fields.
+  // `description` (Document_Extras "Labour Description") MUST be here: the work
+  // narrative is very often finalised in GA4 AFTER the doc's first sync (issued
+  // early, written up later), and without this the row is judged "unchanged" so
+  // the description never propagates and stays null in the webapp forever
+  // (e.g. SI 90692 / GY06 HXS). It updates the full row, so description lands.
   changed: (g, w) => !numEq(g.totalGross, w.totalGross) || !numEq(g.totalReceipts, w.totalReceipts) || !numEq(g.balance, w.balance)
     || !eq(g.docStatus, w.docStatus) || !eq(g.docNo, w.docNo) || !eq(dt2(w.dateIssued), g.dateIssued) || !eq(dt2(w.datePaid), g.datePaid)
-    || Number(g.mileage || 0) !== Number(w.mileage || 0) || (g.customerId && g.customerId !== w.customerId) || (g.vehicleId && g.vehicleId !== w.vehicleId),
+    || Number(g.mileage || 0) !== Number(w.mileage || 0) || (g.customerId && g.customerId !== w.customerId) || (g.vehicleId && g.vehicleId !== w.vehicleId)
+    || !eq(g.description, w.description),
 });
 
 const docMap = new Map<string, number>();
