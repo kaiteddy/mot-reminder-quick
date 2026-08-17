@@ -2578,13 +2578,39 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       // absorbs any net GA4 didn't itemise (the ~4% of docs it leaves without a stored breakdown),
       // so each row's categories always reconcile to that day's Net.
       const dayExpr = sql<string>`to_char(date_trunc('day', ${dateCol}), 'YYYY-MM-DD')`;
-      const S = (c: any) => sql<number>`SUM(CASE WHEN ${serviceHistory.docType}='CR' THEN -1 ELSE 1 END * ${_numExpr(c)})`;
-      const rows: any = await db.select({
-        day: dayExpr, n: sql<number>`COUNT(*)`,
-        labour: S(serviceHistory.subLabourNet), parts: S(serviceHistory.subPartsNet), mot: S(serviceHistory.subMotNet),
-        sundries: S(serviceHistory.fixedItem1Net), lubricants: S(serviceHistory.fixedItem2Net), paint: S(serviceHistory.fixedItem3Net),
-        excess: S(serviceHistory.excessNet), net: S(serviceHistory.totalNet), tax: S(serviceHistory.totalTax), gross: S(serviceHistory.totalGross),
-      }).from(serviceHistory).where(and(inRange, inArray(serviceHistory.docType, ["SI", "XS", "CR"]))).groupBy(dayExpr).orderBy(dayExpr);
+      const sign = sql`CASE WHEN ${serviceHistory.docType}='CR' THEN -1 ELSE 1 END`;
+      const S = (c: any) => sql<number>`SUM(${sign} * ${_numExpr(c)})`;
+      // Prefer GA4's stored sub-total, fall back to the line items. subMot and the fixedItem
+      // columns stopped being written in June 2026, so from July the MOT and Sundries columns
+      // read zero and their money fell into "Other" — £1,712 of it in the first half of August.
+      // The line items carry it, exactly as they do for the MOT Sales report.
+      const C = (col: any, cat: string) =>
+        sql<number>`SUM(${sign} * CASE WHEN ${_numExpr(col)} <> 0 THEN ${_numExpr(col)} ELSE COALESCE(li.${sql.raw(`"${cat}"`)}, 0) END)`;
+      const rows: any = await db.execute(sql`
+        SELECT ${dayExpr} AS day, COUNT(*)::int AS n,
+               ${C(serviceHistory.subLabourNet, "labour")} AS labour,
+               ${C(serviceHistory.subPartsNet, "parts")} AS parts,
+               ${C(serviceHistory.subMotNet, "mot")} AS mot,
+               ${C(serviceHistory.fixedItem1Net, "sundries")} AS sundries,
+               ${C(serviceHistory.fixedItem2Net, "lubricants")} AS lubricants,
+               ${C(serviceHistory.fixedItem3Net, "paint")} AS paint,
+               ${C(serviceHistory.excessNet, "excess")} AS excess,
+               ${S(serviceHistory.totalNet)} AS net, ${S(serviceHistory.totalTax)} AS tax,
+               ${S(serviceHistory.totalGross)} AS gross
+        FROM ${serviceHistory}
+        LEFT JOIN (
+          SELECT "documentId",
+                 SUM(CASE WHEN "itemType"='Labour'    THEN COALESCE("subNet",0) ELSE 0 END) AS "labour",
+                 SUM(CASE WHEN "itemType"='Part'      THEN COALESCE("subNet",0) ELSE 0 END) AS "parts",
+                 SUM(CASE WHEN "itemType"='MOT'       THEN COALESCE("subNet",0) ELSE 0 END) AS "mot",
+                 SUM(CASE WHEN "itemType"='Sundries'  THEN COALESCE("subNet",0) ELSE 0 END) AS "sundries",
+                 SUM(CASE WHEN "itemType"='Lubricant' THEN COALESCE("subNet",0) ELSE 0 END) AS "lubricants",
+                 SUM(CASE WHEN "itemType"='Paint'     THEN COALESCE("subNet",0) ELSE 0 END) AS "paint",
+                 SUM(CASE WHEN "itemType"='Excess'    THEN COALESCE("subNet",0) ELSE 0 END) AS "excess"
+          FROM "serviceLineItems" GROUP BY "documentId"
+        ) li ON li."documentId" = ${serviceHistory.id}
+        WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}
+        GROUP BY 1 ORDER BY 1`).then((r: any) => r.rows ?? r);
       const g: any = { n: 0, labour: 0, parts: 0, mot: 0, sundries: 0, lubricants: 0, paint: 0, excess: 0, other: 0, net: 0, tax: 0, gross: 0 };
       const fmt = (d: string) => { const [y, m, dd] = d.split("-"); return `${dd}/${m}/${y}`; };
       const out = rows.map((r: any) => {
