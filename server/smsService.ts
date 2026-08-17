@@ -161,8 +161,12 @@ export async function sendSMS(params: SendSMSParams): Promise<SendSMSResult> {
         (errorData.message && errorData.message.toLowerCase().includes('whatsapp')) ||
         (errorData.message && errorData.message.toLowerCase().includes('channel could not find route'));
 
-      if (isWhatsAppRoutingError && params.useTemplate) {
-        console.log(`[SMS Service] Target number does not have WhatsApp or is unreachable via WhatsApp. Falling back to standard SMS...`);
+      // Any failed template send falls back to the text, not just the three routing codes above.
+      // A template awaiting WhatsApp approval, or one later paused or rejected, is refused with a
+      // different code entirely — and the old condition let those through as an outright failure,
+      // so the customer heard nothing. If we bothered to supply fallback wording, use it.
+      if (params.useTemplate && (isWhatsAppRoutingError || params.fallbackMessage)) {
+        console.log(`[SMS Service] Template send failed (code ${errorData.code}). Falling back to standard SMS...`);
 
         const fallbackBody = params.fallbackMessage || params.message || 'You have a new message. Please contact Eli Motors.';
         const smsFormData = new URLSearchParams({
@@ -554,4 +558,76 @@ export function formatCustomerName(params: {
 
   // Fallback
   return 'Customer';
+}
+
+/**
+ * "Your car is ready to collect."
+ *
+ * Deliberately carries no money: a job sheet is often still being edited when the car is
+ * finished, so a figure quoted here would be wrong as often as right.
+ */
+export function carReadyParts(params: {
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+}): { firstName: string; vehicle: string } {
+  // Greet by first name. Names arrive as "Mr Ben Rosenfeld", so drop a leading title first —
+  // taking the last word would address the customer by their surname.
+  const words = (params.customerName || "").trim().split(/\s+/).filter(Boolean);
+  if (/^(mr|mrs|ms|miss|dr|rev|prof|sir|mx)\.?$/i.test(words[0] || "") && words.length > 1) words.shift();
+  const first = words[0] || "there";
+  return {
+    firstName: first,
+    vehicle: [params.vehicle, params.registration].filter(Boolean).join(" ").trim() || "vehicle",
+  };
+}
+
+/**
+ * The wording sent as plain text, and the exact wording the approved WhatsApp template must
+ * carry. {{1}} is the first name, {{2}} the vehicle and registration — the same two values
+ * carReadyParts() hands the template, so the two channels read identically.
+ */
+export function generateCarReadyMessage(params: {
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+  companyName?: string | null;
+  phone?: string | null;
+}): string {
+  const { firstName, vehicle } = carReadyParts(params);
+  const who = params.companyName || "ELI MOTORS";
+  const tel = params.phone || "020 8203 6449";
+  // Plain ASCII only — a curly apostrophe or an en dash pushes the SMS from GSM-7 into UCS-2,
+  // which drops a segment from 153 characters to 67 and doubles what the message costs to send.
+  return `Hi ${firstName}, your ${vehicle} is ready to collect from ${who}. `
+    + `We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. `
+    + `Any questions, call us on ${tel}.`;
+}
+
+/**
+ * Send the "car is ready" message. Uses the approved WhatsApp template when its ContentSid has
+ * been set in Settings (carReadyTemplateSid) — WhatsApp only allows templates outside the 24h
+ * window — and otherwise sends the same wording as plain text, which works over SMS and over
+ * WhatsApp while the window is open. So this is useful the day it ships, and upgrades to the
+ * template the moment Twilio approves one.
+ */
+export async function sendCarReadyMessage(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+  message: string;
+  templateSid?: string | null;
+}): Promise<SendSMSResult> {
+  const parts = carReadyParts(params);
+  if (params.templateSid) {
+    return sendSMS({
+      to: params.to,
+      useTemplate: true,
+      templateSid: params.templateSid,
+      templateVariables: { '1': parts.firstName, '2': parts.vehicle },
+      fallbackMessage: params.message,
+    });
+  }
+  return sendSMS({ to: params.to, message: params.message });
 }

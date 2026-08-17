@@ -310,6 +310,17 @@ export default function DocumentDetails() {
   const emailMut = trpc.email.sendDocument.useMutation();
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", message: "" });
+  // "Car is ready" — opens a confirm dialog rather than firing on the click, so a wrong number or
+  // clumsy wording can be caught before it reaches the customer.
+  const [readyOpen, setReadyOpen] = useState(false);
+  const [readyForm, setReadyForm] = useState({ to: "", message: "" });
+  const readyPreview = trpc.carReady.preview.useQuery({ docId: id }, { enabled: readyOpen });
+  const readyMut = trpc.carReady.send.useMutation();
+  // Fill the form once the preview lands, but never overwrite wording already being edited.
+  useEffect(() => {
+    const d = readyPreview.data as any;
+    if (readyOpen && d) setReadyForm((f) => (f.message ? f : { to: d.to || "", message: d.message || "" }));
+  }, [readyOpen, readyPreview.data]);
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
@@ -880,6 +891,23 @@ export default function DocumentDetails() {
   const excessNetOnly = Number((data as any)?.doc?.excessNet) || 0;
   const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
+  function openCarReady() {
+    setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
+    setReadyOpen(true);
+  }
+  async function sendCarReady() {
+    const to = readyForm.to.trim();
+    if (to.replace(/\D/g, "").length < 10) { toast.error("Enter a valid mobile number"); return; }
+    try {
+      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message });
+      toast.success(`Told the customer their car is ready (${to})`);
+      setReadyOpen(false);
+    } catch (e: any) { toast.error("Message failed: " + (e.message || "")); }
+  }
+  // "Car ready" belongs to the invoice, not the job sheet: the job sheet is the work in progress,
+  // the invoice is what the customer collects against. SI is the ordinary invoice, XS the
+  // policy-excess one.
+  const isCollectable = ["SI", "XS"].includes((data as any)?.doc?.docType);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
   // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
@@ -1069,7 +1097,12 @@ export default function DocumentDetails() {
                   : null}
               </span>
               {!isNew && (
-                <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+                <>
+                  <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+                  {isCollectable && (
+                    <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
+                  )}
+                </>
               )}
               <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
               <button onClick={downloadPdf} disabled={downloading || isNew} title="Download this document as a PDF" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF</button>
@@ -1169,6 +1202,7 @@ export default function DocumentDetails() {
               <button className="js-action-button" onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }}>Save</button>
               <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
               {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
+              {!isNew && isCollectable && <button className="js-action-button" onClick={openCarReady}>Car ready</button>}
               <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
               {!isNew && (
                 <div className="relative">
@@ -1792,6 +1826,56 @@ export default function DocumentDetails() {
                 <button onClick={sendEmail} disabled={emailMut.isPending} className="bg-violet-700 text-white rounded px-4 py-1.5 text-sm hover:bg-violet-800 disabled:opacity-50 inline-flex items-center gap-1.5">
                   {emailMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* "car is ready" — confirm before it goes to the customer */}
+        {readyOpen && (
+          <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={() => setReadyOpen(false)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mt-16" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <h3 className="text-lg font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-600" /> Car is ready</h3>
+                <button onClick={() => setReadyOpen(false)} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-4 space-y-3">
+                {readyPreview.isLoading ? (
+                  <p className="py-6 text-center text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Preparing…</p>
+                ) : readyPreview.error ? (
+                  <p className="py-6 text-center text-red-600 text-sm">{readyPreview.error.message}</p>
+                ) : (
+                  <>
+                    {readyPreview.data?.reason && (
+                      <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">{readyPreview.data.reason}</p>
+                    )}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Send to</label>
+                      <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500"
+                        value={readyForm.to} onChange={(e) => setReadyForm((f) => ({ ...f, to: e.target.value }))} placeholder="07…" />
+                      {readyPreview.data?.customerName && (
+                        <p className="text-[11px] text-slate-500 mt-1">{readyPreview.data.customerName}{readyPreview.data.vehicle ? ` · ${readyPreview.data.vehicle}` : ""}{readyPreview.data.registration ? ` · ${readyPreview.data.registration}` : ""}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Message</label>
+                      <textarea rows={4} className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 resize-y outline-none focus:border-violet-500"
+                        value={readyForm.message} onChange={(e) => setReadyForm((f) => ({ ...f, message: e.target.value }))} />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {readyPreview.data?.usingTemplate
+                          ? "Sends as the approved WhatsApp template, falling back to this wording by SMS."
+                          : "Sends as a text. Add an approved WhatsApp template SID in Settings to send it on WhatsApp instead."}
+                      </p>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button onClick={() => setReadyOpen(false)} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
+                      <button onClick={sendCarReady} disabled={readyMut.isPending || !readyForm.to.trim() || !readyForm.message.trim()}
+                        className="bg-green-700 text-white rounded px-4 py-1.5 text-sm hover:bg-green-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+                        {readyMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />} Send{readyForm.to.trim() ? ` to ${readyForm.to.trim()}` : ""}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

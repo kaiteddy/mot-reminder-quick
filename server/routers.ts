@@ -767,6 +767,23 @@ export const appRouter = router({
     }),
   }),
 
+  /** Tell a customer their car is ready to collect. */
+  carReady: router({
+    /** Everything the confirm dialog needs: who it's going to, and the wording to send. */
+    preview: publicProcedure
+      .input(z.object({ docId: z.number() }))
+      .query(async ({ input }) => {
+        const { getCarReadyPreview } = await import("./services/carReady");
+        return getCarReadyPreview(input.docId);
+      }),
+    send: publicProcedure
+      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        const { sendCarReady } = await import("./services/carReady");
+        return sendCarReady(input);
+      }),
+  }),
+
   email: router({
     getSettings: publicProcedure.query(async () => {
       const { getEmailSettings } = await import("./services/email");
