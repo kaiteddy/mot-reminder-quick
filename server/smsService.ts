@@ -577,7 +577,10 @@ export function generateCarReadyMessage(params: {
   const vehicle = [params.vehicle, params.registration].filter(Boolean).join(" ").trim();
   const who = params.companyName || "ELI MOTORS";
   const tel = params.phone || "020 8203 6449";
+  // Plain ASCII only — a curly apostrophe or an en dash pushes the SMS from GSM-7 into UCS-2,
+  // which drops a segment from 153 characters to 67 and doubles what the message costs to send.
   return `Hi ${first}, your ${vehicle || "vehicle"} is ready to collect from ${who}. `
+    + `We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. `
     + `Any questions, call us on ${tel}.`;
 }
 
