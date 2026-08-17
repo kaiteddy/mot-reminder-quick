@@ -706,6 +706,10 @@ export default function DocumentDetails() {
   const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
+  // "Car ready" belongs to the invoice, not the job sheet: the job sheet is the work in progress,
+  // the invoice is what the customer collects against. SI is the ordinary invoice, XS the
+  // policy-excess one.
+  const isCollectable = ["SI", "XS"].includes((data as any)?.doc?.docType);
 
   return (
     <DashboardLayout>
@@ -744,7 +748,11 @@ export default function DocumentDetails() {
             {!isNew && (
               <>
                 <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
-                <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
+                {/* Invoices only. On a job sheet the work often isn't finished and the customer
+                    has nothing to collect against, so telling them it's ready would be premature. */}
+                {isCollectable && (
+                  <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
+                )}
               </>
             )}
             <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
