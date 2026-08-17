@@ -562,6 +562,27 @@ export function formatCustomerName(params: {
  * Deliberately carries no money: a job sheet is often still being edited when the car is
  * finished, so a figure quoted here would be wrong as often as right.
  */
+export function carReadyParts(params: {
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+}): { firstName: string; vehicle: string } {
+  // Greet by first name. Names arrive as "Mr Ben Rosenfeld", so drop a leading title first —
+  // taking the last word would address the customer by their surname.
+  const words = (params.customerName || "").trim().split(/\s+/).filter(Boolean);
+  if (/^(mr|mrs|ms|miss|dr|rev|prof|sir|mx)\.?$/i.test(words[0] || "") && words.length > 1) words.shift();
+  const first = words[0] || "there";
+  return {
+    firstName: first,
+    vehicle: [params.vehicle, params.registration].filter(Boolean).join(" ").trim() || "vehicle",
+  };
+}
+
+/**
+ * The wording sent as plain text, and the exact wording the approved WhatsApp template must
+ * carry. {{1}} is the first name, {{2}} the vehicle and registration — the same two values
+ * carReadyParts() hands the template, so the two channels read identically.
+ */
 export function generateCarReadyMessage(params: {
   customerName: string;
   registration: string;
@@ -569,17 +590,12 @@ export function generateCarReadyMessage(params: {
   companyName?: string | null;
   phone?: string | null;
 }): string {
-  // Greet by first name. Names arrive as "Mr Ben Rosenfeld", so drop a leading title first —
-  // taking the last word would address the customer by their surname.
-  const words = (params.customerName || "").trim().split(/\s+/).filter(Boolean);
-  if (/^(mr|mrs|ms|miss|dr|rev|prof|sir|mx)\.?$/i.test(words[0] || "") && words.length > 1) words.shift();
-  const first = words[0] || "there";
-  const vehicle = [params.vehicle, params.registration].filter(Boolean).join(" ").trim();
+  const { firstName, vehicle } = carReadyParts(params);
   const who = params.companyName || "ELI MOTORS";
   const tel = params.phone || "020 8203 6449";
   // Plain ASCII only — a curly apostrophe or an en dash pushes the SMS from GSM-7 into UCS-2,
   // which drops a segment from 153 characters to 67 and doubles what the message costs to send.
-  return `Hi ${first}, your ${vehicle || "vehicle"} is ready to collect from ${who}. `
+  return `Hi ${firstName}, your ${vehicle} is ready to collect from ${who}. `
     + `We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. `
     + `Any questions, call us on ${tel}.`;
 }
@@ -595,15 +611,17 @@ export async function sendCarReadyMessage(params: {
   to: string;
   customerName: string;
   registration: string;
+  vehicle?: string | null;
   message: string;
   templateSid?: string | null;
 }): Promise<SendSMSResult> {
+  const parts = carReadyParts(params);
   if (params.templateSid) {
     return sendSMS({
       to: params.to,
       useTemplate: true,
       templateSid: params.templateSid,
-      templateVariables: { '1': params.customerName, '2': params.registration },
+      templateVariables: { '1': parts.firstName, '2': parts.vehicle },
       fallbackMessage: params.message,
     });
   }

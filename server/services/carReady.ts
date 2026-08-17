@@ -107,6 +107,7 @@ export async function sendCarReady(params: { docId: number; to: string; message:
     to,
     customerName: pickName(row),
     registration: row.registration || "",
+    vehicle: [row.make, row.model].filter(Boolean).join(" ").trim(),
     message: params.message,
     templateSid,
   });
