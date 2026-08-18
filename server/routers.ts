@@ -143,6 +143,14 @@ export const appRouter = router({
         return c ? { id: c.id, name: c.name, email: c.email, phone: c.phone } : null;
       }),
 
+    /** Wider search for attaching an owner: also matches address, account number and any
+     *  registration the customer has had, current or historical. */
+    searchForAttach: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchCustomersForAttach } = await import("./db");
+        return searchCustomersForAttach(input.query);
+      }),
     search: publicProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {

@@ -43,6 +43,25 @@ const fmtGasQty = (q: any): string | undefined => {
   return `Charge ${/[a-z(]/i.test(s) ? s : `${s} g`}`;
 };
 const TITLES = ["MR", "MRS", "MS", "MISS", "DR", "PROF", "REV", "SIR"];
+/** Everything that must change on the document when an owner is attached. Shared so the Classic
+ *  and Modern pickers can never drift apart on what "attach" means. */
+function attachCustomerPatch(f: any, c: any) {
+  const sn = splitName(c.name);
+  return {
+    ...f,
+    customerId: c.id,
+    customerName: c.name || f.customerName,
+    custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
+    custEmail: c.email || f.custEmail,
+    custPostcode: c.postcode || f.custPostcode,
+    custTelephone: c.phone || f.custTelephone,
+    custRoad: c.address || f.custRoad,
+    // Re-linking to a different customer must also refresh their account number — otherwise the
+    // doc keeps showing whichever customer it was linked to before.
+    accountNumber: c.accountNumber || f.accountNumber,
+  };
+}
+
 function splitName(full?: string) {
   const parts = (full || "").trim().split(/\s+/).filter(Boolean);
   let title = "";
@@ -171,6 +190,7 @@ export default function DocumentDetails() {
   // The document is always editable — changes auto-save (no Edit/Save step).
   const editing = true;
   const [newCust, setNewCust] = useState(false);
+  const [findCustOpen, setFindCustOpen] = useState(false);   // Classic view "find customer" dialog
   const [looking, setLooking] = useState(false);
   const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
@@ -1424,15 +1444,7 @@ export default function DocumentDetails() {
             <div className={base ? "js-cell-customer space-y-1.5 @container/customer" : "@4xl:col-span-4 space-y-1.5 @container/customer"}>
               {!base && editing && (
                 <>
-                  <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
-                    ...f, customerId: c.id, customerName: c.name || f.customerName,
-                    custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
-                    custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
-                    custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
-                    // Re-linking to a different customer must also refresh their account number —
-                    // otherwise the doc keeps showing whichever customer it was linked to before.
-                    accountNumber: c.accountNumber || f.accountNumber,
-                  })); markDirty(); }} />
+                  <CustomerSearch onSelect={(c) => { setNewCust(false); setForm((f) => attachCustomerPatch(f, c)); markDirty(); }} />
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
                       <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
@@ -1452,7 +1464,7 @@ export default function DocumentDetails() {
                     <span className="js-combo-arrow" aria-hidden="true">▾</span>
                     <button type="button" className="js-combo-clear" disabled={!editing || !form.accountNumber} onClick={() => { set("accountNumber", ""); }} aria-label="Clear account number"><X className="w-3 h-3" /></button>
                   </div>
-                  <button type="button" className="js-search-button" onClick={() => toast.message("Customer search isn't available in Classic view yet.")} title="Find customer" aria-label="Find customer">
+                  <button type="button" className="js-search-button" onClick={() => setFindCustOpen(true)} title="Find customer" aria-label="Find customer">
                     <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
                   </button>
                 </div>
@@ -1896,6 +1908,14 @@ export default function DocumentDetails() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Classic view: find and attach an owner */}
+        {findCustOpen && (
+          <FindCustomerDialog
+            onClose={() => setFindCustOpen(false)}
+            onSelect={(c: any) => { setNewCust(false); setForm((f) => attachCustomerPatch(f, c)); markDirty(); setFindCustOpen(false); toast.success(`Attached ${c.name || "customer"}`); }}
+          />
         )}
 
         {/* issue invoice / add payments dialog */}
@@ -2390,6 +2410,58 @@ function VehicleSearch({ onSelect }: { onSelect: (v: any) => void }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Find an owner by anything the garage actually remembers: name, mobile, address, postcode,
+ * account number, or a registration — including one the customer no longer owns, since the search
+ * looks at past documents as well as current vehicles. Each result says how it matched, because a
+ * plate can pass between owners and the name alone will not tell you which is the right one.
+ */
+function FindCustomerDialog({ onSelect, onClose }: { onSelect: (c: any) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const res = trpc.customers.searchForAttach.useQuery({ query: q }, { enabled: q.trim().length >= 2 });
+  const results: any[] = (res.data as any[]) || [];
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl mt-20" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="text-lg font-semibold flex items-center gap-2"><Search className="w-5 h-5" /> Find customer</h3>
+          <button onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Reg (current or old), name, mobile, address, postcode or account no."
+            className="w-full border rounded px-3 py-2 text-sm outline-none focus:border-violet-500" />
+          <p className="text-[11px] text-slate-400 mt-1">Type at least 2 characters.</p>
+          <div className="mt-3 max-h-80 overflow-auto border rounded divide-y">
+            {q.trim().length < 2 ? (
+              <p className="p-4 text-center text-slate-400 text-sm">Start typing to search.</p>
+            ) : res.isFetching && !results.length ? (
+              <p className="p-4 text-center text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Searching…</p>
+            ) : !results.length ? (
+              <p className="p-4 text-center text-slate-500 text-sm">
+                Nothing matched. That customer may not exist yet — close this and fill the name in directly to create one.
+              </p>
+            ) : results.map((c) => (
+              <button key={c.id} type="button" onClick={() => onSelect(c)}
+                className="block w-full text-left px-3 py-2 hover:bg-violet-50">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium text-[13px]">{c.name || "(no name)"}</span>
+                  <span className="text-[11px] text-slate-400 shrink-0">
+                    matched on {c.matchedVia}{c.matchedReg ? ` ${c.matchedReg}` : ""}
+                  </span>
+                </div>
+                <div className="text-[12px] text-slate-500">
+                  {[c.phone, c.postcode, c.address, c.accountNumber ? `A/C ${c.accountNumber}` : null].filter(Boolean).join(" · ")}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

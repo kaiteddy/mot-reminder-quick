@@ -3223,6 +3223,94 @@ export async function findCustomersByPhone(phone: string, limit = 5) {
     .limit(limit);
 }
 
+/**
+ * Customer search for attaching an owner to a document — deliberately wider than
+ * searchCustomers, which only looks at name/phone/email/postcode.
+ *
+ * Also matches the street address, the account number, and any registration the customer has
+ * been associated with: their current vehicles AND every reg on their past documents, so a plate
+ * they no longer own still finds them. Registrations are compared with spaces stripped on both
+ * sides, because vehicles store the DVLA solid form ("EO15KVR") while service history keeps
+ * GA4's spaced one ("EO15 KVR") — matching raw text finds neither reliably.
+ *
+ * Each row says how it matched, since searching a reg can return several customers (a plate can
+ * pass between owners) and the name alone doesn't tell you which is the right one.
+ */
+export async function searchCustomersForAttach(query: string, limit = 25) {
+  const db = await getDb();
+  if (!db || !query || query.trim().length < 2) return [];
+  const q = query.trim();
+  const like = `%${q}%`;
+  const regNorm = q.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Postcodes are stored both ways ("NW11 9DY" and "NW119DY"), so compare with spaces stripped.
+  const pcNorm = regNorm;
+  // National significant number, so 07951… finds +447951… and vice versa.
+  let phoneCore = q.replace(/\D/g, "");
+  if (phoneCore.startsWith("44")) phoneCore = phoneCore.slice(2);
+  else if (phoneCore.startsWith("0")) phoneCore = phoneCore.slice(1);
+
+  const res: any = await db.execute(sql`
+    WITH direct AS (
+      SELECT c."id",
+             CASE
+               WHEN c."name" ILIKE ${like} THEN 'name'
+               WHEN c."accountNumber" ILIKE ${like} THEN 'account number'
+               WHEN c."postcode" ILIKE ${like} THEN 'postcode'
+               WHEN c."address" ILIKE ${like} THEN 'address'
+               WHEN c."email" ILIKE ${like} THEN 'email'
+               ELSE 'phone'
+             END AS via, NULL::text AS reg
+      FROM ${customers} c
+      WHERE c."name" ILIKE ${like} OR c."email" ILIKE ${like} OR c."postcode" ILIKE ${like}
+         OR c."address" ILIKE ${like} OR c."accountNumber" ILIKE ${like}
+         OR c."phone" ILIKE ${like}
+         OR (${phoneCore.length >= 6} AND c."phone" ILIKE ${'%' + phoneCore + '%'})
+         OR (${pcNorm.length >= 5} AND REPLACE(UPPER(c."postcode"), ' ', '') LIKE ${'%' + pcNorm + '%'})
+    ),
+    -- Most contact detail lives on the document, not the customer record: a customer row often
+    -- has no phone while every one of their invoices carries custMobile. Search those too and
+    -- map back to the linked customer, or a mobile number finds nobody.
+    by_document AS (
+      SELECT d."customerId" AS id, 'past document' AS via, d."registration" AS reg
+      FROM ${serviceHistory} d
+      WHERE d."customerId" IS NOT NULL AND (
+            d."customerName" ILIKE ${like}
+         OR d."custPostcode" ILIKE ${like}
+         OR d."custRoad" ILIKE ${like}
+         OR (${pcNorm.length >= 5} AND REPLACE(UPPER(d."custPostcode"), ' ', '') LIKE ${'%' + pcNorm + '%'})
+         OR (${phoneCore.length >= 6} AND (
+               REPLACE(d."custMobile", ' ', '') LIKE ${'%' + phoneCore + '%'}
+            OR REPLACE(d."custTelephone", ' ', '') LIKE ${'%' + phoneCore + '%'}))
+      )
+    ),
+    by_vehicle AS (
+      SELECT v."customerId" AS id, 'vehicle' AS via, v."registration" AS reg
+      FROM ${vehicles} v
+      WHERE v."customerId" IS NOT NULL AND ${regNorm.length >= 2}
+        AND REPLACE(UPPER(v."registration"), ' ', '') LIKE ${'%' + regNorm + '%'}
+    ),
+    by_history AS (
+      SELECT d."customerId" AS id, 'past document' AS via, d."registration" AS reg
+      FROM ${serviceHistory} d
+      WHERE d."customerId" IS NOT NULL AND ${regNorm.length >= 2}
+        AND REPLACE(UPPER(d."registration"), ' ', '') LIKE ${'%' + regNorm + '%'}
+    ),
+    hits AS (
+      SELECT * FROM direct UNION ALL SELECT * FROM by_vehicle
+      UNION ALL SELECT * FROM by_history UNION ALL SELECT * FROM by_document
+    ),
+    ranked AS (
+      SELECT id, MIN(via) AS via, MIN(reg) AS reg
+      FROM hits WHERE id IS NOT NULL GROUP BY id
+    )
+    SELECT c."id", c."name", c."phone", c."email", c."postcode", c."address",
+           c."accountNumber", r.via AS "matchedVia", r.reg AS "matchedReg"
+    FROM ranked r JOIN ${customers} c ON c."id" = r.id
+    ORDER BY c."name"
+    LIMIT ${limit}`);
+  return (res.rows ?? res) as any[];
+}
+
 export async function searchCustomers(query: string, limit = 10) {
   const db = await getDb();
   if (!db || !query || query.trim().length < 2) return [];
