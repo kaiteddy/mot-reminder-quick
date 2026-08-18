@@ -15,7 +15,7 @@ const PH = 841.89;           // A4 height in points
 const M = 30;                // Page margin
 const CW = PW - M * 2;      // Content width
 const ROW_H = 16;            // Default table row height (compact, to keep docs on one page)
-const MAX_ROW_H = 90;        // Hard cap on a single tick-table row (ellipsised past this) — one rambling paragraph must not push the job card onto page 2
+const MAX_ROW_H = Math.floor(PH - M * 2 - 40);  // A single tick-table row can grow to a full page; nothing on a job sheet is worth hiding from the mechanic
 const BOTTOM = 40;           // Bottom margin for page breaks
 
 // Colours
@@ -729,8 +729,8 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
       y = checkBreak(rowH);
       cx = M;
       for (const w of cols) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
-      doc.text(row.main, M + 6, y + 4, { width: cols[0] - 12, height: rowH - 7, ellipsis: true });
-      if (row.mid && cols.length === 3) doc.text(row.mid, M + cols[0] + 6, y + 4, { width: cols[1] - 12, height: rowH - 7, ellipsis: true });
+      doc.text(row.main, M + 6, y + 4, { width: cols[0] - 12 });
+      if (row.mid && cols.length === 3) doc.text(row.mid, M + cols[0] + 6, y + 4, { width: cols[1] - 12 });
       y += rowH;
     }
     for (let r = 0; r < blanks; r++) {
@@ -777,16 +777,12 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   for (const l of levels) {
     if (measure(l.fs, l.bh, l.bl, l.bp, services, partRows) <= budget - (l.diag ? DIAG_H : 0)) { cfg = l; break; }
   }
-  // Trim rows until the tables fit; 18pt is reserved up front for the "+N more" hint row
-  // so appending it can't push the card back over the edge.
-  const fitCap = budget - (cfg.diag ? DIAG_H : 0) - 18;
-  let sShow = services, pShow = partRows, cut = 0;
-  while (measure(cfg.fs, cfg.bh, cfg.bl, cfg.bp, sShow, pShow) > fitCap
-    && (sShow.length > 1 || pShow.length > 1)) {
-    if (sShow.length >= pShow.length) sShow = sShow.slice(0, -1); else pShow = pShow.slice(0, -1);
-    cut++;
-  }
-  if (cut) sShow = [...sShow, { main: `… +${cut} more line${cut === 1 ? '' : 's'} — see the full job in the system` }];
+  // Everything on the job goes on the job sheet. This used to drop rows until the card fitted a
+  // single page and print "+N more lines — see the full job in the system", which is exactly the
+  // detail the mechanic in the bay does not have the system in front of them to go and read.
+  // The smallest level above is chosen when a job is long, and anything still over the page runs
+  // onto a second sheet (tickTable already breaks pages via checkBreak).
+  const sShow = services, pShow = partRows;
 
   // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
   // for the mechanic to log labour (Tech / Qty / Done).

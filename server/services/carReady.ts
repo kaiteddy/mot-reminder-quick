@@ -9,6 +9,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb, getAppSetting } from "../db";
 import { customers, serviceHistory, vehicles } from "../../drizzle/schema";
 import { generateCarReadyMessage, sendCarReadyMessage, isOwnNumber } from "../smsService";
+import { createReminderLog } from "../db";
 
 /** The Twilio ContentSid of the approved "car ready" WhatsApp template, once there is one. */
 export const CAR_READY_TEMPLATE_KEY = "carReadyTemplateSid";
@@ -28,6 +29,7 @@ async function loadDoc(docId: number) {
       custMobile: serviceHistory.custMobile,
       custTelephone: serviceHistory.custTelephone,
       customerId: serviceHistory.customerId,
+      vehicleId: serviceHistory.vehicleId,
       fallbackName: customers.name,
       fallbackPhone: customers.phone,
       make: vehicles.make,
@@ -112,5 +114,29 @@ export async function sendCarReady(params: { docId: number; to: string; message:
     templateSid,
   });
   if (!result.success) throw new Error(result.error || "Message failed to send");
-  return { success: true as const, to, sid: (result as any).messageSid ?? null };
+
+  // Record it against the customer. A conversation thread is built from reminderLogs (what we
+  // sent) plus customerMessages (what they sent back); without this the customer's reply arrives
+  // in Conversations with nothing before it, and no way to see that we told them the car was
+  // ready or when. Logging must never lose a message that has already gone out, so a failure
+  // here is reported and swallowed rather than thrown.
+  try {
+    await createReminderLog({
+      customerId: row.customerId ?? null,
+      vehicleId: row.vehicleId ?? null,
+      messageType: "car_ready",
+      recipient: to,
+      messageSid: (result as any).messageId ?? null,
+      status: "sent",
+      templateUsed: templateSid ? "vehicle_ready" : null,
+      customerName: pickName(row),
+      registration: row.registration || null,
+      messageContent: params.message,
+      sentAt: new Date(),
+    } as any);
+  } catch (e: any) {
+    console.error("[carReady] sent but failed to log:", e?.message);
+  }
+
+  return { success: true as const, to, sid: (result as any).messageId ?? null };
 }
