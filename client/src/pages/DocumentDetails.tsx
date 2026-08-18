@@ -976,7 +976,24 @@ export default function DocumentDetails() {
                 className="accent-violet-600 w-3.5 h-3.5" />
               MOT
             </label>
-            <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
+            {/* Typing an amount straight in counts as doing an MOT just as much as ticking the box
+                does, so fill the same defaults here. Without this the class and status stayed
+                blank whenever the checkbox was bypassed — 8 of August's MOTs arrived that way,
+                which is why they show as "(no class recorded)" on the MOT Sales report. */}
+            <MoneyInput value={form.motAmount} readOnly={!editing} onChange={(v) => {
+              if ((num(v) || 0) > 0) {
+                setForm((f) => ({
+                  ...f,
+                  motAmount: v,
+                  motClass: f.motClass || "4",
+                  motStatus: f.motStatus || "Pass",
+                  staffMotTester: f.staffMotTester || "Dec Buckley",
+                }));
+                markDirty();
+              } else {
+                set("motAmount", v);
+              }
+            }} />
           </div>
           <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
           <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
