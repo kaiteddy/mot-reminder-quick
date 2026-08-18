@@ -1430,7 +1430,7 @@ function CarTradingTab() {
                   <TableCell>
                     <Select value={r.status} disabled={locked} onValueChange={(v) => save(r.id, { status: v })}>
                       <SelectTrigger className="h-8 w-[108px]"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
+                      <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem>{/* Cars we own but are not selling. Without these the record shows an empty box and cannot be changed, and the car counts towards neither tile. */}<SelectItem value="courtesy">Courtesy car</SelectItem><SelectItem value="asset">Business asset</SelectItem></SelectContent>
                     </Select>
                   </TableCell>
                   <TableCell><EditCell v={r.purchaseDate} type="date" disabled={locked} w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>
