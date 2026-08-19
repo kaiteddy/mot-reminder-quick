@@ -231,7 +231,8 @@ function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number):
   };
 
   const up = (s: any) => String(s ?? '').toUpperCase();
-  const mileage = Number(v.mileage) > 0 ? String(v.mileage) : ''; // blank (not 0) so staff fill it in
+  const mileage = Number(v.mileage) > 0 ? String(v.mileage) : 'Not recorded'; // 0/absent is the agreed marker for mileage-not-recorded (Adam, 2026-08-18) - say so on the
+  // document rather than printing a bare 0 or a blank, which read as a real reading of zero.
 
   drawRow(['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'], cw, true, y);
   y += ROW_H;
