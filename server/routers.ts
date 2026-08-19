@@ -512,11 +512,21 @@ export const appRouter = router({
         const { deletePayment } = await import("./db");
         return deletePayment(input.id);
       }),
+    /** Does this invoice's MOT line agree with the DVSA's record of when the test happened?
+     *  Catches an MOT being billed weeks after it was carried out, which silently moves the
+     *  sale into the wrong month. Returns null when there is nothing to check. */
+    motDateCheck: publicProcedure
+      .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { checkMotDate } = await import("./services/motDateCheck");
+        return checkMotDate(input.id, input.issueDate);
+      }),
+
     issue: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { issueDocument } = await import("./db");
-        return issueDocument(input.id);
+        return issueDocument(input.id, { issueDate: input.issueDate });
       }),
 
     // --- policy-excess insurance split ---

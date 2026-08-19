@@ -368,10 +368,10 @@ export default function DocumentDetails() {
       setLocation(`${base}/documents`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
-  async function doIssue(after: "none" | "print" | "email" | "both") {
+  async function doIssue(after: "none" | "print" | "email" | "both", issueDate?: string) {
     try {
       await flushPending();
-      await issueMut.mutateAsync({ id });
+      await issueMut.mutateAsync({ id, issueDate });
       await utils.documents.getById.invalidate({ id });
       setIssueOpen(false);
       toast.success("Invoice issued");
@@ -2014,8 +2014,14 @@ const PAYMENT_METHODS = ["Cash", "Card", "Bank Transfer", "Cheque", "Account", "
 
 function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onClose, onIssue, issuing, onChanged }: {
   id: number; docNo?: string; statusLabel: string; gross: number; customerId?: number; payments: any[];
-  onClose: () => void; onIssue: (after: "none" | "print" | "email" | "both") => void; issuing: boolean; onChanged: () => void;
+  onClose: () => void; onIssue: (after: "none" | "print" | "email" | "both", issueDate?: string) => void; issuing: boolean; onChanged: () => void;
 }) {
+  // The invoice used to be stamped with the moment Issue was pressed, with no way to say when
+  // the work was actually done — which is how eight May/June/July MOTs ended up dated 12 August.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [issueDate, setIssueDate] = useState(todayISO);
+  const motCheck = trpc.documents.motDateCheck.useQuery({ id, issueDate }, { enabled: statusLabel === "Not Issued" });
+  const mot = motCheck.data as any;
   const addP = trpc.documents.addPayment.useMutation();
   const delP = trpc.documents.deletePayment.useMutation();
   const [method, setMethod] = useState("Cash");
@@ -2040,12 +2046,35 @@ function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onCl
         <div className="flex border-b bg-slate-100">
           <button onClick={onClose} className="px-4 py-2 text-sm hover:bg-slate-200 border-r">Close</button>
           {issueBtns.map(([label, after]) => (
-            <button key={after} onClick={() => onIssue(after)} disabled={issuing} className="px-4 py-2 text-sm hover:bg-violet-100 border-r disabled:opacity-50 inline-flex items-center gap-1.5">
+            <button key={after} onClick={() => onIssue(after, issueDate)} disabled={issuing} className="px-4 py-2 text-sm hover:bg-violet-100 border-r disabled:opacity-50 inline-flex items-center gap-1.5">
               {issuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}{label}
             </button>
           ))}
         </div>
         <div className="p-4">
+          {statusLabel === "Not Issued" && (
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Invoice date</span>
+                <input type="date" value={issueDate} max={todayISO} onChange={(e) => setIssueDate(e.target.value)}
+                  className="h-9 px-2 rounded border border-slate-300 text-[13px]" />
+              </label>
+              <p className="text-[11px] text-slate-400 pb-2">
+                Defaults to today. Change it when billing work done earlier, so the sale lands in the right month.
+              </p>
+            </div>
+          )}
+          {mot?.status === "mismatch" && (
+            <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="text-[13px] text-amber-900">{mot.message}</p>
+              {mot.suggestedIssueDate && (
+                <button type="button" onClick={() => setIssueDate(mot.suggestedIssueDate)}
+                  className="mt-1.5 text-[12px] font-medium text-amber-900 underline underline-offset-2">
+                  Use the test date ({mot.suggestedIssueDate}){mot.testResult ? ` · ${mot.testResult}` : ""}
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex items-start justify-between gap-4">
             <div className="text-sm text-slate-600 pt-2">
               {outstanding <= 0 ? <p>The invoice balance is zero.<br />No further payments are required.</p>

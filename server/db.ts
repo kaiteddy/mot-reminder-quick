@@ -4266,13 +4266,30 @@ export async function getStuckGa4Claims(minAgeHours = 24) {
 /** Mark a document as issued (locks it in, stamps dateIssued + status, recomputes balance).
  *  On issuing an invoice we also POP a reserved GA4 number so the printed document carries the
  *  real GA4 number instantly; the claimed pool row becomes the worker's fill queue. */
-export async function issueDocument(documentId: number) {
+/**
+ * Issue a document. `issueDate` exists because the invoice used to be stamped with the moment
+ * Issue was pressed, with no way to say when the work was actually done — so a catch-up session
+ * in August dated eight May/June/July MOTs to the day they were keyed, moving them into the
+ * wrong month. Passing the real date fixes that at source.
+ */
+export async function issueDocument(documentId: number, opts?: { issueDate?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const doc = (await db.select().from(serviceHistory).where(eq(serviceHistory.id, documentId)).limit(1))[0];
   if (!doc) throw new Error("Document not found");
   const set: any = {};
-  if (!doc.dateIssued) set.dateIssued = new Date();
+  if (!doc.dateIssued) {
+    // A supplied date is a plain YYYY-MM-DD; keep the current time of day so ordering within a
+    // day still works, and never accept a future date.
+    let when = new Date();
+    if (opts?.issueDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.issueDate)) {
+      const [y, m, d] = opts.issueDate.split("-").map(Number);
+      const now = new Date();
+      const picked = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+      if (picked.getTime() <= now.getTime()) when = picked;
+    }
+    set.dateIssued = when;
+  }
   const { balance, receipts } = await recomputeDocBalance(documentId);
   set.docStatus = balance <= 0 && (receipts > 0 || Number(doc.totalGross) === 0) ? "Paid" : "Issued";
   // Instant GA4 number for the printed doc. Only for invoice-type docs (SI/XS), only once,
