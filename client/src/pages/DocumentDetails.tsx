@@ -222,7 +222,8 @@ export default function DocumentDetails() {
     const m: string[] = [];
     if (form.docType === "SI" || form.docType === "XS") {
       if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
-      if (!String(form.mileage ?? "").trim()) m.push("Mileage");
+      // Mileage is deliberately NOT blocking (Adam, 2026-08-19): warn only, and an empty
+      // invoice mileage saves as 0, the agreed marker for "no reading obtained".
     }
     // Either number reaches the customer — only block on a genuinely missing contact number.
     if (form.docType === "JS" && !String(form.custMobile ?? "").trim() && !String(form.custTelephone ?? "").trim()) m.push("Mobile or telephone number");
@@ -785,7 +786,16 @@ export default function DocumentDetails() {
       company: form.company, accountNumber: form.accountNumber,
       custHouseNo: form.custHouseNo, custRoad: form.custRoad, custLocality: form.custLocality, custTown: form.custTown,
       custCounty: form.custCounty, custPostcode: form.custPostcode, custTelephone: form.custTelephone, custMobile: form.custMobile, custEmail: form.custEmail,
-      mileage: form.mileage ? Number(String(form.mileage).replace(/\D/g, "")) || null : null,
+      // Mileage: 0 is the agreed marker for "we did not obtain a reading" (Adam, 2026-08-18),
+      // so it must survive. The old `Number(..) || null` turned a deliberate 0 back into null.
+      // An invoice with nothing entered defaults to 0 silently - warn, never block. A job sheet
+      // stays null/blank, because the reading is taken while the job is still open.
+      mileage: (() => {
+        const digits = String(form.mileage ?? "").replace(/\D/g, "");
+        if (digits === "") return (form.docType === "SI" || form.docType === "XS") ? 0 : null;
+        const n = Number(digits);
+        return Number.isFinite(n) ? n : null;
+      })(),
       dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
@@ -1426,9 +1436,10 @@ export default function DocumentDetails() {
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              {/* GA4 Classic always shows Mileage as required (matches the real app's visual cue);
-                  the actual print/email block still only applies to invoices, see requiredMissing(). */}
-              <EF label="Mileage" field="mileage" required={isInvoice || !!base} grow {...{ form, set, editing }} />
+              {/* GA4 Classic shows the required cue on Mileage for every doc type, matching the
+                  real app. That is a visual cue only - what 0 means, and which docs default to it,
+                  is driven by isInvoice. */}
+              <MileageField {...{ form, set, editing }} isInvoice={isInvoice} classicCue={!!base} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
               {base && (
@@ -2272,6 +2283,48 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
       {editing && (customerId
         ? <button type="button" onClick={() => { setRows((p) => [...p, { name: "", phone: "" }]); setDirty(true); }} className="mt-1 inline-flex items-center gap-1 text-[11px] text-violet-700 hover:underline"><Plus className="w-3 h-3" /> Add number</button>
         : <p className="text-[11px] text-slate-400">Link a customer first to save extra numbers.</p>)}
+    </div>
+  );
+}
+
+// Mileage entry. 0 means "no reading obtained" - some jobs genuinely miss it, some do not need
+// one - so staff need a way to say that deliberately rather than leaving the box empty and hoping.
+// Warn-only by design: an invoice saved with nothing entered defaults to 0 silently (see
+// buildPayload). Job sheets stay blank, because the reading is taken while the job is still open.
+function MileageField({ form, set, editing, isInvoice, classicCue = false }: { form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; isInvoice: boolean; classicCue?: boolean }) {
+  const raw = String(form.mileage ?? "").trim();
+  const notRecorded = raw !== "" && Number(raw.replace(/\D/g, "")) === 0;
+  const empty = raw === "";
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+        <span className="w-24 shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right">Mileage</span>
+        {notRecorded ? (
+          <div className={boxCls(editing) + " w-full sm:flex-1 flex items-center justify-between gap-2"}>
+            <span className="italic text-slate-500">Not recorded</span>
+            {editing && (
+              <button type="button" onClick={() => set("mileage", "")} className="text-[11px] font-medium text-violet-700 hover:underline">
+                enter a reading
+              </button>
+            )}
+          </div>
+        ) : (
+          <input
+            type="text" inputMode="numeric" value={form.mileage ?? ""} readOnly={!editing}
+            onChange={(e) => set("mileage", e.target.value)}
+            placeholder={isInvoice ? "Reading at time of work" : ""}
+            className={boxCls(editing) + " w-full sm:flex-1" + ((isInvoice || classicCue) && empty ? " ring-1 ring-amber-400" : "")}
+          />
+        )}
+      </div>
+      {editing && !notRecorded && (
+        <div className="ml-0 sm:ml-[104px] flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+          {isInvoice && empty && <span className="text-amber-700">Nothing entered &mdash; this will save as &ldquo;Not recorded&rdquo;.</span>}
+          <button type="button" onClick={() => set("mileage", "0")} className="font-medium text-violet-700 hover:underline">
+            No mileage recorded
+          </button>
+        </div>
+      )}
     </div>
   );
 }
