@@ -2595,6 +2595,10 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
                ${C(serviceHistory.fixedItem2Net, "lubricants")} AS lubricants,
                ${C(serviceHistory.fixedItem3Net, "paint")} AS paint,
                ${C(serviceHistory.excessNet, "excess")} AS excess,
+               -- An insurance excess deduction reduces the invoice total but not the category
+               -- lines, so without subtracting it the categories overstate the day and "Other"
+               -- goes negative (90487 by £250, 90539 by £500). GA4 prints it as "Minus Excess".
+               ${S(serviceHistory.excessDiscount)} AS "excessDeduction",
                ${S(serviceHistory.totalNet)} AS net, ${S(serviceHistory.totalTax)} AS tax,
                ${S(serviceHistory.totalGross)} AS gross
         FROM ${serviceHistory}
@@ -2615,7 +2619,8 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       const fmt = (d: string) => { const [y, m, dd] = d.split("-"); return `${dd}/${m}/${y}`; };
       const out = rows.map((r: any) => {
         const v: any = {}; for (const k of ["n", "labour", "parts", "mot", "sundries", "lubricants", "paint", "excess", "net", "tax", "gross"]) v[k] = Number(r[k]) || 0;
-        v.other = +(v.net - (v.labour + v.parts + v.mot + v.sundries + v.lubricants + v.paint + v.excess)).toFixed(2);
+        const deduction = Number(r.excessDeduction) || 0;
+        v.other = +(v.net - (v.labour + v.parts + v.mot + v.sundries + v.lubricants + v.paint + v.excess - deduction)).toFixed(2);
         for (const k of Object.keys(g)) g[k] += v[k] || 0;
         return { date: fmt(r.day), ...v };
       });
