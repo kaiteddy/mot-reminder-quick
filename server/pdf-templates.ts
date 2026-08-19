@@ -206,7 +206,7 @@ function customerAndDoc(
 }
 
 /** Vehicle information table (4 rows). Returns new y. */
-function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number): number {
+function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number, isInvoice = false): number {
   const cw = V_RATIOS.map((r) => CW * r);
 
   // Draw centred text auto-shrunk so it ALWAYS stays on one line within the cell.
@@ -231,8 +231,10 @@ function vehicleTable(doc: InstanceType<typeof PDFDocument>, v: any, y: number):
   };
 
   const up = (s: any) => String(s ?? '').toUpperCase();
-  const mileage = Number(v.mileage) > 0 ? String(v.mileage) : 'Not recorded'; // 0/absent is the agreed marker for mileage-not-recorded (Adam, 2026-08-18) - say so on the
-  // document rather than printing a bare 0 or a blank, which read as a real reading of zero.
+  // 0/absent is the agreed marker for mileage-not-recorded (Adam, 2026-08-18). Say so on an
+  // INVOICE, where a bare 0 reads as a real reading of zero. Job sheets and estimates stay
+  // blank: the reading is taken while the job is open, so there is nothing to state yet.
+  const mileage = Number(v.mileage) > 0 ? String(v.mileage) : (isInvoice ? 'Not recorded' : '');
 
   drawRow(['Registration', 'Make', 'Model', 'Chassis Number', 'Mileage'], cw, true, y);
   y += ROW_H;
@@ -462,7 +464,7 @@ export async function generateInvoicePDF(data: any, opts: { customerCopyOnly?: b
 
     // Vehicle table
     y = checkBreak(ROW_H * 4);
-    y = vehicleTable(doc, data.vehicle, y);
+    y = vehicleTable(doc, data.vehicle, y, true);
     y += 14;
 
     // Work description (title + lines) — width-wrapped so long text never overwrites

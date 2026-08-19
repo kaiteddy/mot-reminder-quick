@@ -165,7 +165,8 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
             <td>{vehicle?.make || "-"}</td>
             <td>{vehicle?.model || "-"}</td>
             <td style={{ fontSize: 10 }}>{vehicle?.vin || "-"}</td>
-            <td className="big">{Number(doc.mileage) > 0 ? Number(doc.mileage).toLocaleString("en-GB") : "Not recorded"}</td>
+            <td className="big">{Number(doc.mileage) > 0 ? Number(doc.mileage).toLocaleString("en-GB")
+              : isInvoice ? "Not recorded" : ""}</td>
           </tr>
           <tr><th>Engine No</th><th>Engine Code</th><th>Engine CC</th><th>Date Reg</th><th>Colour</th></tr>
           <tr>
