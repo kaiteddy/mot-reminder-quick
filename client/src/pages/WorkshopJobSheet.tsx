@@ -142,13 +142,18 @@ export default function WorkshopJobSheet() {
   const pricingQ = trpc.ai.getPricingKnowledge.useQuery(undefined, { staleTime: 5 * 60_000 });
   const bandsQ = trpc.priceGuide.labourBands.useQuery(undefined, { staleTime: 5 * 60_000 });
   const priceListQ = trpc.partsPriceList.list.useQuery({}, { staleTime: 5 * 60_000 });
+  // Major Service labour comes from the Price Guide: the median of what we actually charged
+  // for full-service labour on this size band (there is no banded table for it).
+  const guideQ = trpc.priceGuide.forRegistration.useQuery({ registration: reg }, { enabled: !!reg, staleTime: 5 * 60_000 });
   const motPrice = Number((pricingQ.data as any)?.motCost) || 50;
   const serviceSets = buildServiceSets({
     vehInfo: parseVehOil(vehicle),
     engineCC: vehicle?.engineCC,
     priceList: (priceListQ.data as any[]) || [],
     labourBands: (bandsQ.data as any[]) || [],
+    majorLabourNet: (guideQ.data as any)?.fullServiceLabour?.net,
   });
+  const majorLabourPrice = serviceSets.major.labour?.unitPrice;
   const smallLabourPrice = serviceSets.small.labour?.unitPrice;
 
   const [ticks, setTicks] = useState<{ mot: boolean; small: number[] | null; major: number[] | null }>({ mot: false, small: null, major: null });
@@ -370,7 +375,7 @@ export default function WorkshopJobSheet() {
               <div className="grid grid-cols-3 gap-2">
                 <JobChip on={ticks.mot} label="MOT" sub={`£${motPrice}`} onClick={toggleMot} />
                 <JobChip on={!!ticks.small} label="Small Service" sub={smallLabourPrice ? `£${smallLabourPrice} + parts` : "labour + parts"} onClick={() => toggleService("small")} />
-                <JobChip on={!!ticks.major} label="Major Service" sub="oil + filters" onClick={() => toggleService("major")} />
+                <JobChip on={!!ticks.major} label="Major Service" sub={majorLabourPrice ? `£${majorLabourPrice} + parts` : "oil + filters"} onClick={() => toggleService("major")} />
               </div>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Describe the work to be carried out…" rows={4} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[16px] outline-none focus:border-violet-500" />
             </div>

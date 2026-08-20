@@ -79,6 +79,10 @@ export function buildServiceSets(opts: {
   priceList: any[];
   labourBands: any[] | undefined;
   grade?: string;
+  /** Net labour for a Major/Full Service. No banded table exists for it — the caller passes the
+   * Price Guide's per-band median of what we've actually charged (priceGuide.forRegistration →
+   * fullServiceLabour.net). Absent → the labour line is left for staff to price. */
+  majorLabourNet?: number | null;
 }): Record<string, ServiceSet> {
   const { vehInfo, priceList } = opts;
   const priced = (description: string, quantity: number): ServicePart => ({ description, quantity, ...priceListMatch(description, priceList) });
@@ -95,7 +99,12 @@ export function buildServiceSets(opts: {
 
   const sets: Record<string, ServiceSet> = {
     small: { label: "Small Service", parts: [oil, oilFilter, priced("Sump Plug Seal", 1)], sundries: 4.5, labour: smallServiceLabour },
-    major: { label: "Major Service", parts: [oil, oilFilter, priced("Air Filter", 1), priced("Cabin Filter", 1), priced("Sump Plug", 1)], sundries: 5.5 },
+    major: {
+      label: "Major Service",
+      parts: [oil, oilFilter, priced("Air Filter", 1), priced("Cabin Filter", 1), priced("Sump Plug", 1)],
+      sundries: 5.5,
+      labour: opts.majorLabourNet ? { description: "Major Service Labour", unitPrice: opts.majorLabourNet } : undefined,
+    },
   };
   if (vehInfo?.airconType) {
     sets.aircon = {

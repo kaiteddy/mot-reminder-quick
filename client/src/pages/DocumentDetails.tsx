@@ -1605,6 +1605,7 @@ export default function DocumentDetails() {
                       <ServicePartsPicker
                         vehInfo={vehInfo}
                         engineCC={form.engineCC}
+                        registration={form.registration}
                         onAdd={(label, parts, sundries, labour) => {
                           setItemsDirty((p) => [
                             ...p,
@@ -2926,8 +2927,8 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
 // oil quantity matches the engine. Multiple services can be added (pick each in turn).
 // The set definitions live in lib/serviceParts — shared with the mobile job sheet's job chips,
 // so the two pickers cannot drift.
-function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
-  vehInfo: any; engineCC?: any;
+function ServicePartsPicker({ vehInfo, engineCC, registration, onAdd }: {
+  vehInfo: any; engineCC?: any; registration?: string;
   onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number, labour?: { description: string; unitPrice: number }) => void;
 }) {
   const grades: string[] = vehInfo?.oilGrades || [];
@@ -2940,9 +2941,12 @@ function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
   // The banded labour rule, straight from the table Adam maintains.
   const { data: labourBands } = trpc.priceGuide.labourBands.useQuery({}, { staleTime: 5 * 60_000 });
   const hasAircon = !!vehInfo?.airconType;
+  // Major Service labour: the Price Guide's per-band median of what we actually charged.
+  const { data: guideData } = trpc.priceGuide.forRegistration.useQuery(
+    { registration: registration || "" }, { enabled: !!registration, staleTime: 5 * 60_000 });
   // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
   // priced "part", so it bumps the document's Sundries total rather than adding a line item.
-  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade });
+  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade, majorLabourNet: (guideData as any)?.fullServiceLabour?.net });
 
   return (
     <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">

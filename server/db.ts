@@ -5496,6 +5496,10 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     band,
     ourLabour,
     labourBands,
+    // Full-service labour median for this size band, from what these jobs ACTUALLY carried —
+    // there is no fullService row in serviceLabourBands, so the guide IS its price source.
+    // net is for prefilling job-sheet labour lines (line prices are ex-VAT).
+    fullServiceLabour: fullStats ? { net: Math.round(fullStats.labour / 1.2), incVat: fullStats.labour, n: fullStats.n } : null,
     options,
     combos,
     motPrice: MOT_PRICE,
