@@ -22,6 +22,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
+import { buildServiceSets } from "@/lib/serviceParts";
 import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -2923,27 +2924,8 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
 // Pick a service type and it drops the right PARTS straight onto the job (not labour),
 // pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
 // oil quantity matches the engine. Multiple services can be added (pick each in turn).
-// A part's name matches a price-list entry when every significant word (≥3 letters, so a grade
-// like "5W-30" still counts) in the entry's description appears somewhere in the part's — handles
-// word-order differences like "Engine Oil — 5W-30" vs. a price-list entry titled "5W-30 Engine Oil".
-function priceListMatch(desc: string, priceList: { description: string; unitPrice: string; vatRate: string | null }[]) {
-  const d = desc.toLowerCase();
-  const hit = priceList.find((p) => {
-    const words = p.description.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
-    return words.length > 0 && words.every((w) => d.includes(w));
-  });
-  return hit ? { unitPrice: Number(hit.unitPrice), vatRate: hit.vatRate != null ? Number(hit.vatRate) : undefined } : {};
-}
-
-// Fallback only. Service labour is banded by engine size in the serviceLabourBands table, which
-// the picker reads below — these two tiers are what's used if that query hasn't answered yet.
-// They were the ONLY rule until now, and being a separate copy is exactly why a 1997cc CR-V
-// priced at £124: their cutoff is "under 2000cc", while the real bands break at 1500 and 2000,
-// putting anything over 1.5L up to 2.0L at £144.
-const SMALL_SERVICE_LABOUR_CC_CUTOFF = 2000;
-const SMALL_SERVICE_LABOUR_SMALL = 124;
-const SMALL_SERVICE_LABOUR_LARGE = 144;
-
+// The set definitions live in lib/serviceParts — shared with the mobile job sheet's job chips,
+// so the two pickers cannot drift.
 function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
   vehInfo: any; engineCC?: any;
   onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number, labour?: { description: string; unitPrice: number }) => void;
@@ -2957,36 +2939,10 @@ function ServicePartsPicker({ vehInfo, engineCC, onAdd }: {
   const priceList = (priceListData as any[]) || [];
   // The banded labour rule, straight from the table Adam maintains.
   const { data: labourBands } = trpc.priceGuide.labourBands.useQuery({}, { staleTime: 5 * 60_000 });
-  const priced = (description: string, quantity: number) => ({ description, quantity, ...priceListMatch(description, priceList) });
-
-  const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
-  const oilLabel = grade || vehInfo?.oilSpec || "";
-  const oil = priced(oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", oilCap || 1);
-  const oilFilter = priced("Oil Filter", 1);
   const hasAircon = !!vehInfo?.airconType;
-  const acGas = priced(`Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), 1);
-
-  const cc = parseFloat(String(engineCC ?? "").replace(/[^0-9.]/g, "")) || 0;
-  // Bands are ordered by their ceiling, with the last one open-ended, so the first whose maxCC
-  // the engine fits under is the right one. Falls back to the old two-tier constants only if
-  // the query hasn't answered.
-  const bandLabour = (() => {
-    const bands = (labourBands as any[]) || [];
-    if (!bands.length) return cc < SMALL_SERVICE_LABOUR_CC_CUTOFF ? SMALL_SERVICE_LABOUR_SMALL : SMALL_SERVICE_LABOUR_LARGE;
-    const hit = bands.find((b) => b.maxCC == null || cc <= Number(b.maxCC));
-    return Number(hit?.labour ?? SMALL_SERVICE_LABOUR_SMALL);
-  })();
-  const smallServiceLabour = cc > 0
-    ? { description: "Small Service Labour", unitPrice: bandLabour }
-    : undefined; // engine size not known yet — leave labour for staff to add manually rather than guess
-
   // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
   // priced "part", so it bumps the document's Sundries total rather than adding a line item.
-  const SETS: Record<string, { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number; labour?: { description: string; unitPrice: number } }> = {
-    small: { label: "Small Service", parts: [oil, oilFilter, priced("Sump Plug Seal", 1)], sundries: 4.5, labour: smallServiceLabour },
-    major: { label: "Major Service", parts: [oil, oilFilter, priced("Air Filter", 1), priced("Cabin Filter", 1), priced("Sump Plug", 1)], sundries: 5.5 },
-    aircon: { label: "Air Con Re-Gas", parts: [acGas] },
-  };
+  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade });
 
   return (
     <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
