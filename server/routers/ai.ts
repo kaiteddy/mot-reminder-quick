@@ -237,7 +237,9 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       if (db) {
         const [hit] = await db.select().from(defectExplanations)
           .where(eq(defectExplanations.defectKey, defectKey)).limit(1);
-        if (hit) return { ...(hit.explanation as object), cached: true } as any;
+        // Rows cached before nextStep/searchQuery existed fall through and regenerate.
+        const exp = hit?.explanation as any;
+        if (exp?.nextStep && exp?.searchQuery) return { ...exp, cached: true } as any;
       }
 
       if (!hasAIKey()) {
@@ -264,7 +266,9 @@ Return these fields:
 - whatNeedsDoing: the repair in plain terms — replace/adjust/repair what. 1-2 sentences, no prices.
 - urgency: one of "monitor" (fine to keep an eye on), "plan" (not urgent, plan it in), "soon" (book in soon — it will get worse or affect the next MOT), "urgent" (safety issue — sort before driving much more). Calibrate honestly to the severity category: most ADVISORY items are "monitor" or "plan"; MAJOR/FAIL items are usually "soon" or "urgent"; DANGEROUS is always "urgent".
 - urgencyNote: one short honest sentence backing up the urgency.
-- customerScript: 2-4 friendly conversational sentences the garage can read out on the phone or paste into a text message to the customer — covering what it is, what's wrong, why it matters, and what you'd recommend. Written as "we found / we'd recommend". No greeting, no sign-off, no prices.`,
+- nextStep: the concrete first step the garage would take, as ONE full sentence beginning "The next step is" — what the check involves and roughly how long it takes (e.g. "The next step is a quick look on the ramp — about 15 minutes — to trace exactly where the oil is coming from."). This answers the customer's "so what do I do?" — make it specific, not "get it checked".
+- searchQuery: 2-5 bare part/repair nouns, space-separated, matching the wording a garage invoice would use for this repair — used to search this garage's own past invoices for real prices (e.g. "caliper pads discs" for a binding brake, "gasket sump rocker" for an oil leak, "drop link bush" for a knocking anti-roll bar). Nouns only — no verbs, no location words like front/rear/nearside.
+- customerScript: 2-4 friendly conversational sentences the garage can read out on the phone or paste into a text message to the customer — covering what it is, what's wrong, why it matters, and what you'd recommend. Written as "we found / we'd recommend". No greeting, no sign-off, no prices. End on the recommendation, confident and reassuring — never trail off on a warning.`,
           prompt,
           schema: z.object({
             partName: z.string(),
@@ -274,15 +278,18 @@ Return these fields:
             whatNeedsDoing: z.string(),
             urgency: z.enum(["monitor", "plan", "soon", "urgent"]),
             urgencyNote: z.string(),
+            nextStep: z.string(),
+            searchQuery: z.string(),
             customerScript: z.string(),
           }),
         });
 
         if (db) {
           try {
+            // Upsert (not DoNothing) so pre-nextStep rows get refreshed with the new fields.
             await db.insert(defectExplanations)
               .values({ defectKey, defectText: normalized, defectType: severity || null, explanation: object, aiModel: AI_MODEL_GUIDE })
-              .onConflictDoNothing();
+              .onConflictDoUpdate({ target: defectExplanations.defectKey, set: { explanation: object, aiModel: AI_MODEL_GUIDE } });
           } catch (e) {
             console.error("[AI] Failed to cache defect explanation", e);
           }

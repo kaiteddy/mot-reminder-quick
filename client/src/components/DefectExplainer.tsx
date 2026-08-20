@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sparkles, Loader2, Copy, Check, Wrench, AlertTriangle, Car, ClipboardList, MessageSquareText } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check, Wrench, AlertTriangle, Car, ClipboardList, MessageSquareText, ArrowRight, PoundSterling } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -9,9 +9,14 @@ import { toast } from "sonner";
  * listed (MOT check pages, the vehicle's MOT history tab, the job sheet's MOT Advisories tab).
  *
  * Fetches a structured plain-English explanation from ai.explainDefect: what the part does,
- * what the tester found, how it affects the car, what needs doing, an honest urgency, and a
- * ready-to-send customer paragraph. Server-side cache means a given DVSA wording is generated
- * once ever — repeat opens are instant.
+ * what the tester found, how it affects the car, what needs doing, an honest urgency, the
+ * concrete next step, and a ready-to-send customer message. Server-side cache means a given
+ * DVSA wording is generated once ever — repeat opens are instant.
+ *
+ * Prices are never AI-guessed: the explanation carries a searchQuery of invoice nouns, which
+ * feeds documents.repairPricing — the garage's own past invoices — for a real "similar jobs
+ * came to £X–£Y" band. With too little history the customer message falls back to the
+ * check-first-then-quote reassurance, which is the honest answer to "how much to look into it?".
  */
 
 const URGENCY: Record<string, { label: string; cls: string }> = {
@@ -32,14 +37,39 @@ function Section({ icon: Icon, title, children }: { icon: any; title: string; ch
   );
 }
 
-export function DefectExplainButton({ defectText, defectType, isDangerous }: {
+/** Typical all-in price band from real past jobs: prefer same-model history, then same-make,
+ * then everything; inter-quartile so one outlier invoice doesn't stretch the band; gross of
+ * VAT because that's the number a customer pays; rounded to £10 because it's a guide. */
+function priceBand(jobs: any[] | undefined) {
+  if (!jobs?.length) return null;
+  const pick = (f: (j: any) => boolean, label: string) => {
+    const g = jobs.filter(f).map((j) => Math.round(Number(j.repairNet) * 1.2 * 100) / 100).filter((n) => n > 0).sort((a, b) => a - b);
+    return g.length >= 3 ? { g, label } : null;
+  };
+  const sel = pick((j) => j.sameModel, "this model") || pick((j) => j.sameMake, "this make") || pick(() => true, "all makes");
+  if (!sel) return null;
+  const { g, label } = sel;
+  const lo = g[Math.floor(0.25 * (g.length - 1))], hi = g[Math.ceil(0.75 * (g.length - 1))];
+  return { n: g.length, label, lo: Math.max(10, Math.floor(lo / 10) * 10), hi: Math.ceil(hi / 10) * 10 };
+}
+
+export function DefectExplainButton({ defectText, defectType, isDangerous, make, model }: {
   defectText: string;
   defectType?: string;
   isDangerous?: boolean;
+  make?: string;
+  model?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const explain = trpc.ai.explainDefect.useMutation();
+  const d: any = explain.data;
+
+  const pricing = trpc.documents.repairPricing.useQuery(
+    { query: d?.searchQuery || "", make, model },
+    { enabled: !!d?.searchQuery, staleTime: 5 * 60_000 },
+  );
+  const band = priceBand(pricing.data?.jobs);
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
@@ -48,13 +78,20 @@ export function DefectExplainButton({ defectText, defectType, isDangerous }: {
     }
   };
 
-  const d: any = explain.data;
   const urgency = d ? URGENCY[d.urgency] || URGENCY.plan : null;
 
+  // The full message shown in (and copied from) the "Tell the customer" box: the plain-English
+  // account, the concrete next step, then the money answer — a real band from our own invoices
+  // when we have one, otherwise the check-first-then-quote promise.
+  const priceSentence = band
+    ? `Similar jobs with us have typically come to around £${band.lo}–£${band.hi} including VAT — we'd confirm the exact price once we've taken a look, and nothing gets done without your go-ahead.`
+    : `We'd take a quick look first and give you a clear price before any work is done — nothing happens without your go-ahead.`;
+  const fullMessage = d ? [d.customerScript, d.nextStep, priceSentence].filter(Boolean).join(" ") : "";
+
   const copyScript = async () => {
-    if (!d?.customerScript) return;
+    if (!fullMessage) return;
     try {
-      await navigator.clipboard.writeText(d.customerScript);
+      await navigator.clipboard.writeText(fullMessage);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       toast.success("Copied — ready to paste into a message to the customer");
@@ -102,6 +139,27 @@ export function DefectExplainButton({ defectText, defectType, isDangerous }: {
                 <Section icon={AlertTriangle} title="What the tester found">{d.whatsWrong}</Section>
                 <Section icon={ClipboardList} title="How it affects the car">{d.effectOnCar}</Section>
                 <Section icon={Wrench} title="What needs doing">{d.whatNeedsDoing}</Section>
+                {d.nextStep && <Section icon={ArrowRight} title="What happens next">{d.nextStep}</Section>}
+                {d.searchQuery && (
+                  <div>
+                    <h5 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">
+                      <PoundSterling className="w-3 h-3" /> What it might cost
+                    </h5>
+                    {pricing.isLoading ? (
+                      <p className="text-[12px] text-slate-400">Checking our past invoices…</p>
+                    ) : band ? (
+                      <p className="text-[13px] leading-snug text-slate-700">
+                        Typically <b>£{band.lo}–£{band.hi}</b> inc VAT, from {band.n} similar jobs we've done ({band.label}).{" "}
+                        <a className="text-violet-700 hover:underline" target="_blank" rel="noreferrer"
+                          href={`/repair-pricing?q=${encodeURIComponent(d.searchQuery)}${make ? `&make=${encodeURIComponent(make)}` : ""}${model ? `&model=${encodeURIComponent(model)}` : ""}`}>
+                          See the jobs
+                        </a>
+                      </p>
+                    ) : (
+                      <p className="text-[13px] leading-snug text-slate-700">No close matches in our invoice history — quote after inspection.</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="border rounded-md bg-violet-50/60 border-violet-200 p-2.5">
@@ -114,7 +172,7 @@ export function DefectExplainButton({ defectText, defectType, isDangerous }: {
                     {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
-                <p className="text-[13px] leading-snug text-slate-800">{d.customerScript}</p>
+                <p className="text-[13px] leading-snug text-slate-800">{fullMessage}</p>
               </div>
             </>
           ) : (

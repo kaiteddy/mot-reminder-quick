@@ -1672,6 +1672,7 @@ export default function DocumentDetails() {
                   <TabsContent value="motadv" className="mt-0">
                     <MOTAdvisoriesTab
                       registration={form.registration}
+                      make={form.make || undefined} model={form.model || undefined}
                       busy={partsForDefects.isPending}
                       onUse={async (texts) => {
                         if (!texts.length) return;
@@ -3232,7 +3233,7 @@ function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (
 }
 
 // MOT advisory / failure history from DVSA — each defect can be pulled into the job sheet as Labour
-function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean }) {
+function MOTAdvisoriesTab({ registration, onUse, busy, make, model }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean; make?: string; model?: string }) {
   const reg = (registration || "").replace(/\s/g, "");
   const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
   const tests = (data as any[]) || [];
@@ -3282,7 +3283,7 @@ function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string
                       <span className="text-[12.5px] text-slate-700">{d.text}</span>
                     </div>
                     <div className="shrink-0 flex items-center gap-0.5">
-                      <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} />
+                      <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} make={make} model={model} />
                       <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
                     </div>
                   </li>

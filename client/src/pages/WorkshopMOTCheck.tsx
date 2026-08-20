@@ -772,7 +772,7 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
                     {isDangerous ? "DANGEROUS" : defect.type}
                   </span>
                   <span className={isDangerous ? "text-white leading-tight" : "leading-tight"}>{defect.text}</span>
-                  <DefectExplainButton defectText={defect.text} defectType={defect.type} isDangerous={isDangerous} />
+                  <DefectExplainButton defectText={defect.text} defectType={defect.type} isDangerous={isDangerous} make={vehicleData?.make} model={vehicleData?.model} />
                 </div>
               );
             })}

@@ -319,7 +319,7 @@ function EarlierCarsOnPlate({ cars, base }: { cars: any[]; base: string }) {
 
 // Tabbed workshop history for a vehicle: full service timeline, every part fitted, and the
 // MOT test history with advisories — mirrors how a job sheet is laid out.
-function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; registration: string }) {
+function VehicleHistoryTabs({ vehicleId, registration, make, model }: { vehicleId: number; registration: string; make?: string; model?: string }) {
     const parts = trpc.documents.partsHistory.useQuery({ vehicleId }, { staleTime: 60_000 });
     const mot = trpc.documents.motTests.useQuery({ registration }, { enabled: !!registration, staleTime: 5 * 60_000 });
     const fmt = (d: any) => { if (!d) return "-"; const s = String(d).replace(/\./g, "-").replace(" ", "T"); const dt = new Date(s); return isNaN(dt.getTime()) ? String(d).slice(0, 10) : dt.toLocaleDateString("en-GB"); };
@@ -388,7 +388,7 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                                             <li key={j} className={`text-xs flex items-start gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
                                                 <span className="font-semibold uppercase shrink-0 w-16">{d.dangerous ? "Dangerous" : d.type}</span>
                                                 <span>{d.text}</span>
-                                                <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} />
+                                                <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} make={make} model={model} />
                                             </li>
                                         ))}
                                     </ul>
@@ -1249,7 +1249,7 @@ export default function VehicleDetails() {
                             <CardDescription>Service timeline, every part fitted &amp; full MOT history</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} />
+                            <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} make={vehicle.make || undefined} model={vehicle.model || undefined} />
                             <EarlierCarsOnPlate cars={otherCarsOnPlate} base={base} />
                         </CardContent>
                     </Card>
