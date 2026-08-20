@@ -1,8 +1,8 @@
 import { publicProcedure, router } from "../_core/trpc";
 import { z } from "zod";
-import { generateText, generateObject } from "ai";
+import { generateObject } from "ai";
 import { getDb } from "../db";
-import { appSettings, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
+import { appSettings, defectExplanations, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
 import { eq, like, desc } from "drizzle-orm";
 import { AI_MODEL, AI_MODEL_GUIDE, getRuntimeProvider, hasAIKey } from "../services/aiProvider";
 
@@ -212,39 +212,83 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       }
     }),
 
+  // Structured plain-English translation of one MOT defect/advisory: what the part does,
+  // what the tester found, how it affects the car, what needs doing, an honest urgency, and
+  // a ready-to-send customer paragraph. Cached in defectExplanations by wording+severity —
+  // DVSA reason-for-rejection texts are standardized, so each distinct wording costs one AI
+  // call ever. Deliberately vehicle-agnostic (a drop link does the same job on every car);
+  // make/model/year are still accepted so existing callers don't break, but don't feed the
+  // prompt — that's what keeps the cache key honest.
   explainDefect: publicProcedure
     .input(z.object({
-      defect: z.string(),
+      defect: z.string().min(3),
+      type: z.string().optional(),      // ADVISORY | MINOR | MAJOR | DANGEROUS | FAIL | PRS
       make: z.string().optional(),
       model: z.string().optional(),
       year: z.number().optional()
     }))
     .mutation(async ({ input }) => {
+      const severity = (input.type || "").trim().toUpperCase();
+      const normalized = input.defect.trim().replace(/\s+/g, " ");
+      const { createHash } = await import("node:crypto");
+      const defectKey = createHash("sha256").update(`${normalized.toLowerCase()}|${severity}`).digest("hex");
+
+      const db = await getDb();
+      if (db) {
+        const [hit] = await db.select().from(defectExplanations)
+          .where(eq(defectExplanations.defectKey, defectKey)).limit(1);
+        if (hit) return { ...(hit.explanation as object), cached: true } as any;
+      }
+
       if (!hasAIKey()) {
         throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
       }
 
-      const prompt = `You are a friendly, helpful UK mechanic talking to a customer who knows absolutely nothing about cars. They received this MOT defect on their ${input.year ? input.year + " " : ""}${input.make || "vehicle"} ${input.model || ""}:
+      const prompt = `An MOT test in the UK recorded this ${severity === "ADVISORY" ? "advisory" : "defect"}:
 
-Defect: "${input.defect}"
-
-Your job is to translate this into plain English. 
-CRITICAL INSTRUCTIONS:
-1. Explain what the car part actually DOES in the simplest terms possible (e.g., if it says "drive shaft", explain that it's the metal bar that spins the wheels to make the car move).
-2. Explain WHY it is bad or dangerous that it's broken or worn out.
-3. Absolutely NO mechanic jargon. Use simple analogies if helpful.
-4. Keep it very short (3 sentences maximum). 
-5. Do not mention prices.`;
+"${normalized}"${severity ? `\nSeverity category: ${severity}` : ""}`;
 
       try {
         const provider = getRuntimeProvider();
-        const { text } = await generateText({
-          model: provider(AI_MODEL),
-          system: "You are a helpful, friendly UK mechanic.",
-          prompt: prompt,
+        const { object } = await generateObject({
+          // Guide-tier model: this wording is read out to customers, and the cache means
+          // each distinct defect text is only ever generated once.
+          model: provider(AI_MODEL_GUIDE),
+          system: `You are a friendly, experienced UK garage owner translating an MOT test item for a customer who knows nothing about cars. Plain English throughout — no mechanic jargon, no prices, no scare tactics. Use a simple everyday analogy where it genuinely helps. UK terms.
+
+Return these fields:
+- partName: the part or area in everyday words, Title Case, short (e.g. "Anti-Roll Bar Drop Link", "Brake Pads", "Windscreen"). For non-part items (e.g. a deteriorated number plate) name the item itself.
+- whatItDoes: 1-2 sentences on what this part actually does on the car — the kind of explanation a garage owner can also use to brief themselves before phoning the customer.
+- whatsWrong: what the tester found, translated to plain English. 1-2 sentences.
+- effectOnCar: how this affects the car — what the driver might notice, and what happens if it's left unfixed. 1-3 sentences, honest, not alarmist.
+- whatNeedsDoing: the repair in plain terms — replace/adjust/repair what. 1-2 sentences, no prices.
+- urgency: one of "monitor" (fine to keep an eye on), "plan" (not urgent, plan it in), "soon" (book in soon — it will get worse or affect the next MOT), "urgent" (safety issue — sort before driving much more). Calibrate honestly to the severity category: most ADVISORY items are "monitor" or "plan"; MAJOR/FAIL items are usually "soon" or "urgent"; DANGEROUS is always "urgent".
+- urgencyNote: one short honest sentence backing up the urgency.
+- customerScript: 2-4 friendly conversational sentences the garage can read out on the phone or paste into a text message to the customer — covering what it is, what's wrong, why it matters, and what you'd recommend. Written as "we found / we'd recommend". No greeting, no sign-off, no prices.`,
+          prompt,
+          schema: z.object({
+            partName: z.string(),
+            whatItDoes: z.string(),
+            whatsWrong: z.string(),
+            effectOnCar: z.string(),
+            whatNeedsDoing: z.string(),
+            urgency: z.enum(["monitor", "plan", "soon", "urgent"]),
+            urgencyNote: z.string(),
+            customerScript: z.string(),
+          }),
         });
 
-        return { explanation: text };
+        if (db) {
+          try {
+            await db.insert(defectExplanations)
+              .values({ defectKey, defectText: normalized, defectType: severity || null, explanation: object, aiModel: AI_MODEL_GUIDE })
+              .onConflictDoNothing();
+          } catch (e) {
+            console.error("[AI] Failed to cache defect explanation", e);
+          }
+        }
+
+        return { ...object, cached: false };
       } catch (e: any) {
         console.error("AI Generation Error:", e);
         throw new Error("Failed to generate explanation: " + e.message);

@@ -22,6 +22,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
+import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
@@ -3280,7 +3281,10 @@ function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string
                       <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border ${sevCls(d.type)}`}>{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}</span>
                       <span className="text-[12.5px] text-slate-700">{d.text}</span>
                     </div>
-                    <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="shrink-0 text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
+                    <div className="shrink-0 flex items-center gap-0.5">
+                      <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} />
+                      <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
+                    </div>
                   </li>
                 ))}
               </ul>

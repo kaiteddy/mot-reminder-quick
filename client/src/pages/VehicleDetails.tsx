@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DefectExplainButton } from "@/components/DefectExplainer";
 import {
     Car,
     User,
@@ -384,9 +385,10 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                                 {t.defects?.length > 0 && (
                                     <ul className="mt-2 space-y-1 border-t border-border pt-2">
                                         {t.defects.map((d: any, j: number) => (
-                                            <li key={j} className={`text-xs flex gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
+                                            <li key={j} className={`text-xs flex items-start gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
                                                 <span className="font-semibold uppercase shrink-0 w-16">{d.dangerous ? "Dangerous" : d.type}</span>
                                                 <span>{d.text}</span>
+                                                <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} />
                                             </li>
                                         ))}
                                     </ul>

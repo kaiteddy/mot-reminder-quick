@@ -791,3 +791,21 @@ export const serviceLabourBands = pgTable("serviceLabourBands", {
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
+
+/** Plain-English MOT defect explanations, cached by the defect's wording. DVSA reason-for-
+ * rejection texts are standardized, so the same advisory recurs across thousands of tests —
+ * one AI call per distinct wording+severity, then every later view is instant and free.
+ * Deliberately vehicle-agnostic: what an anti-roll bar linkage does is the same on every car,
+ * and keying by text alone is what makes the cache hit. */
+export const defectExplanations = pgTable("defectExplanations", {
+  id: serial("id").primaryKey(),
+  // sha256 hex of lowercased, whitespace-collapsed defect text + "|" + severity type
+  defectKey: varchar("defectKey", { length: 64 }).notNull().unique(),
+  defectText: text("defectText").notNull(),
+  defectType: varchar("defectType", { length: 20 }),
+  explanation: jsonb("explanation").notNull(),
+  aiModel: varchar("aiModel", { length: 60 }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+});
+
+export type DefectExplanation = typeof defectExplanations.$inferSelect;
