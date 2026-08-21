@@ -71,7 +71,8 @@ function LineRows({ rows, kind, upd, rm, add }: {
             </div>
             <div className="flex items-center gap-1.5 flex-1">
               <span className="text-base text-slate-500 shrink-0">£</span>
-              <Input value={l.price} onChange={(e) => upd(l.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00" className={inputCls} />
+              <Input value={l.price} onChange={(e) => upd(l.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00"
+                className={inputCls + (l.description.trim() && !(parseFloat(l.price) > 0) ? " border-red-400 bg-red-50" : "")} />
             </div>
             <Button type="button" variant="ghost" size="icon" className="h-12 w-10 text-red-500 shrink-0" onClick={() => rm(l.id)}><Trash2 className="w-5 h-5" /></Button>
           </div>
@@ -167,6 +168,9 @@ export default function WorkshopJobSheet() {
   };
 
   const toggleService = (kind: "small" | "major") => {
+    // Ticking before the price list has answered built the set with everything at £0 — the
+    // race behind "sometimes the oil is 0.00". Untick always works.
+    if (!ticks[kind] && !priceListQ.data) { toast.message("Prices still loading — try again in a second"); return; }
     const next = { ...ticks };
     const removeKind = (k: "small" | "major") => {
       const ids = next[k]; if (!ids) return;

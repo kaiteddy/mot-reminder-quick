@@ -2954,11 +2954,12 @@ function ServicePartsPicker({ vehInfo, engineCC, registration, onAdd }: {
         <Cog className="w-4 h-4 text-slate-500 shrink-0" />
         <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
         <select
-          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
+          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500 disabled:opacity-60"
           value=""
+          disabled={!priceListData}
           onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries, s.labour); e.currentTarget.value = ""; }}
         >
-          <option value="">Select a service to add its parts…</option>
+          <option value="">{priceListData ? "Select a service to add its parts…" : "Loading prices…"}</option>
           <option value="small">Small Service — oil, oil filter + sump plug seal</option>
           <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
           {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
@@ -3578,6 +3579,9 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
     // job was written up under it. The rules are description-matched, so they work on any row.
     const floor = floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
     const belowFloor = floor != null && (num(it.unitPrice) ?? 0) > 0 && (num(it.unitPrice) ?? 0) < floor;
+    // A described line at £0.00 is almost always an unbilled line, not a free one — the floor
+    // warning above deliberately skips zeros, so without this tag a £0 oil line sails through.
+    const noPrice = kind !== "Other" && (num(it.unitPrice) ?? 0) <= 0 && !!(it.description || "").trim();
     // Picking a suggestion fills description/part no AND, when known (a price-list entry or the
     // part's average historical price), quantity/price/VAT too — not just left at the £0 default.
     const pickPart = (o: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) =>
@@ -3633,6 +3637,9 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
       <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
       <TableCell className="text-right">
         {editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}
+        {noPrice && (
+          <span className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap">⚠ no price</span>
+        )}
         {belowFloor && (
           <button type="button" onClick={editing ? () => update(idx, { unitPrice: floor!.toFixed(2) }) : undefined}
             title={editing ? `Minimum for this item is £${money(floor)} — click to apply` : `Below the £${money(floor)} minimum`}

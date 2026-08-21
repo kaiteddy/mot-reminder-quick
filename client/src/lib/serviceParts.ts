@@ -89,7 +89,19 @@ export function buildServiceSets(opts: {
 
   const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
   const oilLabel = opts.grade || vehInfo?.oilGrades?.[0] || vehInfo?.oilSpec || "";
-  const oil = priced(oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", oilCap || 1);
+  let oil = priced(oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", oilCap || 1);
+  if (oil.unitPrice == null) {
+    // The price list only carries some grades (5W-30, 0W-20 today). A grade outside it
+    // (5W-40, 10W-40…) — or a car with no tech data at all — used to roll out at £0.00, and a
+    // missed £0 oil line is oil the customer never pays for. Fall back to the DEAREST listed
+    // engine oil: it can't undercharge relative to any known grade, and the figure sits on the
+    // line where staff can nudge it down.
+    const oils = priceList.filter((p: any) => /engine\s*oil/i.test(String(p?.description || "")));
+    if (oils.length) {
+      const dear = oils.reduce((a: any, b: any) => (Number(b.unitPrice) > Number(a.unitPrice) ? b : a));
+      oil = { ...oil, unitPrice: Number(dear.unitPrice), vatRate: dear.vatRate != null ? Number(dear.vatRate) : oil.vatRate };
+    }
+  }
   const oilFilter = priced("Oil Filter", 1);
 
   const cc = parseFloat(String(opts.engineCC ?? "").replace(/[^0-9.]/g, "")) || 0;
