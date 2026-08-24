@@ -320,7 +320,7 @@ export default function Documents() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
           <StatCard label="Total" value={stats?.total} />
           <StatCard label="Invoices" value={invoicesCount} />
           <StatCard label="Estimates" value={typeCount("ES")} />

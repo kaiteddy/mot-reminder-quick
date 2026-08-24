@@ -368,7 +368,7 @@ export default function GA4Scanner() {
                 {hasResults && (
                     <>
                         {/* Headline stats */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
                             <StatChip icon={ScanLine} label="Vehicles scanned" value={results.length} tone="bg-violet-100 text-violet-700" />
                             <StatChip icon={AlertTriangle} label="MOT expired" value={stats.expired} tone="bg-red-100 text-red-600" />
                             <StatChip icon={CalendarClock} label="Due within 30 days" value={stats.due} tone="bg-amber-100 text-amber-600" />
