@@ -127,6 +127,16 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
     const buttonAction = body.ButtonText ? buttonToResponse(body.ButtonText) : null;
     const isOptOut = !buttonAction && checkOptOutKeywords(body.Body);
 
+    // A photo/voice note arrives with an empty Body and the content in MediaUrl0..N —
+    // capture the URLs or the message renders as an empty bubble (13 did before 24/08).
+    const numMedia = Number(body.NumMedia || 0);
+    const mediaUrls = numMedia > 0
+      ? Array.from({ length: numMedia }, (_, i) => ({
+          url: String((body as any)[`MediaUrl${i}`] || ""),
+          contentType: String((body as any)[`MediaContentType${i}`] || ""),
+        })).filter((m) => m.url)
+      : undefined;
+
     // Log the incoming message
     await logIncomingMessage({
       messageSid: body.MessageSid,
@@ -136,6 +146,7 @@ export async function handleTwilioWebhook(req: Request, res: Response) {
       status: body.MessageStatus || body.SmsStatus || "unknown",
       timestamp: new Date(),
       isOptOut,
+      mediaUrls,
     });
 
     if (buttonAction) {
@@ -310,6 +321,7 @@ async function logIncomingMessage(data: {
   status?: string;
   timestamp: Date;
   isOptOut?: boolean;
+  mediaUrls?: Array<{ url: string; contentType: string }>;
 }) {
 
 
@@ -389,6 +401,7 @@ async function logIncomingMessage(data: {
       fromNumber,
       toNumber,
       messageBody: data.body,
+      mediaUrls: data.mediaUrls?.length ? data.mediaUrls : null,
       customerId,
       receivedAt: data.timestamp,
       read: 0,
@@ -474,5 +487,37 @@ async function updateMessageStatus(data: {
   } catch (error) {
     console.error("[Twilio Status] ✗ Failed to update status:", error);
     return { success: false, message: `Error: ${error}` };
+  }
+}
+
+
+/**
+ * Serve a WhatsApp media attachment to the browser. Twilio media needs the account's
+ * Basic auth, which the client must never hold — so the server fetches on its behalf.
+ * Locked to THIS account's message-media URLs; anything else is refused (no open proxy).
+ * Twilio answers with a redirect to short-lived signed storage, and the signed URL
+ * rejects requests still carrying the Authorization header - follow the hop by hand.
+ */
+export async function handleTwilioMedia(req: Request, res: Response) {
+  try {
+    const u = String(req.query.u || "");
+    const sid = process.env.TWILIO_ACCOUNT_SID || "";
+    if (!sid || !u.startsWith(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages/`)) {
+      res.status(400).send("invalid media url");
+      return;
+    }
+    const auth = Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN || ""}`).toString("base64");
+    let r = await fetch(u, { headers: { Authorization: `Basic ${auth}` }, redirect: "manual" });
+    const loc = r.headers.get("location");
+    if (loc && r.status >= 300 && r.status < 400) r = await fetch(loc);
+    if (!r.ok) {
+      res.status(502).send("media unavailable");
+      return;
+    }
+    res.setHeader("Content-Type", r.headers.get("content-type") || "application/octet-stream");
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch {
+    res.status(500).send("media fetch failed");
   }
 }

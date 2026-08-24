@@ -172,6 +172,9 @@ export const customerMessages = pgTable("customerMessages", {
   fromNumber: varchar("fromNumber", { length: 20 }).notNull(),
   toNumber: varchar("toNumber", { length: 20 }).notNull(),
   messageBody: text("messageBody"),
+  // WhatsApp photos/voice notes: [{url, contentType}] pointing at Twilio's media store
+  // (served to the browser through /api/twilio-media, which adds the account auth).
+  mediaUrls: jsonb("mediaUrls"),
   customerId: integer("customerId"),
   relatedLogId: integer("relatedLogId"),
   receivedAt: timestamp("receivedAt", { mode: "date" }).defaultNow().notNull(),

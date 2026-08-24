@@ -415,9 +415,33 @@ export default function Conversations() {
                             {message.vehicleRegistration} • {message.messageType}
                           </div>
                         )}
-                        <p className="text-sm whitespace-pre-wrap break-words">
-                          {message.content}
-                        </p>
+                        {((message as any).mediaUrls?.length ?? 0) > 0 && (
+                          <div className="space-y-2 mb-1">
+                            {(message as any).mediaUrls.map((m: { url: string; contentType: string }, i: number) => {
+                              const src = `/api/twilio-media?u=${encodeURIComponent(m.url)}`;
+                              if ((m.contentType || "").startsWith("image/")) {
+                                return (
+                                  <img key={i} src={src} alt="Photo from customer" loading="lazy"
+                                    className="rounded-md max-w-full max-h-64 cursor-pointer"
+                                    onClick={() => window.open(src, "_blank")} />
+                                );
+                              }
+                              if ((m.contentType || "").startsWith("audio/")) {
+                                return <audio key={i} controls src={src} className="max-w-full" />;
+                              }
+                              return (
+                                <a key={i} href={src} target="_blank" rel="noreferrer" className="text-xs underline break-all">
+                                  Attachment ({m.contentType || "file"})
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {message.content && (
+                          <p className="text-sm whitespace-pre-wrap break-words">
+                            {message.content}
+                          </p>
+                        )}
                         <div className={cn(
                           "flex items-center gap-1 mt-1 text-xs",
                           message.type === "sent" ? "text-blue-100 justify-end" : "text-slate-500"

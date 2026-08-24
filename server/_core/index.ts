@@ -6,7 +6,7 @@ import { registerAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./serve-static";
-import { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest } from "../webhooks/twilio";
+import { handleTwilioWebhook, handleTwilioStatusCallback, handleWebhookTest, handleTwilioMedia } from "../webhooks/twilio";
 import { saveAppSetting } from "../db";
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -43,6 +43,7 @@ function setupApp(app: Express) {
     app.post("/api/webhooks/twilio", handleTwilioWebhook);
     app.post("/api/webhooks/twilio/status", handleTwilioStatusCallback);
     // GET endpoints for testing
+    app.get("/api/twilio-media", handleTwilioMedia);
     app.get("/api/webhooks/twilio", handleWebhookTest);
     app.get("/api/webhooks/twilio/status", handleWebhookTest);
 

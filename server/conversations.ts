@@ -29,6 +29,8 @@ export interface ConversationMessage {
   /** Which pipe carried it — the two now mix in one thread. */
   channel?: "whatsapp" | "sms";
   content: string;
+  /** WhatsApp attachments (photos, voice notes) - served via /api/twilio-media. */
+  mediaUrls?: Array<{ url: string; contentType: string }>;
   timestamp: Date;
   status?: string; // For sent messages: sent, delivered, read, failed
   messageSid?: string;
@@ -79,7 +81,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
       customerName: customers.name,
       customerPhone: customers.phone,
       lastMessageAt: customerMessages.receivedAt,
-      lastMessagePreview: customerMessages.messageBody,
+      lastMessagePreview: sql<string>`CASE WHEN COALESCE(${customerMessages.messageBody}, '') = ''
+        AND ${customerMessages.mediaUrls} IS NOT NULL THEN '[Photo]' ELSE ${customerMessages.messageBody} END`,
       read: customerMessages.read,
     })
     .from(customerMessages)
@@ -232,6 +235,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
     .select({
       id: customerMessages.id,
       content: customerMessages.messageBody,
+      mediaUrls: customerMessages.mediaUrls,
       timestamp: customerMessages.receivedAt,
       messageSid: customerMessages.messageSid,
       toNumber: customerMessages.toNumber,
@@ -266,6 +270,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
       id: msg.id,
       type: "received" as const,
       content: msg.content || "",
+      mediaUrls: (msg.mediaUrls as Array<{ url: string; contentType: string }>) || undefined,
       timestamp: msg.timestamp,
       messageSid: msg.messageSid || undefined,
       channel: inboundChannel(msg.toNumber),
