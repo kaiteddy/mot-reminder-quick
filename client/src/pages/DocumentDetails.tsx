@@ -2,21 +2,38 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
-import { round2 } from "@/lib/utils";
+import { cn, round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy } from "lucide-react";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
+import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useClassicBase } from "@/lib/classicNav";
+import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
+import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
+import { buildServiceSets } from "@/lib/serviceParts";
+import { normRegKey } from "@shared/vehicleIdentity";
+import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
+};
+// GA4 Classic title-bar colour per doc type — JS/SI sampled off live GA4 reference
+// screenshots (plum/purple and dark petrol teal); others follow the top nav module colours.
+const GA4_TITLEBAR_COLOR: Record<string, string> = {
+  JS: "#4a1f5e", SI: "#155263", ES: "#15803d", CR: "#b91c1c", XS: "#a21caf", VS: "#78716c",
 };
 const money = (v: any) => (v == null || v === "" ? "0.00" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const num = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isNaN(n) ? undefined : n; };
@@ -29,10 +46,32 @@ const fmtGasQty = (q: any): string | undefined => {
   return `Charge ${/[a-z(]/i.test(s) ? s : `${s} g`}`;
 };
 const TITLES = ["MR", "MRS", "MS", "MISS", "DR", "PROF", "REV", "SIR"];
+/** Everything that must change on the document when an owner is attached. Shared so the Classic
+ *  and Modern pickers can never drift apart on what "attach" means. */
+function attachCustomerPatch(f: any, c: any) {
+  const sn = splitName(c.name);
+  return {
+    ...f,
+    customerId: c.id,
+    customerName: c.name || f.customerName,
+    custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
+    custEmail: c.email || f.custEmail,
+    custPostcode: c.postcode || f.custPostcode,
+    custTelephone: c.phone || f.custTelephone,
+    custRoad: c.address || f.custRoad,
+    // Re-linking to a different customer must also refresh their account number — otherwise the
+    // doc keeps showing whichever customer it was linked to before.
+    accountNumber: c.accountNumber || f.accountNumber,
+  };
+}
+
 function splitName(full?: string) {
   const parts = (full || "").trim().split(/\s+/).filter(Boolean);
   let title = "";
   if (parts.length > 1 && TITLES.includes(parts[0].toUpperCase().replace(/\./g, ""))) title = parts.shift()!;
+  // A lone word that's itself a title (e.g. a record saved as just "Mr") belongs in Title,
+  // not Surname — otherwise it renders as if "Mr" were someone's actual surname.
+  if (parts.length === 1 && TITLES.includes(parts[0].toUpperCase().replace(/\./g, ""))) title = parts.shift()!;
   const surname = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || "");
   const forename = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
   return { title, forename, surname };
@@ -59,6 +98,7 @@ function motTone(d: any): InfoTone {
   return "green";
 }
 type InfoTone = "amber" | "sky" | "slate" | "green" | "red";
+const REMINDER_DOT: Record<InfoTone, string> = { green: "#4caf50", amber: "#f0a020", red: "#e53935", slate: "#999", sky: "#0ea5e9" };
 const TONES: Record<InfoTone, string> = {
   amber: "border-amber-200 bg-amber-50 text-amber-700",
   sky: "border-sky-200 bg-sky-50 text-sky-700",
@@ -77,6 +117,7 @@ function InfoCard({ icon, label, main, sub, tone }: { icon: ReactNode; label: st
 }
 
 const EMAIL_TEMPLATES: { name: string; types?: string[]; subject: string; body: string }[] = [
+  { name: "Insurance Invoice", subject: "Invoice {docNo} — ELI Motors Limited (re. {customer})", body: "Dear Claims Team,\n\nPlease find attached our invoice {docNo} for the repair to {reg}, total £{total}, re. your policyholder {customer}.\n\nIf you have any questions please reply to this email or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Invoice", types: ["SI"], subject: "Invoice {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nThank you for choosing ELI Motors. Please find attached your invoice {docNo} for {reg}, total £{total}.\n\nIf you have any questions please reply to this email or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Estimate", types: ["ES"], subject: "Estimate {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached our estimate {docNo} for {reg}, total £{total}.\n\nTo go ahead, or if you have any questions, just reply or call us on 020 8203 6449.\n\nKind regards,\nELI Motors Limited" },
   { name: "Job Sheet", types: ["JS"], subject: "Job Sheet {docNo} — ELI Motors Limited", body: "Dear {customer},\n\nPlease find attached the job sheet {docNo} for {reg}.\n\nKind regards,\nELI Motors Limited" },
@@ -137,11 +178,16 @@ function extrasToLineItems(form: Record<string, any>): Item[] {
   return out;
 }
 
+// The form fields that describe the physical car itself — everything a reg change invalidates.
+// (dateOfRegistration is display-only on the doc, but it's just as wrong-car as the rest.)
+const VEHICLE_IDENTITY_FIELDS = ["make", "model", "derivative", "colour", "fuelType", "engineCC", "engineNo", "engineCode", "vin", "paintCode", "keyCode", "radioCode", "dateOfRegistration"];
+
 export default function DocumentDetails() {
   const params = useParams();
   const isNew = params.id === "new";
   const id = isNew ? 0 : Number(params.id);
   const [, setLocation] = useLocation();
+  const base = useClassicBase();
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.documents.getById.useQuery({ id }, { enabled: !isNew && !!id });
@@ -151,7 +197,9 @@ export default function DocumentDetails() {
   // The document is always editable — changes auto-save (no Edit/Save step).
   const editing = true;
   const [newCust, setNewCust] = useState(false);
+  const [findCustOpen, setFindCustOpen] = useState(false);   // Classic view "find customer" dialog
   const [looking, setLooking] = useState(false);
+  const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
   const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean; searchedPc?: string }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
@@ -163,19 +211,45 @@ export default function DocumentDetails() {
   const initRef = useRef<number | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const regOnLoadRef = useRef<string>(""); // the reg when the doc loaded — used to force a full refresh if it's changed
+  // Which reg the form's vehicle-identity fields (make/model/VIN/…) currently belong to. The
+  // fields lag a reg edit by the whole ~30s lookup, while auto-save fires after 1s — this ref is
+  // what lets us clear/suppress them so the previous car's identity can never be saved against
+  // the corrected reg (that's how LL14LDJ got stamped with a Peugeot's identity, 24/08/2026).
+  const vehIdentityRegRef = useRef<string>("");
+  // Live matches for whatever's typed in the Registration field itself — lets staff pick an
+  // already-known car straight from that field (no paid VRM lookup) instead of needing the
+  // separate "Find vehicle" box above it.
+  const regQueryText = (form.registration || "").trim();
+  const { data: regMatches } = trpc.vehicles.searchForJob.useQuery({ query: regQueryText }, { enabled: editing && regFocused && regQueryText.length >= 2, staleTime: 30_000 });
   // customer details as loaded — so the "update record?" prompt only fires on a real edit,
   // not when the doc's stored name merely differs from the (e.g. title-less) master record.
   const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
   const markDirty = () => { editSeq.current++; setDirty(true); };
   const set = (k: string, v: any) => { setForm((f) => ({ ...f, [k]: v })); markDirty(); };
+  // ALL reg edits go through here: the moment the reg no longer matches the car the identity
+  // fields describe, blank them in the SAME state update — the lookup refills them for the new
+  // reg, and until then auto-save ships blanks (which the server never writes over real data).
+  const setRegistration = (raw: string) => {
+    const value = String(raw ?? "").toUpperCase();
+    if (normRegKey(value) === vehIdentityRegRef.current) { set("registration", value); return; }
+    setForm((f) => ({ ...f, registration: value, ...Object.fromEntries(VEHICLE_IDENTITY_FIELDS.map((k) => [k, ""])) }));
+    setLookupTech(null); // the oil/MOT/tax/photo cards were the old car's too
+    vehIdentityRegRef.current = normRegKey(value);
+    markDirty();
+  };
   const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
   const [printing, setPrinting] = useState(false);
   // An invoice must have the customer name + vehicle mileage before it goes to the customer.
+  // A job sheet must have a mobile number — it's how we reach the customer once the car's in.
   function requiredMissing(): string[] {
-    if (form.docType !== "SI" && form.docType !== "XS") return [];
     const m: string[] = [];
-    if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
-    if (!String(form.mileage ?? "").trim()) m.push("Mileage");
+    if (form.docType === "SI" || form.docType === "XS") {
+      if (!(form.custSurname || form.custForename || form.company || form.customerName)) m.push("Customer name");
+      // Mileage is deliberately NOT blocking (Adam, 2026-08-19): warn only, and an empty
+      // invoice mileage saves as 0, the agreed marker for "no reading obtained".
+    }
+    // Either number reaches the customer — only block on a genuinely missing contact number.
+    if (form.docType === "JS" && !String(form.custMobile ?? "").trim() && !String(form.custTelephone ?? "").trim()) m.push("Mobile or telephone number");
     return m;
   }
   function blockIfIncomplete(action: string): boolean {
@@ -187,41 +261,78 @@ export default function DocumentDetails() {
     return false;
   }
   // Print the SAME server-rendered PDF that gets emailed (print & email always match),
-  // and open the browser print dialog directly via a hidden iframe.
+  // and open the browser print dialog directly via a hidden iframe. Shared by the main Print
+  // button (the doc currently open/being edited) and the history-preview drawer's Print button
+  // (any past job in this vehicle's history, without navigating away to open it first).
+  // Save the document as a PDF file — same server-rendered PDF the Print button uses
+  // (job sheet / estimate / invoice layout picked by doc type in getRichPDF).
+  const [downloading, setDownloading] = useState(false);
+  async function downloadPdf() {
+    if (isNew) { toast.error("Save the document first"); return; }
+    setDownloading(true);
+    try {
+      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
+      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+      const bytes = atob(res.content);
+      const arr = new Uint8Array(bytes.length);
+      for (let i2 = 0; i2 < bytes.length; i2++) arr[i2] = bytes.charCodeAt(i2);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename || `${form.docNo || id}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      toast.success("PDF downloaded");
+    } catch (e: any) { toast.error("PDF failed: " + (e.message || "")); }
+    finally { setDownloading(false); }
+  }
+
+  async function printDocById(documentId: number) {
+    const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId });
+    if (!res?.content) { toast.error("Could not generate the PDF"); return; }
+    const bytes = atob(res.content);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+    // Chrome paints the embedded PDF asynchronously AFTER the iframe's load event fires.
+    // Calling print() the instant onload runs prints blank pages on a cold render (the
+    // "blank first time, works on the second click" bug), so wait for the viewer to paint.
+    // We keep the spinner up until print actually fires (await below) to block double-clicks.
+    await new Promise<void>((resolve) => {
+      let fired = false;
+      const fire = () => {
+        if (fired) return; fired = true;
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
+        catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
+        resolve();
+      };
+      iframe.onload = () => setTimeout(fire, 800);
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      setTimeout(fire, 5000); // safety: never hang if onload never arrives
+    });
+    setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
+  }
   async function handlePrint() {
     if (isNew || !id) return;
     if (blockIfIncomplete("print")) return;
     setPrinting(true);
     try {
       await flushPending(); // make sure the latest edits are in the PDF
-      const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: id });
-      if (!res?.content) { toast.error("Could not generate the PDF"); return; }
-      const bytes = atob(res.content);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      // Chrome paints the embedded PDF asynchronously AFTER the iframe's load event fires.
-      // Calling print() the instant onload runs prints blank pages on a cold render (the
-      // "blank first time, works on the second click" bug), so wait for the viewer to paint.
-      // We keep the spinner up until print actually fires (await below) to block double-clicks.
-      await new Promise<void>((resolve) => {
-        let fired = false;
-        const fire = () => {
-          if (fired) return; fired = true;
-          try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }
-          catch { window.open(url, "_blank"); } // fallback if the browser blocks iframe printing
-          resolve();
-        };
-        iframe.onload = () => setTimeout(fire, 800);
-        iframe.src = url;
-        document.body.appendChild(iframe);
-        setTimeout(fire, 5000); // safety: never hang if onload never arrives
-      });
-      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url); }, 120000);
+      await printDocById(id);
     } catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
     finally { setPrinting(false); }
+  }
+  const [historyPreviewId, setHistoryPreviewId] = useState<number | null>(null);
+  const [historyPrinting, setHistoryPrinting] = useState(false);
+  async function printHistoryPreview() {
+    if (!historyPreviewId) return;
+    setHistoryPrinting(true);
+    try { await printDocById(historyPreviewId); }
+    catch (e: any) { toast.error("Print failed: " + (e.message || "")); }
+    finally { setHistoryPrinting(false); }
   }
   const convert = trpc.documents.convert.useMutation();
   const [convertOpen, setConvertOpen] = useState(false);
@@ -230,16 +341,19 @@ export default function DocumentDetails() {
     try {
       await flushPending();
       const res: any = await convert.mutateAsync({ id, toType });
-      // A "Convert" supersedes the original (server deletes it) — drop its now-dead tab.
-      if (res.replacedSource) removeOpenDoc(id);
+      // "Convert" (unlike "Copy") supersedes the source from the user's perspective — close its
+      // tab even if the server kept the underlying record (e.g. a GA4-mirrored job sheet it
+      // doesn't own and so won't delete).
+      if ((toType === "SI" || toType === "JS") && res.id !== id) removeOpenDoc(id);
       utils.documents.list.invalidate();
       utils.documents.stats.invalidate();
       toast.success(`Converted to ${TYPE_LABEL[toType] || toType}`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Convert failed: " + e.message); }
   }
   const emailMut = trpc.email.sendDocument.useMutation();
   const [emailOpen, setEmailOpen] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", message: "" });
   // "Car is ready" — opens a confirm dialog rather than firing on the click, so a wrong number or
   // clumsy wording can be caught before it reaches the customer.
   const [readyOpen, setReadyOpen] = useState(false);
@@ -251,11 +365,20 @@ export default function DocumentDetails() {
     const d = readyPreview.data as any;
     if (readyOpen && d) setReadyForm((f) => (f.message ? f : { to: d.to || "", message: d.message || "" }));
   }, [readyOpen, readyPreview.data]);
-  const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
   const partsForDefects = trpc.ai.partsForDefects.useMutation();
+  // The MOT charge on the Extras panel used to default to a hardcoded "45". It's a price we set,
+  // so it belongs in the maintained price list (raised to £50) — one source of truth, changeable
+  // without a deploy. The literal stays only as a last-resort fallback if the list can't load.
+  const { data: motPriceRows } = trpc.partsPriceList.list.useQuery({ search: "MOT" }, { staleTime: 5 * 60_000 });
+  const motDefault = (() => {
+    const row = ((motPriceRows as any[]) || []).find((r) => String(r.description || "").trim().toUpperCase() === "MOT");
+    const v = Number(row?.unitPrice);
+    return v > 0 ? String(v.toFixed(2).replace(/\.00$/, "")) : "45";
+  })();
+
   const [issueOpen, setIssueOpen] = useState(false);
   const [excessOpen, setExcessOpen] = useState(false);
   async function doDelete() {
@@ -266,13 +389,13 @@ export default function DocumentDetails() {
       await delMut.mutateAsync({ ids: [id] });
       await Promise.all([utils.documents.list.invalidate(), utils.documents.stats.invalidate()]);
       toast.success("Document deleted");
-      setLocation("/documents");
+      setLocation(`${base}/documents`);
     } catch (e: any) { toast.error("Delete failed: " + (e.message || "")); }
   }
-  async function doIssue(after: "none" | "print" | "email" | "both") {
+  async function doIssue(after: "none" | "print" | "email" | "both", issueDate?: string) {
     try {
       await flushPending();
-      await issueMut.mutateAsync({ id });
+      await issueMut.mutateAsync({ id, issueDate });
       await utils.documents.getById.invalidate({ id });
       setIssueOpen(false);
       toast.success("Invoice issued");
@@ -280,43 +403,81 @@ export default function DocumentDetails() {
       if (after === "email" || after === "both") openEmail();
     } catch (e: any) { toast.error("Issue failed: " + (e.message || "")); }
   }
-  async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean }) {
+  async function doCreateExcess(args: { excessNet: number; discount: number; vatRegistered: boolean; fullVatToCustomer?: boolean }) {
     try {
       await flushPending();
       const res: any = await createExcessMut.mutateAsync({ mainDocId: id, ...args });
       setExcessOpen(false);
       toast.success(`Policy excess invoice ${res.docNo} created`);
-      setLocation(`/documents/${res.id}`);
+      setLocation(`${base}/documents/${res.id}`);
     } catch (e: any) { toast.error("Create excess failed: " + (e.message || "")); }
   }
   function emailCtx() {
     const d = (data as any)?.doc; const cust = (data as any)?.customer; const veh = (data as any)?.vehicle;
-    return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
+    // Once issued, an invoice's attached PDF prints GA4's real number (see getRichPDF) — the
+    // subject/body must quote the same number, not the web's own guess-ahead docNo.
+    return { customer: d?.customerName || cust?.name || "Customer", docNo: d?.ga4Number || d?.docNo || "", type: TYPE_LABEL[d?.docType] || "Document", total: money(d?.totalGross), reg: d?.registration || veh?.registration || "your vehicle" };
   }
   function openEmail() {
     if (blockIfIncomplete("email")) return;
     const d = (data as any)?.doc; const cust = (data as any)?.customer;
-    const t = EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
-    setEmailForm({ to: d?.custEmail || cust?.email || "", ...applyTemplate(t, emailCtx()) });
+    // A main insurance invoice (billed to the insurer, not the policyholder) must never default to
+    // the customer's own email/greeting — that's a different invoice going to the wrong party.
+    // Prefer the recorded insurer email; if none is on file yet, leave it blank rather than guess wrong.
+    const billedToInsurer = d?.docType !== "XS" && !!String(d?.insuranceCompany || "").trim();
+    const t = (billedToInsurer && EMAIL_TEMPLATES.find((x) => x.name === "Insurance Invoice"))
+      || EMAIL_TEMPLATES.find((x) => x.types?.includes(d?.docType)) || EMAIL_TEMPLATES[EMAIL_TEMPLATES.length - 1];
+    const to = billedToInsurer ? (d?.insurerEmail || "") : (d?.custEmail || cust?.email || "");
+    setEmailForm({ to, cc: "", ...applyTemplate(t, emailCtx()) });
     setEmailOpen(true);
   }
+
+  /** Every address we hold for this job, for the one-click chips: the document's own recorded
+   * address, the customer record, the insurer, and each additional contact. A customer can
+   * legitimately have several (personal and company), which is why they're offered rather than
+   * one being guessed at. Deduped case-insensitively, and labelled with whose address it is. */
+  function knownEmails(): { email: string; label: string }[] {
+    const d = (data as any)?.doc; const cust = (data as any)?.customer;
+    const out: { email: string; label: string }[] = [];
+    const seen = new Set<string>();
+    const add = (email: any, label: string) => {
+      const e = String(email || "").trim();
+      if (!e.includes("@") || seen.has(e.toLowerCase())) return;
+      seen.add(e.toLowerCase());
+      out.push({ email: e, label });
+    };
+    add(d?.custEmail, "On this document");
+    add(cust?.email, cust?.name || "Customer");
+    add(d?.insurerEmail, d?.insuranceCompany || "Insurer");
+    for (const c of (Array.isArray(cust?.altContacts) ? cust.altContacts : [])) add(c?.email, c?.name || "Additional contact");
+    return out;
+  }
+
+  /** Add an address to To or CC without wiping what's already there — these fields take a
+   * comma-separated list so an invoice can go to the customer and the company at once. */
+  function addRecipient(field: "to" | "cc", email: string) {
+    setEmailForm((f) => {
+      const cur = String(f[field] || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (cur.some((c) => c.toLowerCase() === email.toLowerCase())) return f;
+      return { ...f, [field]: [...cur, email].join(", ") };
+    });
+  }
+
+  const splitAddrs = (raw: string) => String(raw || "").split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+
   async function sendEmail() {
-    if (!emailForm.to.includes("@")) { toast.error("Enter a valid recipient email address"); return; }
-    try { await flushPending(); await emailMut.mutateAsync({ docId: id, to: emailForm.to, subject: emailForm.subject, message: emailForm.message }); toast.success(`Emailed to ${emailForm.to}`); setEmailOpen(false); }
-    catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
-  }
-  function openCarReady() {
-    setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
-    setReadyOpen(true);
-  }
-  async function sendCarReady() {
-    const to = readyForm.to.trim();
-    if (to.replace(/\D/g, "").length < 10) { toast.error("Enter a valid mobile number"); return; }
+    const tos = splitAddrs(emailForm.to);
+    const ccs = splitAddrs(emailForm.cc);
+    if (!tos.length) { toast.error("Enter a valid recipient email address"); return; }
+    const bad = [...tos, ...ccs].filter((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a));
+    if (bad.length) { toast.error(`Not a valid email address: ${bad.join(", ")}`); return; }
     try {
-      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message });
-      toast.success(`Told the customer their car is ready (${to})`);
-      setReadyOpen(false);
-    } catch (e: any) { toast.error("Message failed: " + (e.message || "")); }
+      await flushPending();
+      await emailMut.mutateAsync({ docId: id, to: tos.join(","), cc: ccs.join(",") || undefined, subject: emailForm.subject, message: emailForm.message });
+      toast.success(`Emailed to ${tos.join(", ")}${ccs.length ? ` (cc ${ccs.join(", ")})` : ""}`);
+      setEmailOpen(false);
+    }
+    catch (e: any) { toast.error("Email failed: " + (e.message || "")); }
   }
 
   // initialise the form once per document (guard against auto-save refetches clobbering edits)
@@ -347,11 +508,12 @@ export default function DocumentDetails() {
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
       staffSalesPerson: doc.staffSalesPerson || "", staffTechnician: doc.staffTechnician || "", staffRoadTester: doc.staffRoadTester || "",
       staffMotTester: doc.staffMotTester || "", motClass: doc.motClass || "", motStatus: doc.motStatus || "",
-      insuranceCompany: doc.insuranceCompany || "",
+      insuranceCompany: doc.insuranceCompany || "", insurerAddress: (doc as any).insurerAddress || "", insurerEmail: (doc as any).insurerEmail || "",
       motAmount: extraSum((data as any).lineItems, "MOT"), sundriesAmount: extraSum((data as any).lineItems, "Sundries"),
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
     regOnLoadRef.current = (vehicle?.registration || doc.registration || "").toUpperCase().replace(/\s/g, "");
+    vehIdentityRegRef.current = normRegKey(vehicle?.registration || doc.registration || ""); // the identity fields just set are this reg's
     // snapshot the loaded customer details so the update prompt only fires on a genuine edit
     custInitRef.current = {
       name: ([doc.custTitle || nm.title, doc.custForename || nm.forename, doc.custSurname || nm.surname].filter(Boolean).join(" ") || doc.customerName || customer?.name || "").trim(),
@@ -381,8 +543,10 @@ export default function DocumentDetails() {
     setNewCust(false);
     initRef.current = null;     // so clicking back to a previous tab re-loads that doc
     regOnLoadRef.current = "";
+    vehIdentityRegRef.current = "";
     if (reg) {
       setForm((f) => ({ ...f, registration: reg.toUpperCase() }));
+      vehIdentityRegRef.current = normRegKey(reg); // identity fields are blank, owned by this reg
       lookup(reg, true); // fills the vehicle and its linked customer (silent — no auto-create yet)
     } else if (customerId) {
       (async () => {
@@ -465,9 +629,13 @@ export default function DocumentDetails() {
     // If the registration was CHANGED since the doc loaded, force a fresh fetch and OVERWRITE all
     // vehicle fields — so a corrected reg fully replaces the old vehicle's details (not a merge).
     const force = reg.toUpperCase().replace(/\s/g, "") !== regOnLoadRef.current;
+    const wanted = normRegKey(reg);
     setLooking(true);
     try {
       const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg, force });
+      // The reg was edited again while this (slow) lookup was in flight — the result describes
+      // the reg as it WAS. Applying it would clobber the correction and re-attach that car.
+      if (vehIdentityRegRef.current !== wanted) { toast.message("Registration changed while the lookup was running — click Lookup to fetch the new reg."); return; }
       const v = res?.vehicle, c = res?.customer, last = res?.lastCustomer;
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
       const sn = c ? splitName(c.name) : null;
@@ -497,6 +665,7 @@ export default function DocumentDetails() {
       // the record (and adopts this ownerless vehicle) instead of leaving the details unlinked.
       if (!c && last) { setNewCust(true); toast.message("Customer carried over from this vehicle's last invoice — check the details, then save to link them."); }
       regOnLoadRef.current = reg.toUpperCase().replace(/\s/g, ""); // this reg is now loaded — don't force again unless it changes
+      vehIdentityRegRef.current = normRegKey(v.registration || reg); // the identity fields now describe this reg
       setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
       if (!silent) markDirty();
       const src = String(res.source || "");
@@ -504,7 +673,19 @@ export default function DocumentDetails() {
       else if (src.includes("sws")) toast.success("Loaded from SWS vehicle data" + (src.includes("dvla") ? " + DVLA" : ""));
       else if (src.includes("dvla")) toast.success("Loaded from DVLA");
       else toast.message("No external data found — registration set");
-      if (res.warning) toast.warning(res.warning, { duration: 8000 });
+      // A plate-transfer warning is only useful if there's a way through it. The old text said
+      // "use New Vehicle", which can't work — vehicles.registration is UNIQUE, so the plate has
+      // to be freed from the old car first. Offer that as the action.
+      if (res.warning) {
+        const conflict = /different vehicle now carrying this plate/i.test(String(res.warning));
+        toast.warning(res.warning, {
+          duration: conflict ? 20000 : 8000,
+          action: conflict ? {
+            label: "It's a different car",
+            onClick: () => retirePlate(String(v.registration || reg)),
+          } : undefined,
+        });
+      }
       // Changing the reg to a car with no owner on file leaves the previously-linked customer
       // attached. Warn so an unrelated customer isn't silently carried onto a different vehicle.
       if (force && !c && form.customerId) {
@@ -513,6 +694,39 @@ export default function DocumentDetails() {
       }
     } catch { toast.error("Lookup failed"); }
     finally { setLooking(false); }
+  }
+
+  /** The plate has genuinely moved to a different car. Retire it from the old record — which
+   *  keeps every invoice it already has — then re-run the lookup so the new vehicle is created
+   *  cleanly against the freed plate. */
+  const retirePlateMut = trpc.vehicles.retirePlate.useMutation();
+  async function retirePlate(registration: string) {
+    try {
+      const r: any = await retirePlateMut.mutateAsync({ registration });
+      toast.success(
+        r.action === "deleted"
+          ? `${r.plateFreed} freed — the old ${r.was || "record"} had no history, so it's been removed rather than left as a ghost.`
+          : `${r.was || "The old vehicle"} kept as ${r.retiredAs}${r.documentsKept ? ` with its ${r.documentsKept} document${r.documentsKept === 1 ? "" : "s"}` : ""} — ${r.plateFreed} is free now.`,
+        { duration: 9000 },
+      );
+      // The plate is free now, so the next lookup must be a FORCED one to create the new car
+      // rather than merging onto whatever is still in the form. `force` is derived from the reg
+      // having changed since load, so clear that marker first.
+      regOnLoadRef.current = "";
+      await lookup(registration);
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't retire that plate");
+    }
+  }
+
+  // Auto-fire the same lookup() cascade (our records -> SWS -> DVLA) the moment a reg is
+  // entered, instead of making staff click "VRM Lookup" as a separate step. Guarded to the
+  // reg actually having changed since the last lookup, so tabbing through an unedited field
+  // (or the Enter-triggered call re-firing on blur right after) doesn't re-pay for SWS.
+  function autoLookupOnReg() {
+    if (!editing || looking) return;
+    const cur = (form.registration || "").toUpperCase().replace(/\s/g, "");
+    if (cur && cur !== regOnLoadRef.current) lookup();
   }
 
   const liveTotals = useMemo(() => {
@@ -531,6 +745,16 @@ export default function DocumentDetails() {
       labourNet, partsNet, sundriesNet: sundries, paintNet: paint, lubricantNet: lubricants,
     };
   }, [items, form.motAmount, form.sundriesAmount, form.lubricantsAmount, form.paintAmount]);
+
+  const techData = ((data as any)?.vehicle?.comprehensiveTechnicalData as any) || undefined;
+
+  // MOT/tax refresh live from DVSA/DVLA on every doc view (same as the vehicle page) —
+  // the cached row goes stale the moment a car passes its MOT here, and a job sheet
+  // reading "Expired 1d ago" right after the test is exactly the wrong thing to show.
+  const motTaxLive = trpc.vehicles.refreshMotTax.useQuery(
+    { registration: form.registration || "" },
+    { enabled: !isNew && !!form.registration, staleTime: 5 * 60_000 }
+  );
 
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
@@ -551,12 +775,12 @@ export default function DocumentDetails() {
       oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
       airconType: lookupTech?.airconType ?? td.aircon?.type,
       airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity,
-      motExpiry: lookupTech?.motExpiry ?? v?.motExpiryDate,
-      taxStatus: lookupTech?.taxStatus ?? v?.taxStatus,
-      taxDueDate: lookupTech?.taxDueDate ?? v?.taxDueDate,
+      motExpiry: motTaxLive.data?.motExpiryDate ?? lookupTech?.motExpiry ?? v?.motExpiryDate,
+      taxStatus: motTaxLive.data?.taxStatus ?? lookupTech?.taxStatus ?? v?.taxStatus,
+      taxDueDate: motTaxLive.data?.taxDueDate ?? lookupTech?.taxDueDate ?? v?.taxDueDate,
       transmission: lookupTech?.transmission ?? td.ukvd?.transmission ?? null,
     };
-  }, [data, lookupTech]);
+  }, [data, lookupTech, motTaxLive.data]);
 
   // Detect when the customer's name / phone / email / postcode on this doc differ from
   // their saved record, so we can offer to update the customer master (auto-save can't prompt).
@@ -583,11 +807,15 @@ export default function DocumentDetails() {
   const custDisplayName = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
 
   function buildPayload(): any {
+    // Ship the vehicle-identity block only when it describes the reg on the doc (belt), and tag
+    // it with that reg so saveDocument can verify the provenance itself (braces).
+    const identityOwned = !!normRegKey(form.registration) && normRegKey(form.registration) === vehIdentityRegRef.current;
     return {
       id: isNew ? undefined : id, docType: form.docType || "JS", docNo: String(form.docNo ?? "").trim() || undefined, registration: form.registration,
       customerId: form.customerId || undefined,
       createCustomer: !form.customerId && !!custDisplayName && (isNew || newCust),
-      vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
+      vehicle: identityOwned ? { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode } : {},
+      vehicleReg: identityOwned ? form.registration : undefined,
       customerName: custDisplayName || undefined,
       custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
       company: form.company, accountNumber: form.accountNumber,
@@ -606,7 +834,7 @@ export default function DocumentDetails() {
       dateCreated: form.dateCreated || undefined, dateIssued: form.dateIssued || undefined,
       docStatus: form.docStatus, orderRef: form.orderRef, department: form.department, terms: form.terms, description: form.description,
       staffSalesPerson: form.staffSalesPerson, staffTechnician: form.staffTechnician, staffRoadTester: form.staffRoadTester,
-      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany,
+      staffMotTester: form.staffMotTester, motClass: form.motClass, motStatus: form.motStatus, insuranceCompany: form.insuranceCompany, insurerAddress: form.insurerAddress, insurerEmail: form.insurerEmail,
       lineItems: [...items, ...extrasToLineItems(form)].map((i) => ({ itemType: i.itemType, description: i.description, partNumber: i.partNumber, nominalCode: i.nominalCode, quantity: num(i.quantity), unitPrice: num(i.unitPrice), vatRate: num(i.vatRate), subNet: num(i.subNet), taxAmount: num(i.taxAmount), discount: num(i.discount) ?? null, discountType: i.discountType ?? null })),
     };
   }
@@ -620,11 +848,16 @@ export default function DocumentDetails() {
       const res = await save.mutateAsync(buildPayload());
       if (editSeq.current === seq) setDirty(false); // nothing changed during the save
       setSaveStatus("saved");
-      // Capture the resolved/created customer so later auto-saves don't register a duplicate.
-      if (res?.customerId) setForm((f) => (f.customerId ? f : { ...f, customerId: res.customerId }));
+      // Capture the resolved/created customer (and any GA4-style account number just
+      // minted for them) so later auto-saves don't register a duplicate.
+      if (res?.customerId || res?.accountNumber) setForm((f) => ({
+        ...f,
+        customerId: f.customerId ?? res.customerId,
+        accountNumber: f.accountNumber ? f.accountNumber : (res.accountNumber ?? f.accountNumber),
+      }));
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
-        setLocation(`/documents/${res.id}`, { replace: true });
+        setLocation(`${base}/documents/${res.id}`, { replace: true });
       } else {
         utils.documents.list.invalidate();
         utils.documents.stats.invalidate();
@@ -643,16 +876,16 @@ export default function DocumentDetails() {
 
   // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
   async function flushPending() { if (dirty) await autoSave(); }
-  async function goBack() { await flushPending(); setLocation("/documents"); }
+  async function goBack() { await flushPending(); setLocation(`${base}/documents`); }
 
   // Open-document "tabs" — keep several docs on the go and jump between them.
   const openDocs = useOpenDocs();
   useEffect(() => {
     const doc = (data as any)?.doc;
     if (isNew || !doc?.id) return;
-    upsertOpenDoc({ id: doc.id, docNo: doc.docNo, reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
+    upsertOpenDoc({ id: doc.id, docNo: displayDocNo(doc), reg: doc.registration || (data as any)?.vehicle?.registration, type: doc.docType });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.registration]);
+  }, [isNew, (data as any)?.doc?.id, (data as any)?.doc?.docNo, (data as any)?.doc?.ga4Number, (data as any)?.doc?.registration]);
 
   // If the document was deleted / doesn't exist, drop its stale tab and bounce to the next
   // open doc (or the list) — so a stale tab can't strand the user on a dead "not found" screen.
@@ -661,7 +894,7 @@ export default function DocumentDetails() {
     if (data !== undefined && !(data as any)?.doc) {
       removeOpenDoc(id);
       const rest = openDocs.filter((d) => d.id !== id);
-      setLocation(rest.length ? `/documents/${rest[0].id}` : "/documents");
+      setLocation(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, data, id]);
@@ -669,7 +902,7 @@ export default function DocumentDetails() {
   async function switchTo(to: string) { await flushPending(); setLocation(to); }
   function closeTab(tabId: number) {
     removeOpenDoc(tabId);
-    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `/documents/${rest[0].id}` : "/documents"); }
+    if (tabId === id) { const rest = openDocs.filter((d) => d.id !== tabId); switchTo(rest.length ? `${base}/documents/${rest[0].id}` : `${base}/documents`); }
   }
 
   // Push the edited customer details back to the customer's master record (opt-in).
@@ -695,13 +928,15 @@ export default function DocumentDetails() {
     <DashboardLayout>
       <div className="p-8 space-y-3">
         <p className="text-muted-foreground">This document no longer exists — it may have been deleted. Taking you back…</p>
-        <button onClick={() => setLocation("/documents")} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
+        <button onClick={() => setLocation(`${base}/documents`)} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline text-sm"><ArrowLeft className="w-4 h-4" /> Back to documents</button>
       </div>
     </DashboardLayout>
   );
 
   const typeLabel = TYPE_LABEL[form.docType] || form.docType || "Job Sheet";
   const docNo = (data as any)?.doc?.docNo;
+  // GA4's stamped invoice number, once issued — the number on the printed/emailed copy.
+  const ga4Number = String((data as any)?.doc?.ga4Number ?? "").trim();
   const history = (data as any)?.history ?? [];
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
@@ -712,98 +947,296 @@ export default function DocumentDetails() {
   const insurerName = String(form.insuranceCompany ?? "").trim() || (billTo?.isInsurer ? String(billTo.company || "") : "");
   const insurerDetected = !!insurerName && !String(form.insuranceCompany ?? "").trim(); // detected from bill-to, not yet recorded
   const docReceipts = Number((data as any)?.doc?.totalReceipts) || 0;
-  const excessDeduction = isExcess ? 0 : (Number((data as any)?.doc?.excessGross) || 0);
+  // "Full VAT to customer" (commercial/fleet excess, see createExcessInvoice): the insurer owes the
+  // job's net value minus the (VAT-free) excess, no VAT at all — matches the printed invoice. The
+  // on-screen deduction shown against "Total" (which stays the full job value) bundles in the
+  // whole job VAT too, so Total − deduction − Receipts reconciles to Balance on screen exactly as
+  // it prints — not just the bare excess amount, which would otherwise look like the sums don't add up.
+  const fullVatToCustomer = !isExcess && !!(data as any)?.doc?.excessFullVatToCustomer;
+  const excessNetOnly = Number((data as any)?.doc?.excessNet) || 0;
+  const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
-  const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
+  function openCarReady() {
+    setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
+    setReadyOpen(true);
+  }
+  async function sendCarReady() {
+    const to = readyForm.to.trim();
+    if (to.replace(/\D/g, "").length < 10) { toast.error("Enter a valid mobile number"); return; }
+    try {
+      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message });
+      toast.success(`Told the customer their car is ready (${to})`);
+      setReadyOpen(false);
+    } catch (e: any) { toast.error("Message failed: " + (e.message || "")); }
+  }
   // "Car ready" belongs to the invoice, not the job sheet: the job sheet is the work in progress,
   // the invoice is what the customer collects against. SI is the ordinary invoice, XS the
   // policy-excess one.
   const isCollectable = ["SI", "XS"].includes((data as any)?.doc?.docType);
+  const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
+
+  // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
+  // beside vehicle/customer) and classic (rendered in its own full-height rail, see
+  // js-cell-rail below), so the two views can't drift apart.
+  const railContent = (
+    <>
+      {base && (
+        <Panel title="Additional Info">
+          <EF label="Order Ref" field="orderRef" grow {...{ form, set, editing }} />
+          <EF label="Department" field="department" grow {...{ form, set, editing }} />
+          <EF label="Terms" field="terms" grow {...{ form, set, editing }} />
+          <SelectField label="Status" field="docStatus" options={["Not Issued", "Issued", "Paid"]} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <SelectField label="Sales Advisor" field="staffSalesPerson" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Technician" field="staffTechnician" options={TECHNICIANS} {...{ form, set, editing }} />
+          <SelectField label="Road Tester" field="staffRoadTester" options={TECHNICIANS} {...{ form, set, editing }} />
+        </Panel>
+      )}
+      {!isExcess && (
+        <Panel title="Insurance">
+          <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
+          {insurerDetected && (
+            <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
+              className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
+              Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
+            </button>
+          )}
+          <div className="mt-1">
+            <label className="text-[11px] text-slate-500">Insurer claims address (printed on the invoice to them)</label>
+            <textarea
+              value={form.insurerAddress ?? ""}
+              onChange={(e) => set("insurerAddress", e.target.value)}
+              readOnly={!editing}
+              rows={3}
+              placeholder={"e.g.\nAllianz Insurance plc\nClaims Dept, PO Box 123\nGuildford, GU1 1AB"}
+              className="w-full border rounded px-2 py-1 text-[12px] mt-0.5 resize-y outline-none focus:border-violet-500 disabled:bg-slate-50"
+            />
+          </div>
+          <EF label="Insurer Email" field="insurerEmail" w="w-24" grow {...{ form, set, editing }} />
+          <p className="text-[10.5px] text-slate-500 mt-0.5">The Email button defaults to this on this invoice, instead of the customer's own email.</p>
+        </Panel>
+      )}
+      {!isExcess && (
+        <Panel title="Extras">
+          {/* MOT: tick to include an MOT on this job — defaults the statutory fee plus the
+              usual Class 4 / Pass / Dec Buckley (the standard case), never overwriting a
+              value already set (e.g. a re-tick after someone picked Fail/another tester). */}
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
+              <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setForm((f) => ({
+                      ...f,
+                      motAmount: num(f.motAmount) ? f.motAmount : motDefault,
+                      motClass: f.motClass || "4",
+                      motStatus: f.motStatus || "Pass",
+                      staffMotTester: f.staffMotTester || "Dec Buckley",
+                    }));
+                    markDirty();
+                  } else {
+                    set("motAmount", "");
+                  }
+                }}
+                className="accent-violet-600 w-3.5 h-3.5" />
+              MOT
+            </label>
+            {/* Typing an amount straight in counts as doing an MOT just as much as ticking the box
+                does, so fill the same defaults here. Without this the class and status stayed
+                blank whenever the checkbox was bypassed — 8 of August's MOTs arrived that way,
+                which is why they show as "(no class recorded)" on the MOT Sales report. */}
+            <MoneyInput value={form.motAmount} readOnly={!editing} onChange={(v) => {
+              if ((num(v) || 0) > 0) {
+                setForm((f) => ({
+                  ...f,
+                  motAmount: v,
+                  motClass: f.motClass || "4",
+                  motStatus: f.motStatus || "Pass",
+                  staffMotTester: f.staffMotTester || "Dec Buckley",
+                }));
+                markDirty();
+              } else {
+                set("motAmount", v);
+              }
+            }} />
+          </div>
+          <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
+          <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
+          <div className="border-t my-1.5" />
+          <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
+          <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
+          <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
+        </Panel>
+      )}
+      {isExcess && <ExcessPanel doc={(data as any)?.doc} mainDocTax={Number(relatedDoc?.totalTax) || 0} onSaved={() => utils.documents.getById.invalidate({ id })} />}
+      {isExcess && relatedDoc && (
+        <Panel title="Insurance Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{displayDocNo(relatedDoc)}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
+        </Panel>
+      )}
+      {!isExcess && relatedDoc && (
+        <Panel title="Policy Excess Invoice">
+          <button onClick={() => setLocation(`${base}/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
+            <span>Doc No</span><span className="font-semibold">{displayDocNo(relatedDoc)}</span>
+          </button>
+          <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
+          <p className="text-[10.5px] text-slate-500 mt-1">
+            {fullVatToCustomer
+              ? "Excess + this job's full VAT are both deducted from the balance due from the insurer. The invoice itself is made out to the customer, per the insurer's approved-repairer scheme rules."
+              : "Deducted from the amount payable by the insurer."}
+          </p>
+        </Panel>
+      )}
+      {/* Classic view puts this in the History tab's left-hand column instead (see
+          js-reminders-column below), matching the reference exactly. */}
+      {!isNew && !base && (
+        <Panel title="Account">
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
+          <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
+        </Panel>
+      )}
+      {/* Classic view only: Totals lives in the same full-height rail as Insurance/Extras/
+          Account (matching the reference), instead of sitting beside the tabs below. */}
+      {base && (
+        <Panel title="Totals">
+          <TRow label="SubTotal" value={liveTotals.subTotal} />
+          {liveTotals.discountTotal > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+              <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+            </div>
+          )}
+          <TRow label="VAT" value={liveTotals.vat} />
+          <TRow label="MOT" value={liveTotals.motGross} />
+          <TRow label="Total" value={liveTotals.gross} bold />
+          {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+            <div className="border-t mt-1 pt-1 space-y-1.5">
+              {!isExcess && excessDeduction > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-medium text-fuchsia-700">{fullVatToCustomer ? "Excess + VAT (to customer)" : "Excess (to customer)"}</span>
+                  <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                </div>
+              )}
+              {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+              {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                  <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      )}
+    </>
+  );
 
   return (
     <DashboardLayout>
-      <div className="space-y-3 text-slate-800">
+      <div className={base ? "space-y-3 js-record-page" : "space-y-3 text-slate-800"}>
         {/* open-document tabs */}
         {openDocs.length > 0 && (
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-2 mb-1">
-            {openDocs.map((d) => {
-              const active = d.id === id;
-              return (
-                <div key={d.id} onClick={() => { if (!active) switchTo(`/documents/${d.id}`); }}
-                  className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
-                  <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
-                  <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
-                  <button type="button" title="Close tab" onClick={(e) => { e.stopPropagation(); closeTab(d.id); }} className="opacity-40 hover:opacity-100"><X className="w-3 h-3" /></button>
-                </div>
-              );
-            })}
-            <button type="button" onClick={() => switchTo("/documents/new")} title="New job sheet" className="inline-flex items-center gap-1 px-2 py-1.5 text-[12px] text-violet-700 hover:bg-violet-50 rounded-t-md shrink-0"><Plus className="w-3.5 h-3.5" /> New</button>
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-1">
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {openDocs.map((d) => {
+                const active = d.id === id;
+                return (
+                  <div key={d.id} onClick={() => { if (!active) switchTo(`${base}/documents/${d.id}`); }}
+                    className={`group inline-flex items-center gap-1.5 rounded-t-md px-2.5 py-1.5 text-[12px] cursor-pointer shrink-0 border border-b-0 ${active ? "bg-white border-slate-300 text-violet-800 font-semibold" : "bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200"}`}>
+                    <span className="text-[10px] font-bold uppercase opacity-60">{d.type || "JS"}</span>
+                    <span className="whitespace-nowrap">{d.docNo || d.id}{d.reg ? ` · ${d.reg}` : ""}</span>
+                    <button type="button" title="Close tab" onClick={(e) => { e.stopPropagation(); closeTab(d.id); }} className="opacity-40 hover:opacity-100"><X className="w-3 h-3" /></button>
+                  </div>
+                );
+              })}
+            </div>
+            <Button onClick={() => switchTo(`${base}/documents/new`)} size="sm" className="gap-1.5 shrink-0">
+              <Plus className="w-3.5 h-3.5" /> New
+            </Button>
           </div>
         )}
-        {/* toolbar */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" /> Back to documents
-          </button>
-          <div className="flex items-center gap-2">
-            {/* auto-save status */}
-            <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
-              {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
-                : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
-                : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
-                : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
-                : null}
-            </span>
-            {!isNew && (
-              <>
-                <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
-                {/* Invoices only. On a job sheet the work often isn't finished and the customer
-                    has nothing to collect against, so telling them it's ready would be premature. */}
-                {isCollectable && (
-                  <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
-                )}
-              </>
-            )}
-            <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
-            {!isNew && (
-              <div className="relative">
-                <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
-                  {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+        {/* toolbar — GA4 Classic moves this inside the record card below the title bar (see
+            the dark toolbar below); the modern app keeps its own light bordered-button row. */}
+        {!base && (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <button onClick={goBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="w-4 h-4" /> Back to documents
+            </button>
+            <div className="flex items-center gap-2">
+              {/* auto-save status */}
+              <span className="text-xs inline-flex items-center gap-1 mr-1 min-w-[64px] justify-end">
+                {saveStatus === "saving" ? <span className="text-slate-500 inline-flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+                  : dirty ? <span className="text-amber-600 inline-flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Unsaved…</span>
+                  : saveStatus === "saved" ? <span className="text-green-600 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Saved</span>
+                  : saveStatus === "error" ? <span className="text-red-600">Save failed</span>
+                  : null}
+              </span>
+              {!isNew && (
+                <>
+                  <button onClick={openEmail} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><Mail className="w-4 h-4" /> Email</button>
+                  {isCollectable && (
+                    <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
+                  )}
+                </>
+              )}
+              <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
+              <button onClick={downloadPdf} disabled={downloading || isNew} title="Download this document as a PDF" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF</button>
+              {!isNew && (
+                <div className="relative">
+                  <button onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">
+                    {convert.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Convert <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isNew && isInvoice && (
+                <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
+              )}
+              {!isNew && (
+                <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
+                  {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
                 </button>
-                {convertOpen && (
-                  <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-30 min-w-[190px] py-1">
-                    {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
-                      .filter(([code]) => code !== (data as any)?.doc?.docType)
-                      .map(([code, label]) => (
-                        <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50">{label}</button>
-                      ))}
-                    {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
-                      <>
-                        <div className="border-t my-1" />
-                        <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            {!isNew && isInvoice && (
-              <button onClick={() => setIssueOpen(true)} className="inline-flex items-center gap-1.5 bg-fuchsia-700 text-white rounded px-3 py-1.5 text-sm hover:bg-fuchsia-800"><CheckCircle2 className="w-4 h-4" /> Issue</button>
-            )}
-            {!isNew && (
-              <button onClick={doDelete} disabled={delMut.isPending} className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
-                {delMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
-              </button>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100">
-          {/* purple title bar */}
-          <div className="bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-semibold">
+        <div className={base ? "js-top-card js-record-grid @container" : "border border-slate-300 rounded-md overflow-hidden shadow-sm bg-slate-100 @container"}>
+        {/* js-cell-body is the grid's main column (title/toolbar/forms/tabs/content); it's a
+            plain block wrapper in modern mode, so it's inert there — only classic mode makes
+            js-top-card an actual grid, where this needs to be one grid item so js-cell-rail
+            (added as its sibling below) can stretch to match its height. */}
+        <div className={base ? "js-cell-body" : undefined}>
+          {/* Title bar — GA4 Classic uses the real app's solid per-doc-type colour (sampled off
+              a live Job Sheet: deep plum/purple); the modern app keeps its own violet gradient. */}
+          <div
+            className={base ? "js-titlebar" : "bg-gradient-to-r from-violet-800 to-fuchsia-700 text-white px-4 py-2 flex items-center justify-between"}
+            style={base ? { background: GA4_TITLEBAR_COLOR[form.docType] || GA4_TITLEBAR_COLOR.JS } : undefined}
+          >
+            <div>
               <span className="text-amber-300">★</span>
-              <span>{typeLabel}</span>
+              <strong>{typeLabel}</strong>
               <span className="text-white/60">No.</span>
               <input
                 value={form.docNo ?? ""}
@@ -811,21 +1244,84 @@ export default function DocumentDetails() {
                 placeholder={isNew ? "(auto)" : "number"}
                 title="Set the document number to match GA4 — saves automatically"
                 spellCheck={false}
-                className="w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"
+                className={base ? "w-28 bg-white/15 border border-white/30 px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60" : "w-28 bg-white/15 border border-white/30 rounded px-2 py-0.5 text-white placeholder-white/50 text-sm font-semibold tracking-wide outline-none focus:bg-white/25 focus:border-white/60"}
               />
-            </div>
-            <div className="flex items-center gap-3">
-              {!isNew && isInvoice && (
-                <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
+              {/* The field above stays the web's own docNo — it's editable and other records
+                  cascade from it. But once issued, the number the customer actually holds is
+                  GA4's, so when the two differ, show the real one rather than leaving the header
+                  contradicting the invoice in their inbox. */}
+              {ga4Number && ga4Number !== String(form.docNo ?? "").trim() && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded bg-white/15 border border-white/30 px-2 py-0.5 text-[11px] font-semibold tracking-wide"
+                  title="GA4's invoice number — this is what the printed and emailed invoice shows">
+                  <span className="text-white/60">GA4</span> {ga4Number}
+                </span>
               )}
-              <span className="text-[11px] text-white/70">Auto-saves</span>
             </div>
+            {base ? (
+              <button type="button" className="js-notice" onClick={() => toast.message("Auto-saves — no manual save needed.")}>
+                {!isNew && isInvoice ? docStatusLabel : "Auto-saves"}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                {!isNew && isInvoice && (
+                  <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${docStatusLabel === "Not Issued" ? "bg-amber-400 text-amber-950" : docStatusLabel === "Paid" ? "bg-green-400 text-green-950" : "bg-white/90 text-violet-900"}`}>{docStatusLabel}</span>
+                )}
+                <span className="text-[11px] text-white/70">Auto-saves</span>
+              </div>
+            )}
+            {base && (
+              <div className="js-window-controls">
+                <button type="button" onClick={() => toast.message("Settings aren't available in Classic view yet.")} title="Settings"><Cog className="w-4 h-4" /></button>
+                <button type="button" onClick={goBack} title="Close"><X className="w-4 h-4" /></button>
+              </div>
+            )}
           </div>
+
+          {/* Toolbar — GA4 Classic only: dark charcoal bar with plain text buttons, matching
+              the real record toolbar exactly (Save/Print/Email/Extras/Convert … Delete). */}
+          {base && (
+            <nav className="js-primary-actions">
+              <button className="js-action-button" onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }}>Save</button>
+              <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
+              {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
+              {!isNew && isCollectable && <button className="js-action-button" onClick={openCarReady}>Car ready</button>}
+              <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
+              {!isNew && (
+                <div className="relative">
+                  <button className="js-action-button" onClick={() => setConvertOpen((o) => !o)} disabled={convert.isPending}>
+                    Convert <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {convertOpen && (
+                    <div className="absolute left-0 mt-1 bg-white border border-slate-300 shadow-lg z-30 min-w-[190px] py-1 text-slate-800">
+                      {([["ES", "Copy to Estimate"], ["JS", "Convert to Job Sheet"], ["SI", "Convert to Invoice"], ["CR", "Copy to Credit Note"]] as [string, string][])
+                        .filter(([code]) => code !== (data as any)?.doc?.docType)
+                        .map(([code, label]) => (
+                          <button key={code} onClick={() => doConvert(code)} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50">{label}</button>
+                        ))}
+                      {["SI", "JS", "ES"].includes((data as any)?.doc?.docType) && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button onClick={() => { setConvertOpen(false); setExcessOpen(true); }} className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 text-fuchsia-700 font-medium">Raise Policy Excess Invoice…</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <span className="js-action-spacer" />
+              {!isNew && isInvoice && (
+                <button className="js-action-button js-action-issue" onClick={() => setIssueOpen(true)}>Issue</button>
+              )}
+              {!isNew && (
+                <button className="js-action-button" onClick={doDelete} disabled={delMut.isPending}>Delete</button>
+              )}
+            </nav>
+          )}
 
           {/* policy-excess banner */}
           {isExcess && (
             <div className="bg-fuchsia-50 border-b border-fuchsia-200 text-center py-2 text-[14px] font-semibold text-fuchsia-900">
-              This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || relatedDoc?.docNo || "—"}
+              This invoice is a Policy Excess Invoice related to: Invoice {(data as any)?.doc?.relatedDocNo || displayDocNo(relatedDoc) || "—"}
               <span className="block text-[11px] font-normal text-fuchsia-700">Billed to the customer: {form.customerName || (data as any)?.customer?.name || "—"}</span>
             </div>
           )}
@@ -837,7 +1333,7 @@ export default function DocumentDetails() {
               </span>
               <span className="font-normal text-sky-700">
                 · re. customer {form.customerName || (data as any)?.customer?.name || "—"}
-                {relatedDoc ? ` · excess invoice ${relatedDoc.docNo}` : ""}
+                {relatedDoc ? ` · excess invoice ${displayDocNo(relatedDoc)}` : ""}
               </span>
               {isInvoice && !relatedDoc && !isNew && (
                 <button onClick={() => setExcessOpen(true)}
@@ -850,33 +1346,74 @@ export default function DocumentDetails() {
           )}
 
           {/* top form */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 p-3">
+          <div className={base ? "js-vehicle-customer-row" : "grid grid-cols-1 @4xl:grid-cols-12 gap-3 p-3"}>
             {/* vehicle */}
-            <div className="xl:col-span-5 space-y-1.5">
-              {lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
+            <div className={base ? "js-cell-vehicle space-y-1.5" : "@4xl:col-span-5 space-y-1.5"}>
+              {!base && lookupTech?.imageUrl && !/\/missing(?:[?#]|$)/i.test(lookupTech.imageUrl) && (
                 <div className="flex justify-center pb-1">
                   <img src={lookupTech.imageUrl} alt="Vehicle" loading="lazy"
                     onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = "none"; }}
                     className="max-h-[110px] w-auto rounded-md border border-slate-200 shadow-sm object-contain bg-white" />
                 </div>
               )}
-              {editing && (
+              {!base && editing && (
                 <VehicleSearch onSelect={(v) => {
-                  set("registration", v.registration);
+                  setRegistration(v.registration);
                   regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, ""); // known car → use its cached data, no SWS re-pay
                   lookup(v.registration);
                 }} />
               )}
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Registration</span>
-                <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
-                  className="flex-1 min-w-0 bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+              <div className={base ? "js-lookup-row" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Registration</span>
+                {base ? (
+                  <div className="js-combo-field">
+                    <input value={form.registration ?? ""} onChange={(e) => setRegistration(e.target.value)} readOnly={!editing}
+                      onBlur={autoLookupOnReg} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); autoLookupOnReg(); } }}
+                      className="bg-yellow-50 font-mono font-semibold" />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { setRegistration(""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <div className="relative flex-1 min-w-0">
+                    <input value={form.registration ?? ""} onChange={(e) => setRegistration(e.target.value)} readOnly={!editing}
+                      onFocus={() => setRegFocused(true)}
+                      onBlur={() => { setTimeout(() => setRegFocused(false), 150); autoLookupOnReg(); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setRegFocused(false); autoLookupOnReg(); } }}
+                      className="w-full bg-yellow-50 border border-slate-300 rounded-sm px-2 py-[3px] text-[15px] font-mono font-semibold h-[28px] read-only:bg-yellow-50/60 outline-none focus:border-violet-500" />
+                    {regFocused && regQueryText.length >= 2 && regMatches && regMatches.length > 0 && (
+                      <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg max-h-60 overflow-auto">
+                        {regMatches.map((v: any) => (
+                          <button key={v.id} type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setRegistration(v.registration);
+                              regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, "");
+                              lookup(v.registration);
+                              setRegFocused(false);
+                            }}
+                            className="flex w-full items-center gap-2 text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 border-b last:border-0">
+                            <span className="font-mono font-semibold rounded bg-yellow-300 px-1.5 py-0.5 text-[12px] text-black ring-1 ring-yellow-500/60 shrink-0">{v.registration}</span>
+                            <span className="truncate">{[v.make, v.model].filter(Boolean).join(" ")}</span>
+                            {v.ownerName && <span className="text-muted-foreground ml-auto truncate max-w-[40%]">{v.ownerName}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {editing && (
-                  <button onClick={() => lookup()} disabled={looking} className="inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50">
-                    {looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup
+                  <button onClick={() => lookup()} disabled={looking} className={base ? "js-search-button" : "inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 py-1 text-xs disabled:opacity-50"}>
+                    {base ? (
+                      <>
+                        <span className="js-search-icon">{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}</span>
+                        <span className="js-search-label">VRM Lookup</span>
+                      </>
+                    ) : (
+                      <>{looking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Lookup</>
+                    )}
                   </button>
                 )}
-                {form.registration && (
+                {!base && form.registration && (
                   <button
                     type="button"
                     title="Order parts on Euro Car Parts (Omnipart) — opens with this reg, also copied to clipboard"
@@ -895,39 +1432,65 @@ export default function DocumentDetails() {
                   </button>
                 )}
               </div>
+              {!base && !isNew && (data as any)?.doc?.vehicleId && (
+                <div className="flex justify-end -mt-0.5">
+                  <AssignCustomerDialog
+                    vehicleId={(data as any).doc.vehicleId}
+                    onAssigned={() => utils.documents.getById.invalidate({ id })}
+                    triggerButton={
+                      <button type="button" className="text-[11px] text-violet-700 hover:underline inline-flex items-center gap-1">
+                        <ArrowLeftRight className="w-3 h-3" /> Transfer vehicle to a different owner
+                      </button>
+                    }
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                 <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
               </div>
               <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
-                {form.vin && (
-                  <button type="button" title="Search this VIN on PartSouq"
-                    onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
-                    className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
-                    <ExternalLink className="w-3.5 h-3.5" /> PartSouq
-                  </button>
+                {!base && form.vin && (
+                  <>
+                    <button type="button" title="Search this VIN on PartSouq"
+                      onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
+                      className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-blue-200 bg-blue-50 rounded-sm px-2 text-[11px] font-medium text-blue-600 hover:bg-blue-100">
+                      <ExternalLink className="w-3.5 h-3.5" /> PartSouq
+                    </button>
+                    <button type="button" title="Copies the VIN and opens the 7zap OEM catalogue"
+                      onClick={() => openSevenZap(form.vin, form.make)}
+                      className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-2 text-[11px] font-medium text-orange-600 hover:bg-orange-100">
+                      <ExternalLink className="w-3.5 h-3.5" /> 7zap
+                    </button>
+                  </>
                 )}
               </div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
-              <MileageField {...{ form, set, editing }} isInvoice={isInvoice} />
+              {/* GA4 Classic shows the required cue on Mileage for every doc type, matching the
+                  real app. That is a visual cue only - what 0 means, and which docs default to it,
+                  is driven by isInvoice. */}
+              <MileageField {...{ form, set, editing }} isInvoice={isInvoice} classicCue={!!base} />
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
+              {base && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
+                  <button type="button" onClick={() => toast.message("Technical Data isn't wired up in Classic view — see the cards below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-red-700" /> Technical Data</button>
+                  <button type="button" onClick={() => toast.message("VRM Transfer isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">VRM Transfer</button>
+                  <button type="button" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> More</button>
+                </div>
+              )}
             </div>
             {/* customer */}
-            <div className="xl:col-span-4 space-y-1.5">
-              {editing && (
+            <div className={base ? "js-cell-customer space-y-1.5 @container/customer" : "@4xl:col-span-4 space-y-1.5 @container/customer"}>
+              {!base && editing && (
                 <>
-                  <CustomerSearch onSelect={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({
-                    ...f, customerId: c.id, customerName: c.name || f.customerName,
-                    custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
-                    custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode,
-                    custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad,
-                  })); markDirty(); }} />
+                  <CustomerSearch onSelect={(c) => { setNewCust(false); setForm((f) => attachCustomerPatch(f, c)); markDirty(); }} />
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
                       <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
@@ -939,27 +1502,43 @@ export default function DocumentDetails() {
                   </div>
                 </>
               )}
-              <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              {base ? (
+                <div className="js-lookup-row customer">
+                  <span>Acc Number</span>
+                  <div className="js-combo-field">
+                    <input value={form.accountNumber ?? ""} onChange={(e) => set("accountNumber", e.target.value)} readOnly={!editing} />
+                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.accountNumber} onClick={() => { set("accountNumber", ""); }} aria-label="Clear account number"><X className="w-3 h-3" /></button>
+                  </div>
+                  <button type="button" className="js-search-button" onClick={() => setFindCustOpen(true)} title="Find customer" aria-label="Find customer">
+                    <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
+                  </button>
+                </div>
+              ) : (
+                <EF label="Acc Number" field="accountNumber" {...{ form, set, editing }} />
+              )}
               <EF label="Company" field="company" {...{ form, set, editing }} />
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[12px] text-slate-600 text-right">Name</span>
-                <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={boxCls(editing) + " w-14"} />
-                <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={boxCls(editing) + " flex-1"} />
-                <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
-                  placeholder={nameMissing ? "Required" : "Surname"}
-                  className={boxCls(editing) + " flex-1" + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+              <div className={base ? "js-field" : "flex items-center gap-2"}>
+                <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Name</span>
+                <div className="flex items-center gap-2 js-name-fields">
+                  <input value={form.custTitle ?? ""} onChange={(e) => set("custTitle", e.target.value)} readOnly={!editing} placeholder="Title" className={base ? "w-14" : boxCls(editing) + " w-14"} />
+                  <input value={form.custForename ?? ""} onChange={(e) => set("custForename", e.target.value)} readOnly={!editing} placeholder="Forename" className={base ? "flex-1" : boxCls(editing) + " flex-1"} />
+                  <input value={form.custSurname ?? ""} onChange={(e) => set("custSurname", e.target.value)} readOnly={!editing}
+                    placeholder={nameMissing ? "Required" : "Surname"}
+                    className={(base ? "flex-1" : boxCls(editing) + " flex-1") + (nameMissing ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+                </div>
               </div>
-              <div className="flex gap-2 items-center">
-                <EF label="House No" field="custHouseNo" {...{ form, set, editing }} />
-                <EF label="Post Code" field="custPostcode" w="w-20" {...{ form, set, editing }} />
-                {editing && (
+              <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
+                <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
+                <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
+                {!base && editing && (
                   <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
-                    className="shrink-0 h-[32px] inline-flex items-center gap-1 bg-violet-700 text-white rounded px-2 text-xs disabled:opacity-50 hover:bg-violet-800">
+                    className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
                     {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
                   </button>
                 )}
               </div>
-              {addr.open && (
+              {!base && addr.open && (
                 <div className="border border-slate-300 rounded-sm bg-white shadow-sm overflow-hidden text-[13px]">
                   <div className="flex items-center justify-between px-2 py-1 bg-slate-100 text-[11px] text-slate-500">
                     <span>{addr.loading ? "Searching…" : `${addr.results.length} address${addr.results.length === 1 ? "" : "es"}`}</span>
@@ -979,13 +1558,26 @@ export default function DocumentDetails() {
               <EF label="Road" field="custRoad" {...{ form, set, editing }} />
               <EF label="Locality" field="custLocality" {...{ form, set, editing }} />
               <div className="flex gap-2"><EF label="Town" field="custTown" {...{ form, set, editing }} /><EF label="County" field="custCounty" w="w-20" {...{ form, set, editing }} /></div>
+              {/* Either number reaches the customer — only flag Mobile as missing when Telephone is empty too. */}
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
-              <EF label="Mobile" field="custMobile" {...{ form, set, editing }} />
-              {editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
+              <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
+              {!base && editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
                 onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
-              <OtherNumbers customerId={form.customerId} editing={editing} />
-              {custSync.changes.length > 0 && dismissSig !== custSync.sig && (
+              {!base && <OtherNumbers customerId={form.customerId} editing={editing} />}
+              {base && (
+                <div className="flex items-center gap-1 pt-1">
+                  {[
+                    [Pencil, "Edit"], [Mail, "Email"], [MessageSquare, "Notes"], [MapPin, "Address"],
+                  ].map(([Icon, label]: any) => (
+                    <button key={label} type="button" title={label} onClick={() => toast.message(`${label} isn't wired up in Classic view yet.`)} className="ga4-btn !px-2 !py-1"><Icon className="w-3.5 h-3.5" /></button>
+                  ))}
+                  <button type="button" onClick={() => toast.message("Deliver To isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> Deliver To</button>
+                  <button type="button" title="Attachments" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !px-2 !py-1"><Paperclip className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => toast.message("More isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">More</button>
+                </div>
+              )}
+              {!base && custSync.changes.length > 0 && dismissSig !== custSync.sig && (
                 <div className="flex items-center justify-between gap-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px]">
                   <span className="text-amber-800">{(data as any)?.customer?.name || "Customer"}'s {custSync.changes.join(" & ")} changed — update their record?</span>
                   <div className="flex gap-1.5 shrink-0">
@@ -995,74 +1587,18 @@ export default function DocumentDetails() {
                 </div>
               )}
             </div>
-            {/* additional info */}
-            <div className="xl:col-span-3 space-y-3">
-              {/* "Additional Info" fields (Status/Order Ref/Department/Terms/staff) hidden —
-                  not used by the workshop. Just the insurer bill-to is kept. */}
-              {!isExcess && (
-                <Panel title="Insurance">
-                  <EF label="Insurance Co." field="insuranceCompany" w="w-24" grow {...{ form, set, editing }} />
-                  {insurerDetected && (
-                    <button type="button" onClick={() => { set("insuranceCompany", insurerName); }}
-                      className="mt-1 w-full text-left text-[11px] text-sky-700 hover:underline">
-                      Detected insurer: <b>{insurerName}</b> — tap to record as bill-to
-                    </button>
-                  )}
-                </Panel>
-              )}
-              {!isExcess && (
-                <Panel title="Extras">
-                  {/* MOT: tick to include an MOT on this job (defaults the statutory fee, editable) */}
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-1.5 text-[12px] text-slate-600 select-none">
-                      <input type="checkbox" disabled={!editing} checked={(num(form.motAmount) || 0) > 0}
-                        onChange={(e) => set("motAmount", e.target.checked ? (num(form.motAmount) ? form.motAmount : "45") : "")}
-                        className="accent-violet-600 w-3.5 h-3.5" />
-                      MOT
-                    </label>
-                    <MoneyInput value={form.motAmount} onChange={(v) => set("motAmount", v)} readOnly={!editing} />
-                  </div>
-                  <SelectField label="MOT Class" field="motClass" w="w-20" options={["4", "5", "7"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Status" field="motStatus" w="w-20" options={["Pass", "Fail", "Retest", "Advisory"]} {...{ form, set, editing }} />
-                  <SelectField label="MOT Tester" field="staffMotTester" w="w-20" options={TECHNICIANS} {...{ form, set, editing }} />
-                  <div className="border-t my-1.5" />
-                  <AmountField label="Sundries" field="sundriesAmount" {...{ form, set, editing }} />
-                  <AmountField label="Lubricants" field="lubricantsAmount" {...{ form, set, editing }} />
-                  <AmountField label="Paint & Mat." field="paintAmount" {...{ form, set, editing }} />
-                </Panel>
-              )}
-              {isExcess && <ExcessPanel doc={(data as any)?.doc} onSaved={() => utils.documents.getById.invalidate({ id })} />}
-              {isExcess && relatedDoc && (
-                <Panel title="Insurance Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-violet-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Total</span><span>£{money(relatedDoc.totalGross)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Receipts</span><span>£{money(relatedDoc.totalReceipts)}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Balance</span><span>£{money(relatedDoc.balance)}</span></div>
-                </Panel>
-              )}
-              {!isExcess && relatedDoc && (
-                <Panel title="Policy Excess Invoice">
-                  <button onClick={() => setLocation(`/documents/${relatedDoc.id}`)} className="w-full text-left flex justify-between text-[13px] text-fuchsia-700 hover:underline">
-                    <span>Doc No</span><span className="font-semibold">{relatedDoc.docNo}</span>
-                  </button>
-                  <div className="flex justify-between text-[12px] mt-1"><span className="text-slate-600">Excess (gross)</span><span>£{money((data as any)?.doc?.excessGross)}</span></div>
-                  <p className="text-[10.5px] text-slate-500 mt-1">Deducted from the amount payable by the insurer.</p>
-                </Panel>
-              )}
-              {!isNew && (
-                <Panel title="Account">
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Veh Last Invoiced</span><span>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[12px]"><span className="text-slate-600">Cust Last Invoiced</span><span>{fmtDate((data as any)?.custLastInvoiced) || "—"}</span></div>
-                  <div className="flex justify-between text-[13px] font-semibold border-t pt-1 mt-1"><span className="text-slate-600">Acc Balance</span><span className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</span></div>
-                </Panel>
-              )}
-            </div>
+            {/* additional info — modern only; classic renders the same railContent in its
+                own full-height rail (js-cell-rail, added as a sibling of this whole card's
+                main column below) instead of sitting beside vehicle/customer. */}
+            {!base && (
+              <div className="@4xl:col-span-3 space-y-3">
+                {railContent}
+              </div>
+            )}
           </div>
 
           {/* vehicle info cards (pulled from MOT/SWS lookup) */}
-          {(vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
+          {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
             <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
@@ -1084,51 +1620,84 @@ export default function DocumentDetails() {
           )}
 
           {/* body: tabs + totals */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3">
-            <div className="xl:col-span-9">
-              <Tabs defaultValue="description">
-                <TabsList className="w-full justify-start rounded-none bg-slate-700 p-0 h-auto">
-                  {[["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]].map(([v, label]) => (
-                    <TabsTrigger key={v} value={v} className="rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]">{label}</TabsTrigger>
+          <div className={base ? "js-body-row" : "grid grid-cols-1 xl:grid-cols-12 gap-3 px-3 pb-3"}>
+            <div className={base ? "js-cell-main" : "xl:col-span-9"}>
+              <Tabs defaultValue={base ? "history" : "description"}>
+                <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
+                  {(base
+                    ? [["history", `History (${history.length})`], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
+                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
+                  ).map(([v, label]) => (
+                    <TabsTrigger key={v} value={v} className={base ? "" : "rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
-                <div className="border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]">
+                <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
                   <TabsContent value="description" className="mt-0">
-                    {editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
-                    {editing && (
+                    {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {!base && editing && (
                       <ServicePartsPicker
                         vehInfo={vehInfo}
-                        onAdd={(label, parts) => {
-                          setItemsDirty((p) => [...p, ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() }))]);
+                        engineCC={form.engineCC}
+                        registration={form.registration}
+                        onAdd={(label, parts, sundries, labour) => {
+                          setItemsDirty((p) => [
+                            ...p,
+                            ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() })),
+                            ...(labour ? [recalc({ itemType: "Labour", description: labour.description, quantity: 1, unitPrice: labour.unitPrice, vatRate: 20, _k: nextItemKey() })] : []),
+                          ]);
                           set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${label}`);
-                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"} — set prices in the Parts tab`);
+                          // Don't clobber a sundries amount staff already typed in.
+                          if (sundries && !num(form.sundriesAmount)) set("sundriesAmount", sundries);
+                          const unpriced = parts.filter((pt) => pt.unitPrice == null).length;
+                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"}` + (unpriced ? ` — ${unpriced} need a price set in the Parts tab` : ""));
                         }}
                       />
                     )}
-                    {editing && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {!base && editing && (
+                      <div className="flex items-center gap-3 mb-2">
+                        <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
+                        <RepairTimeEstimator
+                          registration={form.registration}
+                          techData={techData}
+                          onEstimate={({ description, minutes }) => {
+                            set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${description} — SWS est. ${minutes} min`);
+                            const hours = round2(minutes / 60);
+                            setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description, quantity: hours || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]);
+                            toast.success(`Added "${description}" (${minutes} min) to Description and as a Labour line — set the rate in the Labour tab`);
+                          }}
+                        />
+                      </div>
+                    )}
                     {editing ? (
                       <>
-                        <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />
+                        {base && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                        {!base && <DescToolbar textareaRef={descRef} value={form.description ?? ""} onChange={(v) => set("description", v)} />}
                         <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
                           placeholder="Describe the work to be carried out…"
                           className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
                       </>
                     ) : <DescriptionView text={form.description ?? ""} />}
+                    {!base && !isNew && (
+                      <JobGuidePanel docId={id} guide={(data as any)?.doc?.jobGuide}
+                        description={form.description ?? ""}
+                        onSaved={() => utils.documents.getById.invalidate({ id })} />
+                    )}
+                    {!base && !isNew && <JobImages docId={id} />}
                   </TabsContent>
                   <TabsContent value="labour" className="mt-0">
-                    {editing && (form.make || form.model) && (
+                    {!base && editing && (form.make || form.model) && (
                       <button type="button" onClick={() => window.open(`/repair-pricing?make=${encodeURIComponent(form.make || "")}&model=${encodeURIComponent(form.model || "")}`, "_blank")}
                         className="mb-2 inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
                         <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
                       </button>
                     )}
-                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} />
+                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} />
                   </TabsContent>
-                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} /></TabsContent>
+                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={(data as any)?.doc?.vehicleId}
-                    onOpen={(docId) => setLocation(`/documents/${docId}`)}
+                    onOpen={(docId) => setLocation(`${base}/documents/${docId}`)}
                     onAdd={(pt) => {
                       setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20, _k: nextItemKey() })]);
                       toast.success(`Added ${pt.description || "part"} (£${(Number(pt.unitPrice) || 0).toFixed(2)}) — see the Parts tab`);
@@ -1138,6 +1707,7 @@ export default function DocumentDetails() {
                   <TabsContent value="motadv" className="mt-0">
                     <MOTAdvisoriesTab
                       registration={form.registration}
+                      make={form.make || undefined} model={form.model || undefined}
                       busy={partsForDefects.isPending}
                       onUse={async (texts) => {
                         if (!texts.length) return;
@@ -1155,14 +1725,78 @@ export default function DocumentDetails() {
                   </TabsContent>
                   <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
-                    {history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No other documents for this vehicle.</p> : (
+                    {base ? (
+                      <div className="js-history-layout">
+                        {/* Reminders + account summary — mirrors the reference exactly (this
+                            record's own MOT due date, not the full cross-vehicle reminders
+                            queue that Home's Reminders panel covers). */}
+                        <aside className="js-reminders-column">
+                          <div className="js-subheader">
+                            <span>Reminders:</span>
+                            <button type="button" onClick={() => toast.message("Reminder editing isn't available in Classic view yet.")}>View/Edit</button>
+                          </div>
+                          <div className="js-reminder-head"><span>Type</span><span>Due</span></div>
+                          <div className="js-reminder-body">
+                            {vehInfo.motExpiry ? (
+                              <div className="js-reminder-row">
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: REMINDER_DOT[motTone(vehInfo.motExpiry)], display: "inline-block", flexShrink: 0 }} />
+                                  MOT
+                                </span>
+                                <span>{fmtDate(vehInfo.motExpiry)}</span>
+                              </div>
+                            ) : <div className="js-empty-row" />}
+                          </div>
+                          <button type="button" className="js-privacy-button" onClick={() => toast.message("Customer Privacy Options aren't available in Classic view yet.")}>
+                            Customer Privacy Options
+                          </button>
+                          <div className="js-account-summary">
+                            <div><span>Veh Last Invoiced</span><b>{fmtDate((data as any)?.vehLastInvoiced) || "—"}</b></div>
+                            <div><span>Cust Last Invoiced</span><b>{fmtDate((data as any)?.custLastInvoiced) || "—"}</b></div>
+                            <label>
+                              <span>Referral</span>
+                              <select disabled title="Referral source isn't tracked in Classic view yet"><option>—</option></select>
+                            </label>
+                            <div className="js-account-balance">
+                              <span>Acc Balance</span>
+                              <b className={((data as any)?.accBalance || 0) > 0 ? "text-red-600" : ""}>£{money((data as any)?.accBalance)}</b>
+                            </div>
+                          </div>
+                        </aside>
+                        <div className="js-history-table-panel">
+                          {history.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-6 text-center">No documents for this vehicle.</p>
+                          ) : (
+                            <Table>
+                              <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
+                              <TableBody>{history.map((h: any) => (
+                                <TableRow key={h.id} className={`cursor-pointer hover:bg-muted/50 ${h.convertedToDocNo ? "opacity-60" : ""}`} onClick={() => setHistoryPreviewId(h.id)}>
+                                  <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
+                                  <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                                  <TableCell>
+                                    {displayDocNo(h)}
+                                    {h.convertedToDocNo && <span className="ml-1.5 text-[10px] text-muted-foreground whitespace-nowrap">→ Invoice {h.convertedToDocNo}</span>}
+                                  </TableCell>
+                                  <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
+                                  <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
+                                  <TableCell className="text-right">£{money(h.totalGross)}</TableCell>
+                                </TableRow>))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </div>
+                      </div>
+                    ) : history.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">No documents for this vehicle.</p> : (
                       <Table>
                         <TableHeader><TableRow><TableHead className="h-8">Date</TableHead><TableHead className="h-8">Type</TableHead><TableHead className="h-8">Doc No</TableHead><TableHead className="h-8 text-right">Mileage</TableHead><TableHead className="h-8">Description</TableHead><TableHead className="h-8 text-right">Total</TableHead></TableRow></TableHeader>
                         <TableBody>{history.map((h: any) => (
-                          <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/documents/${h.id}`)}>
-                            <TableCell>{fmtDate(h.dateIssued || h.dateCreated)}</TableCell>
-                            <TableCell><Badge variant="secondary">{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
-                            <TableCell>{h.docNo}</TableCell>
+                          <TableRow key={h.id} className={`cursor-pointer hover:bg-muted/50 ${h.convertedToDocNo ? "opacity-60" : ""}`} onClick={() => setHistoryPreviewId(h.id)}>
+                            <TableCell>{fmtDate(h.dateCreated || h.dateIssued)}</TableCell>
+                            <TableCell><Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge></TableCell>
+                            <TableCell>
+                              {displayDocNo(h)}
+                              {h.convertedToDocNo && <span className="ml-1.5 text-[10px] text-muted-foreground whitespace-nowrap">→ Invoice {h.convertedToDocNo}</span>}
+                            </TableCell>
                             <TableCell className="text-right">{h.mileage ? Number(h.mileage).toLocaleString("en-GB") : ""}</TableCell>
                             <TableCell className="max-w-[280px] truncate">{h.mainDescription || h.description || ""}</TableCell>
                             <TableCell className="text-right">£{money(h.totalGross)}</TableCell>
@@ -1174,39 +1808,45 @@ export default function DocumentDetails() {
                 </div>
               </Tabs>
             </div>
-            <div className="xl:col-span-3 space-y-3">
-              <Panel title="Totals">
-                <TRow label="SubTotal" value={liveTotals.subTotal} />
-                {liveTotals.discountTotal > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
-                    <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
-                  </div>
-                )}
-                <TRow label="VAT" value={liveTotals.vat} />
-                <TRow label="MOT" value={liveTotals.motGross} />
-                <TRow label="Total" value={liveTotals.gross} bold />
-                {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
-                  <div className="border-t mt-1 pt-1 space-y-1.5">
-                    {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
-                    {!isExcess && excessDeduction > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-medium text-fuchsia-700">Excess (to customer)</span>
-                        <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
-                      </div>
-                    )}
-                    {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
-                    {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
-                        <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Panel>
-            </div>
+            {!base && (
+              <div className="xl:col-span-3 space-y-3">
+                <Panel title="Totals">
+                  <TRow label="SubTotal" value={liveTotals.subTotal} />
+                  {liveTotals.discountTotal > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-[12px] text-emerald-700">Discount applied</span>
+                      <div className="w-24 text-right border border-emerald-200 rounded-sm px-2 py-[2px] text-[13px] bg-emerald-50 text-emerald-800">−£{money(liveTotals.discountTotal)}</div>
+                    </div>
+                  )}
+                  <TRow label="VAT" value={liveTotals.vat} />
+                  <TRow label="MOT" value={liveTotals.motGross} />
+                  <TRow label="Total" value={liveTotals.gross} bold />
+                  {(isInvoice || excessDeduction > 0 || docReceipts > 0) && (
+                    <div className="border-t mt-1 pt-1 space-y-1.5">
+                      {/* Excess only appears once one is applied (deducted from the insurer's amount) */}
+                      {!isExcess && excessDeduction > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-medium text-fuchsia-700">{fullVatToCustomer ? "Excess + VAT (to customer)" : "Excess (to customer)"}</span>
+                          <div className="w-24 text-right border border-fuchsia-200 rounded-sm px-2 py-[2px] text-[13px] bg-fuchsia-50 text-fuchsia-800 font-semibold">−£{money(excessDeduction)}</div>
+                        </div>
+                      )}
+                      {(isInvoice || docReceipts > 0) && <TRow label="Receipts" value={docReceipts} bold />}
+                      {(isInvoice || docReceipts > 0 || excessDeduction > 0) && (
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-[12px] font-semibold text-slate-700">Balance</span>
+                          <div className={`w-24 text-right border border-slate-300 rounded-sm px-2 py-[2px] text-[13px] font-bold ${docBalance > 0 ? "bg-yellow-100" : "bg-white"}`}>£{money(docBalance)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            )}
           </div>
+        </div>
+        {/* classic view: the full-height rail, a sibling grid column of js-cell-body above —
+            grid's default align-items:stretch matches its box height to js-cell-body's. */}
+        {base && <div className="js-cell-rail">{railContent}</div>}
         </div>
 
         {/* email dialog */}
@@ -1228,8 +1868,28 @@ export default function DocumentDetails() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">To</label>
-                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.to} onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))} placeholder="customer@email.com" />
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.to} onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))} placeholder="customer@email.com, second@email.com" />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground">CC</label>
+                <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.cc} onChange={(e) => setEmailForm((f) => ({ ...f, cc: e.target.value }))} placeholder="Optional — copy someone in" />
+              </div>
+              {/* One-click chips for every address on file. Typing a second address by hand still
+                  works — both fields accept a comma-separated list. */}
+              {knownEmails().length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Addresses on file</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {knownEmails().map((k) => (
+                      <span key={k.email} className="inline-flex items-center rounded-full border bg-slate-50 text-xs overflow-hidden">
+                        <span className="pl-2.5 pr-1.5 py-1 text-slate-600" title={k.label}>{k.email}</span>
+                        <button type="button" onClick={() => addRecipient("to", k.email)} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">To</button>
+                        <button type="button" onClick={() => addRecipient("cc", k.email)} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">CC</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-muted-foreground">Subject</label>
                 <input className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 outline-none focus:border-violet-500" value={emailForm.subject} onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))} />
@@ -1298,6 +1958,14 @@ export default function DocumentDetails() {
           </div>
         )}
 
+        {/* Classic view: find and attach an owner */}
+        {findCustOpen && (
+          <FindCustomerDialog
+            onClose={() => setFindCustOpen(false)}
+            onSelect={(c: any) => { setNewCust(false); setForm((f) => attachCustomerPatch(f, c)); markDirty(); setFindCustOpen(false); toast.success(`Attached ${c.name || "customer"}`); }}
+          />
+        )}
+
         {/* issue invoice / add payments dialog */}
         {issueOpen && (
           <IssueDialog id={id} docNo={docNo} statusLabel={docStatusLabel} gross={liveTotals.gross} customerId={(data as any)?.doc?.customerId}
@@ -1307,8 +1975,56 @@ export default function DocumentDetails() {
 
         {/* raise policy excess dialog */}
         {excessOpen && (
-          <ExcessCreateDialog mainDocNo={docNo} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
+          <ExcessCreateDialog mainDocNo={docNo} mainDocTax={Number((data as any)?.doc?.totalTax) || 0} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
         )}
+
+        {/* History row click opens a quick-view slide-over instead of navigating away, so you can
+            flick through past jobs on this vehicle without losing your place on the current one. */}
+        <Sheet open={historyPreviewId != null} onOpenChange={(open) => { if (!open) setHistoryPreviewId(null); }}>
+          <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto p-0">
+            {historyPreviewId != null && (() => {
+              const idx = history.findIndex((h: any) => h.id === historyPreviewId);
+              const h = idx >= 0 ? history[idx] : null;
+              const goPrev = () => { if (idx > 0) setHistoryPreviewId(history[idx - 1].id); };
+              const goNext = () => { if (idx >= 0 && idx < history.length - 1) setHistoryPreviewId(history[idx + 1].id); };
+              return (
+                <>
+                  {/* This flex-col header's auto-height computation has proven unreliable (its rows
+                      collapsing to ~0 despite real content, reproduced via direct DOM measurement) —
+                      an explicit min-height via inline style (not a Tailwind class, so it can't be
+                      skipped by any JIT/build timing) guarantees the sticky header always reserves
+                      enough room and never lets the body content underneath render on top of it. */}
+                  <SheetHeader className="border-b sticky top-0 bg-background z-10" style={{ minHeight: 110 }}>
+                    <div className="flex items-center justify-between gap-2 pr-8 min-h-8">
+                      <div className="min-w-0">
+                        <SheetTitle className="flex items-center gap-2 flex-wrap">
+                          {h && <Badge variant="secondary" className={DOC_TYPE_TAILWIND[h.docType] || ""}>{TYPE_LABEL[h.docType] || h.docType}</Badge>}
+                          <span className="truncate">{displayDocNo(h) || h?.externalId}</span>
+                        </SheetTitle>
+                        <SheetDescription className="sr-only">Quick view of a past job on this vehicle, with its full description, labour and parts.</SheetDescription>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={idx <= 0} onClick={goPrev} title="Previous job"><ChevronLeft className="w-4 h-4" /></Button>
+                        <Button variant="outline" size="icon" className="h-8 w-8" disabled={idx < 0 || idx >= history.length - 1} onClick={goNext} title="Next job"><ChevronRight className="w-4 h-4" /></Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 min-h-9">
+                      <Button variant="outline" size="sm" onClick={printHistoryPreview} disabled={historyPrinting}>
+                        {historyPrinting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Printer className="w-4 h-4 mr-1.5" />} Print
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => { const openId = historyPreviewId; setHistoryPreviewId(null); setLocation(`${base}/documents/${openId}`); }}>
+                        <ExternalLink className="w-4 h-4 mr-1.5" /> Open Full Record
+                      </Button>
+                    </div>
+                  </SheetHeader>
+                  <div className="p-4">
+                    <LineItemsView documentId={historyPreviewId} history={history} />
+                  </div>
+                </>
+              );
+            })()}
+          </SheetContent>
+        </Sheet>
 
       </div>
     </DashboardLayout>
@@ -1346,8 +2062,14 @@ const PAYMENT_METHODS = ["Cash", "Card", "Bank Transfer", "Cheque", "Account", "
 
 function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onClose, onIssue, issuing, onChanged }: {
   id: number; docNo?: string; statusLabel: string; gross: number; customerId?: number; payments: any[];
-  onClose: () => void; onIssue: (after: "none" | "print" | "email" | "both") => void; issuing: boolean; onChanged: () => void;
+  onClose: () => void; onIssue: (after: "none" | "print" | "email" | "both", issueDate?: string) => void; issuing: boolean; onChanged: () => void;
 }) {
+  // The invoice used to be stamped with the moment Issue was pressed, with no way to say when
+  // the work was actually done — which is how eight May/June/July MOTs ended up dated 12 August.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [issueDate, setIssueDate] = useState(todayISO);
+  const motCheck = trpc.documents.motDateCheck.useQuery({ id, issueDate }, { enabled: statusLabel === "Not Issued" });
+  const mot = motCheck.data as any;
   const addP = trpc.documents.addPayment.useMutation();
   const delP = trpc.documents.deletePayment.useMutation();
   const [method, setMethod] = useState("Cash");
@@ -1372,12 +2094,35 @@ function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onCl
         <div className="flex border-b bg-slate-100">
           <button onClick={onClose} className="px-4 py-2 text-sm hover:bg-slate-200 border-r">Close</button>
           {issueBtns.map(([label, after]) => (
-            <button key={after} onClick={() => onIssue(after)} disabled={issuing} className="px-4 py-2 text-sm hover:bg-violet-100 border-r disabled:opacity-50 inline-flex items-center gap-1.5">
+            <button key={after} onClick={() => onIssue(after, issueDate)} disabled={issuing} className="px-4 py-2 text-sm hover:bg-violet-100 border-r disabled:opacity-50 inline-flex items-center gap-1.5">
               {issuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}{label}
             </button>
           ))}
         </div>
         <div className="p-4">
+          {statusLabel === "Not Issued" && (
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">Invoice date</span>
+                <input type="date" value={issueDate} max={todayISO} onChange={(e) => setIssueDate(e.target.value)}
+                  className="h-9 px-2 rounded border border-slate-300 text-[13px]" />
+              </label>
+              <p className="text-[11px] text-slate-400 pb-2">
+                Defaults to today. Change it when billing work done earlier, so the sale lands in the right month.
+              </p>
+            </div>
+          )}
+          {mot?.status === "mismatch" && (
+            <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="text-[13px] text-amber-900">{mot.message}</p>
+              {mot.suggestedIssueDate && (
+                <button type="button" onClick={() => setIssueDate(mot.suggestedIssueDate)}
+                  className="mt-1.5 text-[12px] font-medium text-amber-900 underline underline-offset-2">
+                  Use the test date ({mot.suggestedIssueDate}){mot.testResult ? ` · ${mot.testResult}` : ""}
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex items-start justify-between gap-4">
             <div className="text-sm text-slate-600 pt-2">
               {outstanding <= 0 ? <p>The invoice balance is zero.<br />No further payments are required.</p>
@@ -1422,12 +2167,13 @@ function IssueDialog({ id, docNo, statusLabel, gross, customerId, payments, onCl
   );
 }
 
-function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDocNo?: string; pending: boolean; onClose: () => void; onCreate: (a: { excessNet: number; discount: number; vatRegistered: boolean }) => void }) {
+function ExcessCreateDialog({ mainDocNo, mainDocTax, pending, onClose, onCreate }: { mainDocNo?: string; mainDocTax: number; pending: boolean; onClose: () => void; onCreate: (a: { excessNet: number; discount: number; vatRegistered: boolean; fullVatToCustomer: boolean }) => void }) {
   const [vatReg, setVatReg] = useState(false);
+  const [fullVatToCustomer, setFullVatToCustomer] = useState(false);
   const [excess, setExcess] = useState("");
   const [discount, setDiscount] = useState("");
   const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
-  const vat = vatReg ? round2(net * 0.2) : 0;
+  const vat = fullVatToCustomer ? round2(mainDocTax) : (vatReg ? round2(net * 0.2) : 0);
   const gross = round2(net + vat);
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -1438,13 +2184,21 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
         </div>
         <div className="p-5 space-y-4">
           <p className="text-center text-[14px] font-semibold text-fuchsia-900">This excess invoice will relate to: Invoice {mainDocNo || "—"}</p>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-700">Is the customer VAT registered?</span>
-            <div className="flex rounded overflow-hidden border">
-              <button onClick={() => setVatReg(true)} className={`px-4 py-1 text-sm ${vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>Y</button>
-              <button onClick={() => setVatReg(false)} className={`px-4 py-1 text-sm ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>N</button>
+          <label className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded p-2.5 cursor-pointer">
+            <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
+            <span className="text-[12.5px] text-sky-900">
+              <b>Commercial/fleet claim:</b> no VAT on the excess itself — charge the FULL job VAT (£{money(mainDocTax)}) on this invoice instead, so the customer's VAT-registered company can reclaim it. The insurer's invoice is made out to the customer (per the insurer's approved-repairer scheme rules) and shows the excess+VAT collected from them alongside the balance due from the insurer.
+            </span>
+          </label>
+          {!fullVatToCustomer && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-700">Is the customer VAT registered?</span>
+              <div className="flex rounded overflow-hidden border">
+                <button onClick={() => setVatReg(true)} className={`px-4 py-1 text-sm ${vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>Y</button>
+                <button onClick={() => setVatReg(false)} className={`px-4 py-1 text-sm ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-slate-100"}`}>N</button>
+              </div>
             </div>
-          </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-700">Insurance Policy Excess</span>
             <MoneyInput value={excess} onChange={setExcess} w="w-32" big />
@@ -1456,13 +2210,17 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
           <p className="text-[12px] italic text-slate-500">This discount only applies to the policy excess NET figure. It will discount the excess invoice, without it showing a discount on the insurance invoice.</p>
           <div className="bg-slate-50 border rounded p-3 text-[13px] space-y-1">
             <div className="flex justify-between"><span className="text-slate-600">Excess NET</span><span>£{money(net)}</span></div>
-            <div className="flex justify-between"><span className="text-slate-600">VAT {vatReg ? "(20%)" : "(0%)"}</span><span>£{money(vat)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-600">VAT {fullVatToCustomer ? "(full job VAT)" : vatReg ? "(20%)" : "(0%)"}</span><span>£{money(vat)}</span></div>
             <div className="flex justify-between font-semibold border-t pt-1"><span>Excess invoice total</span><span>£{money(gross)}</span></div>
           </div>
-          <p className="text-[12px] text-slate-500 border-t pt-2">The excess amount will automatically be deducted from the main invoice to the insurance company.</p>
+          <p className="text-[12px] text-slate-500 border-t pt-2">
+            {fullVatToCustomer
+              ? `The main invoice — made out to the customer, showing the £${money(gross)} collected from them and the balance due — is what gets sent to the insurer.`
+              : "The excess amount will automatically be deducted from the main invoice to the insurance company."}
+          </p>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
-            <button onClick={() => onCreate({ excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg })} disabled={pending || net <= 0} className="bg-fuchsia-700 text-white rounded px-4 py-1.5 text-sm hover:bg-fuchsia-800 disabled:opacity-50 inline-flex items-center gap-1.5">
+            <button onClick={() => onCreate({ excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg, fullVatToCustomer })} disabled={pending || net <= 0} className="bg-fuchsia-700 text-white rounded px-4 py-1.5 text-sm hover:bg-fuchsia-800 disabled:opacity-50 inline-flex items-center gap-1.5">
               {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Create Excess Invoice
             </button>
           </div>
@@ -1472,34 +2230,41 @@ function ExcessCreateDialog({ mainDocNo, pending, onClose, onCreate }: { mainDoc
   );
 }
 
-function ExcessPanel({ doc, onSaved }: { doc: any; onSaved: () => void }) {
+function ExcessPanel({ doc, mainDocTax, onSaved }: { doc: any; mainDocTax: number; onSaved: () => void }) {
   const upd = trpc.documents.updateExcess.useMutation();
   const [vatReg, setVatReg] = useState(!!doc?.custVatRegistered);
+  const [fullVatToCustomer, setFullVatToCustomer] = useState(!!doc?.excessFullVatToCustomer);
   const [excess, setExcess] = useState(String((((Number(doc?.excessNet) || 0) + (Number(doc?.excessDiscount) || 0))).toFixed(2)));
   const [discount, setDiscount] = useState(String((Number(doc?.excessDiscount) || 0).toFixed(2)));
   const net = round2(Math.max(0, (num(excess) || 0) - (num(discount) || 0)));
-  const vat = vatReg ? round2(net * 0.2) : 0;
+  const vat = fullVatToCustomer ? round2(mainDocTax) : (vatReg ? round2(net * 0.2) : 0);
   const gross = round2(net + vat);
   async function apply() {
-    try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg }); onSaved(); toast.success("Excess updated"); }
+    try { await upd.mutateAsync({ docId: doc.id, excessNet: num(excess) || 0, discount: num(discount) || 0, vatRegistered: vatReg, fullVatToCustomer }); onSaved(); toast.success("Excess updated"); }
     catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
   }
   return (
     <Panel title="Policy Excess">
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] text-slate-600">Customer VAT registered?</span>
-        <div className="flex rounded overflow-hidden border text-[12px]">
-          <button onClick={() => setVatReg(true)} className={`px-3 py-0.5 ${vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>Y</button>
-          <button onClick={() => setVatReg(false)} className={`px-3 py-0.5 ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>N</button>
+      <label className="flex items-start gap-1.5 bg-sky-50 border border-sky-200 rounded p-2 cursor-pointer">
+        <input type="checkbox" checked={fullVatToCustomer} onChange={(e) => setFullVatToCustomer(e.target.checked)} className="mt-0.5 accent-fuchsia-700" />
+        <span className="text-[11px] text-sky-900">Commercial/fleet claim — no VAT on the excess, full job VAT (£{money(mainDocTax)}) charged here instead; insurer's invoice is made out to the customer, showing the excess+VAT collected and balance due.</span>
+      </label>
+      {!fullVatToCustomer && (
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-slate-600">Customer VAT registered?</span>
+          <div className="flex rounded overflow-hidden border text-[12px]">
+            <button onClick={() => setVatReg(true)} className={`px-3 py-0.5 ${vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>Y</button>
+            <button onClick={() => setVatReg(false)} className={`px-3 py-0.5 ${!vatReg ? "bg-fuchsia-700 text-white" : "bg-white"}`}>N</button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Policy Excess</span>
         <MoneyInput value={excess} onChange={setExcess} /></div>
       <div className="flex items-center justify-between"><span className="text-[12px] text-slate-600">Discount</span>
         <MoneyInput value={discount} onChange={setDiscount} /></div>
       <div className="border-t pt-1 mt-1 space-y-0.5">
         <div className="flex justify-between text-[12px]"><span className="text-slate-600">NET</span><span>£{money(net)}</span></div>
-        <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT</span><span>£{money(vat)}</span></div>
+        <div className="flex justify-between text-[12px]"><span className="text-slate-600">VAT{fullVatToCustomer ? " (full job)" : ""}</span><span>£{money(vat)}</span></div>
         <div className="flex justify-between text-[13px] font-semibold"><span>Total</span><span>£{money(gross)}</span></div>
       </div>
       <button onClick={apply} disabled={upd.isPending} className="w-full mt-1 bg-fuchsia-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 inline-flex items-center justify-center gap-1.5">{upd.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Apply</button>
@@ -1563,7 +2328,7 @@ function OtherNumbers({ customerId, editing }: { customerId?: number; editing: b
 // one - so staff need a way to say that deliberately rather than leaving the box empty and hoping.
 // Warn-only by design: an invoice saved with nothing entered defaults to 0 silently (see
 // buildPayload). Job sheets stay blank, because the reading is taken while the job is still open.
-function MileageField({ form, set, editing, isInvoice }: { form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; isInvoice: boolean }) {
+function MileageField({ form, set, editing, isInvoice, classicCue = false }: { form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; isInvoice: boolean; classicCue?: boolean }) {
   const raw = String(form.mileage ?? "").trim();
   const notRecorded = raw !== "" && Number(raw.replace(/\D/g, "")) === 0;
   const empty = raw === "";
@@ -1585,7 +2350,7 @@ function MileageField({ form, set, editing, isInvoice }: { form: Record<string, 
             type="text" inputMode="numeric" value={form.mileage ?? ""} readOnly={!editing}
             onChange={(e) => set("mileage", e.target.value)}
             placeholder={isInvoice ? "Reading at time of work" : ""}
-            className={boxCls(editing) + " w-full sm:flex-1" + (isInvoice && empty ? " ring-1 ring-amber-400" : "")}
+            className={boxCls(editing) + " w-full sm:flex-1" + ((isInvoice || classicCue) && empty ? " ring-1 ring-amber-400" : "")}
           />
         )}
       </div>
@@ -1602,7 +2367,18 @@ function MileageField({ form, set, editing, isInvoice }: { form: Record<string, 
 }
 
 function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
+  const base = useClassicBase();
   const empty = !String(form[field] ?? "").trim();
+  if (base) {
+    return (
+      <label className={`js-field ${grow ? "wide" : ""}`}>
+        <span>{label}</span>
+        <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
+          placeholder={required ? "Required" : undefined}
+          className={(upper ? "uppercase " : "") + (required && empty ? "placeholder:text-red-600 placeholder:font-semibold" : "")} />
+      </label>
+    );
+  }
   return (
     <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
@@ -1614,18 +2390,40 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
 }
 
 function SelectField({ label, field, form, set, editing, options, w = "w-24" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; options: string[]; w?: string }) {
+  const base = useClassicBase();
+  const optionEls = (form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>);
+  if (base) {
+    return (
+      <label className="js-field">
+        <span>{label}</span>
+        <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing}>
+          <option value=""></option>
+          {optionEls}
+        </select>
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className={`${w} shrink-0 text-[12px] text-slate-600 text-right`}>{label}</span>
       <select value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} disabled={!editing} className={boxCls(editing) + " flex-1 disabled:bg-slate-50 disabled:text-slate-700"}>
         <option value=""></option>
-        {(form[field] && !options.includes(form[field]) ? [form[field], ...options] : options).map((o) => <option key={o} value={o}>{o}</option>)}
+        {optionEls}
       </select>
     </div>
   );
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <section className="js-rail-section">
+        <h2>{title}</h2>
+        <div className="js-panel-body">{children}</div>
+      </section>
+    );
+  }
   return (
     <div className="border border-slate-300 rounded-sm bg-slate-50 overflow-hidden">
       <div className="bg-slate-200/70 px-3 py-1.5 text-[13px] font-semibold text-slate-700">{title}</div>
@@ -1635,6 +2433,15 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function TRow({ label, value, bold }: { label: string; value: any; bold?: boolean }) {
+  const base = useClassicBase();
+  if (base) {
+    return (
+      <label className={`js-total-row ${bold ? "emphasis" : ""}`}>
+        <span>{label}</span>
+        <input readOnly value={`£${money(value)}`} />
+      </label>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-[12px] text-slate-600">{label}</span>
@@ -1663,6 +2470,7 @@ function PhoneMatchHint({ phone, currentCustomerId, onLink }: { phone: string; c
 // Pull the odometer reading from the vehicle's most recent MOT (DVSA) and offer to drop it
 // into the Mileage field — the reading on the day of the last test is a good current default.
 function MotMileageHint({ registration, current, onUse }: { registration: string; current: any; onUse: (v: string) => void }) {
+  const base = useClassicBase();
   const reg = (registration || "").replace(/\s+/g, "").toUpperCase();
   const { data } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: reg.length >= 4, staleTime: 60_000 });
   const latest = useMemo(() => {
@@ -1676,6 +2484,15 @@ function MotMileageHint({ registration, current, onUse }: { registration: string
   }, [data]);
   if (!latest) return null;
   const already = num(current) === latest.miles;
+  if (base) {
+    return (
+      <div className="js-mot-hint">
+        <Gauge className="w-3 h-3 shrink-0" />
+        <span>Last MOT: <b>{latest.miles.toLocaleString()}</b> mi{latest.date ? ` · ${fmtDate(latest.date)}` : ""}</span>
+        {!already && <button type="button" onClick={() => onUse(String(latest.miles))} className="js-mot-hint-use">use</button>}
+      </div>
+    );
+  }
   return (
     <div className="ml-[104px] flex items-center gap-1.5 text-[11px] text-slate-500">
       <Gauge className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1712,6 +2529,58 @@ function VehicleSearch({ onSelect }: { onSelect: (v: any) => void }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Find an owner by anything the garage actually remembers: name, mobile, address, postcode,
+ * account number, or a registration — including one the customer no longer owns, since the search
+ * looks at past documents as well as current vehicles. Each result says how it matched, because a
+ * plate can pass between owners and the name alone will not tell you which is the right one.
+ */
+function FindCustomerDialog({ onSelect, onClose }: { onSelect: (c: any) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const res = trpc.customers.searchForAttach.useQuery({ query: q }, { enabled: q.trim().length >= 2 });
+  const results: any[] = (res.data as any[]) || [];
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl mt-20" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="text-lg font-semibold flex items-center gap-2"><Search className="w-5 h-5" /> Find customer</h3>
+          <button onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Reg (current or old), name, mobile, address, postcode or account no."
+            className="w-full border rounded px-3 py-2 text-sm outline-none focus:border-violet-500" />
+          <p className="text-[11px] text-slate-400 mt-1">Type at least 2 characters.</p>
+          <div className="mt-3 max-h-80 overflow-auto border rounded divide-y">
+            {q.trim().length < 2 ? (
+              <p className="p-4 text-center text-slate-400 text-sm">Start typing to search.</p>
+            ) : res.isFetching && !results.length ? (
+              <p className="p-4 text-center text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Searching…</p>
+            ) : !results.length ? (
+              <p className="p-4 text-center text-slate-500 text-sm">
+                Nothing matched. That customer may not exist yet — close this and fill the name in directly to create one.
+              </p>
+            ) : results.map((c) => (
+              <button key={c.id} type="button" onClick={() => onSelect(c)}
+                className="block w-full text-left px-3 py-2 hover:bg-violet-50">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium text-[13px]">{c.name || "(no name)"}</span>
+                  <span className="text-[11px] text-slate-400 shrink-0">
+                    matched on {c.matchedVia}{c.matchedReg ? ` ${c.matchedReg}` : ""}
+                  </span>
+                </div>
+                <div className="text-[12px] text-slate-500">
+                  {[c.phone, c.postcode, c.address, c.accountNumber ? `A/C ${c.accountNumber}` : null].filter(Boolean).join(" · ")}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1795,6 +2664,265 @@ function DescriptionView({ text }: { text: string }) {
   );
 }
 
+// Workshop "Job Guide" — a 7zap-AI-Mechanic-style briefing for THIS job on THIS vehicle
+// (overview, how it's done, parts to check together, cautions). Persisted on the document
+// (serviceHistory.jobGuide) so it survives reloads and follows the job through convert.
+// Generated from the description as typed (parts usually aren't on the job yet).
+function JobGuidePanel({ docId, guide, description, onSaved }: {
+  docId: number; guide: any; description: string; onSaved: () => void;
+}) {
+  const gen = trpc.ai.generateJobGuide.useMutation();
+  // Collapsible, and it REMEMBERS being closed per job — once the guide's been used
+  // (copied/pasted), close it from the header and it stays out of the way.
+  const openKey = `eli.jobGuideOpen.${docId}`;
+  const [open, setOpen] = useState<boolean>(() => { try { return localStorage.getItem(openKey) !== "0"; } catch { return true; } });
+  const setOpenSticky = (n: boolean) => { setOpen(n); try { localStorage.setItem(openKey, n ? "1" : "0"); } catch {} };
+  async function generate() {
+    if (!description.trim()) { toast.error("Type the job description first — the guide is generated from it"); return; }
+    try {
+      await gen.mutateAsync({ docId, description });
+      onSaved();
+      setOpenSticky(true);
+      toast.success("Job guide generated");
+    } catch (e: any) { toast.error(e.message || "Failed to generate the job guide"); }
+  }
+  function printGuide() {
+    if (!guide) return;
+    const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const w = window.open("", "_blank", "width=760,height=900");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>Job Guide</title><style>
+      body{font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:13px;color:#111;margin:28px;line-height:1.5}
+      h1{font-size:17px;margin:0 0 2px} .sub{color:#555;margin-bottom:14px;font-size:12px}
+      h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #ccc;padding-bottom:2px;margin:16px 0 6px}
+      ol,ul{margin:4px 0;padding-left:22px} li{margin:2px 0}
+    </style></head><body>
+      <h1>Job Guide</h1><div class="sub">Workshop reference — generated ${guide.generatedAt ? new Date(guide.generatedAt).toLocaleDateString("en-GB") : ""}</div>
+      <h2>Overview</h2><p>${esc(guide.overview || "")}</p>
+      <h2>How the job is done</h2><ol>${(guide.steps || []).map((s: string) => `<li>${esc(s)}</li>`).join("")}</ol>
+      ${(guide.partsToCheck || []).length ? `<h2>Parts to check together</h2><ul>${guide.partsToCheck.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+      ${(guide.cautions || []).length ? `<h2>Cautions</h2><ul>${guide.cautions.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+      ${(guide.customerSummary || []).length ? `<h2>For the customer — what you're paying for</h2><ul>${guide.customerSummary.map((s: string) => `<li>${esc(s)}</li>`).join("")}</ul>` : ""}
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 250);
+  }
+  return (
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50/50">
+      <div className="flex items-center gap-2 p-2">
+        <BookOpen className="w-4 h-4 text-sky-700 shrink-0" />
+        <button type="button" onClick={() => setOpenSticky(!open)} title={open ? "Hide the guide (stays hidden on this job until reopened)" : "Show the guide"}
+          className="inline-flex items-center gap-1 text-[13px] font-semibold text-sky-900 hover:underline">
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
+          Job Guide {guide ? "" : "— not generated yet"}
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {guide && (
+            <button type="button" title="Copy the whole guide as text"
+              onClick={() => {
+                const text = [
+                  guide.overview || "",
+                  "",
+                  "How the job is done:",
+                  ...(guide.steps || []).map((s: string, i: number) => `${i + 1}. ${s}`),
+                  ...((guide.partsToCheck || []).length ? ["", "Parts to check together:", ...guide.partsToCheck.map((s: string) => `- ${s}`)] : []),
+                  ...((guide.cautions || []).length ? ["", "Cautions:", ...guide.cautions.map((s: string) => `- ${s}`)] : []),
+                ].join("\n");
+                navigator.clipboard.writeText(text)
+                  .then(() => toast.success("Guide copied to clipboard"))
+                  .catch(() => toast.error("Couldn't copy — select the text manually"));
+              }}
+              className="inline-flex items-center gap-1 text-[12px] text-sky-800 hover:underline"><Copy className="w-3.5 h-3.5" /> Copy</button>
+          )}
+          {guide && <button type="button" onClick={printGuide} className="inline-flex items-center gap-1 text-[12px] text-sky-800 hover:underline"><Printer className="w-3.5 h-3.5" /> Print</button>}
+          <button type="button" onClick={generate} disabled={gen.isPending}
+            className="inline-flex items-center gap-1.5 bg-sky-700 text-white rounded px-2.5 py-1 text-[12px] disabled:opacity-50 hover:bg-sky-800">
+            {gen.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {guide ? "Regenerate" : "Generate guide"}
+          </button>
+        </div>
+      </div>
+      {open && guide && (
+        <div className="px-3 pb-3 text-[13px] leading-relaxed text-slate-800 space-y-2">
+          <p>{guide.overview}</p>
+          <div>
+            <p className="font-semibold text-[12px] uppercase tracking-wide text-sky-900 mb-1">How the job is done</p>
+            <ol className="list-decimal pl-5 space-y-0.5">{(guide.steps || []).map((s: string, i: number) => <li key={i}>{s}</li>)}</ol>
+          </div>
+          {(guide.partsToCheck || []).length > 0 && (
+            <div>
+              <p className="font-semibold text-[12px] uppercase tracking-wide text-sky-900 mb-1">Parts to check together</p>
+              <ul className="list-disc pl-5 space-y-0.5">{guide.partsToCheck.map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
+            </div>
+          )}
+          {(guide.cautions || []).length > 0 && (
+            <div>
+              <p className="font-semibold text-[12px] uppercase tracking-wide text-amber-800 mb-1">Cautions</p>
+              <ul className="list-disc pl-5 space-y-0.5 text-amber-900">{guide.cautions.map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
+            </div>
+          )}
+          {(guide.customerSummary || []).length > 0 ? (
+            <div className="rounded-md border border-violet-200 bg-violet-50/50 p-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <p className="font-semibold text-[12px] uppercase tracking-wide text-violet-900">For the customer — what you're paying for</p>
+                <button type="button" title="Copy the customer version (paste straight into the invoice description / WhatsApp / email)"
+                  onClick={() => {
+                    // The exact paste-ready invoice format: **Subject** title, blank line,
+                    // then one dashed step per line. Stray markers/line breaks are scrubbed.
+                    const clean = (s: string) => s.replace(/^[\s•*–—-]+/, "").replace(/\s+/g, " ").trim();
+                    const steps = (guide.customerSummary as string[]).map(clean).filter(Boolean);
+                    const title = clean(guide.customerTitle || "");
+                    const text = (title ? `**${title}**\n\n` : "") + steps.map((s) => `- ${s}`).join("\n");
+                    navigator.clipboard.writeText(text)
+                      .then(() => toast.success("Customer version copied — title + dashed steps"))
+                      .catch(() => toast.error("Couldn't copy — select the text manually"));
+                  }}
+                  className="ml-auto inline-flex items-center gap-1 text-[12px] text-violet-800 hover:underline">
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              </div>
+              {/* Invoice house format — bold subject then dashed steps, exactly what Copy pastes */}
+              {guide.customerTitle && <p className="font-bold underline text-violet-950 mb-1">{guide.customerTitle}</p>}
+              <div className="space-y-0.5 text-violet-950">{guide.customerSummary.map((s: string, i: number) => <div key={i} style={{ paddingLeft: "1.1em", textIndent: "-1.1em" }}>- {s}</div>)}</div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">Regenerate the guide to add the plain-English customer explanation.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Images pasted/dropped onto the job — the workshop use-case is a screenshot of the 7zap
+// exploded diagram showing where a part sits (7zap's own images are blob: URLs locked to
+// their page, so a screenshot pasted here is how the picture stays with the job).
+function JobImages({ docId }: { docId: number }) {
+  const utils = trpc.useUtils();
+  const { data: list } = trpc.documents.listAttachments.useQuery({ documentId: docId });
+  const add = trpc.documents.addAttachment.useMutation();
+  const remove = trpc.documents.removeAttachment.useMutation();
+  const [viewId, setViewId] = useState<number | null>(null);
+  const { data: viewImg } = trpc.documents.getAttachment.useQuery({ id: viewId! }, { enabled: viewId != null });
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  async function ingest(files: FileList | File[]) {
+    for (const f of Array.from(files)) {
+      if (!f.type.startsWith("image/")) continue;
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] || "");
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      try {
+        await add.mutateAsync({ documentId: docId, name: f.name || `Pasted image ${new Date().toLocaleDateString("en-GB")}`, mime: f.type, data: b64 });
+        toast.success("Image saved to the job");
+      } catch (e: any) { toast.error(e.message || "Failed to save the image"); }
+    }
+    utils.documents.listAttachments.invalidate({ documentId: docId });
+  }
+
+  // Paste a URL instead of an image (e.g. the 7zap popup's address — it carries the VIN and
+  // diagram section) and it's saved as a clickable link chip on the job.
+  async function ingestLink(url: string) {
+    const u = url.trim();
+    let label = "Link";
+    try {
+      const parsed = new URL(u);
+      if (/7zap\.com$/i.test(parsed.hostname.replace(/^www\./, ""))) {
+        const section = /[#&]section=([a-z0-9-]+)/i.exec(u)?.[1];
+        const part = /\/part\/[a-z-]+\/([a-z0-9-]+)/i.exec(parsed.pathname);
+        label = part ? `7zap part ${part[1].toUpperCase()}` : `7zap diagram${section ? ` — ${section.replace(/-/g, " ")}` : ""}`;
+      } else label = parsed.hostname.replace(/^www\./, "");
+    } catch { toast.error("That doesn't look like a link"); return; }
+    try {
+      await add.mutateAsync({ documentId: docId, name: label, mime: "text/uri-list", data: btoa(unescape(encodeURIComponent(u))) });
+      toast.success(`Link saved to the job — ${label}`);
+      utils.documents.listAttachments.invalidate({ documentId: docId });
+    } catch (e: any) { toast.error(e.message || "Failed to save the link"); }
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-slate-200"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) ingest(e.dataTransfer.files); }}>
+      <div className="flex items-center gap-2 p-2">
+        <Paperclip className="w-4 h-4 text-slate-600 shrink-0" />
+        <span className="text-[13px] font-semibold text-slate-800">Job Images &amp; Links {list?.length ? `(${list.length})` : ""}</span>
+        <span className="text-[12px] text-muted-foreground">— paste a screenshot OR a 7zap link here (copy the popup's address bar), or drop an image file</span>
+      </div>
+      <div tabIndex={0}
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData.items).map((i) => i.getAsFile()).filter(Boolean) as File[];
+          if (files.length) { e.preventDefault(); ingest(files); return; }
+          const text = e.clipboardData.getData("text").trim();
+          if (/^https?:\/\//i.test(text)) { e.preventDefault(); ingestLink(text); }
+        }}
+        className="mx-2 mb-2 rounded border border-dashed border-slate-300 bg-slate-50/60 px-3 py-2 text-[12px] text-slate-500 outline-none focus:border-violet-400 focus:bg-violet-50/40 cursor-text"
+      >
+        {add.isPending ? <span className="inline-flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</span>
+          : "Click here, then press Cmd+V / Ctrl+V — an image or a link"}
+      </div>
+      {(list || []).length > 0 && (
+        <div className="flex flex-wrap items-start gap-2 px-2 pb-2">
+          {(list || []).map((a: any) => a.mime === "text/uri-list" ? (
+            <div key={a.id} className="relative group">
+              <button type="button" title="Open this saved link (7zap opens in the popup)"
+                onClick={() => { try { const url = decodeURIComponent(escape(atob(a.data))); /7zap\.com/i.test(url) ? openSevenZapPopup(url) : window.open(url, "_blank", "noopener"); } catch { toast.error("Couldn't open the link"); } }}
+                className="inline-flex items-center gap-1.5 border border-orange-200 bg-orange-50 rounded-md px-2 py-1 text-[12px] font-medium text-orange-700 hover:bg-orange-100">
+                <ExternalLink className="w-3.5 h-3.5" /> {a.name}
+              </button>
+              <button type="button" onClick={() => setDeleteId(a.id)} title="Delete link"
+                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-white">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ) : (
+            <div key={a.id} className="relative group border rounded-md p-1.5 bg-white">
+              <button type="button" onClick={() => setViewId(a.id)} className="block text-left" title={`${a.name} — click to view`}>
+                <AttachmentThumb id={a.id} name={a.name} />
+                <span className="block max-w-[120px] truncate text-[10px] text-slate-500 mt-0.5">{a.name}</span>
+              </button>
+              <button type="button" onClick={() => setDeleteId(a.id)} title="Delete image"
+                className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <Dialog open={viewId != null} onOpenChange={(o) => { if (!o) setViewId(null); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader><DialogTitle className="text-sm">{(viewImg as any)?.name || "Image"}</DialogTitle></DialogHeader>
+          {viewImg ? <img src={`data:${(viewImg as any).mime};base64,${(viewImg as any).data}`} alt={(viewImg as any).name} className="max-h-[75vh] w-auto mx-auto rounded border" />
+            : <div className="py-10 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteId != null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-sm">Delete this image?</DialogTitle></DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" size="sm" disabled={remove.isPending}
+              onClick={async () => { try { await remove.mutateAsync({ id: deleteId! }); setDeleteId(null); utils.documents.listAttachments.invalidate({ documentId: docId }); toast.success("Image deleted"); } catch (e: any) { toast.error(e.message); } }}>
+              {remove.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Thumbnail that lazily loads its image data only when rendered.
+function AttachmentThumb({ id, name }: { id: number; name: string }) {
+  const { data } = trpc.documents.getAttachment.useQuery({ id });
+  if (!data) return <div className="w-[120px] h-[80px] rounded bg-slate-100 animate-pulse" />;
+  return <img src={`data:${(data as any).mime};base64,${(data as any).data}`} alt={name} className="w-[120px] h-[80px] object-cover rounded" />;
+}
+
 function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (text: string) => void }) {
   const [job, setJob] = useState("");
   const gen = trpc.ai.generateJobSpec.useMutation();
@@ -1808,7 +2936,7 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
         engineCC: form.engineCC ? String(form.engineCC) : undefined,
         year: form.dateOfRegistration ? new Date(form.dateOfRegistration).getFullYear() : undefined,
       });
-      const block = [res.title ? `**${res.title}**` : "", ...((res.bullets || []) as string[]).map((b) => `- ${b}`)].filter(Boolean).join("\n");
+      const block = ((res.lines || []) as string[]).join("\n");
       onInsert(block);
       setJob("");
       toast.success("Job spec added to the description");
@@ -1830,24 +2958,28 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
 // Pick a service type and it drops the right PARTS straight onto the job (not labour),
 // pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
 // oil quantity matches the engine. Multiple services can be added (pick each in turn).
-function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: string, parts: { description: string; quantity: number }[]) => void }) {
+// The set definitions live in lib/serviceParts — shared with the mobile job sheet's job chips,
+// so the two pickers cannot drift.
+function ServicePartsPicker({ vehInfo, engineCC, registration, onAdd }: {
+  vehInfo: any; engineCC?: any; registration?: string;
+  onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number, labour?: { description: string; unitPrice: number }) => void;
+}) {
   const grades: string[] = vehInfo?.oilGrades || [];
   const [grade, setGrade] = useState<string>(grades[0] || "");
   // vehInfo can resolve after this mounts (async lookup) — keep the selected grade valid.
   useEffect(() => { if (grades.length && !grades.includes(grade)) setGrade(grades[0]); }, [grades.join(",")]);
 
-  const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
-  const oilLabel = grade || vehInfo?.oilSpec || "";
-  const oil = { description: oilLabel ? `Engine Oil — ${oilLabel}` : "Engine Oil", quantity: oilCap || 1 };
-  const oilFilter = { description: "Oil Filter", quantity: 1 };
+  const { data: priceListData } = trpc.partsPriceList.list.useQuery({});
+  const priceList = (priceListData as any[]) || [];
+  // The banded labour rule, straight from the table Adam maintains.
+  const { data: labourBands } = trpc.priceGuide.labourBands.useQuery({}, { staleTime: 5 * 60_000 });
   const hasAircon = !!vehInfo?.airconType;
-  const acGas = { description: `Air Con Re-Gas — ${vehInfo?.airconType || ""}${vehInfo?.airconCapacity ? ` (${String(vehInfo.airconCapacity).trim()})` : ""}`.trim(), quantity: 1 };
-
-  const SETS: Record<string, { label: string; parts: { description: string; quantity: number }[] }> = {
-    small: { label: "Small Service", parts: [oil, oilFilter, { description: "Sump Plug Seal", quantity: 1 }] },
-    major: { label: "Major Service", parts: [oil, oilFilter, { description: "Air Filter", quantity: 1 }, { description: "Cabin Filter", quantity: 1 }, { description: "Sump Plug", quantity: 1 }] },
-    aircon: { label: "Air Con Re-Gas", parts: [acGas] },
-  };
+  // Major Service labour: the Price Guide's per-band median of what we actually charged.
+  const { data: guideData } = trpc.priceGuide.forRegistration.useQuery(
+    { registration: registration || "" }, { enabled: !!registration, staleTime: 5 * 60_000 });
+  // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
+  // priced "part", so it bumps the document's Sundries total rather than adding a line item.
+  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade, majorLabourNet: (guideData as any)?.fullServiceLabour?.net });
 
   return (
     <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
@@ -1855,11 +2987,12 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
         <Cog className="w-4 h-4 text-slate-500 shrink-0" />
         <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
         <select
-          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500"
+          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500 disabled:opacity-60"
           value=""
-          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts); e.currentTarget.value = ""; }}
+          disabled={!priceListData}
+          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries, s.labour); e.currentTarget.value = ""; }}
         >
-          <option value="">Select a service to add its parts…</option>
+          <option value="">{priceListData ? "Select a service to add its parts…" : "Loading prices…"}</option>
           <option value="small">Small Service — oil, oil filter + sump plug seal</option>
           <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
           {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
@@ -1887,9 +3020,28 @@ function ServicePartsPicker({ vehInfo, onAdd }: { vehInfo: any; onAdd: (label: s
 }
 
 function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void; currentBody?: string }) {
+  const base = useClassicBase();
   const { data: presets } = trpc.descriptionPresets.list.useQuery();
   const create = trpc.descriptionPresets.create.useMutation();
   const utils = trpc.useUtils();
+  const savePreset = async () => {
+    const title = prompt("Save current description as a preset — enter a title:");
+    if (title?.trim()) { await create.mutateAsync({ title: title.trim(), body: currentBody! }); await utils.descriptionPresets.list.invalidate(); toast.success("Preset saved"); }
+  };
+  if (base) {
+    return (
+      <div className="js-preset-row">
+        <select className="ga4-btn" value=""
+          onChange={(e) => { const p = (presets as any[])?.find((x) => String(x.id) === e.target.value); if (p) onPick(p.body); }}>
+          <option value="">Pre-set descriptions</option>
+          {(presets as any[])?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+        <button type="button" className="ga4-btn" disabled={!currentBody?.trim()} title="Save current description as a preset" aria-label="Save as preset" onClick={savePreset}>
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-3 mb-2">
       <select className="border border-slate-300 rounded-sm px-2 py-1 text-[13px] bg-white" value=""
@@ -1898,12 +3050,125 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
         {(presets as any[])?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
       </select>
       {currentBody?.trim() && (
-        <button type="button" className="text-[12px] text-violet-700 hover:underline"
-          onClick={async () => { const title = prompt("Save current description as a preset — enter a title:"); if (title?.trim()) { await create.mutateAsync({ title: title.trim(), body: currentBody! }); await utils.descriptionPresets.list.invalidate(); toast.success("Preset saved"); } }}>
+        <button type="button" className="text-[12px] text-violet-700 hover:underline" onClick={savePreset}>
           + Save as preset
         </button>
       )}
     </div>
+  );
+}
+
+// Browses the SWS repair-time category tree for a vehicle so staff can pull a manufacturer labour
+// allowance straight onto the job sheet instead of guessing — same drill-down data as the Technical Hub.
+function RepairTimeEstimator({ registration, techData, onEstimate }: {
+  registration?: string;
+  techData: any;
+  onEstimate: (item: { description: string; minutes: number }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [repairHistory, setRepairHistory] = useState<{ id: string; text: string; data?: any }[]>([]);
+  const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
+  const [localRepairTimes, setLocalRepairTimes] = useState<any>(null);
+  const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation();
+  const getRepairNodes = trpc.vehicles.getRepairTimesByCategory.useMutation();
+
+  const repairTimes = localRepairTimes ?? techData?.repairTimes;
+
+  useEffect(() => {
+    if (!open || repairTimes || !registration || fetchTechData.isPending) return;
+    fetchTechData.mutate({ registration }, {
+      onSuccess: (res: any) => { if (res?.data?.repairTimes) setLocalRepairTimes(res.data.repairTimes); },
+      onError: () => toast.error("Could not load repair-time data for this vehicle"),
+    });
+  }, [open, registration]);
+
+  const current = repairHistory.length ? repairHistory[repairHistory.length - 1].data : repairTimes;
+  const tree: any[] = current?.tree || [];
+  const details: any[] = current?.details || [];
+
+  const handleCategoryClick = async (node: any) => {
+    if (!node.hasChildren && !node.id) return;
+    if (!registration || !repairTimes?.repairedTypeId) return;
+    setLoadingNodeId(node.id);
+    try {
+      const res = await getRepairNodes.mutateAsync({ registration, repid: String(repairTimes.repairedTypeId), nodeId: node.id });
+      if (res.success && res.data) setRepairHistory((p) => [...p, { id: node.id, text: node.text, data: res.data }]);
+      else toast.error("Could not load sub-categories");
+    } catch {
+      toast.error("Connection error loading repair-time data");
+    } finally {
+      setLoadingNodeId(null);
+    }
+  };
+
+  if (!registration) return null;
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setRepairHistory([]); }}>
+      <PopoverTrigger asChild>
+        <button type="button" className="inline-flex items-center gap-1 text-[12px] text-violet-700 hover:underline">
+          <Clock className="w-3.5 h-3.5" /> Estimate Repair Time
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-3" align="start">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">SWS Repair Times</p>
+          {repairHistory.length > 0 && (
+            <button type="button" onClick={() => setRepairHistory((p) => p.slice(0, -1))} className="text-[11px] text-violet-700 hover:underline">
+              ← Back
+            </button>
+          )}
+        </div>
+        {repairHistory.length > 0 && (
+          <p className="text-[11px] text-slate-400 mb-2 truncate">{repairHistory.map((h) => h.text).join(" › ")}</p>
+        )}
+        <div className="max-h-80 overflow-y-auto space-y-2">
+          {fetchTechData.isPending && !repairTimes ? (
+            <p className="text-[12px] text-slate-400 text-center py-6">Loading repair categories…</p>
+          ) : !repairTimes ? (
+            <p className="text-[12px] text-slate-400 text-center py-6">No repair-time data available for this vehicle.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {tree.map((node: any) => (
+                  <button key={node.id} type="button" disabled={loadingNodeId !== null}
+                    onClick={() => handleCategoryClick(node)}
+                    className={cn(
+                      "inline-flex items-center gap-1 border border-slate-200 rounded-full px-2.5 py-1 text-[11px] font-medium hover:border-violet-400 hover:text-violet-700",
+                      loadingNodeId === node.id && "opacity-50"
+                    )}
+                  >
+                    {loadingNodeId === node.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {node.text}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                {details.length > 0 ? (
+                  details.map((detail: any, i: number) => {
+                    const item = detail.TechnicalData;
+                    if (!item?.descriptions?.item) return null;
+                    return (
+                      <button key={i} type="button"
+                        onClick={() => { onEstimate({ description: item.descriptions.item, minutes: Number(item.totalTime) || 0 }); setOpen(false); setRepairHistory([]); }}
+                        className="w-full flex justify-between items-center gap-2 text-left bg-slate-50 hover:bg-violet-50 border border-slate-200 hover:border-violet-300 rounded px-2.5 py-1.5 text-[12px]"
+                      >
+                        <span className="text-slate-700">{item.descriptions.item}</span>
+                        <span className="text-violet-700 font-semibold shrink-0">{item.totalTime} min</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  tree.length === 0 && (
+                    <p className="text-[12px] text-slate-400 text-center py-4">No repair categories returned for this vehicle model.</p>
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1935,7 +3200,7 @@ function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (
             <TableBody>
               {filtered.map((p) => (
                 <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onOpen(p.docId)}>
-                  <TableCell>{fmtDate(p.dateIssued || p.dateCreated)}</TableCell>
+                  <TableCell>{fmtDate(p.dateCreated || p.dateIssued)}</TableCell>
                   <TableCell>{p.docNo}</TableCell>
                   <TableCell className="font-mono text-xs">{p.partNumber || "—"}</TableCell>
                   <TableCell className="max-w-[300px] truncate">{p.description || "—"}</TableCell>
@@ -1962,7 +3227,7 @@ function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (
 }
 
 // MOT advisory / failure history from DVSA — each defect can be pulled into the job sheet as Labour
-function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean }) {
+function MOTAdvisoriesTab({ registration, onUse, busy, make, model }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean; make?: string; model?: string }) {
   const reg = (registration || "").replace(/\s/g, "");
   const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
   const tests = (data as any[]) || [];
@@ -2011,7 +3276,10 @@ function MOTAdvisoriesTab({ registration, onUse, busy }: { registration?: string
                       <span className={`shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border ${sevCls(d.type)}`}>{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}</span>
                       <span className="text-[12.5px] text-slate-700">{d.text}</span>
                     </div>
-                    <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="shrink-0 text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
+                    <div className="shrink-0 flex items-center gap-0.5">
+                      <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} make={make} model={model} />
+                      <button type="button" disabled={busy} onClick={() => onUse([d.text])} title="Add to description + parts" className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add</button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -2161,7 +3429,7 @@ function CustomerLog({ customerId, vehicleId, documentId }: { customerId?: numbe
 // menu the browser positions itself (and which the table's overflow can clip) — this one always
 // drops straight below the input via a body portal anchored to the input's position.
 const LABOUR_TYPES = ["Mechanical Labour", "Diagnostic Check"];
-function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v: string) => void; inp: string }) {
+function LabourDescInput({ value, onChange, inp, make, model, onUseRate }: { value: string; onChange: (v: string) => void; inp: string; make?: string; model?: string; onUseRate?: (rate: number) => void }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2175,17 +3443,54 @@ function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v
   }, [open]);
   const q = (value || "").toLowerCase().trim();
   const opts = LABOUR_TYPES.filter((t) => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+
+  // Inline "charged before" hint: once the description is a real repair (not one of the generic
+  // presets), look up what this labour historically cost — tightest scope first (same model, then
+  // same make, then all cars) — right under the input, so pricing a job never means leaving it.
+  // Same live repairPricing query the Repair Pricing page runs; new completed jobs (web or GA4
+  // sync) show up here automatically.
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDebounced(value), 350); return () => clearTimeout(t); }, [value]);
+  const meaningful = (debounced || "").trim().length >= 4 && !LABOUR_TYPES.some((t) => t.toLowerCase() === (debounced || "").toLowerCase().trim());
+  const { data: pricing } = trpc.documents.repairPricing.useQuery(
+    { query: debounced || "", make: make || undefined, model: model || undefined },
+    { enabled: open && meaningful, staleTime: 60_000 }
+  );
+  const hint = (() => {
+    const sc: any = (pricing as any)?.scopes;
+    if (!sc) return null;
+    for (const [key, label] of [["model", "same model"], ["make", `same make`], ["all", "all cars"]] as const) {
+      const s = sc[key];
+      if (s && s.labour?.n > 0) return { label, ...s.labour };
+    }
+    return null;
+  })();
+
+  const showDropdown = open && rect && (opts.length > 0 || !!hint);
   return (
     <>
       <input ref={inputRef} className={inp} placeholder="Mechanical Labour / Diagnostic Check…" value={value ?? ""}
         onChange={(e) => onChange(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} />
-      {open && rect && opts.length > 0 && createPortal(
+      {showDropdown && createPortal(
         <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 190), zIndex: 60 }}
           className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px]">
           {opts.map((t) => (
             <button key={t} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(t); setOpen(false); }}
               className="block w-full text-left px-2.5 py-1.5 hover:bg-violet-50">{t}</button>
           ))}
+          {hint && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onUseRate?.(hint.avg); setOpen(false); }}
+              title="Set this line's rate to the historical average"
+              className={`block w-full text-left px-2.5 py-1.5 hover:bg-violet-50 ${opts.length ? "border-t border-slate-100" : ""}`}>
+              <span className="text-[11px] uppercase font-semibold text-violet-700">Charged before</span>
+              <span className="block text-[12px] text-slate-600">
+                {hint.label}: avg <b className="text-slate-800">£{money(hint.avg)}</b>
+                {hint.n > 1 && <span className="text-slate-400"> · £{money(hint.min)}–£{money(hint.max)} · ×{hint.n}</span>}
+                {onUseRate && <span className="text-violet-700"> — use</span>}
+              </span>
+            </button>
+          )}
         </div>, document.body)}
     </>
   );
@@ -2194,7 +3499,9 @@ function LabourDescInput({ value, onChange, inp }: { value: string; onChange: (v
 // Parts autocomplete: as you type a part number or description, suggest parts the workshop has used
 // before (and known shorthands like 5/30 → oil, OF1 → oil filter). Picking one fills BOTH fields.
 function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
-  value: string; onType: (v: string) => void; onPick: (p: { partNumber?: string | null; description?: string | null }) => void; inp: string; placeholder?: string;
+  value: string; onType: (v: string) => void;
+  onPick: (p: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) => void;
+  inp: string; placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -2214,7 +3521,17 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   return (
     <>
       <input ref={inputRef} className={inp} placeholder={placeholder} value={value ?? ""}
-        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 130)} />
+        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 130)}
+        onPaste={(e) => {
+          // OEM numbers copied from 7zap arrive display-formatted ("9A 71 9840500") —
+          // collapse the spaces so the number saves, links and matches history cleanly.
+          const t = e.clipboardData.getData("text").trim();
+          const compact = t.replace(/\s+/g, "").toUpperCase();
+          if (/\s/.test(t) && /^[A-Z0-9-]{6,}$/.test(compact) && /\d{3,}/.test(compact)) {
+            e.preventDefault();
+            onType(compact);
+          }
+        }} />
       {open && rect && opts.length > 0 && createPortal(
         <div style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 300), zIndex: 60 }}
           className="bg-white border border-slate-300 rounded-md shadow-lg py-1 text-[13px] max-h-64 overflow-auto">
@@ -2222,7 +3539,11 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
             <button key={i} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onPick(o); setOpen(false); }}
               className="flex w-full items-baseline gap-2 text-left px-2.5 py-1.5 hover:bg-violet-50">
               {o.partNumber ? <span className="font-mono text-[11px] text-violet-700 shrink-0">{o.partNumber}</span> : null}
-              <span className="truncate">{o.description}</span>
+              <span className="truncate flex-1">{o.description}</span>
+              {/* what you'd be charging — the maintained price-list figure or the historical average
+                  (exactly what picking fills in) plus how often it's been used, so the choice isn't blind */}
+              {o.unitPrice != null && <span className="shrink-0 font-semibold text-slate-700">£{money(o.unitPrice)}</span>}
+              {o.count > 0 && <span className="shrink-0 text-[10px] text-slate-400">×{o.count}</span>}
             </button>
           ))}
         </div>, document.body)}
@@ -2230,7 +3551,24 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   );
 }
 
-function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean }) {
+// Client mirror of server/db.ts matchPriceFloor (keep in sync): the floor rule (if any) that
+// applies to a line description. Whole-word phrase match so "Oil" can't catch "Coil Spring";
+// the most specific (longest) matching rule wins ("Oil Filter" £11.95 beats "Oil" £12.95).
+function matchPriceFloor(description: string | null | undefined, rules: { description: string; minPrice: number }[]): number | null {
+  const d = String(description ?? "");
+  if (!d.trim() || !rules.length) return null;
+  let best: { len: number; min: number } | null = null;
+  for (const r of rules) {
+    const phrase = r.description.trim();
+    if (!phrase) continue;
+    const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(`\\b${esc}\\b`, "i").test(d)) continue;
+    if (!best || phrase.length > best.len) best = { len: phrase.length, min: r.minPrice };
+  }
+  return best ? best.min : null;
+}
+
+function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string; vin?: string } }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
   const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20, _k: nextItemKey() })]);
@@ -2239,6 +3577,14 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   const KIND_NOUN: Record<string, string> = { Part: "parts", Labour: "labour", Sundries: "sundries", Paint: "paint & materials", Lubricant: "lubricants", Other: "advisories" };
   const noun = KIND_NOUN[kind] || "lines";
   const showPartNo = kind === "Part" || kind === "Lubricant";
+
+  // Business price floors (Parts Price List "Min £" rules) — warn live when a part/lubricant is
+  // priced below its minimum (e.g. any oil filter under £11.95). Deliberately a warning, not a
+  // hard block: a genuine goodwill/warranty discount stays possible, it just can't happen unnoticed.
+  const { data: priceListRows } = trpc.partsPriceList.list.useQuery({}, { enabled: editing && showPartNo, staleTime: 60_000 });
+  const floorRules = ((priceListRows as any[]) || [])
+    .filter((r) => r.minPrice != null && Number(r.minPrice) > 0)
+    .map((r) => ({ description: String(r.description), minPrice: Number(r.minPrice) }));
 
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
 
@@ -2261,24 +3607,80 @@ function ItemsEditor({ items, setItems, kind, editing }: { items: Item[]; setIte
   // The data cells for one row (everything except the drag-handle column).
   const rowCells = (it: Item, idx: number) => {
     const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
+    // Floors used to apply to PART rows only (showPartNo), which meant a standard price for
+    // labour-side work — an MOT, an interim service — had nowhere to live and no warning when a
+    // job was written up under it. The rules are description-matched, so they work on any row.
+    const floor = floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
+    const belowFloor = floor != null && (num(it.unitPrice) ?? 0) > 0 && (num(it.unitPrice) ?? 0) < floor;
+    // A described line at £0.00 is almost always an unbilled line, not a free one — the floor
+    // warning above deliberately skips zeros, so without this tag a £0 oil line sails through.
+    const noPrice = kind !== "Other" && (num(it.unitPrice) ?? 0) <= 0 && !!(it.description || "").trim();
+    // Picking a suggestion fills description/part no AND, when known (a price-list entry or the
+    // part's average historical price), quantity/price/VAT too — not just left at the £0 default.
+    const pickPart = (o: { partNumber?: string | null; description?: string | null; unitPrice?: number | null; vatRate?: number | null; quantity?: number | null }) =>
+      update(idx, {
+        description: o.description ?? it.description,
+        ...(o.partNumber ? { partNumber: o.partNumber } : {}),
+        ...(o.unitPrice != null ? { unitPrice: o.unitPrice } : {}),
+        ...(o.vatRate != null ? { vatRate: o.vatRate } : {}),
+        ...(o.quantity != null ? { quantity: o.quantity } : {}),
+      });
     return (<>
       {showPartNo && <TableCell>{editing
         ? <PartAutocomplete inp={inp} placeholder="Part No" value={it.partNumber ?? ""}
             onType={(v) => update(idx, { partNumber: v })}
-            onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
-        : <span className="font-mono text-xs">{it.partNumber || "—"}</span>}</TableCell>}
-      <TableCell>{editing ? (
-        kind === "Labour"
-          ? <LabourDescInput inp={inp} value={it.description ?? ""}
-              onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
-          : showPartNo
-            ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
-                onType={(v) => update(idx, { description: v })}
-                onPick={(o) => update(idx, { description: o.description ?? it.description, ...(o.partNumber ? { partNumber: o.partNumber } : {}) })} />
-            : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
-      ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}</TableCell>
+            onPick={pickPart} />
+        : (() => {
+            const zapUrl = sevenZapPartUrl(it.partNumber, vehicle?.make);
+            return zapUrl
+              ? <a href={zapUrl} title="Look up this OEM number on 7zap"
+                  onClick={(e) => { e.preventDefault(); openSevenZapPopup(zapUrl); }}
+                  className="font-mono text-xs text-orange-700 underline decoration-dotted underline-offset-2 hover:text-orange-800">
+                  {it.partNumber}
+                </a>
+              : <span className="font-mono text-xs">{it.partNumber || "—"}</span>;
+          })()}</TableCell>}
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1 min-w-0">
+            {editing ? (
+              kind === "Labour"
+                ? <LabourDescInput inp={inp} value={it.description ?? ""} make={vehicle?.make} model={vehicle?.model}
+                    onUseRate={(rate) => update(idx, { unitPrice: rate.toFixed(2) })}
+                    onChange={(v) => update(idx, { description: v, ...((v === "Mechanical Labour" || v === "Diagnostic Check") && !num(it.unitPrice) ? { unitPrice: 70 } : {}) })} />
+                : showPartNo
+                  ? <PartAutocomplete inp={inp} placeholder="Description" value={it.description ?? ""}
+                      onType={(v) => update(idx, { description: v })}
+                      onPick={pickPart} />
+                  : <input className={inp} value={it.description ?? ""} onChange={(e) => update(idx, { description: e.target.value })} />
+            ) : <span className="whitespace-pre-wrap">{it.description || "—"}</span>}
+          </div>
+          {showPartNo && (
+            <button type="button"
+              title={(it.description || "").trim()
+                ? "Find this part on 7zap — opens the exploded diagram for its system"
+                : "Opens this car's 7zap catalogue — type a description first to jump straight to the right diagrams"}
+              onClick={() => findPartOn7zap(it.description, vehicle?.vin, vehicle?.make)}
+              className="shrink-0 inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-1.5 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-100">
+              <Search className="w-3 h-3" /> Find
+            </button>
+          )}
+        </div>
+      </TableCell>
       <TableCell className="text-right">{editing ? <input className={inp + " text-right"} value={it.quantity ?? ""} onChange={(e) => update(idx, { quantity: e.target.value })} /> : (it.quantity ?? "-")}</TableCell>
-      <TableCell className="text-right">{editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}</TableCell>
+      <TableCell className="text-right">
+        {editing ? <MoneyInput value={it.unitPrice} onChange={(v) => update(idx, { unitPrice: v })} w="w-full" /> : `£${money(it.unitPrice)}`}
+        {noPrice && (
+          <span className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap">⚠ no price</span>
+        )}
+        {belowFloor && (
+          <button type="button" onClick={editing ? () => update(idx, { unitPrice: floor!.toFixed(2) }) : undefined}
+            title={editing ? `Minimum for this item is £${money(floor)} — click to apply` : `Below the £${money(floor)} minimum`}
+            className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap hover:underline">
+            min £{money(floor)}
+          </button>
+        )}
+      </TableCell>
       <TableCell className="text-right">{editing
         ? <input className={inp + " text-right"} placeholder="0" title="Discount % off this line — e.g. 10 for 10% off" value={fmtDiscEdit(it)} onChange={(e) => update(idx, parseDiscInput(e.target.value))} />
         : <span className={num(it.discount) ? "text-emerald-700" : ""}>{fmtDiscView(it)}</span>}</TableCell>

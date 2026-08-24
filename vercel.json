@@ -2,7 +2,8 @@
     "version": 2,
     "regions": ["lhr1"],
     "crons": [
-        { "path": "/api/cron/mot-day-reminders", "schedule": "0 7 * * *" }
+        { "path": "/api/cron/mot-day-reminders", "schedule": "0 7 * * *" },
+        { "path": "/api/cron/ga4-pool-check", "schedule": "30 8 * * *" }
     ],
     "outputDirectory": "dist/public",
     "rewrites": [

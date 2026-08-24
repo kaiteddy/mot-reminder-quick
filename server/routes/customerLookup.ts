@@ -23,7 +23,7 @@ customerLookupRouter.get("/:registration", async (req, res) => {
     if (vehicleRecords.length === 0) {
       return res.json({ success: true, customer: null });
     }
-    
+
     const vehicle = vehicleRecords[0];
 
     // The owner can be missing from the vehicle row itself: records created by a
@@ -49,7 +49,8 @@ customerLookupRouter.get("/:registration", async (req, res) => {
     }
 
     if (!resolvedCustomerId) {
-      return res.json({ success: true, customer: null });
+      // No owner linked or resolvable — still return the vehicle so the client can offer to assign one.
+      return res.json({ success: true, customer: null, vehicle });
     }
 
     // Get the customer
@@ -57,9 +58,9 @@ customerLookupRouter.get("/:registration", async (req, res) => {
       .from(customers)
       .where(eq(customers.id, resolvedCustomerId))
       .limit(1);
-      
+
     if (customerRecords.length === 0) {
-      return res.json({ success: true, customer: null });
+      return res.json({ success: true, customer: null, vehicle });
     }
     
     // We could potentially format the data nicely here

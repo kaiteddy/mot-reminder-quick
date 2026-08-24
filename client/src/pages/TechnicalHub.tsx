@@ -100,16 +100,39 @@ export default function TechnicalHub() {
     const techData = vehicle?.comprehensiveTechnicalData as any;
 
     const uniqueLubricants = Array.isArray(techData?.lubricants)
-        ? techData.lubricants.filter(
-            (item: any, index: number, self: any[]) =>
-                index ===
-                self.findIndex(
-                    (t) =>
-                        t.description === item.description &&
-                        t.specification === item.specification &&
-                        t.capacity === item.capacity
-                )
-        )
+        ? techData.lubricants.reduce((acc: any[], item: any) => {
+            const existing = acc.find(
+                (t: any) => t.description === item.description && t.capacity === item.capacity
+            );
+            if (existing) {
+                if (item.specification && !existing._specs.includes(item.specification)) {
+                    existing._specs.push(item.specification);
+                }
+            } else {
+                acc.push({ ...item, _specs: item.specification ? [item.specification] : [] });
+            }
+            return acc;
+        }, []).map((lub: any) => {
+            if (lub._specs.length > 1) {
+                const viscosities = new Set<string>();
+                for (const spec of lub._specs) {
+                    const match = spec.match(/\b\d{1,2}W-\d{2,3}\b/i);
+                    if (match) viscosities.add(match[0].toUpperCase());
+                }
+
+                if (viscosities.size > 0) {
+                    lub.specification = Array.from(viscosities).join(" OR ");
+                    if (lub._specs[0].includes("API") || lub._specs[0].includes("ACEA")) {
+                        lub.specification += ` (Any API/ACEA)`;
+                    }
+                } else {
+                    lub.specification = lub._specs[0] + ` (+${lub._specs.length - 1} alt)`;
+                }
+            } else if (lub._specs.length === 1) {
+                lub.specification = lub._specs[0];
+            }
+            return lub;
+        })
         : [];
 
     return (

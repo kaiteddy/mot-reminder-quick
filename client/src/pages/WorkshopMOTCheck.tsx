@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DefectExplainButton } from "@/components/DefectExplainer";
 import {
   Car,
   Calendar,
@@ -123,15 +123,12 @@ export default function WorkshopMOTCheck() {
       setVehicleData(data as VehicleData);
       toast.success("Vehicle found!");
 
-      // Try to fetch customer profile data
+      // Try to fetch customer profile data — keep the response even with no linked customer,
+      // so its `vehicle` id still lets CustomerInfoCard offer an "Assign Owner" prompt.
       try {
         const res = await fetch(`/api/customer-lookup/${data.registration}`);
         const cData = await res.json();
-        if (cData.success && cData.customer) {
-          setCustomerData(cData);
-        } else {
-          setCustomerData(null);
-        }
+        setCustomerData(cData.success ? cData : null);
       } catch (e) {
         console.error("Customer lookup failed", e);
         setCustomerData(null);
@@ -311,9 +308,11 @@ export default function WorkshopMOTCheck() {
         {/* Vehicle Details */}
         {vehicleData && (
           <div className="space-y-5">
-            {/* Customer / owner details first — who the car belongs to + all their numbers */}
-            {customerData?.customer && (
-              <CustomerInfoCard customer={customerData.customer} vehicleId={customerData?.vehicle?.id} />
+            {/* Customer / owner details first — who the car belongs to + all their numbers.
+                CustomerInfoCard shows its own "No Customer Assigned" + Assign Owner prompt
+                when customer is null, as long as it has a vehicleId to assign against. */}
+            {customerData?.vehicle?.id && (
+              <CustomerInfoCard customer={customerData.customer} vehicleId={customerData.vehicle.id} />
             )}
             {/* MOT Status Card */}
             <Card className="border-2">
@@ -773,7 +772,7 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
                     {isDangerous ? "DANGEROUS" : defect.type}
                   </span>
                   <span className={isDangerous ? "text-white leading-tight" : "leading-tight"}>{defect.text}</span>
-                  {vehicleData && <DefectExplanationPopover defectText={defect.text} vehicle={vehicleData} isDangerous={isDangerous} />}
+                  <DefectExplainButton defectText={defect.text} defectType={defect.type} isDangerous={isDangerous} make={vehicleData?.make} model={vehicleData?.model} />
                 </div>
               );
             })}
@@ -802,52 +801,3 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
   );
 }
 
-function DefectExplanationPopover({ defectText, vehicle, isDangerous }: { defectText: string, vehicle?: VehicleData, isDangerous?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const explainMutation = trpc.ai.explainDefect.useMutation();
-
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (newOpen && !explainMutation.data && !explainMutation.isPending && !explainMutation.isError) {
-      explainMutation.mutate({
-        defect: defectText,
-        make: vehicle?.make,
-        model: vehicle?.model,
-        year: vehicle?.yearOfManufacture,
-      });
-    }
-  };
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button 
-          className={`ml-auto shrink-0 flex items-center justify-center p-1.5 rounded-full transition-colors opacity-70 hover:opacity-100 ${isDangerous ? 'hover:bg-red-700 text-white' : 'hover:bg-black/5 text-slate-500 hover:text-slate-800'}`}
-          title="Explain this issue"
-        >
-          <Sparkles className="w-4 h-4" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 text-sm p-4 z-[100]" align="end">
-        <div className="space-y-3">
-          <h4 className="font-semibold flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            AI Explanation
-          </h4>
-          {explainMutation.isPending ? (
-            <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin text-primary/60" />
-              <p className="text-xs">Translating to plain English...</p>
-            </div>
-          ) : explainMutation.isError ? (
-            <p className="text-destructive text-xs py-2">Failed to get explanation. Please try again.</p>
-          ) : explainMutation.data ? (
-            <p className="text-slate-700 leading-relaxed text-[13.5px] pt-3 border-t font-medium">{explainMutation.data.explanation}</p>
-          ) : (
-            <p className="text-muted-foreground text-xs py-2">Loading...</p>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}

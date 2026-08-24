@@ -21,35 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginRoute } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import {
-  LayoutDashboard,
-  LogOut,
-  PanelLeft,
-  Users,
-  Archive,
-  AlertCircle,
-  MessageSquare,
-  Database as DatabaseIcon,
-  Car,
-  UserCheck,
-  Search,
-  FileText,
-  FileSpreadsheet,
-  Mail,
-  Settings,
-  ShieldCheck,
-  Smartphone,
-  BarChart,
-  ScanLine,
-  History,
-  Calendar as CalendarIcon,
-  Wrench,
-  Brain,
-  PoundSterling,
-  Tag,
-  GitMerge,
-  ShieldAlert
-} from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Archive, AlertCircle, MessageSquare, Database as DatabaseIcon, Car, UserCheck, Search, FileText, FileSpreadsheet, Mail, Settings, ShieldCheck, Smartphone, BarChart, ScanLine, History, Calendar as CalendarIcon, Wrench, Brain, PoundSterling, Tag, GitMerge, ShieldAlert, Package, Tags } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -58,13 +30,17 @@ import { UnreadMessageBadge } from "./UnreadMessageBadge";
 import UniversalSearch from "./UniversalSearch";
 import QuickMOTCheck from "./QuickMOTCheck";
 import Ga4SyncButton from "./Ga4SyncButton";
+import Ga4Shell from "./ga4/Ga4Shell";
 
 const menuGroups = [
   { section: "Workshop", items: [
     { icon: FileText, label: "Live Jobs", path: "/documents" },
     { icon: Search, label: "MOT Check", path: "/mot-check" },
-    { icon: LayoutDashboard, label: "MOT Reminders", path: "/" },
+    { icon: LayoutDashboard, label: "MOT Reminders", path: "/mot-reminders" },
+    { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: PoundSterling, label: "Repair Pricing", path: "/repair-pricing" },
+    { icon: Package, label: "Parts Price List", path: "/parts-price-list" },
+    { icon: Tags, label: "Price Guide", path: "/price-guide" },
     { icon: CalendarIcon, label: "Calendar", path: "/appointments" },
     { icon: ShieldCheck, label: "Technical Hub", path: "/technical-hub" },
     { icon: Wrench, label: "Technical Data", path: "/technical-data" },
@@ -95,7 +71,6 @@ const menuGroups = [
   ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },
-    { icon: ScanLine, label: "GA4 Scanner", path: "/ga4-scan" },
     { icon: Mail, label: "Email Settings", path: "/email-settings" },
   ] },
 ];
@@ -116,6 +91,10 @@ export default function DashboardLayout({
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
+  const [location] = useLocation();
+  // "GA4 Classic" — same pages, same data, a chrome that looks like the legacy desktop
+  // app instead of the modern sidebar. Same auth guard below, different shell entirely.
+  const isClassic = location.startsWith("/classic");
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -126,11 +105,18 @@ export default function DashboardLayout({
   }
 
   if (!user) {
-    // Redirect to login if not authenticated
+    // Redirect to login if not authenticated, carrying where they were trying to get to —
+    // otherwise signing in always lands on the home page and a link straight to a document
+    // (an invoice, a job sheet) silently never opens.
     if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/login?next=${encodeURIComponent(next)}`;
     }
     return null;
+  }
+
+  if (isClassic) {
+    return <Ga4Shell>{children}</Ga4Shell>;
   }
 
   return (
@@ -220,7 +206,8 @@ function DashboardLayoutContent({
               )}
               <SidebarMenu>
                 {group.items.map((item: any) => {
-                  const isActive = location === item.path;
+                  // "/" renders the same Job Sheets page as "/documents" (the app's landing route).
+                  const isActive = location === item.path || (location === "/" && item.path === "/documents");
                   return (
                     <SidebarMenuItem key={item.path} className="mb-0.5">
                       <SidebarMenuButton
@@ -316,42 +303,49 @@ function DashboardLayoutContent({
 
       <SidebarInset className="flex flex-col flex-1 overflow-hidden relative">
         {/* Installed to the home screen the web view runs under the iOS status bar (we ask for a
-            translucent one), so the header must grow by the safe-area inset — without it these
-            buttons sit beneath the clock and the notch. Both resolve to zero in a browser tab
-            and on desktop, so nothing changes there. */}
-        <header className="h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] flex items-center justify-between px-4 sm:px-6 bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
-            <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
-            <div className="flex flex-col">
-              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight">
-                Current View
-              </span>
-              <h2 className="text-sm font-bold text-foreground">
-                {activeMenuItem.label}
-              </h2>
+            translucent one), so the header must clear the safe-area inset — without it these
+            buttons sit beneath the clock and the notch. Zero in a browser tab and on desktop. */}
+        <header className="flex flex-col bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
+          <div className="h-16 flex items-center justify-between gap-4 px-6">
+            <div className="flex items-center gap-4 min-w-0">
+              <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
+              <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
+              <div className="flex flex-col min-w-0">
+                <span className="hidden sm:block text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight whitespace-nowrap">
+                  Current View
+                </span>
+                <h2 className="text-sm font-bold text-foreground whitespace-nowrap truncate">
+                  {activeMenuItem.label}
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 shrink-0">
+              <Ga4SyncButton />
+              <button type="button" onClick={() => setLocation(location === "/" || location === "/documents" ? "/classic" : `/classic${location}`)} title="Switch to the GA4-look Classic view"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-300 bg-slate-50 text-[13px] font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+                <LayoutDashboard className="w-4 h-4" /> <span className="hidden lg:inline">Classic View</span>
+              </button>
+              <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
+                <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>
+              </button>
+              <QuickMOTCheck />
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
+                <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
+              </div>
+              <Avatar className="h-9 w-9 border-2 border-accent transition-transform hover:scale-105 cursor-pointer">
+                <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">AD</AvatarFallback>
+              </Avatar>
             </div>
           </div>
 
-          {/* Global search — available on every page */}
-          <div className="flex-1 max-w-xl mx-4 hidden sm:block">
-            <UniversalSearch placeholder="Search any customer, vehicle, reg, make/model, phone…" />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Ga4SyncButton />
-            <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
-              <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>
-            </button>
-            <QuickMOTCheck />
-            <div className="hidden md:flex flex-col items-end">
-              <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
-              <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
+          {/* Global search — its own row underneath so it always has full width to render in, never squeezed by the header buttons */}
+          <div className="px-6 pb-3 hidden sm:block">
+            <div className="max-w-xl">
+              <UniversalSearch placeholder="Search any customer, vehicle, reg, make/model, phone…" />
             </div>
-            <Avatar className="h-9 w-9 border-2 border-accent transition-transform hover:scale-105 cursor-pointer">
-              <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">AD</AvatarFallback>
-            </Avatar>
           </div>
         </header>
 

@@ -12,7 +12,7 @@ import { expenditureRouter } from "./routers/expenditure";
 import { vehicleSaleRouter } from "./routers/vehicleSale";
 import { purchaseInvoiceRouter } from "./routers/purchaseInvoice";
 
-import { desc, eq, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
+import { desc, eq, ne, or, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
 import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
 
 export const appRouter = router({
@@ -74,6 +74,40 @@ export const appRouter = router({
       const { refreshSalesStockMotTax } = await import("./db");
       return refreshSalesStockMotTax();
     }),
+    setSold: publicProcedure
+      .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
+      .mutation(async ({ input }) => {
+        const { setSalesStockSold } = await import("./db");
+        return setSalesStockSold({
+          id: input.id,
+          sold: input.sold,
+          soldPrice: input.soldPrice ?? null,
+          soldAt: input.soldAt ? new Date(input.soldAt) : null,
+        });
+      }),
+  }),
+
+  priceGuide: router({
+    /** Our banded service labour, for anything that needs to price a service — the job sheet as
+     *  well as the guide. One source, so the two can't drift the way the MOT price did. */
+    labourBands: publicProcedure
+      .input(z.object({ jobKey: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getServiceLabourBands } = await import("./db");
+        return getServiceLabourBands(input?.jobKey || "interimService");
+      }),
+    forRegistration: publicProcedure
+      .input(z.object({ registration: z.string(), years: z.number().optional() }))
+      .query(async ({ input }) => {
+        const { getPriceGuideForRegistration } = await import("./db");
+        return getPriceGuideForRegistration(input.registration, { years: input.years });
+      }),
+    get: publicProcedure
+      .input(z.object({ years: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getJobPriceGuide } = await import("./db");
+        return getJobPriceGuide({ years: input?.years });
+      }),
   }),
 
   customers: router({
@@ -109,6 +143,14 @@ export const appRouter = router({
         return c ? { id: c.id, name: c.name, email: c.email, phone: c.phone } : null;
       }),
 
+    /** Wider search for attaching an owner: also matches address, account number and any
+     *  registration the customer has had, current or historical. */
+    searchForAttach: publicProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchCustomersForAttach } = await import("./db");
+        return searchCustomersForAttach(input.query);
+      }),
     search: publicProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
@@ -135,7 +177,7 @@ export const appRouter = router({
         return getCustomerContacts(input.customerId);
       }),
     saveContacts: publicProcedure
-      .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional() })) }))
+      .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional(), email: z.string().optional() })) }))
       .mutation(async ({ input }) => {
         const { saveCustomerContacts } = await import("./db");
         return saveCustomerContacts(input.customerId, input.contacts);
@@ -146,10 +188,10 @@ export const appRouter = router({
       return getDuplicateGroups();
     }),
     merge: publicProcedure
-      .input(z.object({ primaryId: z.number(), secondaryIds: z.array(z.number()).min(1) }))
+      .input(z.object({ primaryId: z.number(), secondaryIds: z.array(z.number()).min(1), force: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { mergeCustomerRecords } = await import("./db");
-        return mergeCustomerRecords(input.primaryId, input.secondaryIds);
+        return mergeCustomerRecords(input.primaryId, input.secondaryIds, input.force);
       }),
     dismissDuplicate: publicProcedure
       .input(z.object({ phone: z.string() }))
@@ -158,16 +200,29 @@ export const appRouter = router({
         return dismissDuplicateGroup(input.phone);
       }),
 
+    driveFromGarage: publicProcedure
+      .input(z.object({ postcode: z.string() }))
+      .query(async ({ input }) => {
+        const { getDriveFromGarage } = await import("./db");
+        return getDriveFromGarage(input.postcode);
+      }),
+
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const { getCustomerById, getVehiclesByCustomerId, getRemindersByCustomerId, getServiceHistoryByCustomerId } = await import("./db");
+        const { getCustomerById, getVehiclesForCustomerAcrossLinkedAccounts, getCustomerReminderTimeline, getServiceHistoryForCustomerAcrossLinkedAccounts, getLinkedCustomerAccounts } = await import("./db");
         const customer = await getCustomerById(input.id);
         if (!customer) return null;
 
-        const vehicles = await getVehiclesByCustomerId(input.id);
-        const reminders = await getRemindersByCustomerId(input.id);
-        const history = await getServiceHistoryByCustomerId(input.id);
+        const vehiclesRaw = await getVehiclesForCustomerAcrossLinkedAccounts(input.id);
+        // Attach each car's last service (and its grade) so the vehicle list answers "when did
+        // they last have a service" without opening every car in turn.
+        const { getLastServiceForVehicles } = await import("./db");
+        const lastServices = await getLastServiceForVehicles(vehiclesRaw.map((v: any) => v.id).filter(Boolean));
+        const vehicles = vehiclesRaw.map((v: any) => ({ ...v, lastService: lastServices.get(v.id) || null }));
+        const reminders = await getCustomerReminderTimeline(input.id);
+        const history = await getServiceHistoryForCustomerAcrossLinkedAccounts(input.id);
+        const linkedAccounts = await getLinkedCustomerAccounts(input.id);
 
         const totalJobs = history.length;
         const totalSpent = history.reduce((acc, h) => acc + (Number(h.totalGross) || 0), 0);
@@ -176,6 +231,7 @@ export const appRouter = router({
           customer,
           vehicles,
           reminders,
+          linkedAccounts,
           stats: {
             totalJobs,
             totalSpent
@@ -227,6 +283,8 @@ export const appRouter = router({
         offset: z.number().optional(),
         sortKey: z.string().optional(),
         sortDir: z.enum(["asc", "desc"]).optional(),
+        dateFrom: z.string().optional(), // "YYYY-MM-DD", inclusive
+        dateTo: z.string().optional(), // "YYYY-MM-DD", inclusive
       }).optional())
       .query(async ({ input }) => {
         const { getDocuments } = await import("./db");
@@ -243,6 +301,60 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const { getDocumentDetail } = await import("./db");
         return getDocumentDetail(input.id);
+      }),
+
+    // Images pasted onto a job (e.g. a screenshot of the 7zap exploded diagram for a part).
+    // list omits the base64 payload; getAttachment fetches one image on demand.
+    listAttachments: publicProcedure
+      .input(z.object({ documentId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq, desc, sql } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return [];
+        // Link rows carry their (tiny) payload in the list so a click can open the URL
+        // synchronously; image payloads stay list-omitted and load per-thumbnail.
+        return db.select({
+          id: docAttachments.id, name: docAttachments.name, mime: docAttachments.mime, size: docAttachments.size, createdAt: docAttachments.createdAt,
+          data: sql<string | null>`CASE WHEN ${docAttachments.mime} = 'text/uri-list' THEN ${docAttachments.data} ELSE NULL END`,
+        })
+          .from(docAttachments).where(eq(docAttachments.documentId, input.documentId)).orderBy(desc(docAttachments.createdAt));
+      }),
+    getAttachment: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+        return (await db.select().from(docAttachments).where(eq(docAttachments.id, input.id)).limit(1))[0] ?? null;
+      }),
+    addAttachment: publicProcedure
+      // data = base64 without the data: prefix. 4MB decoded cap keeps Neon rows sane.
+      // mime text/uri-list = a saved LINK (e.g. the 7zap diagram deep link) — data is the base64'd URL.
+      .input(z.object({ documentId: z.number(), name: z.string().min(1).max(200), mime: z.string().regex(/^image\/|^text\/uri-list$/), data: z.string().min(10) }))
+      .mutation(async ({ input }) => {
+        const size = Math.floor(input.data.length * 3 / 4);
+        if (size > 4 * 1024 * 1024) throw new Error("Image too large — keep it under 4MB (crop the screenshot to the diagram)");
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new Error("Database error");
+        const [row] = await db.insert(docAttachments).values({ documentId: input.documentId, name: input.name, mime: input.mime, size, data: input.data }).returning({ id: docAttachments.id });
+        return { id: row.id, size };
+      }),
+    removeAttachment: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { docAttachments } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database error");
+        await db.delete(docAttachments).where(eq(docAttachments.id, input.id));
+        return { success: true };
       }),
 
     lookupVehicle: publicProcedure
@@ -286,6 +398,7 @@ export const appRouter = router({
         createCustomer: z.boolean().optional(),
         updateCustomerRecord: z.boolean().optional(),
         vehicle: z.record(z.string(), z.any()).optional(),
+        vehicleReg: z.string().optional(), // the reg `vehicle`'s identity fields were populated for
         customerName: z.string().optional(),
         custTitle: z.string().optional(),
         custForename: z.string().optional(),
@@ -310,6 +423,8 @@ export const appRouter = router({
         terms: z.string().optional(),
         description: z.string().optional(),
         insuranceCompany: z.string().optional(),
+        insurerAddress: z.string().optional(),
+        insurerEmail: z.string().optional(),
         staffSalesPerson: z.string().optional(),
         staffTechnician: z.string().optional(),
         staffRoadTester: z.string().optional(),
@@ -398,16 +513,26 @@ export const appRouter = router({
         const { deletePayment } = await import("./db");
         return deletePayment(input.id);
       }),
+    /** Does this invoice's MOT line agree with the DVSA's record of when the test happened?
+     *  Catches an MOT being billed weeks after it was carried out, which silently moves the
+     *  sale into the wrong month. Returns null when there is nothing to check. */
+    motDateCheck: publicProcedure
+      .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { checkMotDate } = await import("./services/motDateCheck");
+        return checkMotDate(input.id, input.issueDate);
+      }),
+
     issue: publicProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { issueDocument } = await import("./db");
-        return issueDocument(input.id);
+        return issueDocument(input.id, { issueDate: input.issueDate });
       }),
 
     // --- policy-excess insurance split ---
     createExcess: publicProcedure
-      .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { createExcessInvoice } = await import("./db");
         return createExcessInvoice(input);
@@ -418,8 +543,20 @@ export const appRouter = router({
         const { deleteDocuments } = await import("./db");
         return deleteDocuments(input.ids);
       }),
+    archive: publicProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { archiveDocuments } = await import("./db");
+        return archiveDocuments(input.ids);
+      }),
+    unarchive: publicProcedure
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const { unarchiveDocuments } = await import("./db");
+        return unarchiveDocuments(input.ids);
+      }),
     updateExcess: publicProcedure
-      .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional() }))
+      .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { updateExcessInvoice } = await import("./db");
         return updateExcessInvoice(input);
@@ -521,6 +658,32 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { deleteDescriptionPreset } = await import("./db");
         await deleteDescriptionPreset(input.id);
+        return { success: true };
+      }),
+  }),
+
+  partsPriceList: router({
+    list: publicProcedure
+      .input(z.object({ search: z.string().optional() }).optional())
+      .query(async ({ input }) => {
+        const { listPartsPriceList } = await import("./db");
+        return listPartsPriceList(input?.search);
+      }),
+    upsert: publicProcedure
+      .input(z.object({
+        id: z.number().optional(), partNumber: z.string().optional(), description: z.string().min(1),
+        unitPrice: z.number(), vatRate: z.number().optional(), quantity: z.number().optional(), nominalCode: z.string().optional(),
+        minPrice: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { upsertPartsPriceListEntry } = await import("./db");
+        return upsertPartsPriceListEntry(input);
+      }),
+    delete: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const { deletePartsPriceListEntry } = await import("./db");
+        await deletePartsPriceListEntry(input.id);
         return { success: true };
       }),
   }),
@@ -703,6 +866,25 @@ export const appRouter = router({
         } catch { /* logging must never block the send */ }
         return result;
       }),
+    sendCustomerHistory: publicProcedure
+      .input(z.object({ customerId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        const { sendCustomerHistoryEmail } = await import("./services/email");
+        const { getCustomerById, addCustomerLog } = await import("./db");
+        const cust: any = await getCustomerById(input.customerId);
+        const result = await sendCustomerHistoryEmail({ ...input, customerName: cust?.name });
+        try {
+          await addCustomerLog({
+            customerId: input.customerId,
+            vehicleId: null,
+            documentId: null,
+            type: "email", direction: "out",
+            subject: input.subject || `Emailed full service history to ${input.to}`,
+            body: `To: ${input.to}${input.cc ? `\nCc: ${input.cc}` : ""}\n\n${input.message || ""}`.trim(),
+          } as any);
+        } catch { /* logging must never block the send */ }
+        return result;
+      }),
   }),
 
   vehicles: router({
@@ -725,6 +907,15 @@ export const appRouter = router({
         return { ok: true };
       }),
 
+    // Free, time-sensitive DVLA refresh — called automatically when a vehicle page loads so
+    // MOT/tax never shows a stale cached status (see refreshVehicleMotTax in db.ts).
+    refreshMotTax: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const { refreshVehicleMotTax } = await import("./db");
+        return refreshVehicleMotTax(input.registration);
+      }),
+
     getByRegistration: publicProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
@@ -739,8 +930,12 @@ export const appRouter = router({
 
         const reminders = await getRemindersByVehicleId(vehicle.id);
         const latestMileage = await getLatestVehicleMileage(vehicle.id);
-        const { getServiceHistoryByVehicleId } = await import("./db");
+        const { getServiceHistoryByVehicleId, getOtherVehiclesOnPlate, getVehicleServicing } = await import("./db");
         const history = await getServiceHistoryByVehicleId(vehicle.id);
+        // Previous holders of a cherished plate — shown separately, never merged into history.
+        const otherCarsOnPlate = await getOtherVehiclesOnPlate(vehicle.id);
+        // Last service and its grade, read from the parts actually fitted on past invoices.
+        const servicing = await getVehicleServicing(vehicle.id);
 
         return {
           vehicle,
@@ -748,11 +943,21 @@ export const appRouter = router({
           reminders,
           latestMileage,
           history,
+          otherCarsOnPlate,
+          servicing,
           stats: {
             totalJobs: history.length,
             lastVisit: history.length > 0 ? history[0].dateCreated : null
           }
         };
+      }),
+    /** Plate transferred to a different car: retire it from the old record so the new vehicle
+     *  can take it. See retirePlateFromVehicle — the old car keeps all of its history. */
+    retirePlate: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { retirePlateFromVehicle } = await import("./db");
+        return retirePlateFromVehicle(input.registration);
       }),
     lookupExternal: publicProcedure
       .input(z.object({ registration: z.string() }))
@@ -855,12 +1060,14 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
         const { vehicles } = await import("../drizzle/schema");
-        const { eq } = await import("drizzle-orm");
+        const { sql } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) throw new Error("No database");
 
         const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
-        const vehicleRecord = await db.select().from(vehicles).where(eq(vehicles.registration, cleanReg)).limit(1);
+        // cleanReg is normalized but the stored column may not be ("PE59 OFH") — normalize
+        // both sides, or this 404s for any vehicle whose registration was saved with a space.
+        const vehicleRecord = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${cleanReg}`).limit(1);
         if (!vehicleRecord.length) throw new Error("Vehicle not found in database");
 
         const dbVeh = vehicleRecord[0];
@@ -1116,6 +1323,8 @@ export const appRouter = router({
         if (normalized.length === 0) return result;
 
         // 1. Find vehicles
+        // vehicles.registration may be stored spaced ("FM13 KKB") or not ("FM13KKB") — match
+        // against the same normalized form the batch was sent in, or spaced rows never match.
         const foundVehicles = await db
           .select({
             id: vehicles.id,
@@ -1132,7 +1341,7 @@ export const appRouter = router({
         const vehicleIds: number[] = [];
         foundVehicles.forEach(v => {
           // key by the normalised reg so the lookup below (which uses `normalized`) always hits
-          vehicleMap.set(v.registration.toUpperCase().replace(/\s/g, ''), v);
+          vehicleMap.set(String(v.registration || "").toUpperCase().replace(/\s+/g, ""), v);
           vehicleIds.push(v.id);
         });
 
@@ -1287,6 +1496,9 @@ export const appRouter = router({
 
           for (let i = 0; i < regs.length; i += BATCH_SIZE) {
             const batch = regs.slice(i, i + BATCH_SIZE);
+            // batch entries are normalized (no spaces) but vehicles.registration may not be
+            // ("PE59 OFH") — matching the raw column here silently drops those vehicles from
+            // the reminder run, and a missed reminder is worse than most bugs in this file.
             const results = await db.select({
               id: vehicles.id,
               registration: vehicles.registration,
@@ -2984,21 +3196,41 @@ export const appRouter = router({
         const { createReminderLog } = await import("./db");
         const { getDb } = await import("./db");
 
-
-        // Find the vehicle for this customer (use latest)
+        // A reply continues whatever conversation the customer replied to — WhatsApp's 24h
+        // window means we messaged them first, so the most recent reminder log to this
+        // number/customer identifies the actual vehicle under discussion. Only if no prior
+        // message exists at all do we fall back to the customer's latest vehicle (the old
+        // behavior, which mis-tagged replies with whichever car happened to have the highest
+        // id — e.g. Mrs Kagan's FH54JVM MOT thread logged against FA17NHD).
         const db = await getDb();
         let vehicleId: number | null = null;
+        let registration: string | null = null;
 
         if (db) {
-          const results = await db
-            .select({ id: vehicles.id })
-            .from(vehicles)
-            .where(eq(vehicles.customerId, input.customerId))
-            .orderBy(desc(vehicles.id))
-            .limit(1);
+          const last9 = input.phoneNumber.replace(/\D/g, "").slice(-9);
+          const lastLog = (await db.select({ vehicleId: reminderLogs.vehicleId, registration: reminderLogs.registration })
+            .from(reminderLogs)
+            .where(and(
+              ne(reminderLogs.messageType, "Other"),
+              last9
+                ? or(eq(reminderLogs.customerId, input.customerId), sql`RIGHT(regexp_replace(${reminderLogs.recipient}, '\\D', '', 'g'), 9) = ${last9}`)
+                : eq(reminderLogs.customerId, input.customerId),
+            ))
+            .orderBy(desc(reminderLogs.sentAt)).limit(1))[0];
 
-          if (results.length > 0) {
-            vehicleId = results[0].id;
+          if (lastLog) {
+            vehicleId = lastLog.vehicleId ?? null;
+            registration = lastLog.registration ?? null;
+          }
+          if (vehicleId == null) {
+            const results = await db.select({ id: vehicles.id, registration: vehicles.registration })
+              .from(vehicles).where(eq(vehicles.customerId, input.customerId))
+              .orderBy(desc(vehicles.id)).limit(1);
+            if (results.length > 0) { vehicleId = results[0].id; registration = registration ?? results[0].registration; }
+          }
+          if (registration == null && vehicleId != null) {
+            const v = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+            registration = v?.registration ?? null;
           }
         }
 
@@ -3011,11 +3243,13 @@ export const appRouter = router({
           throw new Error(result.error || "Failed to send message");
         }
 
-        // Log the sent message
+        // Log the sent message — registration recorded explicitly so the log is
+        // self-describing instead of relying on the vehicleId guess at read time.
         await createReminderLog({
           reminderId: null,
           customerId: input.customerId,
           vehicleId: vehicleId,
+          registration,
           messageType: "Other",
           recipient: input.phoneNumber,
           messageSid: result.messageId,
@@ -3200,7 +3434,9 @@ export const appRouter = router({
 
         // Auto-create vehicle if missing but data provided
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
-          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          // Normalized match (not exact-string eq) — a typed "PE59 OFH" must find the existing
+          // "PE59OFH" row instead of minting a duplicate vehicle for the same plate.
+          const existingVehicles = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${input.registration.toUpperCase().replace(/\s+/g, "")}`).limit(1);
           if (existingVehicles.length > 0) {
             autogenVehicleId = existingVehicles[0].id;
             if (autogenCustomerId && !existingVehicles[0].customerId) {
@@ -3297,7 +3533,7 @@ export const appRouter = router({
         }
 
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {
-          const existingVehicles = await db.select().from(vehicles).where(eq(vehicles.registration, input.registration)).limit(1);
+          const existingVehicles = await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${input.registration.toUpperCase().replace(/\s+/g, "")}`).limit(1);
           if (existingVehicles.length > 0) {
             autogenVehicleId = existingVehicles[0].id;
             if (autogenCustomerId && !existingVehicles[0].customerId) {

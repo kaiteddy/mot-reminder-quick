@@ -19,6 +19,8 @@ export interface ConversationThread {
   unreadCount: number;
   deliveryStatus: string | null;
   optedOut: boolean;
+  /** Last time this customer messaged us — WhatsApp only allows freeform replies within 24h of this. */
+  lastInboundAt: Date | null;
 }
 
 export interface ConversationMessage {
@@ -131,6 +133,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         unreadCount: 0, // Will be calculated from received messages
         deliveryStatus: log.deliveryStatus,
         optedOut: false,
+        lastInboundAt: null,
       });
     } else if (existing) {
       // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
@@ -153,6 +156,9 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         existing.lastMessageAt = msg.lastMessageAt;
         existing.lastMessagePreview = (msg.lastMessagePreview || "").substring(0, 100);
       }
+      if (!existing.lastInboundAt || msg.lastMessageAt > existing.lastInboundAt) {
+        existing.lastInboundAt = msg.lastMessageAt;
+      }
       // Count unread messages
       if (msg.read === 0) {
         existing.unreadCount++;
@@ -171,6 +177,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         unreadCount: msg.read === 0 ? 1 : 0,
         deliveryStatus: null,
         optedOut: false,
+        lastInboundAt: msg.lastMessageAt,
       });
     }
   });

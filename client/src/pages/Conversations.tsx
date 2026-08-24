@@ -1,25 +1,41 @@
 import { useState, useEffect, useRef } from "react";
+import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, ChevronLeft, Loader2 } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle, ChevronLeft, Loader2 } from "lucide-react";
 import { usePushNotifications } from "@/lib/usePushNotifications";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { RegPlate } from "@/components/RegPlate";
+import { LineItemsView } from "@/components/ServiceHistory";
+import { useLocation } from "wouter";
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note", XS: "Excess",
+};
+const DOC_TYPE_COLOR: Record<string, string> = {
+  SI: "bg-green-100 text-green-800", ES: "bg-blue-100 text-blue-800",
+  JS: "bg-amber-100 text-amber-800", CR: "bg-red-100 text-red-800", XS: "bg-fuchsia-100 text-fuchsia-800",
+};
+const money = (v: any) => (v == null ? "—" : `£${Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
 
 export default function Conversations() {
-  // ?customer=<id> opens that thread straight away — the link in the staff alert text, so
-  // tapping the notification on a phone lands directly on the conversation.
+  const [, setLocation] = useLocation();
+  // ?customer=<id> opens that thread straight away — the link in the notification, so tapping
+  // it on a phone lands directly on the conversation.
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(() => {
     const id = Number(new URLSearchParams(window.location.search).get("customer"));
     return Number.isFinite(id) && id > 0 ? id : null;
   });
   const [replyMessage, setReplyMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: threads, refetch: refetchThreads } = trpc.conversations.getThreads.useQuery();
@@ -115,6 +131,19 @@ export default function Conversations() {
 
   const selectedThread = threads?.find(t => t.customerId === selectedCustomerId);
 
+  // WhatsApp only allows freeform replies within 24h of the customer's last inbound message —
+  // outside that window Meta silently rejects them and Twilio reports back "undelivered".
+  const lastInboundAt = selectedThread?.lastInboundAt ? new Date(selectedThread.lastInboundAt) : null;
+  const hoursSinceInbound = lastInboundAt ? (Date.now() - lastInboundAt.getTime()) / 36e5 : null;
+  const outsideReplyWindow = hoursSinceInbound === null || hoursSinceInbound > 24;
+
+  // Pulls the car's spec + its full job history so staff can answer "is it due for a service"
+  // (or similar) type questions without leaving the conversation to go dig it up elsewhere.
+  const { data: vehicleInfo } = trpc.vehicles.getByRegistration.useQuery(
+    { registration: selectedThread?.vehicleRegistration ?? "" },
+    { enabled: !!selectedThread?.vehicleRegistration }
+  );
+
   const filteredThreads = threads?.filter(thread =>
     thread.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     thread.customerPhone.includes(searchQuery) ||
@@ -178,10 +207,10 @@ export default function Conversations() {
           <NotificationsButton />
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Conversation List Sidebar — full width on mobile, and stands aside once a thread is picked */}
+        <div className="flex-1 flex overflow-hidden @container">
+          {/* Conversation List Sidebar — full width on a phone, and stands aside once a thread is picked */}
           <div className={cn(
-            "w-full md:w-96 bg-white md:border-r flex-col",
+            "w-full md:w-72 @5xl:w-80 @6xl:w-96 bg-white md:border-r flex-col shrink-0",
             selectedCustomerId ? "hidden md:flex" : "flex",
           )}>
             {/* Search */}
@@ -259,8 +288,8 @@ export default function Conversations() {
                 {/* Conversation Header */}
                 {/* stacks on a phone — side by side there isn't room for the name and the actions */}
                 <div className="bg-white border-b px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row md:items-start md:justify-between gap-2 md:gap-4">
-                  <div className="min-w-0 flex items-start gap-2">
-                    {/* back to the thread list — mobile only, where the list is hidden */}
+                  <div className="min-w-0 flex-1 flex items-start gap-2">
+                    {/* back to the thread list — phone only, where the list is hidden */}
                     <button
                       type="button"
                       onClick={() => setSelectedCustomerId(null)}
@@ -269,26 +298,25 @@ export default function Conversations() {
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                     <h2 className="font-semibold text-base md:text-lg text-slate-900 flex items-center gap-2 flex-wrap">
-                      {selectedThread.customerName}
+                      <span className="truncate">{selectedThread.customerName}</span>
                       {selectedThread.optedOut && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 shrink-0">
                           <BellOff className="w-3 h-3" /> Reminders stopped
                         </span>
                       )}
                     </h2>
-                    <div className="flex items-center gap-x-2 gap-y-1 text-xs md:text-sm text-slate-600 mt-1 flex-wrap">
-                      <span>{selectedThread.customerPhone}</span>
+                    <div className="flex items-center gap-2 text-xs md:text-sm text-slate-600 mt-1 min-w-0">
+                      <span className="shrink-0">{selectedThread.customerPhone}</span>
                       {selectedThread.vehicleRegistration && (
                         <>
-                          <span className="text-slate-300">•</span>
-                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                          <span className="shrink-0">•</span>
+                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 shrink-0">
                             {selectedThread.vehicleRegistration}
                           </span>
                           {selectedThread.vehicleMake && (
-                            // truncate rather than wrap — a long derivative was breaking one word per line
-                            <span className="text-slate-500 truncate max-w-[10rem] md:max-w-none">
+                            <span className="text-slate-500 truncate">
                               {selectedThread.vehicleMake} {selectedThread.vehicleModel}
                             </span>
                           )}
@@ -305,7 +333,7 @@ export default function Conversations() {
                       className="border-blue-300 text-blue-700 hover:bg-blue-50"
                       title="Book this customer in for an MOT — sends a reminder on the day"
                     >
-                      <CalendarPlus className="w-4 h-4 mr-1.5" /> Book in
+                      <CalendarPlus className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Book in</span>
                     </Button>
                     <Button
                       variant="outline"
@@ -317,7 +345,9 @@ export default function Conversations() {
                         : "border-red-300 text-red-700 hover:bg-red-50")}
                       title={selectedThread.optedOut ? "Re-enable MOT reminders for this customer" : "Stop sending MOT reminders to this customer"}
                     >
-                      {selectedThread.optedOut ? <><Bell className="w-4 h-4 mr-1.5" /> Re-enable reminders</> : <><BellOff className="w-4 h-4 mr-1.5" /> Stop reminders</>}
+                      {selectedThread.optedOut
+                        ? <><Bell className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Re-enable reminders</span></>
+                        : <><BellOff className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">Stop reminders</span></>}
                     </Button>
                   </div>
                 </div>
@@ -426,6 +456,16 @@ export default function Conversations() {
 
                 {/* Reply Input — pb accounts for the iOS home indicator when installed to the home screen */}
                 <div className="bg-white border-t p-3 md:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4">
+                  {outsideReplyWindow && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-md px-3 py-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        {lastInboundAt
+                          ? `${selectedThread?.customerName} last messaged ${formatTime(lastInboundAt)} — WhatsApp only allows free-text replies within 24h of a customer's last message, so this will be sent as a text message instead.`
+                          : `${selectedThread?.customerName} hasn't messaged you, so WhatsApp won't accept a free-text reply — this will be sent as a text message instead.`}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       placeholder="Type a message..."
@@ -459,8 +499,95 @@ export default function Conversations() {
               </div>
             )}
           </div>
+
+          {/* Vehicle + Job History Sidebar — so a question like "is it due for a service" can be
+              answered from the car's own record without leaving the conversation. */}
+          {/* Only shown at ≥1536px. The 384px thread list + this 288px panel already total 672px —
+              xl (1280px) still left the conversation column squeezed to ~260px (name collapsing to
+              zero width). 2xl leaves it a comfortable ~500px after the sidebar nav's own chrome. */}
+          {selectedThread?.vehicleRegistration && (
+            <div className="hidden @4xl:flex w-56 @5xl:w-64 @6xl:w-72 bg-white border-l flex-col overflow-hidden shrink-0">
+              <div className="border-b p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <RegPlate reg={selectedThread.vehicleRegistration} size="sm" />
+                </div>
+                <div className="text-sm font-semibold text-slate-900 truncate">
+                  {[vehicleInfo?.vehicle?.make || selectedThread.vehicleMake, vehicleInfo?.vehicle?.model || selectedThread.vehicleModel].filter(Boolean).join(" ") || "—"}
+                </div>
+                {vehicleInfo?.vehicle && (
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>MOT {fmtDate(vehicleInfo.vehicle.motExpiryDate)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{vehicleInfo.vehicle.taxStatus || "Tax unknown"}</span>
+                    </div>
+                    {vehicleInfo.latestMileage != null && (
+                      <div className="col-span-2 text-slate-500">Last mileage {Number(vehicleInfo.latestMileage).toLocaleString("en-GB")}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="border-b px-4 py-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Wrench className="w-3.5 h-3.5" /> Previous Work
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {!vehicleInfo ? (
+                  <p className="p-4 text-sm text-slate-400">Loading…</p>
+                ) : (vehicleInfo.history?.length ?? 0) === 0 ? (
+                  <p className="p-4 text-sm text-slate-400">No previous jobs on file for this car.</p>
+                ) : (
+                  vehicleInfo.history.map((h: any) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      onClick={() => setSelectedDocId(h.id)}
+                      className="block w-full text-left px-4 py-2.5 border-b hover:bg-slate-50 group"
+                      title="View this document"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded", DOC_TYPE_COLOR[h.docType] || "bg-slate-100 text-slate-700")}>
+                          {DOC_TYPE_LABEL[h.docType] || h.docType}
+                        </span>
+                        <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(h.dateIssued || h.dateCreated)}</span>
+                      </div>
+                      <div className="text-xs text-slate-700 leading-snug line-clamp-2 mt-1" title={h.mainDescription || h.description || undefined}>
+                        {h.mainDescription || h.description || "—"}
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-xs text-slate-400">#{displayDocNo(h)}</span>
+                        <span className="text-xs font-medium text-slate-600">{money(h.totalGross)}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Pops the job/invoice up in place — no need to leave the conversation to see what it was. */}
+      <Dialog open={selectedDocId !== null} onOpenChange={(open) => !open && setSelectedDocId(null)}>
+        <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Document Details</DialogTitle>
+            <DialogDescription className="sr-only">Detailed view of the selected workshop document and its line items.</DialogDescription>
+          </DialogHeader>
+          {selectedDocId && vehicleInfo?.history && (
+            <div className="space-y-4">
+              <LineItemsView documentId={selectedDocId} history={vehicleInfo.history} />
+              <div className="flex justify-end pt-4 border-t">
+                <Button variant="outline" size="sm" onClick={() => setLocation(`/documents/${selectedDocId}`)}>
+                  <ExternalLink className="h-4 w-4 mr-2" /> Open Full Job Sheet
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

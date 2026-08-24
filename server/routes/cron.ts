@@ -82,3 +82,66 @@ cronRouter.get("/mot-day-reminders", async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+/**
+ * GA4 pool health check — the safety net the pool code always assumed but never had.
+ * When a web invoice is issued it claims a reserved GA4 number and stamps it instantly; the actual
+ * GA4 draft is meant to be filled+issued afterwards. If that fill never happens, the invoice shows
+ * as Issued (with a GA4 number) in the web app but is only a blank shell in GA4 — and nothing flagged
+ * it. This daily check turns that silent failure into a visible worklist.
+ *
+ * READ-ONLY: it never writes to the pool or documents. It reports:
+ *  - stuck claims: reserved numbers claimed > GA4_POOL_MAX_AGE_HOURS ago (default 24) with no real
+ *    GA4 invoice of that number yet (these need creating in GA4);
+ *  - low pool: available numbers running out (the other failure mode — issues then get a null number).
+ *
+ * Optional alert: if GA4_POOL_ALERT_PHONE is set, texts a one-line summary there when anything is
+ * stuck. No phone set = log-only (safe default, matches mot-day-reminders' dry-run ethos).
+ *
+ * Auth: same CRON_SECRET bearer as the other crons (Vercel Cron sends it automatically).
+ */
+cronRouter.get("/ga4-pool-check", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  try {
+    const { getStuckGa4Claims, getPoolStatus } = await import("../db");
+    const maxAge = Number(process.env.GA4_POOL_MAX_AGE_HOURS || 24);
+    const lowMark = Number(process.env.GA4_POOL_LOW_MARK || 3);
+
+    const pool = await getPoolStatus();
+    const stuck = await getStuckGa4Claims(maxAge);
+
+    if (stuck.length) {
+      const summary = stuck
+        .map((s) => `${s.ga4Number}${s.registration ? `/${s.registration}` : ""}${s.totalGross ? ` £${s.totalGross}` : ""} (${s.ageHours}h)`)
+        .join(", ");
+      console.warn(`[CRON ga4-pool-check] ⚠ ${stuck.length} reserved GA4 number(s) claimed but not created in GA4 — ${summary}`);
+    } else {
+      console.log(`[CRON ga4-pool-check] ok — pool ${JSON.stringify(pool)}, no stuck claims (>${maxAge}h)`);
+    }
+    if (pool.available <= lowMark) {
+      console.warn(`[CRON ga4-pool-check] ⚠ pool low: only ${pool.available} number(s) available — replenish (create blank GA4 drafts + addPoolNumbers) so new invoices don't issue with a null number`);
+    }
+
+    // Optional proactive alert (off unless GA4_POOL_ALERT_PHONE is set).
+    const alertPhone = (process.env.GA4_POOL_ALERT_PHONE || "").trim();
+    let alerted = false;
+    if (alertPhone && (stuck.length || pool.available <= lowMark)) {
+      const { sendSMS } = await import("../smsService");
+      const lines = stuck.slice(0, 8).map((s) => `${s.ga4Number} ${s.registration || "?"} £${s.totalGross || "0"} (${s.ageHours}h)`).join("\n");
+      const parts: string[] = [];
+      if (stuck.length) parts.push(`GA4 pool: ${stuck.length} invoice(s) issued in the web app but NOT created in GA4:\n${lines}${stuck.length > 8 ? `\n+${stuck.length - 8} more` : ""}`);
+      if (pool.available <= lowMark) parts.push(`Pool low: ${pool.available} numbers left — replenish.`);
+      const r = await sendSMS({ to: alertPhone, message: parts.join("\n\n") });
+      alerted = !!r.success;
+    }
+
+    return res.json({ ok: true, pool, maxAgeHours: maxAge, stuckCount: stuck.length, poolLow: pool.available <= lowMark, alerted, stuck });
+  } catch (err: any) {
+    console.error("[CRON ga4-pool-check] error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});

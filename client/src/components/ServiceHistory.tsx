@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { displayDocNo } from "@/lib/docType";
 import { format } from "date-fns";
 import {
     Table,
@@ -17,11 +18,12 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
 
 // Document type → friendly label + badge colour (was previously only "Invoice"/"Estimate",
 // which mislabelled job sheets and credit notes).
@@ -112,8 +114,8 @@ interface ServiceHistoryProps {
 
 export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const [, setLocation] = useLocation();
+    const base = useClassicBase();
     const { data: history, isLoading } = trpc.serviceHistory.getDetailedByVehicleId.useQuery({ vehicleId });
-    const [selectedDoc, setSelectedDoc] = useState<number | null>(null);
     const [filter, setFilter] = useState<string>("all");
     const printRef = useRef<HTMLDivElement>(null);
     const utils = trpc.useContext();
@@ -121,7 +123,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
         onSuccess: () => {
             utils.serviceHistory.getDetailedByVehicleId.invalidate({ vehicleId });
             toast.success("Document deleted successfully");
-            setSelectedDoc(null);
         },
         onError: (err) => {
             toast.error(`Failed to delete document: ${err.message}`);
@@ -138,8 +139,12 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     const emailHistoryMut = trpc.email.sendVehicleHistory.useMutation();
     const [emailOpen, setEmailOpen] = useState(false);
     const [emailForm, setEmailForm] = useState({ to: "", subject: "", message: "" });
-    const [includeInvoices, setIncludeInvoices] = useState(true);
+    // Off by default — the 1-2 page summary table already covers date/ref/mileage/work/total for
+    // every visit; attaching a full copy of every invoice (dozens of extra pages for a long
+    // history) is useful sometimes but shouldn't be the default weight of every email sent.
+    const [includeInvoices, setIncludeInvoices] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewSize, setPreviewSize] = useState<number | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
 
     // Build the exact PDF that will be attached, so it can be previewed before sending.
@@ -152,6 +157,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
             const arr = new Uint8Array(bytes.length);
             for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
             const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+            setPreviewSize(arr.length);
             setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
         } catch (e: any) {
             toast.error("Couldn't generate preview: " + (e.message || ""));
@@ -161,13 +167,13 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     };
     const closeEmail = (open: boolean) => {
         setEmailOpen(open);
-        if (!open) setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; });
+        if (!open) { setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; }); setPreviewSize(null); }
     };
     const openEmail = () => {
         setEmailForm({ to: recipient?.email || "", subject: "", message: "" });
-        setIncludeInvoices(true);
+        setIncludeInvoices(false);
         setEmailOpen(true);
-        loadPreview(true);
+        loadPreview(false);
     };
     const toggleInvoices = (on: boolean) => { setIncludeInvoices(on); loadPreview(on); };
     const sendHistoryEmail = async () => {
@@ -266,17 +272,26 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </label>
 
                     <div className="mb-3">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-muted-foreground">Preview — this is exactly what will be attached</span>
-                            {previewUrl && (
-                                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-700 hover:underline font-medium">Open full size ↗</a>
-                            )}
-                        </div>
-                        <div className="rounded-md border bg-slate-50 h-[340px] overflow-hidden flex items-center justify-center">
+                        <span className="text-xs font-medium text-muted-foreground block mb-1">Preview — this is exactly what will be attached</span>
+                        {/* Deliberately NOT an <iframe>/<embed> here — both silently render a blank/black
+                            box (and embed can hang the tab outright) for a blob: PDF this size on plenty of
+                            real browsers, with no error to detect or recover from. A direct link the browser
+                            handles itself (its normal full PDF viewer, or a download) always works. */}
+                        <div className="rounded-md border bg-slate-50 min-h-[120px] flex flex-col items-center justify-center gap-2 py-8">
                             {previewLoading ? (
                                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                             ) : previewUrl ? (
-                                <iframe src={previewUrl} title="Service history preview" className="w-full h-full" />
+                                <>
+                                    <FileText className="w-8 h-8 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">
+                                        {previewSize != null ? `PDF ready · ${(previewSize / 1024 / 1024).toFixed(1)} MB` : "PDF ready"}
+                                    </span>
+                                    <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                                        <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                                            <ExternalLink className="w-3 h-3" /> Open PDF
+                                        </Button>
+                                    </a>
+                                </>
                             ) : (
                                 <span className="text-xs text-muted-foreground">No preview available.</span>
                             )}
@@ -344,18 +359,17 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 {shown.map((doc: any) => {
                     const { summary } = jobSummary(doc.mainDescription);
                     return (
-                        <div key={doc.id} onClick={() => setSelectedDoc(doc.id)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                        <div key={doc.id} onClick={() => setLocation(`${base}/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
-                                <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
+                                <span className="text-sm text-slate-600">{(doc.dateCreated || doc.dateIssued) ? format(new Date(doc.dateCreated || doc.dateIssued), "dd/MM/yyyy") : "-"}</span>
                                 <span className="ml-auto font-bold text-slate-900">£{Number(doc.totalGross).toFixed(2)}</span>
                             </div>
                             {summary && <div className="text-sm text-slate-700 mt-2 break-words line-clamp-2">{summary}</div>}
                             <div className="flex items-center justify-between gap-2 mt-2.5">
-                                <span className="text-xs text-muted-foreground font-mono truncate">{doc.docNo || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
+                                <span className="text-xs text-muted-foreground font-mono truncate">{displayDocNo(doc) || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
                                 <div className="flex gap-1.5 shrink-0">
-                                    <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
-                                    <Button variant="outline" size="sm" className="h-9 px-3" onClick={(e) => { e.stopPropagation(); setSelectedDoc(doc.id); }}><FileText className="h-4 w-4" /></Button>
+                                    <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`${base}/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
                                 </div>
                             </div>
@@ -381,10 +395,10 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                         <TableRow
                             key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => setSelectedDoc(doc.id)}
+                            onClick={() => setLocation(`${base}/documents/${doc.id}`)}
                         >
                             <TableCell>
-                                {(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}
+                                {(doc.dateCreated || doc.dateIssued) ? format(new Date(doc.dateCreated || doc.dateIssued), "dd/MM/yyyy") : "-"}
                             </TableCell>
                             <TableCell>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>
@@ -405,7 +419,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                     );
                                 })()}
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-xs font-mono">{doc.docNo || doc.externalId.substring(0, 8)}</TableCell>
+                            <TableCell className="text-muted-foreground text-xs font-mono">{displayDocNo(doc) || doc.externalId.substring(0, 8)}</TableCell>
                             <TableCell>{doc.mileage ? doc.mileage.toLocaleString() : "-"}</TableCell>
                             <TableCell className="text-right font-medium">
                                 £{Number(doc.totalGross).toFixed(2)}
@@ -418,22 +432,11 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setLocation(`/documents/${doc.id}`);
+                                            setLocation(`${base}/documents/${doc.id}`);
                                         }}
                                     >
                                         <Edit className="h-4 w-4 mr-2" />
                                         Edit
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedDoc(doc.id);
-                                        }}
-                                    >
-                                        <FileText className="h-4 w-4 mr-2" />
-                                        View
                                     </Button>
                                     <Button
                                         variant="ghost"
@@ -450,41 +453,6 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     ))}
                 </TableBody>
             </Table>
-
-            <Dialog open={selectedDoc !== null} onOpenChange={(open) => !open && setSelectedDoc(null)}>
-                <DialogContent className="max-w-4xl sm:max-w-[85vw] max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Document Details</DialogTitle>
-                        <DialogDescription className="sr-only">
-                            Detailed view of the selected workshop document and its line items.
-                        </DialogDescription>
-                    </DialogHeader>
-                    {selectedDoc && (
-                        <div className="space-y-4">
-                            <LineItemsView documentId={selectedDoc} history={history} />
-                            <div className="flex justify-end pt-4 border-t gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setLocation(`/documents/${selectedDoc}`)}
-                                >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit Document
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={(e) => handleDelete(selectedDoc, e as any)}
-                                    disabled={deleteMutation.isPending}
-                                >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete Document
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
 
             {/* Hidden Printable History */}
             <div style={{ display: "none" }}>
@@ -522,7 +490,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                                 }`}>
                                                 {docMeta(doc.docType).label}
                                             </span>
-                                            <span className="text-[11px] font-mono text-slate-400">#{doc.docNo || doc.externalId.substring(0, 8)}</span>
+                                            <span className="text-[11px] font-mono text-slate-400">#{displayDocNo(doc) || doc.externalId.substring(0, 8)}</span>
                                         </div>
                                         {doc.mileage && (
                                             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">Mileage: {doc.mileage.toLocaleString()} mi</p>
@@ -606,7 +574,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
     );
 }
 
-function LineItemsView({ documentId, history }: { documentId: number, history: any[] }) {
+export function LineItemsView({ documentId, history }: { documentId: number, history: any[] }) {
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery({ documentId });
     const doc = history.find(h => h.id === documentId);
 
@@ -623,7 +591,7 @@ function LineItemsView({ documentId, history }: { documentId: number, history: a
             <div className="grid grid-cols-2 gap-4 text-sm border-b pb-4">
                 <div>
                     <p className="text-muted-foreground">Document Number</p>
-                    <p className="font-semibold">{doc?.docNo || doc?.externalId}</p>
+                    <p className="font-semibold">{displayDocNo(doc) || doc?.externalId}</p>
                 </div>
                 <div className="text-right">
                     <p className="text-muted-foreground">Date</p>

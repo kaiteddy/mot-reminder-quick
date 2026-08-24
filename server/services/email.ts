@@ -98,3 +98,29 @@ export async function sendVehicleHistoryEmail(opts: { vehicleId: number; to: str
   });
   return { success: true, messageId: info.messageId };
 }
+
+/** Full history for a CUSTOMER — every car they've had work on, merged into one PDF. The
+ * per-vehicle version above answers "what have you done to this car"; this answers "send me
+ * everything", which is what people ask for when selling up or changing insurer. */
+export async function sendCustomerHistoryEmail(opts: { customerId: number; to: string; cc?: string; subject?: string; message?: string; customerName?: string; includeInvoices?: boolean }) {
+  const s = await getEmailSettings();
+  if (!s.host || !s.user) throw new Error("Email is not set up. Configure SMTP in Email Settings first.");
+  if (!opts.to || !opts.to.includes("@")) throw new Error("A valid recipient email address is required.");
+
+  const { getCustomerServiceHistoryPDF } = await import("../db");
+  const pdf: any = await getCustomerServiceHistoryPDF(opts.customerId, { includeInvoices: !!opts.includeInvoices });
+  const from = s.fromName ? `"${s.fromName}" <${s.fromAddress || s.user}>` : (s.fromAddress || s.user);
+  const name = (opts.customerName || "").trim();
+  const body = opts.message || `Please find attached your full service history with us${pdf.vehicleCount > 1 ? `, covering all ${pdf.vehicleCount} of your vehicles` : ""}, detailing the work we have completed.`;
+
+  const info = await buildTransport(s).sendMail({
+    from,
+    to: opts.to,
+    cc: [opts.cc, s.copyTo].filter(Boolean).join(",") || undefined,
+    subject: opts.subject || `Service History${name ? ` — ${name}` : ""} — ELI Motors Limited`,
+    text: `${body}\n\nKind regards,\nELI Motors Limited\n020 8203 6449 · www.elimotors.co.uk`,
+    html: `<p>${body.replace(/\n/g, "<br>")}</p><p>Kind regards,<br><strong>ELI Motors Limited</strong><br>020 8203 6449 · <a href="https://www.elimotors.co.uk">www.elimotors.co.uk</a></p>`,
+    attachments: [{ filename: pdf.filename, content: Buffer.from(pdf.content, "base64"), contentType: "application/pdf" }],
+  });
+  return { success: true, messageId: info.messageId, vehicleCount: pdf.vehicleCount };
+}

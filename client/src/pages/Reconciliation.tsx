@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { round2 } from "@/lib/utils";
 import { toast } from "sonner";
@@ -24,9 +24,18 @@ const monthLabel = (m: string) => {
 };
 const sumArr = (a: number[]) => a.reduce((x, y) => x + (y || 0), 0);
 
+// Rolling 12-month window ending today, so the current month is always included by default
+// (was previously a hardcoded range that silently went stale once the year rolled over).
+const defaultDateRange = () => {
+  const today = new Date();
+  const from = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { from: iso(from), to: iso(today) };
+};
+
 export default function Reconciliation() {
-  const [from, setFrom] = useState("2025-07-01");
-  const [to, setTo] = useState("2026-06-30");
+  const [from, setFrom] = useState(() => defaultDateRange().from);
+  const [to, setTo] = useState(() => defaultDateRange().to);
 
   const stats = trpc.expenditure.stats.useQuery();
 
@@ -733,15 +742,69 @@ function TransactionsTab() {
   const [source, setSource] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [unlabelledOnly, setUnlabelledOnly] = useState(false);
+  const [catFilter, setCatFilter] = useState<string>("all");
   const cats = trpc.expenditure.categories.useQuery();
   const utils = trpc.useUtils();
   const q = trpc.expenditure.transactions.useQuery({
     source: source === "all" ? undefined : (source as any),
     search: search || undefined, unlabelledOnly, limit: 300,
   });
-  const setOverride = trpc.expenditure.setOverride.useMutation({
-    onSuccess: () => { utils.expenditure.transactions.invalidate(); utils.expenditure.reconciliation.invalidate(); utils.expenditure.stats.invalidate(); },
+  const invalidate = () => { utils.expenditure.transactions.invalidate(); utils.expenditure.reconciliation.invalidate(); utils.expenditure.stats.invalidate(); };
+  const setOverride = trpc.expenditure.setOverride.useMutation({ onSuccess: invalidate });
+  const setBulk = trpc.expenditure.setOverrideBulk.useMutation({
+    onSuccess: (res: any) => { invalidate(); setSelected(new Set()); toast.success(`Applied to ${res?.count ?? "the"} selected transactions`); },
   });
+
+  // ── Excel-style selection ── click selects, shift-click selects the range from the
+  // last click, and mouse-dragging down the rows sweeps a range (like dragging in a
+  // spreadsheet). A bulk bar then applies one category to everything selected.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const anchorRef = useRef<number | null>(null);
+  const dragFromRef = useRef<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    const up = () => { setDragging(false); dragFromRef.current = null; };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
+  // Category filter works on the loaded page of rows — "show me everything currently
+  // sitting in X" so same-type rows can be swept together.
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "date", dir: -1 });
+  const toggleSort = (key: string) => {
+    setSelected(new Set()); anchorRef.current = null; // selection is positional — reset on re-order
+    setSort((s) => s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "date" || key === "amount" ? -1 : 1 });
+  };
+  const rows: any[] = useMemo(() => {
+    const base = (q.data?.rows || []).filter((r: any) => catFilter === "all" || r.category === catFilter);
+    const val = (r: any) => sort.key === "amount" ? Number(r.amount) || 0 : String(r[sort.key] ?? "").toLowerCase();
+    return [...base].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
+  }, [q.data, catFilter, sort]);
+  const SortHead = ({ k, children, right }: { k: string; children: React.ReactNode; right?: boolean }) => (
+    <TableHead className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""}`} onClick={() => toggleSort(k)}>
+      {children}{sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+    </TableHead>
+  );
+  const rangeIds = (a: number, b: number) => rows.slice(Math.min(a, b), Math.max(a, b) + 1).map((r) => r.id);
+  const applyRange = (a: number, b: number, base: Set<number>) => {
+    const next = new Set(base);
+    for (const id of rangeIds(a, b)) next.add(id);
+    return next;
+  };
+  const rowClick = (idx: number, e: React.MouseEvent) => {
+    setSelected((prev) => {
+      if (e.shiftKey && anchorRef.current != null) return applyRange(anchorRef.current, idx, prev);
+      anchorRef.current = idx;
+      const next = new Set(prev);
+      const id = rows[idx].id;
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const selRows = rows.filter((r) => selected.has(r.id));
+  const selSum = selRows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const catCounts = new Map<string, number>();
+  for (const r of q.data?.rows || []) catCounts.set(r.category, (catCounts.get(r.category) || 0) + 1);
 
   return (
     <Card>
@@ -755,28 +818,66 @@ function TransactionsTab() {
             <SelectItem value="card">Card</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); setSelected(new Set()); anchorRef.current = null; }}>
+          <SelectTrigger className="h-9 w-[220px]"><SelectValue placeholder="All categories" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {Array.from(catCounts.entries()).sort((a, b) => b[1] - a[1]).map(([name, n]) => (
+              <SelectItem key={name} value={name}>{name} ({n})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input placeholder="Search payee / memo" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-[220px]" />
         <Button variant={unlabelledOnly ? "default" : "outline"} size="sm" onClick={() => setUnlabelledOnly((v) => !v)}>To label only</Button>
       </CardHeader>
       <CardContent>
         {q.isLoading ? <Loading /> : (
           <>
-            <p className="mb-2 text-xs text-slate-500">{q.data?.total ?? 0} rows (showing up to 300)</p>
-            <div className="overflow-x-auto">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500">{rows.length} rows shown{catFilter !== "all" ? ` in "${catFilter}"` : ""} · click / shift-click / drag down the tick column to select</p>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setSelected(new Set(rows.map((r) => r.id))); }}>Select all shown</Button>
+              {selected.size > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelected(new Set())}>Clear</Button>}
+            </div>
+            {selected.size > 0 && (
+              <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2">
+                <span className="text-sm font-semibold text-sky-900">{selected.size} selected · {money(selSum)}</span>
+                <Select onValueChange={(v) => setBulk.mutate({ ids: Array.from(selected), category: v })}>
+                  <SelectTrigger className="h-8 w-[240px]"><SelectValue placeholder={setBulk.isPending ? "Applying…" : "Apply category to all selected…"} /></SelectTrigger>
+                  <SelectContent>
+                    {(cats.data || []).map((c: any) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className={`overflow-x-auto ${dragging ? "select-none" : ""}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead><TableHead>Src</TableHead><TableHead>Payee / Merchant</TableHead>
-                    <TableHead className="text-right">Amount</TableHead><TableHead>Category (row override)</TableHead>
+                    <TableHead className="w-8"><input type="checkbox" aria-label="Select all shown"
+                      checked={rows.length > 0 && selRows.length === rows.length}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} /></TableHead>
+                    <SortHead k="date">Date</SortHead><SortHead k="source">Src</SortHead><SortHead k="counterparty">Payee / Merchant</SortHead>
+                    <SortHead k="amount" right>Amount</SortHead><SortHead k="category">Category (row override)</SortHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(q.data?.rows || []).map((r: any) => (
-                    <TableRow key={r.id} className={r.category === "OTHER / to label" ? "bg-orange-50" : ""}>
-                      <TableCell className="whitespace-nowrap">{r.date}</TableCell>
-                      <TableCell className="uppercase text-slate-400">{r.source}</TableCell>
-                      <TableCell className="max-w-[280px] truncate" title={r.counterparty + (r.memo ? " — " + r.memo : "")}>{r.counterparty}</TableCell>
-                      <TableCell className={`text-right tabular-nums ${r.amount < 0 ? "text-red-600" : "text-green-700"}`}>{money(r.amount)}</TableCell>
+                  {rows.map((r: any, idx: number) => (
+                    <TableRow key={r.id}
+                      className={`${selected.has(r.id) ? "bg-sky-100 hover:bg-sky-100" : r.category === "OTHER / to label" ? "bg-orange-50" : ""}`}
+                      onMouseEnter={() => {
+                        // dragFromRef (not state) — state lags a fast drag and would drop rows
+                        if (dragFromRef.current != null) setSelected((prev) => applyRange(dragFromRef.current!, idx, prev));
+                      }}
+                    >
+                      <TableCell className="w-8 cursor-pointer"
+                        onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); dragFromRef.current = idx; setDragging(true); rowClick(idx, e); }}
+                      >
+                        <input type="checkbox" readOnly checked={selected.has(r.id)} className="pointer-events-none" />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap" onClick={(e) => rowClick(idx, e)}>{r.date}</TableCell>
+                      <TableCell className="uppercase text-slate-400" onClick={(e) => rowClick(idx, e)}>{r.source}</TableCell>
+                      <TableCell className="max-w-[280px] truncate cursor-pointer" title={r.counterparty + (r.memo ? " — " + r.memo : "")} onClick={(e) => rowClick(idx, e)}>{r.counterparty}</TableCell>
+                      <TableCell className={`text-right tabular-nums ${r.amount < 0 ? "text-red-600" : "text-green-700"}`} onClick={(e) => rowClick(idx, e)}>{money(r.amount)}</TableCell>
                       <TableCell>
                         <Select value={r.category} onValueChange={(v) => setOverride.mutate({ id: r.id, category: v })}>
                           <SelectTrigger className="h-8 w-[230px]"><SelectValue /></SelectTrigger>
@@ -1034,6 +1135,11 @@ function CarTradingTab() {
   const [newCarId, setNewCarId] = useState<number | null>(null); // just-added row: highlight + pin to top until its reg is entered
   const [carSearch, setCarSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold">("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  // Cars bought at auction should carry buyer fees; a customer/part-ex won't. "No fees" surfaces
+  // auction buys recorded at hammer price only (that's how £2.3k of cost went missing).
+  const [noFeesOnly, setNoFeesOnly] = useState(false);
+  const [monthFilter, setMonthFilter] = useState("");     // "" = any purchase month, else "YYYY-MM"
   const [needsData, setNeedsData] = useState(false);
   const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
   const [splitFor, setSplitFor] = useState<{ carId: number; total: number; payee: string } | null>(null); // auction fee-split prompt
@@ -1100,18 +1206,6 @@ function CarTradingTab() {
     return std ? (r.salePrice || 0) / 6 : Math.max((r.salePrice || 0) - (r.effectiveCost || 0), 0) / 6;
   };
 
-  const [sourceFilter, setSourceFilter] = useState("");   // "" = any source
-  const [monthFilter, setMonthFilter] = useState("");     // "" = any month, else "YYYY-MM"
-  // Offer the sources and purchase months actually present, so the dropdowns can't point at
-  // something with no cars behind it. Blank source shows as "—", matching the table cell.
-  const sourceOptions = useMemo(
-    () => Array.from(new Set(rowsRaw.map((r) => (r.source || "").trim()).filter(Boolean))).sort(),
-    [rowsRaw]);
-  const monthOptions = useMemo(
-    () => Array.from(new Set(rowsRaw.map((r) => String(r.purchaseDate || "").slice(0, 7)).filter(Boolean)))
-      .sort().reverse(),
-    [rowsRaw]);
-
   const [sortKey, setSortKey] = useState<"saleDate" | "purchaseDate" | "margin" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sortBy = (k: NonNullable<typeof sortKey>) => {
@@ -1130,7 +1224,11 @@ function CarTradingTab() {
       return av === bv ? 0 : (av < bv ? -1 : 1) * dir;
     });
   }, [rowsRaw, sortKey, sortDir]);
-  const filterActive = needsData || statusFilter !== "all" || cq !== "" || sourceFilter !== "" || monthFilter !== "";
+  const monthOptions = useMemo(
+    () => Array.from(new Set(rowsRaw.map((r) => String(r.purchaseDate || "").slice(0, 7)).filter(Boolean))).sort().reverse(),
+    [rowsRaw]);
+
+  const filterActive = needsData || statusFilter !== "all" || sourceFilter !== "all" || noFeesOnly || cq !== "" || monthFilter !== "";
   // Freeze WHICH rows are shown while a filter is active, recomputing only when the filter itself
   // changes (a button or the search box) — NOT when a row's data changes. So filling in a row won't
   // drop it out of view and make you relocate it; the search box still re-filters live as you type.
@@ -1139,15 +1237,16 @@ function CarTradingTab() {
     const s = new Set<number>();
     for (const r of rows) {
       if (statusFilter !== "all" && r.status !== statusFilter) continue;
-      if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
-      if (sourceFilter && (r.source || "").trim() !== sourceFilter) continue;
+      if (sourceFilter !== "all" && (r.source || "(none)") !== sourceFilter) continue;
+      if (noFeesOnly && r.feeBreakdown) continue;
       if (monthFilter && String(r.purchaseDate || "").slice(0, 7) !== monthFilter) continue;
+      if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
       if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
       s.add(r.id);
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, needsData, cq, sourceFilter, monthFilter]);
+  }, [statusFilter, sourceFilter, noFeesOnly, needsData, cq, monthFilter]);
 
   if (deals.isLoading) return <Loading />;
   // pin the just-added row to the top so it doesn't re-order while you're filling it in
@@ -1168,12 +1267,12 @@ function CarTradingTab() {
   const exportCsv = () => {
     const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Source", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "VAT basis", "VAT on margin", "Net margin", "Missing", "Linked payment total"];
     const esc = (v: any) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    // round2, not toFixed — toFixed rounds a half-penny DOWN and drifts the VAT off GA4.
+    // round2, not toFixed — toFixed rounds a half-penny DOWN and drifts the VAT off GA4. The
+    // totals accumulate the ROUNDED per-row figures so the sheet foots against the pennies
+    // printed above it rather than against unrounded values nobody can see.
     const p2 = (n: number) => round2(n).toFixed(2);
-    const lines = [cols.join(",")];
-    // Accumulate the ROUNDED per-row figures, so the totals line foots exactly against the
-    // pennies printed above it rather than against unrounded values nobody can see.
     let tMargin = 0, tVat = 0, tNet = 0;
+    const lines = [cols.join(",")];
     for (const r of filtered) {
       const sold = r.status === "sold" && r.salePrice != null;
       const std = r.stdRated === 1 || /STD|standard-rated/i.test(r.notes || "");
@@ -1217,32 +1316,33 @@ function CarTradingTab() {
             {([["all", "All", rows.length], ["in_stock", "In stock", inStock.length], ["sold", "Sold", sold.length]] as const).map(([k, lbl, n]) => (
               <Button key={k} type="button" variant={statusFilter === k ? "default" : "outline"} size="sm" className="h-9" onClick={() => setStatusFilter(k as any)}>{lbl} <span className="ml-1 opacity-60">{n}</span></Button>
             ))}
-            <Button type="button" variant={needsData ? "default" : "outline"} size="sm" className={`h-9 ${needsData ? "" : "text-amber-700"}`} title="Cars missing a purchase price or purchase date (sold ones overstate the margin)" onClick={() => setNeedsData((v) => !v)}>
-              <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
-            </Button>
-            <select
-              value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
-              title="Filter by where the car came from"
-              className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
-            >
-              <option value="">All sources</option>
-              {sourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="h-9 w-[170px]"><SelectValue placeholder="All sources" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                {Array.from(rows.reduce((m: Map<string, number>, r: any) => m.set(r.source || "(none)", (m.get(r.source || "(none)") || 0) + 1), new Map<string, number>()).entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([src, n]) => <SelectItem key={src} value={src}>{src} ({n})</SelectItem>)}
+              </SelectContent>
+            </Select>
             <select
               value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}
               title="Filter by the month the car was bought"
               className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
             >
               <option value="">All months</option>
-              {monthOptions.map((m) => {
-                const [y, mo] = m.split("-");
-                return <option key={m} value={m}>{MONTH_NAMES[Number(mo) - 1]} {y}</option>;
-              })}
+              {monthOptions.map((m) => { const [y, mo] = m.split("-"); return <option key={m} value={m}>{MONTH_NAMES[Number(mo) - 1]} {y}</option>; })}
             </select>
+            <Button type="button" variant={noFeesOnly ? "default" : "outline"} size="sm" className={`h-9 ${noFeesOnly ? "" : "text-orange-700"}`} title="Auction cars with no fee breakdown — their cost may be the hammer price only" onClick={() => setNoFeesOnly((v) => !v)}>
+              No fees <span className="ml-1 opacity-60">{rows.filter((r: any) => !r.feeBreakdown).length}</span>
+            </Button>
+            <Button type="button" variant={needsData ? "default" : "outline"} size="sm" className={`h-9 ${needsData ? "" : "text-amber-700"}`} title="Cars missing a purchase price or purchase date (sold ones overstate the margin)" onClick={() => setNeedsData((v) => !v)}>
+              <AlertTriangle className="mr-1 h-3.5 w-3.5" />Needs data <span className="ml-1 opacity-60">{needsCount}</span>
+            </Button>
             {filterActive && (
               <Button type="button" variant="ghost" size="sm" className="h-9 text-slate-500"
                 title="Clear every filter and show all cars"
-                onClick={() => { setStatusFilter("all"); setNeedsData(false); setCarSearch(""); setSourceFilter(""); setMonthFilter(""); }}
+                onClick={() => { setStatusFilter("all"); setNeedsData(false); setNoFeesOnly(false); setCarSearch(""); setSourceFilter("all"); setMonthFilter(""); }}
               >Clear filters</Button>
             )}
           </div>
@@ -1257,7 +1357,7 @@ function CarTradingTab() {
                 <TableHead>Reg</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead>
                 <TableHead>
                   <button type="button" onClick={() => sortBy("purchaseDate")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by purchase date">
-                    Purchase date{sortKey === "purchaseDate" && <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                    Purchase date{sortKey === "purchaseDate" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                   </button>
                 </TableHead>
                 <TableHead title="Where the car came from — pick a common source or type any other">Source</TableHead>
@@ -1267,12 +1367,12 @@ function CarTradingTab() {
                 <TableHead className="text-right">Sale £</TableHead>
                 <TableHead>
                   <button type="button" onClick={() => sortBy("saleDate")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by sold date">
-                    Sale date{sortKey === "saleDate" && <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                    Sale date{sortKey === "saleDate" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                   </button>
                 </TableHead>
                 <TableHead className="text-right">
                   <button type="button" onClick={() => sortBy("margin")} className="inline-flex items-center gap-1 hover:text-slate-900" title="Sort by margin">
-                    Margin{sortKey === "margin" && <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                    Margin{sortKey === "margin" && <span className="text-[10px]">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                   </button>
                 </TableHead><TableHead></TableHead>
               </TableRow>
@@ -1290,26 +1390,34 @@ function CarTradingTab() {
                   : locked ? "bg-slate-50 hover:bg-slate-50"
                   : r.status === "sold" ? "bg-green-50/40" : "";
                 return (
-                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : missing.length ? `Missing ${missing.join(", ")}` : undefined} className={tint}>
+                <TableRow key={r.id} title={r.status === "sold" && r.purchaseCost == null ? "Sold but no purchase price — this overstates the margin" : missingOf(r).length ? `Missing ${missingOf(r).join(", ")}` : undefined} className={
+                  // Sold with no purchase price is the worst case — it overstates the margin — so it
+                  // keeps the strong red. Anything else incomplete gets a lighter tint so it's
+                  // findable without shouting over it.
+                  r.id === newCarId ? "bg-amber-100 hover:bg-amber-100"
+                  : r.status === "sold" && r.purchaseCost == null ? "bg-red-100 hover:bg-red-100"
+                  : missingOf(r).length ? "bg-red-50 hover:bg-red-50"
+                  : locked ? "bg-slate-50 hover:bg-slate-50"
+                  : r.status === "sold" ? "bg-green-50/40" : ""}>
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <EditCell v={r.registration} disabled={locked} onSave={(v: any) => { save(r.id, { registration: v }); if (v && !r.description) fillFromReg(r.id, v); }} w="90px" />
                       {/* Red rows carry a marker beside the reg: hover it to see exactly which
                           fields are absent, rather than guessing from the tint alone. */}
-                      {missing.length > 0 && (
+                      {missingOf(r).length > 0 && (
                         <HoverCard openDelay={80} closeDelay={80}>
                           <HoverCardTrigger asChild>
-                            <button type="button" aria-label={`Missing: ${missing.join(", ")}`}
+                            <button type="button" aria-label={`Missing: ${missingOf(r).join(", ")}`}
                               className="shrink-0 rounded-full text-red-600 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
                               <AlertTriangle className="h-4 w-4" />
                             </button>
                           </HoverCardTrigger>
                           <HoverCardContent side="right" align="start" className="w-64 p-3">
                             <p className="text-[13px] font-semibold text-slate-800">
-                              {r.registration || "This car"} — missing {missing.length} detail{missing.length === 1 ? "" : "s"}
+                              {r.registration || "This car"} — missing {missingOf(r).length} detail{missingOf(r).length === 1 ? "" : "s"}
                             </p>
                             <ul className="mt-1.5 space-y-0.5">
-                              {missing.map((m) => (
+                              {missingOf(r).map((m) => (
                                 <li key={m} className="flex items-start gap-1.5 text-[12px] text-slate-600">
                                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                                   <span className="capitalize">{m}</span>
@@ -1338,7 +1446,7 @@ function CarTradingTab() {
                   <TableCell>
                     <Select value={r.status} disabled={locked} onValueChange={(v) => save(r.id, { status: v })}>
                       <SelectTrigger className="h-8 w-[108px]"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem></SelectContent>
+                      <SelectContent><SelectItem value="in_stock">In stock</SelectItem><SelectItem value="sold">Sold</SelectItem>{/* Cars we own but are not selling. Without these the record shows an empty box and cannot be changed, and the car counts towards neither tile. */}<SelectItem value="courtesy">Courtesy car</SelectItem><SelectItem value="asset">Business asset</SelectItem></SelectContent>
                     </Select>
                   </TableCell>
                   <TableCell><EditCell v={r.purchaseDate} type="date" disabled={locked} w="140px" onSave={(v: any) => save(r.id, { purchaseDate: v })} /></TableCell>

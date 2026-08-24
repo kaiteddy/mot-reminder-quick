@@ -43,6 +43,8 @@ const MobileJobSummary = lazy(() => import("./pages/MobileJobSummary"));
 const Appointments = lazy(() => import("./pages/Appointments"));
 const PricingIntelligence = lazy(() => import("./pages/PricingIntelligence"));
 const RepairPricing = lazy(() => import("./pages/RepairPricing"));
+const PartsPriceList = lazy(() => import("./pages/PartsPriceList"));
+const PriceGuide = lazy(() => import("./pages/PriceGuide"));
 const SalesStock = lazy(() => import("./pages/SalesStock"));
 const VehicleSaleInvoice = lazy(() => import("./pages/VehicleSaleInvoice"));
 const LogPurchase = lazy(() => import("./pages/LogPurchase"));
@@ -50,6 +52,8 @@ const WorkshopMOTCheck = lazy(() => import("./pages/WorkshopMOTCheck"));
 const WorkshopJobSheet = lazy(() => import("./pages/WorkshopJobSheet"));
 const WorkshopTechnicalData = lazy(() => import("./pages/WorkshopTechnicalData"));
 const WorkshopTechnicalHub = lazy(() => import("./pages/WorkshopTechnicalHub"));
+const Ga4Home = lazy(() => import("./pages/ga4/Ga4Home"));
+const Ga4DocumentsQueue = lazy(() => import("./pages/ga4/Ga4DocumentsQueue"));
 
 function RouteFallback() {
   return (
@@ -70,8 +74,24 @@ function Router() {
       <Route path="/view-vehicle/:registration" component={VehicleDetails} />
       <Route path="/v/:registration" component={VehicleDetails} />
 
+      {/*
+        "GA4 Classic" — same pages/data as above, reused as-is, just reached under /classic/*
+        so DashboardLayout (see isClassic there) swaps in the GA4-look Ga4Shell chrome instead
+        of the normal sidebar. Every page below reads useClassicBase() to keep its own links
+        under /classic too, so navigating around never drops back into the modern chrome.
+      */}
+      <Route path="/classic/view-vehicle/:registration" component={VehicleDetails} />
+      <Route path="/classic/documents/:id" component={DocumentDetails} />
+      <Route path="/classic/documents" component={Ga4DocumentsQueue} />
+      <Route path="/classic/customers/:id" component={CustomerDetails} />
+      <Route path="/classic/customers" component={Customers} />
+      <Route path="/classic/vehicles" component={Vehicles} />
+      <Route path="/classic" component={Ga4Home} />
+
       <Route path="/login" component={Login} />
-      <Route path="/" component={Home} />
+      {/* Job Sheets is the app's landing page — staff should always open onto it. */}
+      <Route path="/" component={Documents} />
+      <Route path="/mot-reminders" component={Home} />
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/customers" component={Customers} />
@@ -101,6 +121,8 @@ function Router() {
       <Route path="/technical-data" component={TechnicalData} />
       <Route path="/pricing-intelligence" component={PricingIntelligence} />
       <Route path="/repair-pricing" component={RepairPricing} />
+      <Route path="/parts-price-list" component={PartsPriceList} />
+      <Route path="/price-guide" component={PriceGuide} />
       <Route path="/sales-stock" component={SalesStock} />
       <Route path="/vehicle-sale/:id" component={VehicleSaleInvoice} />
       <Route path="/log-purchase" component={LogPurchase} />

@@ -88,6 +88,7 @@ export const vehicles = pgTable("vehicles", {
   comprehensiveTechnicalData: jsonb("comprehensiveTechnicalData"),
   swsLastUpdated: timestamp("swsLastUpdated", { mode: "date" }),
   autodataMid: varchar("autodataMid", { length: 64 }), // Autodata vehicle/model id for /w1/vehicles/{mid}
+  serviceResetInfo: jsonb("serviceResetInfo"), // AI-generated per-vehicle workshop card: { obdLocation, resetSteps[], alternatives[], cautions[], generatedAt } — service-light reset procedure + OBD port location; cached here because it's vehicle knowledge, reused across jobs
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
@@ -274,6 +275,12 @@ export const serviceHistory = pgTable("serviceHistory", {
   accountsExportedAt: timestamp("accountsExportedAt", { mode: "date" }), // set when exported to the accounts package (Sage CSV); prevents re-export
   accountsUnpaid: integer("accountsUnpaid"), // 1 = manually flagged as not-yet-paid; invoices are treated as paid on issue date otherwise (GA4 doesn't register receipts). Not touched by GA4 sync.
   ga4Number: varchar("ga4Number", { length: 50 }), // GA4's authoritative invoice number (from the pool / write-back). Web docNo is a guess-ahead; display/print should prefer this when present.
+  archived: integer("archived"), // 1 = hidden from its normal doc-type tab, shown only in the Archive tab (soft, reversible — see documents.archive/unarchive)
+  archivedAt: timestamp("archivedAt", { mode: "date" }),
+  insurerAddress: text("insurerAddress"), // free-text claims/bill-to address for insuranceCompany — printed on the main invoice instead of the customer's own address
+  insurerEmail: varchar("insurerEmail", { length: 320 }), // insurer's claims email — Email dialog defaults to this on the insurer-billed invoice instead of the customer's own email
+  excessFullVatToCustomer: integer("excessFullVatToCustomer"), // 1 = this job's excess has no VAT of its own; the FULL job VAT is charged on the excess (customer) invoice instead, and the main (insurer) invoice prints net-of-VAT — the standard commercial/fleet arrangement where the VAT-registered policyholder reclaims VAT in full and the insurer settles net
+  jobGuide: jsonb("jobGuide"), // AI-generated repair guide for THIS job on THIS vehicle: { overview, steps[], partsToCheck[], cautions[], generatedAt } — workshop reference shown on the job card and printable; copied across on convert
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
 }, (table) => ({
   vehicleIdIdx: index("service_history_vehicle_id_idx").on(table.vehicleId),
@@ -390,6 +397,34 @@ export type DescriptionPreset = typeof descriptionPresets.$inferSelect;
 export type InsertDescriptionPreset = typeof descriptionPresets.$inferInsert;
 
 /**
+ * Maintainable parts price list — backs the parts autocomplete's auto-fill of quantity/price
+ * on job sheets/invoices/estimates. A part not yet in this list still gets a price suggestion
+ * (falls back to its average historical price in suggestParts()), but a list entry always wins.
+ */
+export const partsPriceList = pgTable("partsPriceList", {
+  id: serial("id").primaryKey(),
+  partNumber: varchar("partNumber", { length: 100 }),
+  description: text("description").notNull(),
+  unitPrice: numeric("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  vatRate: numeric("vatRate", { precision: 5, scale: 2 }).default("20"),
+  quantity: numeric("quantity", { precision: 10, scale: 2 }), // typical qty for this part; blank = default to 1
+  nominalCode: varchar("nominalCode", { length: 50 }),
+  // Price FLOOR rule: when set, ANY part/lubricant whose description contains this row's
+  // description (whole-word match, most-specific rule wins) must never be priced below this —
+  // historical-average suggestions get clamped up, and the job-sheet editor warns on a manual
+  // price below it (e.g. "Oil Filter" min £11.95, "Oil" min £12.95). See applyPriceFloors.
+  minPrice: numeric("minPrice", { precision: 10, scale: 2 }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  partNumberIdx: index("parts_price_list_part_number_idx").on(table.partNumber),
+  descriptionIdx: index("parts_price_list_description_idx").on(table.description),
+}));
+
+export type PartsPriceListEntry = typeof partsPriceList.$inferSelect;
+export type InsertPartsPriceListEntry = typeof partsPriceList.$inferInsert;
+
+/**
  * Customer communication / activity log.
  */
 export const customerLogs = pgTable("customerLogs", {
@@ -415,6 +450,22 @@ export type InsertCustomerLog = typeof customerLogs.$inferInsert;
 /**
  * Payments / receipts recorded against a document when it is issued.
  */
+// Images pasted/dropped onto a job document — e.g. a screenshot of a 7zap exploded diagram
+// showing where a part sits (their diagrams are blob-URLs locked to their page, so a manual
+// screenshot pasted here is the way to keep the picture with the job). Stored as base64 in
+// Neon; kept small via a size cap at the API layer.
+export const docAttachments = pgTable("docAttachments", {
+  id: serial("id").primaryKey(),
+  documentId: integer("documentId").notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  mime: varchar("mime", { length: 100 }).notNull(),
+  size: integer("size").notNull(), // bytes of the decoded image
+  data: text("data").notNull(), // base64 (no data: prefix)
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+  documentIdIdx: index("doc_attachments_document_id_idx").on(table.documentId),
+}));
+
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   documentId: integer("documentId").notNull(),
@@ -490,6 +541,10 @@ export const salesStock = pgTable("salesStock", {
   atAdvertStatus: varchar("atAdvertStatus", { length: 30 }),
   bodyType: varchar("bodyType", { length: 50 }),
   doors: integer("doors"),
+  // Sale details. Kept apart from `price`, which is the ADVERTISED figure — overwriting that
+  // with what the car actually went for would destroy the asking price we listed it at.
+  soldAt: timestamp("soldAt", { mode: "date" }),
+  soldPrice: numeric("soldPrice", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
@@ -722,3 +777,35 @@ export const pushSubscriptions = pgTable("pushSubscriptions", {
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+/** Our own labour price for a service, banded by engine size — the figure we CHOOSE to charge,
+ * as opposed to the historical medians the Price Guide derives from past invoices. Kept in a
+ * table rather than in code so the bands can be repriced without a deploy. A null maxCC is the
+ * catch-all top band. */
+export const serviceLabourBands = pgTable("serviceLabourBands", {
+  id: serial("id").primaryKey(),
+  jobKey: varchar("jobKey", { length: 40 }).notNull(),   // e.g. "interimService"
+  maxCC: integer("maxCC"),                                // inclusive upper bound; null = no limit
+  label: varchar("label", { length: 60 }).notNull(),
+  labour: numeric("labour", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+/** Plain-English MOT defect explanations, cached by the defect's wording. DVSA reason-for-
+ * rejection texts are standardized, so the same advisory recurs across thousands of tests —
+ * one AI call per distinct wording+severity, then every later view is instant and free.
+ * Deliberately vehicle-agnostic: what an anti-roll bar linkage does is the same on every car,
+ * and keying by text alone is what makes the cache hit. */
+export const defectExplanations = pgTable("defectExplanations", {
+  id: serial("id").primaryKey(),
+  // sha256 hex of lowercased, whitespace-collapsed defect text + "|" + severity type
+  defectKey: varchar("defectKey", { length: 64 }).notNull().unique(),
+  defectText: text("defectText").notNull(),
+  defectType: varchar("defectType", { length: 20 }),
+  explanation: jsonb("explanation").notNull(),
+  aiModel: varchar("aiModel", { length: 60 }),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+});
+
+export type DefectExplanation = typeof defectExplanations.$inferSelect;

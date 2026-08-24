@@ -1,14 +1,19 @@
-import { useRoute } from "wouter";
+import { useParams } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown } from "lucide-react";
+import { Loader2, Mail, Phone, MapPin, User, ArrowLeft, Car, History, FileText, Pencil, Send, Plus, DollarSign, Trash2, ChevronDown, ArrowLeftRight, UserX, Clock } from "lucide-react";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Link } from "wouter";
+import { RegPlate } from "@/components/RegPlate";
 import { format } from "date-fns";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
+import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
+import { workSummary } from "@/lib/workSummary";
 import {
     Dialog,
     DialogContent,
@@ -63,7 +68,131 @@ const parseContacts = (emailStr?: string | null, phoneStr?: string | null) => {
 // expanded it lazily loads the document's line items and lays them out like a job
 // card — Labour and Parts & Consumables broken out — so it's easy to see exactly
 // what was done and which parts were fitted on each visit.
-function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void }) {
+const SERVICE_GRADE_LABEL: Record<string, string> = {
+    full: "Full service", interim: "Interim service", oil: "Oil change", none: "\u2014",
+};
+const SERVICE_GRADE_TONE: Record<string, string> = {
+    full: "bg-green-100 text-green-800 border-green-200",
+    interim: "bg-blue-100 text-blue-800 border-blue-200",
+    oil: "bg-amber-100 text-amber-800 border-amber-200",
+};
+
+const HISTORY_TYPE_LABEL: Record<string, string> = { SI: "Invoice", ES: "Estimate", JS: "Job Sheet", XS: "Excess", CR: "Credit Note" };
+
+// The garage's own address — origin for the route map, directions link and drive-time lookup.
+const GARAGE_ADDRESS = "49 Victoria Road, Hendon, London NW4 2RP";
+
+// "3.1 mi · ~7 min drive from the garage" — server-computed (postcodes.io + OSRM, no keys).
+function DriveFromGarage({ postcode }: { postcode?: string | null }) {
+    const { data } = trpc.customers.driveFromGarage.useQuery(
+        { postcode: postcode || "" },
+        { enabled: !!postcode, staleTime: Infinity }
+    );
+    if (!data) return null;
+    return (
+        <div className="flex items-center gap-1.5 text-[13px] text-slate-600">
+            <Car className="w-4 h-4 text-slate-400" />
+            <span><b className="text-slate-800">{data.miles} mi</b> · ~<b className="text-slate-800">{data.minutes} min</b> drive from the garage</span>
+        </div>
+    );
+}
+
+// Clickable column header for the service-history table — click to sort, click again to flip.
+function HistSortHead({ label, k, sort, onSort, align }: { label: string; k: string; sort: { key: string; dir: "asc" | "desc" }; onSort: (k: string) => void; align?: "right" }) {
+    const active = sort.key === k;
+    return (
+        <TableHead className={`h-8 ${align === "right" ? "text-right" : ""}`}>
+            <button type="button" onClick={() => onSort(k)}
+                className={`inline-flex items-center gap-0.5 select-none hover:text-foreground ${active ? "text-foreground font-semibold" : ""}`}>
+                {label}
+                <ChevronDown className={`w-3 h-3 transition-transform ${active ? (sort.dir === "asc" ? "rotate-180" : "") : "opacity-30"}`} />
+            </button>
+        </TableHead>
+    );
+}
+
+/** Emails the customer their whole history — every car, one PDF. The per-vehicle version lives
+ * on the vehicle page; this is the "send me everything" people ask for when they sell up or
+ * change insurer. Defaults to the summary; ticking the box appends a full copy of every
+ * invoice, which on a long-standing customer is a big file, hence off by default. */
+function SendFullHistoryDialog({ customer, vehicleCount, open, onClose }: { customer: any; vehicleCount: number; open: boolean; onClose: () => void }) {
+    const send = trpc.email.sendCustomerHistory.useMutation({
+        onSuccess: (r: any) => {
+            toast.success(`Full history sent to ${to}${r?.vehicleCount ? ` — ${r.vehicleCount} vehicle${r.vehicleCount === 1 ? "" : "s"}` : ""}`);
+            onClose();
+        },
+        onError: (e: any) => toast.error(e.message || "Could not send the history"),
+    });
+    const knownEmails: string[] = Array.from(new Set([
+        customer?.email,
+        ...(Array.isArray(customer?.altContacts) ? customer.altContacts.map((c: any) => c?.email) : []),
+    ].map((e: any) => String(e || "").trim()).filter((e: string) => e.includes("@"))));
+
+    const [to, setTo] = useState("");
+    const [cc, setCc] = useState("");
+    const [includeInvoices, setIncludeInvoices] = useState(false);
+    useEffect(() => { if (open) { setTo(knownEmails[0] || ""); setCc(""); setIncludeInvoices(false); } }, [open, customer?.id]);
+
+    const addr = (raw: string) => raw.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+    const submit = () => {
+        const tos = addr(to), ccs = addr(cc);
+        if (!tos.length) { toast.error("Enter a recipient email address"); return; }
+        const bad = [...tos, ...ccs].filter((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a));
+        if (bad.length) { toast.error(`Not a valid email address: ${bad.join(", ")}`); return; }
+        send.mutate({ customerId: customer.id, to: tos.join(","), cc: ccs.join(",") || undefined, includeInvoices });
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2"><Send className="w-5 h-5" /> Send full history</DialogTitle>
+                    <DialogDescription>
+                        Every vehicle {customer?.name ? `${customer.name} has` : "they have"} had work on, as one PDF.
+                        {vehicleCount ? ` ${vehicleCount} vehicle${vehicleCount === 1 ? "" : "s"} on file — cars with no invoiced work are left out.` : ""}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-xs text-muted-foreground">To</label>
+                        <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="customer@email.com" className="mt-0.5 h-9" />
+                    </div>
+                    <div>
+                        <label className="text-xs text-muted-foreground">CC</label>
+                        <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Optional" className="mt-0.5 h-9" />
+                    </div>
+                    {knownEmails.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {knownEmails.map((e) => (
+                                <span key={e} className="inline-flex items-center rounded-full border bg-slate-50 text-xs overflow-hidden">
+                                    <span className="pl-2.5 pr-1.5 py-1 text-slate-600">{e}</span>
+                                    <button type="button" onClick={() => setTo((v) => (addr(v).some((x) => x.toLowerCase() === e.toLowerCase()) ? v : [...addr(v), e].join(", ")))} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">To</button>
+                                    <button type="button" onClick={() => setCc((v) => (addr(v).some((x) => x.toLowerCase() === e.toLowerCase()) ? v : [...addr(v), e].join(", ")))} className="px-1.5 py-1 border-l hover:bg-violet-100 text-violet-700 font-medium">CC</button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={includeInvoices} onChange={(e) => setIncludeInvoices(e.target.checked)} className="mt-0.5" />
+                        <span>
+                            Attach a full copy of every invoice
+                            <span className="block text-xs text-muted-foreground">Otherwise just the one-line-per-visit summary. On a long-standing customer this makes a large file.</span>
+                        </span>
+                    </label>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={send.isPending}>Cancel</Button>
+                    <Button onClick={submit} disabled={send.isPending}>
+                        {send.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                        {send.isPending ? "Building PDF…" : "Send"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function HistoryActivityRow({ h, onOpenFull, onOpenDoc }: { h: any; onOpenFull: () => void; onOpenDoc: () => void }) {
     const [open, setOpen] = useState(false);
     const { data: items, isLoading } = trpc.serviceHistory.getLineItems.useQuery(
         { documentId: h.id },
@@ -75,38 +204,56 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
     const parts = (items || []).filter((i: any) => i.itemType === "Part");
     const others = (items || []).filter((i: any) => i.itemType !== "Labour" && i.itemType !== "Part");
     const fullDescription = h.description || h.mainDescription;
+    const w = workSummary(h.mainDescription || h.description);
 
     return (
-        <div className="rounded-lg border bg-card overflow-hidden">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 transition-colors"
-            >
-                <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${h.docType === 'SI' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-600'}`}>
-                        {h.docType === 'SI' ? <FileText className="w-5 h-5" /> : <History className="w-5 h-5" />}
+        <>
+            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setOpen((o) => !o)}>
+                <TableCell className="py-1.5 whitespace-nowrap text-[13px]">
+                    <span className="font-semibold text-slate-800">{format(new Date(h.dateCreated), "dd/MM/yy")}</span>
+                </TableCell>
+                <TableCell className="py-1.5">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${DOC_TYPE_TAILWIND[h.docType] || "bg-slate-100 text-slate-700"}`}>{HISTORY_TYPE_LABEL[h.docType] || h.docType}</span>
+                </TableCell>
+                <TableCell className="py-1.5 text-[13px] font-semibold text-slate-800 whitespace-nowrap">
+                    {/* the number opens the document itself — the row's chevron just expands the detail */}
+                    <button type="button" title="Open this document"
+                        onClick={(e) => { e.stopPropagation(); onOpenDoc(); }}
+                        className="text-violet-700 hover:underline font-semibold">{displayDocNo(h) || h.id}</button>
+                    {!h.viaAccountSame && <span className="ml-1.5 bg-amber-50 text-amber-700 text-[10px] px-1.5 py-0.5 rounded border border-amber-200" title="Same person, different GA4 account — shown here because it shares this customer's phone number">via {h.viaAccountNumber || `#${h.viaAccountId}`}</span>}
+                </TableCell>
+                <TableCell className="py-1.5">
+                    {h.registration ? <RegPlate reg={h.registration} size="xs" /> : <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="py-1.5 max-w-[320px]">
+                    <div className="flex flex-nowrap items-center gap-1 overflow-hidden">
+                        {(w?.badges || []).map((b: any) => (
+                            <span key={b.label} className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                        ))}
+                        <span className="truncate text-xs text-muted-foreground" title={fullDescription || undefined}>{w?.summary || h.mainDescription || "—"}</span>
                     </div>
-                    <div className="min-w-0">
-                        <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
-                            {h.docType === 'SI' ? 'Invoice' : 'Estimate'} #{h.docNo || h.id}
-                            {h.registration && <span className="bg-yellow-100 text-[10px] px-1.5 py-0.5 rounded border border-yellow-200 font-mono">{h.registration}</span>}
-                        </div>
-                        <div className="text-xs text-muted-foreground line-clamp-1">
-                            {h.mainDescription || "No job description"}
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 pl-2">
-                    <div className="text-right">
-                        <div className="text-sm font-bold">£{Number(h.totalGross || 0).toFixed(2)}</div>
-                        <div className="text-[10px] text-muted-foreground">{format(new Date(h.dateCreated), "dd MMM yyyy")}</div>
-                    </div>
+                </TableCell>
+                <TableCell className="py-1.5 text-right whitespace-nowrap">
+                    {Number(h.balance || 0) > 0
+                        ? <span className="bg-red-50 text-red-700 text-[11px] px-1.5 py-0.5 rounded border border-red-200 font-semibold tabular-nums">£{Number(h.balance).toFixed(2)}</span>
+                        : <span className="text-muted-foreground text-xs">—</span>}
+                </TableCell>
+                <TableCell className="py-1.5 text-right text-[13px] font-bold tabular-nums whitespace-nowrap">£{Number(h.totalGross || 0).toFixed(2)}</TableCell>
+                <TableCell className="py-1.5 w-6">
                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-                </div>
-            </button>
-
+                </TableCell>
+            </TableRow>
             {open && (
+                <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={8} className="p-0">{renderDetails()}</TableCell>
+                </TableRow>
+            )}
+        </>
+    );
+
+    function renderDetails() {
+        return (
+
                 <div className="border-t bg-muted/20 px-4 py-3">
                     {isLoading ? (
                         <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
@@ -172,9 +319,8 @@ function HistoryActivityRow({ h, onOpenFull }: { h: any; onOpenFull: () => void 
                         </div>
                     )}
                 </div>
-            )}
-        </div>
-    );
+        );
+    }
 }
 
 // Extra phone numbers kept on the customer record (altContacts: [{ name, phone }]).
@@ -187,13 +333,13 @@ function AdditionalNumbers({ customerId }: { customerId: number }) {
         { customerId },
         { enabled: !!customerId, staleTime: 30_000 }
     );
-    const [rows, setRows] = useState<{ name: string; phone: string }[]>([]);
+    const [rows, setRows] = useState<{ name: string; phone: string; email: string }[]>([]);
     const [dirty, setDirty] = useState(false);
     const loadedFor = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         if (customerId && serverContacts !== undefined && loadedFor.current !== customerId) {
-            setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "" })) : []);
+            setRows(Array.isArray(serverContacts) ? (serverContacts as any[]).map((c) => ({ name: c.name || "", phone: c.phone || "", email: c.email || "" })) : []);
             setDirty(false);
             loadedFor.current = customerId;
         }
@@ -213,50 +359,87 @@ function AdditionalNumbers({ customerId }: { customerId: number }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows, dirty, customerId]);
 
-    const upd = (i: number, k: "name" | "phone", v: string) => {
+    const upd = (i: number, k: "name" | "phone" | "email", v: string) => {
         setRows((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
         setDirty(true);
     };
-    const add = () => { setRows((p) => [...p, { name: "", phone: "" }]); setDirty(true); };
+    const add = () => { setRows((p) => [...p, { name: "", phone: "", email: "" }]); setDirty(true); };
     const remove = (i: number) => { setRows((p) => p.filter((_, j) => j !== i)); setDirty(true); };
 
     return (
         <div className="pt-3 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Additional numbers</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Additional contacts</span>
                 {(dirty || save.isPending)
                     ? <span className="text-[11px] text-violet-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving…</span>
                     : save.isSuccess ? <span className="text-[11px] text-green-600">Saved ✓</span> : null}
             </div>
             <div className="space-y-2">
                 {rows.map((r, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="flex items-start gap-2">
                         <Input value={r.name} onChange={(e) => upd(i, "name", e.target.value)} placeholder="Name (optional)" className="w-28 shrink-0 h-8 text-sm" />
-                        <Input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} placeholder="Phone number" className="flex-1 h-8 text-sm" />
+                        {/* Phone and email sit on one row per contact: a second address usually
+                            belongs to a specific person (the wife, the company accounts desk),
+                            so keeping them together says WHOSE email it is. Either can be left
+                            blank — an email-only row is a perfectly normal extra contact. */}
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Input value={r.phone} onChange={(e) => upd(i, "phone", e.target.value)} placeholder="Phone number" className="h-8 text-sm" />
+                            <Input value={r.email} onChange={(e) => upd(i, "email", e.target.value)} placeholder="Email address" type="email" className="h-8 text-sm" />
+                        </div>
                         <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-red-500 hover:text-red-700" onClick={() => remove(i)}>
                             <Trash2 className="w-4 h-4" />
                         </Button>
                     </div>
                 ))}
                 {rows.length === 0 && (
-                    <p className="text-sm text-muted-foreground italic">No additional numbers yet.</p>
+                    <p className="text-sm text-muted-foreground italic">No additional contacts yet.</p>
                 )}
             </div>
             <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-2 text-violet-700 hover:text-violet-800" onClick={add}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add number
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add contact
             </Button>
         </div>
     );
 }
 
 export default function CustomerDetails() {
-    const [match, params] = useRoute("/customers/:id");
+    const params = useParams<{ id: string }>();
+    const base = useClassicBase();
     const id = params?.id ? parseInt(params.id) : 0;
 
     const { data, isLoading, error, refetch } = trpc.customers.getById.useQuery(
         { id },
         { enabled: !!id }
     );
+
+    // Merging linked accounts (same phone, different GA4 account number — the Duplicates page
+    // won't auto-merge these, so this is a deliberate, explicitly-confirmed override).
+    const [mergeOpen, setMergeOpen] = useState(false);
+    const mergeMutation = trpc.customers.merge.useMutation({
+        onSuccess: (r: any) => {
+            toast.success(`Merged into "${r.name}"`);
+            setMergeOpen(false);
+            refetch();
+        },
+        onError: (e: any) => toast.error(e.message || "Merge failed"),
+    });
+
+    // "No Longer Owned" — clears the vehicle's current-owner link (same mutation as Vehicle
+    // Details' "Remove Owner") so MOT reminders for that car stop going to this customer.
+    // History is untouched: every past invoice keeps its own customer link. Confirmation is an
+    // in-app dialog, NOT window.confirm — Chrome silently suppresses native dialogs once a user
+    // ever ticks "prevent this page from creating additional dialogs", which makes the button
+    // look completely dead.
+    // Service-history table sort (client-side — the full history is already loaded)
+    const [histSort, setHistSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
+    const histSortBy = (key: string) => setHistSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" || key === "total" || key === "unpaid" ? "desc" : "asc" }));
+
+    const [historyEmailOpen, setHistoryEmailOpen] = useState(false);
+    const [unlinkTarget, setUnlinkTarget] = useState<{ id: number; registration: string } | null>(null);
+    const unlinkVehicle = trpc.reminders.unlinkVehicle.useMutation({
+        onSuccess: () => { toast.success("Owner link removed — no more reminders for this vehicle"); setUnlinkTarget(null); refetch(); },
+        onError: (e: any) => toast.error(e.message || "Failed to remove owner link"),
+    });
 
     // Edit State
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -305,12 +488,12 @@ export default function CustomerDetails() {
         });
     };
 
-    if (!match || !id) {
+    if (!id) {
         return (
             <DashboardLayout>
                 <div className="text-center py-12">
                     <h2 className="text-xl font-semibold text-red-500">Invalid Customer ID</h2>
-                    <Link href="/customers">
+                    <Link href={`${base}/customers`}>
                         <Button variant="link" className="mt-4">Back to Customers</Button>
                     </Link>
                 </div>
@@ -335,7 +518,7 @@ export default function CustomerDetails() {
                     <h2 className="text-xl font-semibold text-red-500">
                         {error ? error.message : "Customer not found"}
                     </h2>
-                    <Link href="/customers">
+                    <Link href={`${base}/customers`}>
                         <Button variant="link" className="mt-4">Back to Customers</Button>
                     </Link>
                 </div>
@@ -344,14 +527,21 @@ export default function CustomerDetails() {
     }
 
     const { customer, vehicles, reminders } = data;
+    const linkedAccounts: any[] = (data as any).linkedAccounts || [];
     const parsedContacts = parseContacts(customer.email as string | null, customer.phone as string | null);
+    // Most recent job across every doc on file for this customer — "when were they last in".
+    const lastVisit = (data.history || []).reduce((latest: Date | null, h: any) => {
+        if (!h.dateCreated) return latest;
+        const d = new Date(h.dateCreated);
+        return !latest || d > latest ? d : latest;
+    }, null as Date | null);
 
     return (
         <DashboardLayout>
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <Link href="/customers">
+                        <Link href={`${base}/customers`}>
                             <Button variant="ghost" size="icon">
                                 <ArrowLeft className="w-4 h-4" />
                             </Button>
@@ -366,10 +556,14 @@ export default function CustomerDetails() {
                             <Pencil className="w-4 h-4 mr-2" />
                             Edit Profile
                         </Button>
+                        <Button onClick={() => setHistoryEmailOpen(true)} variant="outline" size="sm">
+                            <Send className="w-4 h-4 mr-2" />
+                            Send Full History
+                        </Button>
                         <Button
                             variant="default"
                             size="sm"
-                            onClick={() => window.location.href = `/documents/new?customerId=${customer.id}`}
+                            onClick={() => window.location.href = `${base}/documents/new?customerId=${customer.id}`}
                         >
                             <Plus className="w-4 h-4 mr-2" />
                             New Job
@@ -377,71 +571,103 @@ export default function CustomerDetails() {
                     </div>
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid gap-4 md:grid-cols-4">
-                    <Card className="bg-blue-50/50 border-blue-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-blue-600 uppercase tracking-wider flex items-center justify-between">
-                                Total Jobs
-                                <FileText className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{data.stats?.totalJobs || 0}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-blue-400">Recorded sessions</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-green-50/50 border-green-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-green-600 uppercase tracking-wider flex items-center justify-between">
-                                Total Spent
-                                <DollarSign className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">£{(data.stats?.totalSpent || 0).toFixed(2)}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-green-400">Total revenue</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-orange-50/50 border-orange-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-orange-600 uppercase tracking-wider flex items-center justify-between">
-                                Vehicles
-                                <Car className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{vehicles.length}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-orange-400">Currently active</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-purple-50/50 border-purple-100">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-xs font-medium text-purple-600 uppercase tracking-wider flex items-center justify-between">
-                                Reminders
-                                <Send className="w-4 h-4" />
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{reminders.length}</div>
-                            <p className="text-[10px] text-muted-foreground mt-1 text-purple-400">Messages sent</p>
-                        </CardContent>
-                    </Card>
+                {linkedAccounts.length > 0 && (
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-sm text-amber-900">
+                            <span className="font-medium">{linkedAccounts.length} other account{linkedAccounts.length > 1 ? "s" : ""} share this phone number</span>
+                            {" — "}
+                            {linkedAccounts.map((a) => `${a.name || "Unnamed"} (${a.accountNumber || `#${a.id}`})`).join(", ")}.
+                            {" "}Their vehicles and invoices are already shown below — merge if this is really the same person.
+                        </p>
+                        <Button size="sm" variant="outline" className="shrink-0 text-amber-800 border-amber-300 bg-white hover:bg-amber-100" onClick={() => setMergeOpen(true)}>
+                            Merge into this profile
+                        </Button>
+                    </div>
+                )}
+
+                <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Merge linked accounts into {customer.name}</DialogTitle>
+                            <DialogDescription>
+                                This is normally blocked because different GA4 account numbers can mean different people sharing a phone. Confirm these are all the same person.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-2 py-2">
+                            {linkedAccounts.map((a) => (
+                                <div key={a.id} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                                    <span>{a.name || "Unnamed"}</span>
+                                    <span className="text-muted-foreground font-mono text-xs">{a.accountNumber || `#${a.id}`}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Their vehicles, invoices, reminders and messages move onto <b>{customer.name}</b> (account {customer.accountNumber || `#${customer.id}`}); the accounts listed above are then deleted. Their vehicles/invoices keep their own history — nothing is lost, only which account holds it changes.
+                        </p>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setMergeOpen(false)}>Cancel</Button>
+                            <Button
+                                disabled={mergeMutation.isPending}
+                                onClick={() => mergeMutation.mutate({ primaryId: customer.id as number, secondaryIds: linkedAccounts.map((a) => a.id), force: true })}
+                                className="bg-amber-700 hover:bg-amber-800"
+                            >
+                                {mergeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                                Yes, merge into {customer.name}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Compact stats strip — one glanceable line instead of four tall cards */}
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-white px-4 py-2.5">
+                    <div className="flex items-center gap-2 text-sm">
+                        <FileText className="w-4 h-4 text-blue-500" />
+                        <span className="font-bold text-slate-900">{data.stats?.totalJobs || 0}</span>
+                        <span className="text-muted-foreground">jobs</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <DollarSign className="w-4 h-4 text-green-600" />
+                        <span className="font-bold text-slate-900">£{(data.stats?.totalSpent || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-muted-foreground">spent</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Car className="w-4 h-4 text-orange-500" />
+                        <span className="font-bold text-slate-900">{vehicles.length}</span>
+                        <span className="text-muted-foreground">vehicle{vehicles.length === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Send className="w-4 h-4 text-purple-500" />
+                        <span className="font-bold text-slate-900">{reminders.length}</span>
+                        <span className="text-muted-foreground">reminders sent</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                        <Clock className="w-4 h-4 text-slate-500" />
+                        <span className="font-bold text-slate-900">{lastVisit ? format(lastVisit, "dd/MM/yy") : "—"}</span>
+                        <span className="text-muted-foreground">last visit</span>
+                    </div>
                 </div>
 
-                {/* Info Cards Grid */}
-                <div className="grid gap-6 md:grid-cols-3">
-                    <Card className="md:col-span-1 h-fit">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-lg">
-                                <User className="w-5 h-5 text-blue-500" />
-                                Contact Details
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {parsedContacts.length > 0 ? (
-                                <div className="space-y-4">
-                                    {parsedContacts.map((contact, idx) => (
+                {/* Contact strip — full width, directly under the customer's name so it reads as
+                    part of who they are (it used to sit in a side column, visually orphaned).
+                    Three zones: how to reach them, where they are, and a live map of the address
+                    with one-click Google Maps directions for collections/deliveries. */}
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                            <User className="w-5 h-5 text-blue-500" />
+                            Contact &amp; Location
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-6 md:grid-cols-3">
+                            <div className="space-y-2.5">
+                                {/* Labelled record-style fields — these get read out to customers on the phone */}
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer Name</p>
+                                    <p className="text-[15px] font-bold text-slate-900">{customer.name}</p>
+                                </div>
+                                {parsedContacts.length > 0 ? (
+                                    parsedContacts.map((contact, idx) => (
                                         <div key={idx} className="flex items-center gap-3 text-sm flex-wrap bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                                             {contact.type === 'email' ? (
                                                 <div className="bg-blue-100 p-1.5 rounded-md text-blue-600 shrink-0">
@@ -452,48 +678,72 @@ export default function CustomerDetails() {
                                                     <Phone className="w-4 h-4" />
                                                 </div>
                                             )}
-
-                                            <a
-                                                href={contact.type === 'email'
-                                                    ? `mailto:${contact.value}`
-                                                    : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
-                                                }
-                                                className="hover:underline font-medium text-slate-800"
-                                            >
-                                                {contact.value}
-                                            </a>
-
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{contact.type === 'email' ? 'Email' : 'Phone'}</p>
+                                                <a
+                                                    href={contact.type === 'email'
+                                                        ? `mailto:${contact.value}`
+                                                        : `tel:${contact.value.replace(/[^0-9+]/g, '')}`
+                                                    }
+                                                    className="hover:underline font-semibold text-slate-900 text-[15px] break-all"
+                                                >
+                                                    {contact.value}
+                                                </a>
+                                            </div>
                                             {contact.tag && (
                                                 <Badge variant="secondary" className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200/50 ml-auto">
                                                     {contact.tag}
                                                 </Badge>
                                             )}
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground italic">No contact information available</div>
-                            )}
-                            <AdditionalNumbers customerId={customer.id as number} />
-                            {(customer.address || customer.postcode) && (
-                                <div className="flex items-start gap-2 text-sm">
-                                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                    <div>
-                                        {customer.address && <div>{customer.address}</div>}
-                                        {customer.postcode && <div className="font-medium text-blue-700 uppercase">{customer.postcode}</div>}
+                                    ))
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic">No contact information available</div>
+                                )}
+                                <AdditionalNumbers customerId={customer.id as number} />
+                            </div>
+                            <div className="space-y-3">
+                                {(customer.address || customer.postcode) ? (
+                                    <div className="flex items-start gap-2.5">
+                                        <MapPin className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Address</p>
+                                            {customer.address && <div className="text-[16px] font-medium leading-snug text-slate-900">{customer.address}</div>}
+                                            {customer.postcode && <div className="text-lg font-bold text-blue-700 uppercase tracking-wide">{customer.postcode}</div>}
+                                            <DriveFromGarage postcode={customer.postcode} />
+                                            <a
+                                                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(GARAGE_ADDRESS)}&destination=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}`}
+                                                target="_blank" rel="noreferrer"
+                                                className="mt-0.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[13px] font-medium text-blue-700 hover:bg-blue-100"
+                                            >
+                                                <MapPin className="w-3.5 h-3.5" /> Directions in Google Maps
+                                            </a>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic">No address on file</div>
+                                )}
+                                {customer.notes && (
+                                    <div className="border-t pt-3">
+                                        <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5">Internal Notes</p>
+                                        <p className="text-sm bg-yellow-50/50 p-2.5 rounded-md border border-yellow-100 whitespace-pre-wrap">{customer.notes}</p>
+                                    </div>
+                                )}
+                            </div>
+                            {(customer.address || customer.postcode) && (
+                                <iframe
+                                    title="Customer address map"
+                                    className="w-full h-44 md:h-full min-h-[140px] rounded-lg border"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer-when-downgrade"
+                                    src={`https://maps.google.com/maps?saddr=${encodeURIComponent(GARAGE_ADDRESS)}&daddr=${encodeURIComponent([customer.address, customer.postcode].filter(Boolean).join(", "))}&output=embed`}
+                                />
                             )}
-                            {customer.notes && (
-                                <div className="border-t pt-4 mt-4">
-                                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">Internal Notes</p>
-                                    <p className="text-sm bg-yellow-50/50 p-3 rounded-md border border-yellow-100 whitespace-pre-wrap">{customer.notes}</p>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                    <div className="md:col-span-2 space-y-6">
+                <div className="space-y-6">
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -509,6 +759,7 @@ export default function CustomerDetails() {
                                                 <TableHead>Registration</TableHead>
                                                 <TableHead>Vehicle Info</TableHead>
                                                 <TableHead>MOT Status</TableHead>
+                                                <TableHead>Last Service</TableHead>
                                                 <TableHead className="text-right">Actions</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -522,15 +773,24 @@ export default function CustomerDetails() {
                                                 return (
                                                     <TableRow key={v.id} className="group">
                                                         <TableCell className="py-2">
-                                                            <Link href={`/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
-                                                                <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm cursor-pointer hover:scale-105 transition-transform">
-                                                                    {v.registration}
-                                                                </div>
+                                                            <Link href={`${base}/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
+                                                                {base ? (
+                                                                    <span className="cursor-pointer hover:underline font-medium">{v.registration}</span>
+                                                                ) : (
+                                                                    <div className="bg-yellow-400 text-black px-2 py-0.5 rounded font-mono font-bold text-sm border border-black inline-block shadow-sm cursor-pointer hover:scale-105 transition-transform">
+                                                                        {v.registration}
+                                                                    </div>
+                                                                )}
                                                             </Link>
                                                         </TableCell>
                                                         <TableCell className="py-2">
-                                                            <div className="text-sm font-bold">{v.make || "Unknown"}</div>
-                                                            <div className="text-[10px] text-muted-foreground uppercase opacity-70">{v.model || ""}</div>
+                                                            <div className="text-[15px] font-bold text-slate-900">{v.make || "Unknown"}</div>
+                                                            <div className="text-[13px] text-slate-600">{v.model || ""}</div>
+                                                            {!v.viaAccountSame && (
+                                                                <div className="text-[10px] text-amber-700 mt-0.5" title="Same person, different GA4 account — shown here because it shares this customer's phone number">
+                                                                    Via linked account {v.viaAccountNumber || `#${v.viaAccountId}`}
+                                                                </div>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="py-2">
                                                             {expiry ? (
@@ -547,8 +807,26 @@ export default function CustomerDetails() {
                                                                 <Badge variant="secondary" className="text-[10px]">No Data</Badge>
                                                             )}
                                                         </TableCell>
+                                                        <TableCell className="py-2">
+                                                            {/* Graded from the parts invoiced, not the job wording — see getVehicleServicing. */}
+                                                            {v.lastService ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${SERVICE_GRADE_TONE[v.lastService.grade] || ""}`}>
+                                                                        {SERVICE_GRADE_LABEL[v.lastService.grade]}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">
+                                                                        {format(new Date(v.lastService.date), "dd/MM/yy")}
+                                                                        {v.lastService.mileage ? ` · ${Number(v.lastService.mileage).toLocaleString("en-GB")} mi` : ""}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <Badge variant="secondary" className="text-[10px]">None</Badge>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell className="text-right py-2">
-                                                            <div className="flex justify-end gap-1 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {/* Always visible (softly, full-strength on hover) — the old reveal-on-hover
+                                                                pattern made the actions effectively undiscoverable. */}
+                                                            <div className="flex justify-end gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
@@ -566,9 +844,28 @@ export default function CustomerDetails() {
                                                                     size="icon"
                                                                     className="h-7 w-7 text-primary"
                                                                     title="New Job"
-                                                                    onClick={() => window.location.href = `/documents/new?reg=${encodeURIComponent(v.registration)}`}
+                                                                    onClick={() => window.location.href = `${base}/documents/new?reg=${encodeURIComponent(v.registration)}`}
                                                                 >
                                                                     <Plus className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                                <AssignCustomerDialog
+                                                                    vehicleId={v.id}
+                                                                    onAssigned={() => refetch()}
+                                                                    triggerButton={
+                                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" title="Transfer to a different owner">
+                                                                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                                                                        </Button>
+                                                                    }
+                                                                />
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-red-600"
+                                                                    title="No longer owned — stop MOT reminders to this customer for this vehicle"
+                                                                    disabled={unlinkVehicle.isPending}
+                                                                    onClick={() => setUnlinkTarget({ id: v.id, registration: v.registration })}
+                                                                >
+                                                                    <UserX className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </div>
                                                         </TableCell>
@@ -586,6 +883,27 @@ export default function CustomerDetails() {
                             </CardContent>
                         </Card>
 
+                        {/* "No Longer Owned" confirmation — in-app dialog (see unlinkVehicle above for why not window.confirm) */}
+                        <Dialog open={unlinkTarget != null} onOpenChange={(open) => { if (!open) setUnlinkTarget(null); }}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>No longer owns {unlinkTarget?.registration}?</DialogTitle>
+                                    <DialogDescription>
+                                        This removes the owner link so {customer.name} stops getting MOT reminders for this vehicle.
+                                        Past invoices and service history are not affected.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setUnlinkTarget(null)}>Cancel</Button>
+                                    <Button variant="destructive" disabled={unlinkVehicle.isPending}
+                                        onClick={() => unlinkTarget && unlinkVehicle.mutate({ vehicleId: unlinkTarget.id })}>
+                                        {unlinkVehicle.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <UserX className="w-4 h-4 mr-1.5" />}
+                                        Yes, no longer owned
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-lg flex items-center gap-2">
@@ -601,18 +919,47 @@ export default function CustomerDetails() {
                                     </TabsList>
                                     <TabsContent value="history">
                                         {data.history && data.history.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {data.history.map((h: any) => (
-                                                    <HistoryActivityRow
-                                                        key={h.id}
-                                                        h={h}
-                                                        onOpenFull={() => {
-                                                            setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
-                                                            setHistoryOpen(true);
-                                                        }}
-                                                    />
-                                                ))}
-                                            </div>
+                                            <Table className="[&_th]:h-8">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <HistSortHead label="Date" k="date" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Type" k="type" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Doc No" k="docNo" sort={histSort} onSort={histSortBy} />
+                                                        <HistSortHead label="Reg" k="reg" sort={histSort} onSort={histSortBy} />
+                                                        <TableHead className="h-8">Job</TableHead>
+                                                        <HistSortHead label="Unpaid" k="unpaid" sort={histSort} onSort={histSortBy} align="right" />
+                                                        <HistSortHead label="Total" k="total" sort={histSort} onSort={histSortBy} align="right" />
+                                                        <TableHead className="h-8 w-6" />
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {[...data.history].sort((a: any, b: any) => {
+                                                        const dir = histSort.dir === "asc" ? 1 : -1;
+                                                        const val = (h: any) => {
+                                                            switch (histSort.key) {
+                                                                case "type": return h.docType || "";
+                                                                case "docNo": return Number(String(h.docNo || 0).replace(/\D/g, "")) || 0;
+                                                                case "reg": return (h.registration || "").toUpperCase();
+                                                                case "unpaid": return Number(h.balance) || 0;
+                                                                case "total": return Number(h.totalGross) || 0;
+                                                                default: return new Date(h.dateCreated || 0).getTime();
+                                                            }
+                                                        };
+                                                        const av = val(a), bv = val(b);
+                                                        return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+                                                    }).map((h: any) => (
+                                                        <HistoryActivityRow
+                                                            key={h.id}
+                                                            h={h}
+                                                            onOpenFull={() => {
+                                                                setSelectedVehicleForHistory({ id: h.vehicleId, registration: h.registration || "Vehicle" });
+                                                                setHistoryOpen(true);
+                                                            }}
+                                                            onOpenDoc={() => { window.location.href = `${base}/documents/${h.id}`; }}
+                                                        />
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm italic">
                                                 No service history recorded for this customer.
@@ -621,18 +968,45 @@ export default function CustomerDetails() {
                                     </TabsContent>
                                     <TabsContent value="reminders">
                                         {reminders && reminders.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {reminders.map((r: any) => (
-                                                    <div key={r.id} className="flex items-center justify-between p-2 rounded border text-xs">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                                                            <span className="font-medium">{format(new Date(r.sentAt), "dd/MM/yy HH:mm")}</span>
-                                                            <span className="text-muted-foreground truncate max-w-[100px]">{r.registration}</span>
-                                                        </div>
-                                                        <Badge variant="outline" className="text-[10px] scale-90 capitalize">{r.status}</Badge>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                            <Table className="[&_th]:h-8 [&_td]:py-1.5">
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Date</TableHead>
+                                                        <TableHead>Type</TableHead>
+                                                        <TableHead>Reg</TableHead>
+                                                        <TableHead>Via</TableHead>
+                                                        <TableHead>Status</TableHead>
+                                                        <TableHead>Message</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {reminders.map((r: any) => (
+                                                        <TableRow key={r.id}>
+                                                            <TableCell className="whitespace-nowrap text-[13px] font-semibold text-slate-800">
+                                                                {r.date ? format(new Date(r.date), r.kind === "message" ? "dd/MM/yy HH:mm" : "dd/MM/yy") : "—"}
+                                                                {r.kind === "legacy" && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(due)</span>}
+                                                            </TableCell>
+                                                            <TableCell><Badge variant="outline" className="text-[10px]">{r.type}</Badge></TableCell>
+                                                            <TableCell>{r.registration ? <RegPlate reg={r.registration} size="xs" /> : <span className="text-muted-foreground">—</span>}</TableCell>
+                                                            <TableCell className="text-xs text-muted-foreground capitalize whitespace-nowrap">{r.method || "—"}</TableCell>
+                                                            <TableCell>
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium capitalize whitespace-nowrap ${
+                                                                    r.status === "read" ? "bg-green-50 text-green-700 border-green-200"
+                                                                    : r.status === "delivered" ? "bg-sky-50 text-sky-700 border-sky-200"
+                                                                    : r.status === "failed" || r.status === "undelivered" ? "bg-red-50 text-red-700 border-red-200"
+                                                                    : r.status === "pending" ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                                    : "bg-slate-50 text-slate-600 border-slate-200"
+                                                                }`} title={r.errorMessage || undefined}>{r.status}</span>
+                                                            </TableCell>
+                                                            <TableCell className="max-w-[300px]">
+                                                                <span className="block truncate text-xs text-muted-foreground" title={r.preview || undefined}>
+                                                                    {r.preview || (r.kind === "legacy" ? "GA4-era reminder (no message stored)" : "—")}
+                                                                </span>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
                                         ) : (
                                             <div className="text-center py-8 text-muted-foreground text-sm italic">
                                                 No reminders sent to this customer.
@@ -642,7 +1016,6 @@ export default function CustomerDetails() {
                                 </Tabs>
                             </CardContent>
                         </Card>
-                    </div>
                 </div>
             </div>
 
@@ -719,6 +1092,13 @@ export default function CustomerDetails() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <SendFullHistoryDialog
+                customer={customer}
+                vehicleCount={vehicles.length}
+                open={historyEmailOpen}
+                onClose={() => setHistoryEmailOpen(false)}
+            />
         </DashboardLayout>
     );
 }

@@ -15,6 +15,7 @@ const PH = 841.89;           // A4 height in points
 const M = 30;                // Page margin
 const CW = PW - M * 2;      // Content width
 const ROW_H = 16;            // Default table row height (compact, to keep docs on one page)
+const MAX_ROW_H = Math.floor(PH - M * 2 - 40);  // A single tick-table row can grow to a full page; nothing on a job sheet is worth hiding from the mechanic
 const BOTTOM = 40;           // Bottom margin for page breaks
 
 // Colours
@@ -315,10 +316,10 @@ function tcAndTotals(
   if (Number(totals.paint) > 0) tRows.push(['Paint & Mat.', Number(totals.paint).toFixed(2), false, false]);
   tRows.push(['SubTotal', Number(totals.subtotal).toFixed(2), true, false]);
   if (totals.discount != null && Number(totals.discount) > 0) tRows.push(['Discount', '-' + Number(totals.discount).toFixed(2), false, false]);
-  tRows.push([`VAT (${totals.vat_rate}%)`, Number(totals.vat).toFixed(2), false, false]);
+  tRows.push([totals.vat_label || `VAT (${totals.vat_rate}%)`, Number(totals.vat).toFixed(2), false, false]);
   if (totals.mot != null) tRows.push(['MOT', Number(totals.mot).toFixed(2), false, false]);
   tRows.push([totalLabel, Number(totals.total).toFixed(2), true, true]);
-  if (totals.excess != null && Number(totals.excess) > 0) tRows.push(['Excess', Number(totals.excess).toFixed(2), false, false]);
+  if (totals.excess != null && Number(totals.excess) > 0) tRows.push([totals.excess_label || 'Excess', Number(totals.excess).toFixed(2), false, false]);
   if (totals.receipts != null) tRows.push(['Receipts', Number(totals.receipts).toFixed(2), false, false]);
   if (totals.balance != null) tRows.push(['Balance', Number(totals.balance).toFixed(2), true, false]);
 
@@ -327,7 +328,12 @@ function tcAndTotals(
   const totalsX = PW - M - totalsW;
   const halfW = totalsW / 2;
   const tcW = CW * tcWidthRatio;
-  const totalsH = tRows.length * rowH;
+  // A long label (e.g. "Excess + VAT (customer)") can wrap to two lines at this column width —
+  // give each row at least enough height for its own label, or the wrapped second line bleeds
+  // into the row below it. Measured once up front so cell backgrounds/dividers/y-advance all agree.
+  doc.font('Helvetica').fontSize(9);
+  const rowHeights = tRows.map(([label]) => Math.max(rowH, doc.heightOfString(label, { width: halfW - 12 }) + 8));
+  const totalsH = rowHeights.reduce((a, h) => a + h, 0);
 
   // Pre-calculate TC height
   doc.font('Helvetica').fontSize(7);
@@ -352,21 +358,22 @@ function tcAndTotals(
 
   // ── Totals (right) ──
   let ty = footerY;
-  for (const [label, value, bold, bg] of tRows) {
+  tRows.forEach(([label, value, bold, bg], i) => {
+    const h = rowHeights[i];
     if (bg) {
-      filledCell(doc, totalsX, ty, totalsW, rowH, '#e8e8e8');
+      filledCell(doc, totalsX, ty, totalsW, h, '#e8e8e8');
     } else {
-      strokedCell(doc, totalsX, ty, totalsW, rowH);
+      strokedCell(doc, totalsX, ty, totalsW, h);
     }
     // Divider
-    doc.save().moveTo(totalsX + halfW, ty).lineTo(totalsX + halfW, ty + rowH).stroke(BORDER).restore();
+    doc.save().moveTo(totalsX + halfW, ty).lineTo(totalsX + halfW, ty + h).stroke(BORDER).restore();
 
     doc.font(bold ? 'Helvetica' : 'Helvetica').fontSize(9).fillColor('black');
     doc.text(label, totalsX + 6, ty + 4, { width: halfW - 12, align: 'left' });
     const display = value ? (value.startsWith('-') ? '-£' + value.slice(1) : '£' + value) : '';
-    doc.text(display, totalsX + halfW + 6, ty + 4, { width: halfW - 12, align: 'right' });
-    ty += rowH;
-  }
+    doc.text(display, totalsX + halfW + 6, ty + (h - 11) / 2, { width: halfW - 12, align: 'right' });
+    ty += h;
+  });
 
   return Math.max(ty, afterRegular + tcBoldH + 25) + 10;
 }
@@ -706,21 +713,22 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   }
   y += 4;
 
-  const blankRowH = 16;
   let cx = M;
   // A pre-filled, tick-off table: a header, then one row per item (height grows to fit the
   // text), then a few blank rows for anything added on the job. cols = [main, mid?, Done].
-  const tickTable = (headers: string[], cols: number[], rows: { main: string; mid?: string }[], blanks: number) => {
-    y = checkBreak(ROW_H + blankRowH);
+  const tickTable = (headers: string[], cols: number[], rows: { main: string; mid?: string }[], blanks: number, fs: number, bh: number) => {
+    y = checkBreak(ROW_H + bh);
     filledCell(doc, M, y, CW, ROW_H, HEADER_BG);
     cellDividers(doc, M, y, ROW_H, cols);
-    doc.font('Helvetica').fontSize(8.5).fillColor('black');
+    doc.font('Helvetica').fontSize(fs).fillColor('black');
     cx = M;
     headers.forEach((h, i) => { doc.text(h, cx + 6, y + 6, { width: cols[i] - 12, align: 'center' }); cx += cols[i]; });
     y += ROW_H;
     for (const row of rows) {
-      doc.font('Helvetica').fontSize(8.5).fillColor('black');
-      const rowH = Math.max(blankRowH, doc.heightOfString(row.main, { width: cols[0] - 12 }) + 6);
+      doc.font('Helvetica').fontSize(fs).fillColor('black');
+      // A single row is capped (with an ellipsis) — one rambling paragraph must not be
+      // allowed to push the job card onto a second page.
+      const rowH = Math.min(MAX_ROW_H, Math.max(bh, doc.heightOfString(row.main, { width: cols[0] - 12 }) + 6));
       y = checkBreak(rowH);
       cx = M;
       for (const w of cols) { doc.save().rect(cx, y, w, rowH).stroke(BORDER).restore(); cx += w; }
@@ -729,39 +737,71 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
       y += rowH;
     }
     for (let r = 0; r < blanks; r++) {
-      y = checkBreak(blankRowH);
+      y = checkBreak(bh);
       cx = M;
-      for (const w of cols) { doc.save().rect(cx, y, w, blankRowH).stroke(BORDER).restore(); cx += w; }
-      y += blankRowH;
+      for (const w of cols) { doc.save().rect(cx, y, w, bh).stroke(BORDER).restore(); cx += w; }
+      y += bh;
     }
   };
 
-  // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
-  // for the mechanic to log labour (Tech / Qty / Done).
-  const services = (data.work_description || [])
+  const services: { main: string }[] = (data.work_description || [])
     .map((s: string) => String(s || '').replace(/^[\s•–—-]+/, '').trim())
     .filter(Boolean)
     .map((s: string) => ({ main: s }));
-  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
-  tickTable(['Service / Labour', 'Tech', 'Qty', 'Done'], lcw, services, 5);
-  y += 5;
-
-  // ── Parts table ── the actual parts on the job, tick-off, plus blank rows for extras.
-  const partRows = ((data.parts || []) as any[]).map((p) => ({
+  const partRows: { main: string; mid?: string }[] = ((data.parts || []) as any[]).map((p) => ({
     main: `${p.quantity && Number(p.quantity) !== 1 ? `${Number(p.quantity)} x ` : ''}${p.description || ''}`.trim(),
     mid: p.partNumber ? String(p.partNumber) : '',
   }));
+  const lcw = [0.64, 0.12, 0.12, 0.12].map((r) => CW * r);
   const pcw = [0.64, 0.24, 0.12].map((r) => CW * r);
-  tickTable(['Parts', 'Part No.', 'Done'], pcw, partRows, 4);
+
+  // ── One page, always ── a job card is a single physical sheet (the reset sheet prints on
+  // its back); only invoices may run to more pages. Measure the remaining content and step
+  // down through compression levels (fewer blank rows -> drop the car diagram -> smaller
+  // font) until it fits; as a last resort the item lists are truncated with a pointer to
+  // the system. checkBreak stays only as a never-expected fallback.
+  const DIAG_W = CW * 0.22;
+  const DIAG_H = DIAG_W * (274 / 355) + 8;
+  const TC_H = 94; // T&C paragraph + bold line + signature row (small safety margin — the T&C gate needs 80 clear)
+  const measure = (fs: number, bh: number, bl: number, bp: number, sRows: { main: string }[], pRows: { main: string }[]) => {
+    doc.font('Helvetica').fontSize(fs);
+    const rowsH = (rows: { main: string }[], w: number) =>
+      rows.reduce((a, r) => a + Math.min(MAX_ROW_H, Math.max(bh, doc.heightOfString(r.main, { width: w - 12 }) + 6)), 0);
+    return (ROW_H + rowsH(sRows, lcw[0]) + bl * bh + 5) + (ROW_H + rowsH(pRows, pcw[0]) + bp * bh + 4);
+  };
+  const budget = (PH - BOTTOM) - y - TC_H;
+  const levels = [
+    { fs: 8.5, bh: 16, bl: 5, bp: 4, diag: true },
+    { fs: 8.5, bh: 14, bl: 3, bp: 2, diag: true },
+    { fs: 8, bh: 13, bl: 2, bp: 2, diag: false },
+    { fs: 7.5, bh: 12, bl: 1, bp: 1, diag: false },
+  ];
+  let cfg = levels[levels.length - 1];
+  for (const l of levels) {
+    if (measure(l.fs, l.bh, l.bl, l.bp, services, partRows) <= budget - (l.diag ? DIAG_H : 0)) { cfg = l; break; }
+  }
+  // Everything on the job goes on the job sheet. This used to drop rows until the card fitted a
+  // single page and print "+N more lines — see the full job in the system", which is exactly the
+  // detail the mechanic in the bay does not have the system in front of them to go and read.
+  // The smallest level above is chosen when a job is long, and anything still over the page runs
+  // onto a second sheet (tickTable already breaks pages via checkBreak).
+  const sShow = services, pShow = partRows;
+
+  // ── Service / Labour table ── the work to do (job description), tick-off, plus blank rows
+  // for the mechanic to log labour (Tech / Qty / Done).
+  tickTable(['Service / Labour', 'Tech', 'Qty', 'Done'], lcw, sShow, cfg.bl, cfg.fs, cfg.bh);
+  y += 5;
+
+  // ── Parts table ── the actual parts on the job, tick-off, plus blank rows for extras.
+  tickTable(['Parts', 'Part No.', 'Done'], pcw, pShow, cfg.bp, cfg.fs, cfg.bh);
   y += 4;
 
-  // Car diagram
-  const diagram = findImg('car_diagram.png');
+  // Car diagram — dropped first when space is tight (see levels above).
+  const diagram = cfg.diag ? findImg('car_diagram.png') : null;
   if (diagram) {
-    const dw = CW * 0.22;
-    const dh = dw * (274 / 355);
+    const dh = DIAG_W * (274 / 355);
     y = checkBreak(dh + 70);
-    doc.image(diagram, M, y, { width: dw });
+    doc.image(diagram, M, y, { width: DIAG_W });
     y += dh + 4;
   }
 
@@ -781,6 +821,95 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   doc.text(TC_BOLD, M, y); y += 11;
   doc.font('Helvetica').fontSize(7.5);
   doc.text('Signed ________________          Date ________________', M, y);
+
+  // Diagnostic/service jobs carry the vehicle's Service Reset & OBD sheet as an extra
+  // page — OBD port location (with the Trakm8 interior diagram when captured) and the
+  // service-light reset procedure. See getRichPDF for when service_reset is populated.
+  const sr = data.service_reset;
+  if (sr) {
+    // Ask the printer for double-sided (long-edge flip) so the reset sheet lands on the
+    // BACK of the job card — one piece of paper. This is a PDF viewer preference: Adobe
+    // and most print servers honour it; browsers' print dialogs follow the printer's own
+    // default instead, so the office printer should also default to duplex.
+    try { (doc as any)._root.data.ViewerPreferences = (doc as any).ref({ Duplex: 'DuplexFlipLongEdge' }); } catch { /* cosmetic */ }
+    doc.addPage();
+    y = M;
+
+    // This page must also stay exactly one page (it's the BACK of the job card). Measure
+    // at descending sizes; drop the variants section, then cap the step list if needed.
+    const steps: string[] = (sr.resetSteps || []).map((s: string, i: number) => `${i + 1}. ${s}`);
+    const variants: string[] = (sr.alternatives || []).map((s: string) => `• ${s}`);
+    const cautions: string[] = (sr.cautions || []).map((s: string) => `• ${s}`);
+    const srLevels = [
+      { fs: 9.5, iw: 300, variants: true },
+      { fs: 8.5, iw: 240, variants: true },
+      { fs: 8, iw: 200, variants: false },
+    ];
+    const srMeasure = (fs: number, iw: number, withVariants: boolean, stepList: string[]) => {
+      doc.font('Helvetica').fontSize(fs);
+      const para = (t: string) => doc.heightOfString(t, { width: CW }) + 5;
+      let h = 42; // title + subtitle
+      if (sr.obdLocation) h += 16 + para(sr.obdLocation);
+      if (sr.obdImage?.dataBase64) h += iw * (526 / 790) + 20;
+      if (stepList.length) h += 16 + stepList.reduce((a, s) => a + para(s), 0) + 2;
+      if (withVariants && variants.length) h += 16 + variants.reduce((a, s) => a + para(s), 0) + 2;
+      if (cautions.length) h += 16 + cautions.reduce((a, s) => a + para(s), 0);
+      return h;
+    };
+    const srBudget = PH - BOTTOM - M;
+    let srCfg = srLevels[srLevels.length - 1];
+    for (const l of srLevels) {
+      if (srMeasure(l.fs, l.iw, l.variants, steps) <= srBudget) { srCfg = l; break; }
+    }
+    let srSteps = steps;
+    while (srMeasure(srCfg.fs, srCfg.iw, srCfg.variants, srSteps) > srBudget && srSteps.length > 4) {
+      srSteps = srSteps.slice(0, -1);
+    }
+    if (srSteps.length < steps.length) srSteps = [...srSteps, '… see the full procedure in the system'];
+
+    doc.font('Helvetica-Bold').fontSize(15).fillColor('black');
+    doc.text(`Service Reset & OBD${sr.registration ? ` — ${sr.registration}` : ''}`, M, y); y += 20;
+    doc.font('Helvetica').fontSize(9).fillColor('#555555');
+    doc.text(`${sr.vehicleDesc || ''}${sr.generatedAt ? `  ·  generated ${new Date(sr.generatedAt).toLocaleDateString('en-GB')}` : ''}`, M, y); y += 22;
+
+    const srHead = (t: string) => {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+      doc.text(t.toUpperCase(), M, y); y += 14;
+      doc.moveTo(M, y - 3).lineTo(PW - M, y - 3).lineWidth(0.5).strokeColor('#bbbbbb').stroke();
+      y += 2;
+    };
+    // height-capped so an estimate miss can never trigger PDFKit's auto-pagination
+    const srPara = (t: string, colour = 'black') => {
+      doc.font('Helvetica').fontSize(srCfg.fs).fillColor(colour);
+      const h = doc.heightOfString(t, { width: CW });
+      doc.text(t, M, y, { width: CW, height: Math.max(10, PH - BOTTOM - y), ellipsis: true }); y += h + 5;
+    };
+
+    if (sr.obdLocation) { srHead('OBD port location'); srPara(sr.obdLocation); }
+    if (sr.obdImage?.dataBase64) {
+      try {
+        const img = Buffer.from(sr.obdImage.dataBase64, 'base64');
+        const ih = srCfg.iw * (526 / 790);
+        doc.image(img, M, y, { width: srCfg.iw }); y += ih + 4;
+        doc.font('Helvetica').fontSize(7.5).fillColor('#555555');
+        doc.text(`Port highlighted — ${sr.obdImage.source || 'Trakm8 OBD checker'}${sr.obdImage.matched ? ` (${sr.obdImage.matched})` : ''}`, M, y); y += 16;
+      } catch { /* bad image data — text still printed */ }
+    }
+    if (srSteps.length) {
+      srHead('Service light reset');
+      srSteps.forEach((s) => srPara(s));
+      y += 2;
+    }
+    if (srCfg.variants && variants.length) {
+      srHead('Variants');
+      variants.forEach((s) => srPara(s));
+      y += 2;
+    }
+    if (cautions.length && y < PH - BOTTOM - 30) {
+      srHead('Cautions');
+      cautions.forEach((s) => srPara(s, '#92400e'));
+    }
+  }
 
   const buf = await finish();
   return { content: buf.toString('base64'), filename: `${data.doc?.reference || 'JobSheet'}.pdf` };
@@ -939,9 +1068,7 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
 
       // Measure the summary column so the vehicle name can never run underneath it.
       doc.font('Helvetica').fontSize(10);
-      const summaryW =
-        Math.max(doc.widthOfString('TOTAL SERVICE VISITS'), doc.widthOfString('MAINTENANCE INVESTMENT')) +
-        INSET + 12;
+      const summaryW = doc.widthOfString('TOTAL SERVICE VISITS') + INSET + 12;
       const nameW = CW - PAD - summaryW;
 
       // Long names ("MERCEDES-BENZ GLA-CLASS GLA 200 AMG LINE") shrink to fit one line.
@@ -980,10 +1107,9 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
       doc.font('Helvetica').fontSize(16).fillColor(BRAND_BLUE);
       doc.text(String(data.total_records || '0'), PAGE_M, y + 28, { width: CW - INSET, align: 'right' });
 
-      doc.font('Helvetica').fontSize(10).fillColor('#6b7280');
-      doc.text('MAINTENANCE INVESTMENT', PAGE_M, y + 50, { width: CW - INSET, align: 'right' });
-      doc.font('Helvetica').fontSize(12).fillColor(BRAND_BLUE);
-      doc.text(data.cumulative_spend || '£0.00', PAGE_M, y + 63, { width: CW - INSET, align: 'right' });
+      // No cumulative spend. This document goes to owners and to buyers of the car, and what it
+      // needs to show is that the car was looked after — not a running total of what it cost.
+      // The per-visit figures stay; only the headline "investment" number is gone.
 
       y += boxH + 25;
 
@@ -1016,17 +1142,24 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('No maintenance records found for this vehicle on the digital database.', PAGE_M, y + 20, { width: CW, align: 'center' });
   }
 
-  const money = (n: any) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}\u00a3${Math.abs(v).toFixed(2)}`; };
-  const fmtQty = (q: any) => { const n = Number(q) || 0; return Number.isInteger(n) ? String(n) : String(parseFloat(n.toFixed(4))); };
-
-  // \u2500\u2500 Compact mode: a one-page overview table of every visit. Used when the full invoice
-  //    copies are attached after it, so the summary doesn't duplicate their detail. \u2500\u2500
-  if (data.compact) {
+  // \u2500\u2500 A one-row-per-visit overview table (date/ref/mileage/work/total). This is the ONLY
+  //    summary layout now \u2014 it's always cleaner as a scannable table than the older "full
+  //    itemised" per-visit breakdown was, whether or not full invoice copies also follow it. \u2500\u2500
+  {
     const colRef = PAGE_M + 82;
     const colMile = PAGE_M + 140;
     const colWork = PAGE_M + 208;
     const workW = (PW - PAGE_M - 74) - colWork;
-    const rowH = 17;
+    const MIN_ROW_H = 17;
+    // A job used to be clamped to a single 11pt line and ellipsised, so "Check Front & Rear
+    // Brakes + Supply & Fit Front Disks &…" was as much of the work as the customer ever saw —
+    // on a service history that's the whole point of the document. Rows now grow to fit the
+    // description. The cap is generous but real: one rambling entry mustn't swallow a page.
+    // Near a full page. The point of this document is to SHOW the work, so a row grows for as
+    // long as the job needs; a row taller than the page it sits on would break checkBreak's
+    // logic, so the cap exists for that and nothing else. Named apart from the module-level
+    // MAX_ROW_H, which caps the job-sheet tables for a different reason (one-page job sheets).
+    const HIST_MAX_ROW_H = Math.floor(PH - PAGE_M * 2 - 60);
 
     doc.save().rect(PAGE_M, y, CW, 18).fill(BRAND_BLUE).restore();
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff');
@@ -1037,17 +1170,75 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     doc.text('Total', PAGE_M, y + 5, { width: CW - 6, align: 'right' });
     y += 18;
 
+    const PAD_T = 5, PAD_B = 6;
+    // Grouped by year. A flat run of 25 visits is hard to place in time — "what did it have done
+    // in 2024?" means scanning dates — so each year gets a band, with the number of visits in it.
+    // Entries arrive newest-first and stay that way; the year is taken from the row's own date so
+    // an unparseable one falls into "Undated" rather than silently joining the previous year.
+    const yearOf = (e: any) => {
+      const m = String(e.date || '').match(/\b(19|20)\d{2}\b/);
+      return m ? m[0] : 'Undated';
+    };
+    const yearCounts = new Map<string, number>();
+    for (const e of entries) yearCounts.set(yearOf(e), (yearCounts.get(yearOf(e)) || 0) + 1);
+    let lastYear: string | null = null;
+
     entries.forEach((e: any, i: number) => {
+      const yr = yearOf(e);
+      if (yr !== lastYear) {
+        lastYear = yr;
+        const n = yearCounts.get(yr) || 0;
+        y = checkBreak(20 + MIN_ROW_H);   // never leave a year band stranded at the foot of a page
+        doc.save().rect(PAGE_M, y, CW, 16).fill('#e8edf3').restore();
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_BLUE);
+        doc.text(yr, PAGE_M + 6, y + 4, { lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor('#6b7280');
+        doc.text(`${n} visit${n === 1 ? '' : 's'}`, PAGE_M, y + 4.5, { width: CW - 6, align: 'right' });
+        y += 16;
+      }
+
+      // The write-up is a heading followed by the steps taken. Drawn as one blob it reads as a
+      // wall of grey, so the heading keeps the row scannable in bold and the steps sit under it
+      // a size down and indented — the same shape as the job sheet the customer signed.
+      const full = String(e.work || e.title || 'Service').trim() || 'Service';
+      const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
+      const head = lines[0] || 'Service';
+      const steps = lines.slice(1);
+      const stepText = steps.join('\n');
+      const STEP_IND = 6;
+
+      doc.font('Helvetica-Bold').fontSize(8.5);
+      const headH = doc.heightOfString(head, { width: workW });
+      doc.font('Helvetica').fontSize(7.5);
+      const stepsH = stepText ? doc.heightOfString(stepText, { width: workW - STEP_IND, lineGap: 1 }) : 0;
+
+      const wanted = PAD_T + headH + (stepsH ? stepsH + 2 : 0) + PAD_B;
+      const rowH = Math.min(HIST_MAX_ROW_H, Math.max(MIN_ROW_H, Math.ceil(wanted)));
+      // Only what's left for the steps after the heading has taken its share.
+      const stepsRoom = rowH - PAD_T - headH - 2 - PAD_B;
+      const clipped = stepsH > stepsRoom;
+
       y = checkBreak(rowH + 4);
-      if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#f4f6f8').restore(); }
-      doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
+      if (i % 2 === 1) { doc.save().rect(PAGE_M, y, CW, rowH).fill('#fbfcfd').restore(); }
+
       const dp = String(e.date || '').split(' ');
       const shortDate = dp.length === 3 ? `${dp[0]} ${dp[1].slice(0, 3)} ${dp[2]}` : (e.date || '');
-      doc.text(shortDate, PAGE_M + 6, y + 4, { width: 74, lineBreak: false });
-      doc.text(e.doc_ref || '', colRef, y + 4, { width: 56, lineBreak: false });
-      doc.text(e.mileage || '', colMile, y + 4, { width: 64, lineBreak: false });
-      doc.text(e.title || 'Service', colWork, y + 4, { width: workW, height: 11, ellipsis: true, lineBreak: false });
-      doc.font('Helvetica-Bold').text(e.total || '', PAGE_M, y + 4, { width: CW - 6, align: 'right' });
+      doc.font('Helvetica').fontSize(8.5).fillColor('#1f2937');
+      doc.text(shortDate, PAGE_M + 6, y + PAD_T, { width: 74, lineBreak: false });
+      doc.text(e.doc_ref || '', colRef, y + PAD_T, { width: 56, lineBreak: false });
+      doc.text(e.mileage || '', colMile, y + PAD_T, { width: 64, lineBreak: false });
+
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1f2937');
+      doc.text(head, colWork, y + PAD_T, { width: workW });
+      if (stepText && stepsRoom > 6) {
+        doc.font('Helvetica').fontSize(7.5).fillColor('#4b5563');
+        doc.text(stepText, colWork + STEP_IND, y + PAD_T + headH + 2, {
+          width: workW - STEP_IND, height: stepsRoom, lineGap: 1, ellipsis: clipped,
+        });
+      }
+
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1f2937');
+      doc.text(e.total || '', PAGE_M, y + PAD_T, { width: CW - 6, align: 'right' });
       doc.save().strokeColor('#e5e7eb').lineWidth(0.5).moveTo(PAGE_M, y + rowH).lineTo(PW - PAGE_M, y + rowH).stroke().restore();
       y += rowH;
     });
@@ -1055,104 +1246,13 @@ export async function generateServiceHistoryPDF(data: any): Promise<{ content: s
     y += 4;
     doc.save().strokeColor(MID_GREY).lineWidth(1).moveTo(PAGE_M, y).lineTo(PW - PAGE_M, y).stroke().restore();
     y += 8;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
-    doc.text('Total invoiced', colWork - 60, y, { width: workW + 60, align: 'right' });
-    doc.text(data.cumulative_spend || '', PAGE_M, y, { width: CW - 6, align: 'right' });
-    y += 18;
-    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
-    doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
-  }
-
-  if (!data.compact) for (let idx = 0; idx < entries.length; idx++) {
-    const entry = entries[idx];
-    const headerH = 24;
-    const labelX = PAGE_M + 12;
-    const innerW = CW - 24;          // text width inside the box
-    const amtBoxW = CW - 12 - 4;     // amount right-aligned from labelX to the right edge
-    const rowTextW = innerW - 72;    // leave room on the right for the amount
-
-    // Build the section rows (GA4 order: MOT, Labour, Parts) with our prices.
-    const motRows = entry.mot ? [{ text: entry.mot.label, amount: entry.mot.amount > 0 ? entry.mot.amount : null }] : [];
-    const labourRows = (entry.labour || []).map((l: any) => ({ text: `${fmtQty(l.qty)}    ${l.label}`, amount: l.amount }));
-    const partRows = (entry.parts || []).map((p: any) => ({ text: `${fmtQty(p.qty)}    ${p.code ? p.code + '  ' : ''}${p.label}`, amount: p.amount }));
-
-    // \u2500\u2500 Measure (so the bordered box exactly fits, and page-breaks land cleanly) \u2500\u2500
-    const measureRow = (text: string) => { doc.font('Helvetica').fontSize(8.5); return Math.max(doc.heightOfString(text, { width: rowTextW }), 11) + 2; };
-    for (const r of [...motRows, ...labourRows, ...partRows] as any[]) r.h = measureRow(r.text);
-    const sectionH = (rows: any[]) => rows.length ? 13 + rows.reduce((s, r) => s + r.h, 0) + 4 : 0;
-
-    doc.font('Helvetica-Bold').fontSize(10);
-    const titleH = entry.title ? doc.heightOfString(entry.title, { width: innerW }) + 3 : 0;
-    doc.font('Helvetica').fontSize(9);
-    const narrH = entry.narrative ? doc.heightOfString(entry.narrative, { width: innerW }) + 6 : 0;
-    const totalsH = 8 + 13 * 3;
-    const boxH = headerH + 12 + titleH + narrH + sectionH(motRows) + sectionH(labourRows) + sectionH(partRows) + totalsH + 10;
-
-    y = checkBreak(boxH + 14);
-
-    // \u2500\u2500 Header bar (dark blue): doc ref \u00b7 date \u00b7 mileage \u00b7 value \u2500\u2500
-    doc.save().roundedRect(PAGE_M, y, CW, headerH, 3).fill(BRAND_BLUE).restore();
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#ffffff');
-    doc.text(entry.doc_ref || entry.invoice_number, PAGE_M + 10, y + 7);
-    doc.font('Helvetica').fontSize(10);
-    doc.text(`Date: ${entry.date}`, PAGE_M + 150, y + 7);
-    if (entry.mileage) doc.text(`Mileage: ${entry.mileage}`, PAGE_M + 300, y + 7);
-    doc.text(entry.total, PAGE_M, y + 7, { width: CW - 10, align: 'right' });
-
-    // \u2500\u2500 Body box border \u2500\u2500
-    doc.save().moveTo(PAGE_M, y + headerH).lineTo(PAGE_M, y + boxH - 3).quadraticCurveTo(PAGE_M, y + boxH, PAGE_M + 3, y + boxH)
-       .lineTo(PAGE_M + CW - 3, y + boxH).quadraticCurveTo(PAGE_M + CW, y + boxH, PAGE_M + CW, y + boxH - 3)
-       .lineTo(PAGE_M + CW, y + headerH).strokeColor(MID_GREY).lineWidth(1).stroke().restore();
-
-    let contentY = y + headerH + 12;
-
-    // Narrative: heading line + body, mirroring GA4.
-    if (entry.title) {
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(BRAND_BLUE);
-      doc.text(entry.title, labelX, contentY, { width: innerW });
-      contentY = doc.y + 3;
+    doc.font('Helvetica').fontSize(9).fillColor('#6b7280');
+    doc.text(`${entries.length} visit${entries.length === 1 ? '' : 's'} recorded`, PAGE_M, y, { width: CW - 6, align: 'right' });
+    y += 16;
+    if (data.invoicesFollow) {
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#6b7280');
+      doc.text('A full copy of each invoice is attached on the following pages.', PAGE_M, y, { width: CW });
     }
-    if (entry.narrative) {
-      doc.font('Helvetica').fontSize(9).fillColor(DARK_TEXT);
-      doc.text(entry.narrative, labelX, contentY, { width: innerW });
-      contentY = doc.y + 6;
-    }
-
-    // MOT / Labour / Parts sections with prices.
-    const renderSection = (name: string, rows: any[]) => {
-      if (!rows.length) return;
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_BLUE);
-      doc.text(name, labelX, contentY);
-      contentY += 13;
-      for (const r of rows) {
-        doc.font('Helvetica').fontSize(8.5).fillColor('#374151');
-        doc.text(r.text, labelX + 4, contentY, { width: rowTextW });
-        if (r.amount != null) {
-          doc.fillColor('#111827').text(money(r.amount), labelX, contentY, { width: amtBoxW, align: 'right' });
-        }
-        contentY += r.h;
-      }
-      contentY += 4;
-    };
-    renderSection('MOT', motRows);
-    renderSection('Labour', labourRows);
-    renderSection('Parts', partRows);
-
-    // Totals.
-    addDividerLine(contentY, 0.5, '#cbd5e1');
-    contentY += 6;
-    const t = entry.totals || { net: 0, vat: 0, gross: 0 };
-    const totalLine = (label: string, amount: number, o: any = {}) => {
-      doc.font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 9).fillColor(o.color || '#374151');
-      doc.text(label, labelX, contentY, { width: innerW - 70, align: 'right' });
-      doc.text(money(amount), labelX, contentY, { width: amtBoxW, align: 'right' });
-      contentY += 13;
-    };
-    totalLine('Subtotal (excl. VAT)', t.net);
-    totalLine('VAT', t.vat);
-    totalLine('Total', t.gross, { bold: true, size: 10, color: BRAND_BLUE });
-
-    y += boxH + 14;
   }
 
   // Final Footer string on the last page

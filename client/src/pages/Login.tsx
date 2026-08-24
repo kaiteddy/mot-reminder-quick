@@ -39,7 +39,11 @@ export default function Login() {
             }
 
             toast.success("Welcome back!");
-            window.location.href = "/";
+            // Back to whatever they were trying to open, not always the home page. Only
+            // same-origin paths are honoured, so ?next= can't be used to bounce elsewhere.
+            const next = new URLSearchParams(window.location.search).get("next");
+            const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+            window.location.href = safe;
         } catch (error: any) {
             console.error(error);
             toast.error(error.message);

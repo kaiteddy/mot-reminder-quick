@@ -1,7 +1,10 @@
+import { useState, type ReactNode } from "react";
+import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DefectExplainButton } from "@/components/DefectExplainer";
 import {
     Car,
     User,
@@ -17,17 +20,24 @@ import {
     Droplet,
     Thermometer,
     Wrench,
-    AlertTriangle,
     Copy,
     Check,
     ExternalLink,
-    Sparkles,
-    ShieldAlert,
-    Banknote,
+    Search,
+    X,
+    Tag,
     Gauge,
-    CheckCircle2
+    Receipt,
+    CalendarClock,
+    Cog,
+    Hash,
+    ArrowLeftRight
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
+import { useClassicBase } from "@/lib/classicNav";
+import { openSevenZap } from "@/lib/sevenZap";
+import { ServiceResetCard } from "@/components/ServiceResetCard";
+import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatMOTDate, getMOTStatusBadge } from "@/lib/motUtils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -35,6 +45,7 @@ import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
 import { AutodataQRDialog } from "@/components/AutodataQRDialog";
+import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import {
     Dialog,
     DialogContent,
@@ -43,51 +54,272 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Smartphone, QrCode } from "lucide-react";
+import { Smartphone, QrCode, ChevronDown, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// SWS returns engine oil as one row per ACEA/API/ILSAC standard (8+ rows that differ only by
-// grade). Condense to the distinct SAE grades (preferred first) + capacity; dedupe other fluids.
-function LubricantsSummary({ lubricants }: { lubricants: any[] }) {
+
+// SWS lubricant extraction, condensed to one line per fluid for the Specifications & Status
+// tiles (engine oil grade+capacity, coolant/brake fluid spec+capacity, gear oil spec).
+function engineOilInfo(lubricants: any): { grades: string; capacity: string } | null {
     const lubes = Array.isArray(lubricants) ? lubricants : [];
-    const fmtCap = (cap: any) => { const v = String(cap ?? "").replace(/\s*\(l\)\s*/i, "").trim(); return v ? `${v} L` : ""; };
     const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
     const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || String(s || "").trim();
     const oils = lubes.filter(isOil);
-    const prefG = Array.from(new Set(oils.filter((o) => /PREFERRED/i.test(o?.description || "")).map((o) => gradeOf(o.specification)).filter(Boolean)));
-    const allG = Array.from(new Set(oils.map((o) => gradeOf(o.specification)).filter(Boolean)));
-    const oilGrades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
-    const oilCap = oils.find((o) => o?.capacity)?.capacity;
-    const seen = new Set<string>();
-    const others = lubes.filter((l) => !isOil(l)).filter((l) => { const k = `${l?.description}|${l?.specification}`; if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!lubes.length) return <p className="text-sm text-muted-foreground italic">Specifications available in technical documents</p>;
+    if (!oils.length) return null;
+    const prefG = Array.from(new Set(oils.filter((o: any) => /PREFERRED/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean)));
+    const allG = Array.from(new Set(oils.map((o: any) => gradeOf(o.specification)).filter(Boolean)));
+    const grades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
+    const cap = oils.find((o: any) => o?.capacity)?.capacity;
+    const capStr = cap ? String(cap).replace(/\s*\(l\)\s*/i, "").trim() : "";
+    return { grades: grades.length ? grades.slice(0, 2).join(" / ") : (oils[0]?.specification || "N/A"), capacity: capStr ? `${capStr} L` : "" };
+}
+function findLubricant(lubricants: any, matcher: RegExp): { spec: string; capacity: string } | null {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const item = lubes.find((l: any) => matcher.test(String(l?.description || "")));
+    if (!item) return null;
+    const capStr = item.capacity ? String(item.capacity).replace(/\s*\(l\)\s*/i, "").trim() : "";
+    return { spec: item.specification || "N/A", capacity: capStr ? `${capStr} L` : "" };
+}
+function gearOilInfo(lubricants: any): string | null {
+    const lubes = Array.isArray(lubricants) ? lubricants : [];
+    const pref = lubes.find((l: any) => /GEAR OIL/i.test(l?.description || "") && /PREFERRED/i.test(l?.description || ""));
+    const alt = lubes.find((l: any) => /GEAR OIL/i.test(l?.description || "") && /ALTERNATIVE/i.test(l?.description || ""));
+    const parts = [pref?.specification, alt?.specification].filter(Boolean);
+    return parts.length ? parts.join(" / ") : null;
+}
+
+// One uniform tile per spec field — same size/shape whether it's plain text (Make, Model) or a
+// status field (MOT Expiry, Tax Due), so the grid reads as one clean sheet instead of some
+// fields floating in oversized coloured boxes next to plain unboxed ones.
+const SPEC_TONE_CLASS: Record<string, string> = {
+    green: "bg-green-50 border-green-200",
+    red: "bg-red-50 border-red-200",
+    orange: "bg-orange-50 border-orange-200",
+    blue: "bg-blue-50 border-blue-200",
+    cyan: "bg-cyan-50 border-cyan-200",
+    neutral: "bg-muted/40 border-transparent",
+};
+type SpecTone = "green" | "red" | "orange" | "blue" | "cyan" | "neutral";
+// Matching icon colour per tone, so a tile's icon reinforces its background instead of sitting
+// grey regardless of context (a red Tax Due tile with a grey receipt icon reads as less urgent).
+const SPEC_TONE_ICON: Record<SpecTone, string> = {
+    green: "text-green-500", red: "text-red-500", orange: "text-orange-500",
+    blue: "text-blue-500", cyan: "text-cyan-500", neutral: "text-muted-foreground",
+};
+function SpecTile({ label, value, tone = "neutral", icon }: { label: string; value: ReactNode; tone?: SpecTone; icon?: ReactNode }) {
     return (
-        <div className="space-y-3">
-            {oils.length > 0 && (
-                <div className="text-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">Engine Oil</p>
-                    <p className="font-bold">
-                        {oilGrades.length ? oilGrades.map((g, i) => (
-                            <span key={i}>{i > 0 && <span className="text-muted-foreground font-normal"> · </span>}{g}{prefG.includes(g) && oilGrades.length > 1 && <span className="text-[10px] text-blue-600 font-medium"> (preferred)</span>}</span>
-                        )) : (oils[0]?.specification || "N/A")}
+        <div className={`rounded-lg border px-3 py-2 ${SPEC_TONE_CLASS[tone]}`}>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                {icon}
+                {label}
+            </p>
+            <div className="text-sm font-semibold mt-0.5">{value}</div>
+        </div>
+    );
+}
+
+const SERVICE_GRADE_LABEL: Record<string, string> = {
+    full: "Full service", interim: "Interim service", oil: "Oil change", none: "—",
+};
+const SERVICE_GRADE_TONE: Record<string, string> = {
+    full: "bg-green-100 text-green-800 border-green-200",
+    interim: "bg-blue-100 text-blue-800 border-blue-200",
+    oil: "bg-amber-100 text-amber-800 border-amber-200",
+};
+// The four items that decide the grade: oil + oil filter is an interim, adding the air and
+// pollen/cabin filters makes it a full service.
+const SERVICE_ITEMS: { key: string; label: string }[] = [
+    { key: "engineOil", label: "Engine oil" },
+    { key: "oilFilter", label: "Oil filter" },
+    { key: "airFilter", label: "Air filter" },
+    { key: "cabinFilter", label: "Pollen/cabin filter" },
+];
+
+// Big interval jobs tracked separately from the service grade — the dates you get asked for
+// and can't find quickly.
+const MILESTONES: { key: string; label: string }[] = [
+    { key: "gearboxOil", label: "Gearbox oil change" },
+    { key: "timingBelt", label: "Timing belt" },
+];
+
+/** When this car was last serviced and to what grade — worked out from the parts actually
+ * invoiced rather than from how the job was described, so a job written up as "Carried Out Full
+ * Service" with no filters on the bill still reads as an interim. The ticks are shown so the
+ * grading is auditable at a glance instead of being a black box. */
+function ServicingCard({ servicing }: { servicing: any }) {
+    const [showAll, setShowAll] = useState(false);
+    const last = servicing?.last;
+    const services: any[] = servicing?.services || [];
+
+    if (!last) {
+        return (
+            <Card className="md:col-span-3">
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base"><Wrench className="w-4 h-4" /> Servicing</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">No service found — no engine oil or filter has been invoiced for this car.</p>
+                    {/* A car can still have had a belt or gearbox oil without a graded service. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {MILESTONES.map((mst) => {
+                            const m = servicing?.milestones?.[mst.key];
+                            return (
+                                <div key={mst.key} className="rounded-lg border px-3 py-2">
+                                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{mst.label}</p>
+                                    {m ? (
+                                        <div className="text-sm font-semibold mt-0.5">
+                                            {new Date(m.date).toLocaleDateString("en-GB")}
+                                            {m.mileage ? <span className="font-normal text-muted-foreground"> · {Number(m.mileage).toLocaleString("en-GB")} mi</span> : null}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-muted-foreground mt-0.5">Not recorded</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const when = new Date(last.date);
+    const months = Math.floor((Date.now() - when.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+    const ago = months < 1 ? "this month" : months < 24 ? `${months} month${months === 1 ? "" : "s"} ago` : `${Math.floor(months / 12)} years ago`;
+    const rows = showAll ? services : services.slice(0, 4);
+
+    return (
+        <Card className="md:col-span-3">
+            <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><Wrench className="w-4 h-4" /> Servicing</CardTitle>
+                <CardDescription>Graded on the oil and filters actually invoiced</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${SERVICE_GRADE_TONE[last.grade] || ""}`}>
+                        {SERVICE_GRADE_LABEL[last.grade]}
+                    </span>
+                    <span className="text-sm font-semibold">{when.toLocaleDateString("en-GB")}</span>
+                    <span className="text-sm text-muted-foreground">{ago}</span>
+                    {last.mileage ? <span className="text-sm text-muted-foreground">at {Number(last.mileage).toLocaleString("en-GB")} mi</span> : null}
+                    <span className="text-xs text-muted-foreground">#{displayDocNo(last)}</span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                    {SERVICE_ITEMS.map((it) => {
+                        const on = !!last.items?.[it.key];
+                        return (
+                            <span key={it.key} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-green-200 bg-green-50 text-green-800" : "border-slate-200 bg-slate-50 text-slate-400"}`}>
+                                {on ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{it.label}
+                            </span>
+                        );
+                    })}
+                    {last.items?.fuelFilter && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] text-green-800"><Check className="w-3 h-3" />Fuel filter</span>
+                    )}
+                </div>
+
+                {/* "Not recorded" is deliberately not "never done": it means we hold no invoice
+                    for it, which for a car that came to us later is a different thing. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {MILESTONES.map((mst) => {
+                        const m = servicing?.milestones?.[mst.key];
+                        return (
+                            <div key={mst.key} className="rounded-lg border px-3 py-2">
+                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{mst.label}</p>
+                                {m ? (
+                                    <div className="text-sm font-semibold mt-0.5">
+                                        {new Date(m.date).toLocaleDateString("en-GB")}
+                                        {m.mileage ? <span className="font-normal text-muted-foreground"> · {Number(m.mileage).toLocaleString("en-GB")} mi</span> : null}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground mt-0.5">Not recorded</div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {services.length > 1 && (
+                    <div className="pt-1">
+                        <table className="w-full text-xs">
+                            <tbody>
+                                {rows.map((s) => (
+                                    <tr key={s.id} className="border-t border-slate-100">
+                                        <td className="py-1 whitespace-nowrap">{new Date(s.date).toLocaleDateString("en-GB")}</td>
+                                        <td className="py-1">
+                                            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${SERVICE_GRADE_TONE[s.grade] || ""}`}>{SERVICE_GRADE_LABEL[s.grade]}</span>
+                                        </td>
+                                        <td className="py-1 text-right text-muted-foreground whitespace-nowrap">{s.mileage ? `${Number(s.mileage).toLocaleString("en-GB")} mi` : "—"}</td>
+                                        <td className="py-1 text-right text-muted-foreground whitespace-nowrap">{s.milesSincePrevious ? `+${s.milesSincePrevious.toLocaleString("en-GB")}` : ""}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {services.length > 4 && (
+                            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1.5 text-xs text-violet-700 hover:underline">
+                                {showAll ? "Show less" : `Show all ${services.length} services`}
+                            </button>
+                        )}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+/** Previous holders of a cherished plate. A private registration moves from car to car, and
+ * the history above is deliberately scoped to THIS car — but the old car's work still gets
+ * asked about, so it stays one click away rather than being hidden outright. Collapsed by
+ * default, and rendered at all only when there genuinely is an earlier car. */
+function EarlierCarsOnPlate({ cars, base }: { cars: any[]; base: string }) {
+    const [open, setOpen] = useState(false);
+    if (!cars.length) return null;
+    const yr = (d: any) => (d ? new Date(d).getFullYear() : null);
+
+    return (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+            >
+                {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Earlier cars on this plate ({cars.length})
+            </button>
+            {open && (
+                <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] text-slate-400">
+                        This registration was transferred between vehicles. Their work is kept separate
+                        from the history above because they are different cars.
                     </p>
-                    {oilCap && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(oilCap)}</p>}
+                    {cars.map((c) => {
+                        const from = yr(c.firstSeen), to = yr(c.lastSeen);
+                        return (
+                            <Link
+                                key={c.id}
+                                href={`${base}/view-vehicle/${encodeURIComponent(String(c.registration || "").trim())}`}
+                                className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                            >
+                                <span className="font-medium">
+                                    {c.make} {c.model}
+                                </span>
+                                <span className="text-xs text-slate-500 shrink-0">
+                                    {c.docs} job{Number(c.docs) === 1 ? "" : "s"}
+                                    {from ? ` · ${from}${to && to !== from ? `–${to}` : ""}` : ""}
+                                </span>
+                            </Link>
+                        );
+                    })}
                 </div>
             )}
-            {others.map((l: any, i: number) => (
-                <div key={i} className="text-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase">{String(l?.description || "Fluid").replace(/\s*\(LUBRICANT SPECIFICATION\)/i, "").trim()}</p>
-                    <p className="font-bold">{l?.specification || "N/A"}</p>
-                    {l?.capacity && <p className="text-xs text-primary font-bold mt-0.5">Capacity: {fmtCap(l.capacity)}</p>}
-                </div>
-            ))}
         </div>
     );
 }
 
 // Tabbed workshop history for a vehicle: full service timeline, every part fitted, and the
 // MOT test history with advisories — mirrors how a job sheet is laid out.
-function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; registration: string }) {
+function VehicleHistoryTabs({ vehicleId, registration, make, model }: { vehicleId: number; registration: string; make?: string; model?: string }) {
     const parts = trpc.documents.partsHistory.useQuery({ vehicleId }, { staleTime: 60_000 });
     const mot = trpc.documents.motTests.useQuery({ registration }, { enabled: !!registration, staleTime: 5 * 60_000 });
     const fmt = (d: any) => { if (!d) return "-"; const s = String(d).replace(/\./g, "-").replace(" ", "T"); const dt = new Date(s); return isNaN(dt.getTime()) ? String(d).slice(0, 10) : dt.toLocaleDateString("en-GB"); };
@@ -118,10 +350,10 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                         <TableBody>
                             {parts.data!.map((p: any) => (
                                 <TableRow key={p.id}>
-                                    <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateIssued || p.dateCreated)}</TableCell>
+                                    <TableCell className="whitespace-nowrap text-sm">{fmt(p.dateCreated || p.dateIssued)}</TableCell>
                                     <TableCell className="text-sm">{p.description}</TableCell>
                                     <TableCell className="font-mono text-xs text-muted-foreground">{p.partNumber || "-"}</TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">{p.docNo}</TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">{displayDocNo(p)}</TableCell>
                                     <TableCell className="text-right text-sm">{Number(p.quantity || 0)}</TableCell>
                                     <TableCell className="text-right text-sm">£{Number(p.unitPrice || 0).toFixed(2)}</TableCell>
                                 </TableRow>
@@ -153,9 +385,10 @@ function VehicleHistoryTabs({ vehicleId, registration }: { vehicleId: number; re
                                 {t.defects?.length > 0 && (
                                     <ul className="mt-2 space-y-1 border-t border-border pt-2">
                                         {t.defects.map((d: any, j: number) => (
-                                            <li key={j} className={`text-xs flex gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
+                                            <li key={j} className={`text-xs flex items-start gap-2 ${d.dangerous ? "text-red-600" : /ADVISORY/i.test(d.type) ? "text-amber-600" : "text-slate-600"}`}>
                                                 <span className="font-semibold uppercase shrink-0 w-16">{d.dangerous ? "Dangerous" : d.type}</span>
                                                 <span>{d.text}</span>
+                                                <DefectExplainButton defectText={d.text} defectType={d.type} isDangerous={!!d.dangerous} make={make} model={model} />
                                             </li>
                                         ))}
                                     </ul>
@@ -177,6 +410,7 @@ export default function VehicleDetails() {
     console.log("VehicleDetails: registration detected from URL:", registration);
 
     const [, setLocation] = useLocation(); // Added
+    const base = useClassicBase();
     const utils = trpc.useUtils(); // Added
 
     const { data: result, isLoading } = trpc.vehicles.getByRegistration.useQuery(
@@ -187,6 +421,33 @@ export default function VehicleDetails() {
     const vehicle = result?.vehicle;
     const customer = result?.customer;
     const reminders = result?.reminders || [];
+    const history = result?.history || [];
+    // Physically different cars that previously wore this plate (cherished transfer) — kept OUT
+    // of the history above and offered as a separate link instead.
+    const otherCarsOnPlate: any[] = (result as any)?.otherCarsOnPlate || [];
+    // Last service + grade, worked out from the parts invoiced (see getVehicleServicing).
+    const servicing = (result as any)?.servicing;
+
+    // MOT/tax are free at DVLA and can change any time a test happens — the cached vehicles row
+    // (last refreshed whenever it was last looked up) can be weeks stale, showing "Expired" for a
+    // car that's since had its MOT renewed. Refresh live on every view; SWS/UKVD spec data stays
+    // cached/manual ("Fetch Premium Data") since that one costs money per call.
+    const motTaxLive = trpc.vehicles.refreshMotTax.useQuery(
+        { registration: registration || "" },
+        { enabled: !!registration, staleTime: 5 * 60_000 }
+    );
+    const liveMotExpiry = motTaxLive.data?.motExpiryDate ?? vehicle?.motExpiryDate ?? null;
+    const liveTaxStatus = motTaxLive.data?.taxStatus ?? vehicle?.taxStatus ?? null;
+    const liveTaxDueDate = motTaxLive.data?.taxDueDate ?? vehicle?.taxDueDate ?? null;
+    // The UKVD header photo is a third-party hotlinked image — it can 404/expire independently
+    // of our own data. Track the specific URL that failed so a broken link falls back to the
+    // manufacturer logo instead of showing a broken-image icon.
+    const [failedImgUrl, setFailedImgUrl] = useState<string | null>(null);
+    const [openReminder, setOpenReminder] = useState<any>(null);
+
+    const [rightTab, setRightTab] = useState<"General" | "Specs" | "Extra" | "Features" | "Notes">("General");
+    const [historyTab, setHistoryTab] = useState<"issued" | "parts" | "reminders">("issued");
+    const partsHistory = trpc.documents.partsHistory.useQuery({ vehicleId: vehicle?.id as number }, { enabled: !!vehicle?.id && historyTab === "parts", staleTime: 60_000 });
 
     // Added fetchTechnicalData mutation
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
@@ -221,9 +482,51 @@ export default function VehicleDetails() {
         }
     });
 
+    const deleteVehicle = trpc.database.delete.useMutation({
+        onSuccess: () => {
+            toast.success("Vehicle deleted.");
+            setLocation(`${base}/vehicles`);
+        },
+        onError: (err: any) => {
+            toast.error("Failed to delete vehicle: " + err.message);
+        }
+    });
+
+    const soon = (label: string) => () => toast.message(`${label} isn't available in Classic view yet.`);
+    const money = (v: any) => (v == null || v === "" || Number(v) === 0 ? "" : Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
     const formatDate = (date: Date | string | null) => {
         if (!date) return "-";
         return new Date(date).toLocaleDateString("en-GB");
+    };
+    // Days between today and a date — negative once it's in the past. Shared by MOT expiry and
+    // tax due so both read "X days left" / "Overdue Xd" instead of just a bare date.
+    const daysFromToday = (date: Date | string | null): number | null => {
+        if (!date) return null;
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return null;
+        d.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return Math.round((d.getTime() - today.getTime()) / 86400000);
+    };
+    const relativeDays = (days: number | null): string => {
+        if (days == null) return "";
+        if (days < 0) return `Overdue ${Math.abs(days)}d`;
+        if (days === 0) return "Due today";
+        if (days === 1) return "Due tomorrow";
+        return `${days}d left`;
+    };
+    // Vehicle age in whole years from date of first registration, as of today.
+    const vehicleAge = (date: Date | string | null): string => {
+        if (!date) return "";
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return "";
+        const today = new Date();
+        let years = today.getFullYear() - d.getFullYear();
+        const hadBirthdayThisYear = today.getMonth() > d.getMonth() || (today.getMonth() === d.getMonth() && today.getDate() >= d.getDate());
+        if (!hadBirthdayThisYear) years--;
+        return years >= 0 ? `${years} yr${years === 1 ? "" : "s"} old` : "";
     };
 
     if (isLoading) {
@@ -246,7 +549,7 @@ export default function VehicleDetails() {
                     <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
                     <h2 className="text-xl font-bold">Vehicle Not Found</h2>
                     <p className="text-muted-foreground mb-6">Could not find vehicle with registration: {registration}</p>
-                    <Link href="/vehicles">
+                    <Link href={`${base}/vehicles`}>
                         <Button variant="outline">
                             <ArrowLeft className="w-4 h-4 mr-2" />
                             Back to Vehicles
@@ -257,10 +560,273 @@ export default function VehicleDetails() {
         );
     }
 
-    const motInfo = formatMOTDate(vehicle.motExpiryDate);
+    const motInfo = formatMOTDate(liveMotExpiry);
     const motBadge = getMOTStatusBadge(motInfo);
 
     const jobSummaryUrl = `${window.location.protocol}//${window.location.host}/mobile/job/${vehicle.id}`;
+
+    if (base) {
+        const altMobile = Array.isArray(customer?.altContacts) ? (customer!.altContacts as any[])[0]?.phone : undefined;
+        const CHECKBOX_FLAGS_LEFT = ["Air Conditioning", "Power Steering", "ABS Brakes", "Traction Control", "Pollen Filter"];
+        const CHECKBOX_FLAGS_RIGHT = ["Solid Discs", "Vented Discs", "Rear Shoes & Cylinders", "Rear Discs", "Timing Chain"];
+        const HISTORY_TABS: { key: "issued" | "parts" | "reminders" | null; label: string }[] = [
+            { key: "issued", label: "Issued Docs" },
+            { key: null, label: "Other Docs" },
+            { key: null, label: "Appointments" },
+            { key: null, label: "All Labour" },
+            { key: "parts", label: "All Parts" },
+            { key: null, label: "All Advisories" },
+            { key: "reminders", label: "Reminders" },
+            { key: null, label: "Overview" },
+        ];
+        return (
+            <DashboardLayout>
+                <div className="vd-page">
+                <div className="vd-body">
+                    <div className="js-titlebar" style={{ background: "linear-gradient(90deg, #5c5c5c 0%, #464646 58%, #3a3a3a 100%)" }}>
+                        <div>
+                            <span className="text-amber-300">★</span>
+                            <strong>Vehicle Details:</strong>
+                            <span className="text-white/80 vd-title-text" title={`${ga4Spaced(vehicle.registration || "")} - ${vehicle.make as string} ${vehicle.model as string}${(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}`}>{ga4Spaced(vehicle.registration || "")} - {vehicle.make as string} {vehicle.model as string}{(vehicle as any).derivative ? ` ${(vehicle as any).derivative}` : ""}</span>
+                        </div>
+                        <button type="button" className="js-notice" onClick={soon("Notice")}>Notice</button>
+                        <div className="js-window-controls">
+                            <button type="button" onClick={() => { if (window.history.length > 1) window.history.back(); else setLocation(`${base}/vehicles`); }} title="Close"><X className="w-4 h-4" /></button>
+                        </div>
+                    </div>
+
+                    <nav className="js-primary-actions">
+                        <button className="js-action-button" onClick={soon("Save")}>Save</button>
+                        <button className="js-action-button" onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration as string)}&docType=JS`)}>New Doc</button>
+                        <button className="js-action-button" onClick={() => customer && setLocation(`${base}/customers/${customer.id}`)} disabled={!customer}>View Owner</button>
+                        <button className="js-action-button" onClick={soon("Print")}>Print</button>
+                        <button className="js-action-button" onClick={soon("History")}>History</button>
+                        <button className="js-action-button" onClick={soon("Attachments")}>Attachments</button>
+                        <button className="js-action-button" onClick={soon("Tech Data")}>Tech Data</button>
+                        <button className="js-action-button" onClick={() => setLocation(`/mot-check?reg=${encodeURIComponent(vehicle.registration as string)}`)}>MOT Check</button>
+                        <span className="js-action-spacer" />
+                        <button
+                            className="js-action-button"
+                            disabled={deleteVehicle.isPending}
+                            onClick={() => {
+                                if (window.confirm(`Delete ${vehicle.registration}? This removes the vehicle record — its service history stays on the system.`)) {
+                                    deleteVehicle.mutate({ vehicleIds: [vehicle.id as number] });
+                                }
+                            }}
+                        >
+                            Delete
+                        </button>
+                    </nav>
+
+                    <div className="vd-main">
+                        <div className="vd-specs">
+                            <div className="js-lookup-row">
+                                <span>Registration</span>
+                                <div className="js-combo-field">
+                                    <input readOnly value={ga4Spaced(vehicle.registration || "")} className="bg-yellow-50 font-mono font-semibold" />
+                                    <span className="js-combo-arrow" aria-hidden="true">▾</span>
+                                    <button type="button" className="js-combo-clear" disabled aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                                </div>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                    <button type="button" className="js-search-button" onClick={soon("VRM Lookup")}>
+                                        <span className="js-search-icon"><Search className="w-3.5 h-3.5" /></span>
+                                        <span className="js-search-label">VRM Lookup</span>
+                                    </button>
+                                    <button type="button" className="js-search-button" onClick={soon("VRM Transfer")}>
+                                        <span className="js-search-label">VRM Transfer</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <label className="js-field"><span>Make / Model</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle.make as string) || ""} />
+                                    <input readOnly value={(vehicle.model as string) || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Derivative</span><input readOnly value={(vehicle as any).derivative || ""} /></label>
+                            <label className="js-field"><span>Chassis Number</span><input readOnly value={vehicle.vin || ""} /></label>
+                            <label className="js-field"><span>Engine CC</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={vehicle.engineCC || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Fuel Type</span>
+                                    <input readOnly value={(vehicle.fuelType as string) || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Engine Code</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle as any).engineCode || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Engine No</span>
+                                    <input readOnly value={(vehicle as any).engineNo || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Colour</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle.colour as string) || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Paint Code</span>
+                                    <input readOnly value={(vehicle as any).paintCode || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Key Code</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={(vehicle as any).keyCode || ""} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Radio Code</span>
+                                    <input readOnly value={(vehicle as any).radioCode || ""} />
+                                </div>
+                            </label>
+                            <label className="js-field"><span>Date Manufactured</span>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                    <input readOnly value={formatDate(vehicle.dateOfRegistration)} />
+                                    <span style={{ alignSelf: "center", fontSize: 12, color: "#555", flexShrink: 0 }}>Date Reg</span>
+                                    <input readOnly value={formatDate(vehicle.dateOfRegistration)} />
+                                </div>
+                            </label>
+                            {/* Tyre size/depth aren't tracked in the schema yet — shown for visual
+                                fidelity with the reference, not persisted. */}
+                            <div className="vd-tyres">
+                                <span>Tyre Size</span>
+                                <input placeholder="Front" />
+                                <input placeholder="Rear" />
+                                <span>Tyre Depth</span>
+                                <input placeholder="Front" />
+                                <input placeholder="Rear" />
+                            </div>
+                        </div>
+
+                        <div className="vd-owner-panel">
+                            <div className="js-history-tabs">
+                                {(["General", "Specs", "Extra", "Features", "Notes"] as const).map((t) => (
+                                    <button key={t} type="button" className={rightTab === t ? "active" : ""} onClick={() => setRightTab(t)}>{t}</button>
+                                ))}
+                            </div>
+                            <div className="vd-owner-body">
+                                {rightTab === "General" ? (
+                                    <>
+                                        <div className="vd-stock-row">
+                                            <span>Used Vehicle Stock</span>
+                                            <div className="vd-yn-toggle">
+                                                <button type="button" onClick={soon("Used Vehicle Stock")}>Y</button>
+                                                <button type="button" className="on" onClick={soon("Used Vehicle Stock")}>N</button>
+                                            </div>
+                                            <span style={{ marginLeft: 12 }}>Owner</span>
+                                            <div className="vd-owner-actions">
+                                                <button type="button" className="ga4-btn" disabled={!customer} onClick={() => customer && setLocation(`${base}/customers/${customer.id}`)}>View</button>
+                                                <button type="button" className="ga4-btn" onClick={soon("Change owner")}>Change</button>
+                                                <button
+                                                    type="button"
+                                                    className="ga4-btn"
+                                                    disabled={!customer || unlinkOwner.isPending}
+                                                    onClick={() => {
+                                                        if (customer && window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned.`)) {
+                                                            unlinkOwner.mutate({ vehicleId: vehicle.id as number });
+                                                        }
+                                                    }}
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <label className="js-field"><span>Acc Number</span><input readOnly value={customer?.accountNumber || ""} /></label>
+                                        <label className="js-field"><span>Name</span><input readOnly value={customer?.name || ""} /></label>
+                                        <label className="js-field"><span>Telephone</span><input readOnly value={customer?.phone || ""} /></label>
+                                        <label className="js-field"><span>Mobile</span><input readOnly value={altMobile || ""} /></label>
+                                        <div className="vd-checkbox-grid">
+                                            {CHECKBOX_FLAGS_LEFT.map((f) => (
+                                                <label key={f}><input type="checkbox" disabled /> {f}</label>
+                                            ))}
+                                            {CHECKBOX_FLAGS_RIGHT.map((f) => (
+                                                <label key={f}><input type="checkbox" disabled /> {f}</label>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="vd-placeholder">{rightTab} isn't available in Classic view yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="vd-history-panel">
+                        <div className="js-history-tabs">
+                            {HISTORY_TABS.map((t) => (
+                                <button
+                                    key={t.label}
+                                    type="button"
+                                    className={t.key && historyTab === t.key ? "active" : ""}
+                                    onClick={t.key ? () => setHistoryTab(t.key as "issued" | "parts" | "reminders") : soon(t.label)}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="vd-history-body">
+                        {historyTab === "issued" && (
+                            history.length === 0 ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row">
+                                        <span>Date</span><span>Doc No</span><span>Acc Number</span><span>Customer</span><span>Description</span><span>Mileage</span><span>Total</span><span>Receipts</span><span>Balance</span><span></span>
+                                    </div>
+                                    {history.map((d: any) => (
+                                        <button key={d.id} type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                                            <span>{formatDate(d.dateCreated || d.dateIssued)}</span>
+                                            <span>{d.docType} {displayDocNo(d)}</span>
+                                            <span>{d.accountNumber || ""}</span>
+                                            <span>{d.customerName || ""}</span>
+                                            <span>{d.mainDescription || ""}</span>
+                                            <span className="vd-num">{d.mileage ? Number(d.mileage).toLocaleString("en-GB") : ""}</span>
+                                            <span className="vd-num">{money(d.totalGross)}</span>
+                                            <span>{d.paymentMethods || ""}</span>
+                                            <span className="vd-num">{money(d.balance)}</span>
+                                            <span className="vd-open-btn">Open</span>
+                                        </button>
+                                    ))}
+                                </>
+                            )
+                        )}
+                        {historyTab === "parts" && (
+                            partsHistory.isFetching && !partsHistory.data ? <div className="js-history-empty" /> :
+                            !partsHistory.data?.length ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px" }}>
+                                        <span>Date</span><span>Part</span><span>Part No.</span><span>Doc</span><span>Qty</span><span>Price</span>
+                                    </div>
+                                    {partsHistory.data!.map((p: any) => (
+                                        <div key={p.id} className="vd-doc-row" style={{ gridTemplateColumns: "82px 1fr 100px 76px 60px 76px", height: 23, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                            <span>{formatDate(p.dateCreated || p.dateIssued)}</span>
+                                            <span>{p.description}</span>
+                                            <span>{p.partNumber || ""}</span>
+                                            <span>{displayDocNo(p)}</span>
+                                            <span className="vd-num">{Number(p.quantity || 0)}</span>
+                                            <span className="vd-num">{money(p.unitPrice)}</span>
+                                        </div>
+                                    ))}
+                                </>
+                            )
+                        )}
+                        {historyTab === "reminders" && (
+                            reminders.length === 0 ? <div className="js-history-empty" /> : (
+                                <>
+                                    <div className="js-history-table-head vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px" }}>
+                                        <span>Type</span><span>Due Date</span><span>Status</span><span>Sent At</span><span>Method</span>
+                                    </div>
+                                    {reminders.map((r: any) => (
+                                        <div key={r.id} className="vd-doc-row" style={{ gridTemplateColumns: "1fr 100px 100px 100px 100px", height: 23, background: "#fff", borderBottom: "1px solid #ddd", fontSize: 12 }}>
+                                            <span>{r.type}</span>
+                                            <span>{formatDate(r.dueDate)}</span>
+                                            <span>{r.status}</span>
+                                            <span>{formatDate(r.sentAt)}</span>
+                                            <span>{r.sentMethod || ""}</span>
+                                        </div>
+                                    ))}
+                                </>
+                            )
+                        )}
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </DashboardLayout>
+        );
+    }
 
     return (
         <DashboardLayout>
@@ -274,7 +840,25 @@ export default function VehicleDetails() {
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <ManufacturerLogo make={vehicle.make as string} size="xl" />
+                        {(() => {
+                            const ukvdImageUrl = (vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl;
+                            return ukvdImageUrl && ukvdImageUrl !== failedImgUrl ? (
+                                // The UKVD render has blank margin baked into the source image itself —
+                                // plain object-contain leaves a small car floating in a big box. A
+                                // wider frame (matches the car's own aspect ratio) plus a light zoom
+                                // trims most of that margin without cropping the car itself.
+                                <div className="h-20 w-32 shrink-0 overflow-hidden flex items-center justify-center">
+                                    <img
+                                        src={ukvdImageUrl}
+                                        alt={`${vehicle.make} ${vehicle.model}`}
+                                        className="h-full w-full object-contain scale-110"
+                                        onError={() => setFailedImgUrl(ukvdImageUrl)}
+                                    />
+                                </div>
+                            ) : (
+                                <ManufacturerLogo make={vehicle.make as string} size="xl" />
+                            );
+                        })()}
                         <div>
                             <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
                                 {vehicle.registration}
@@ -288,9 +872,87 @@ export default function VehicleDetails() {
                             </p>
                         </div>
                     </div>
+                    {/* Owner, right beside the reg — who to ring without scrolling */}
+                    <div className="min-w-[200px] max-w-[300px]">
+                        <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5" /> Customer
+                        </p>
+                        {customer ? (
+                            <div className="space-y-1 mt-1">
+                                <Link href={`${base}/customers/${customer.id}`}>
+                                    <p className="text-lg font-bold uppercase leading-tight text-primary hover:underline cursor-pointer">
+                                        {customer.name as string}
+                                    </p>
+                                </Link>
+                                {!!customer.phone && (
+                                    <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
+                                )}
+                                {(!!customer.address || !!customer.postcode) && (() => {
+                                    const addr = String(customer.address || "").trim().replace(/,\s*$/, "");
+                                    const pc = String(customer.postcode || "").trim();
+                                    const hasPc = pc && addr.replace(/\s+/g, "").toUpperCase().endsWith(pc.replace(/\s+/g, "").toUpperCase());
+                                    const full = [addr, hasPc ? "" : pc].filter(Boolean).join(", ");
+                                    return full ? <p className="text-xs text-muted-foreground uppercase leading-snug">{full}</p> : null;
+                                })()}
+                                {!!customer.optedOut && (
+                                    <Badge variant="destructive">
+                                        <AlertCircle className="w-3 h-3 mr-1" />
+                                        Opted Out
+                                    </Badge>
+                                )}
+                                <Link href={`${base}/customers/${customer.id}`}>
+                                    <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
+                                </Link>
+                                <div className="flex gap-2 pt-1.5">
+                                    <AssignCustomerDialog
+                                        vehicleId={vehicle.id as number}
+                                        onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                        triggerButton={
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                            >
+                                                <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                                Transfer
+                                            </Button>
+                                        }
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                        disabled={unlinkOwner.isPending}
+                                        onClick={() => {
+                                            if (window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned. MOT reminders will stop going to this customer for this vehicle. You can reassign an owner later.`)) {
+                                                unlinkOwner.mutate({ vehicleId: vehicle.id as number });
+                                            }
+                                        }}
+                                    >
+                                        {unlinkOwner.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <User className="w-3.5 h-3.5 mr-1.5" />}
+                                        {unlinkOwner.isPending ? "Removing…" : "Remove Owner"}
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 mt-1">
+                                <p className="text-sm text-muted-foreground italic">No customer assigned</p>
+                                <AssignCustomerDialog
+                                    vehicleId={vehicle.id as number}
+                                    onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                    triggerButton={
+                                        <Button variant="outline" size="sm" className="text-xs">
+                                            <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                            Assign Owner
+                                        </Button>
+                                    }
+                                />
+                            </div>
+                        )}
+                    </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <Button
-                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
+                            onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             New Job Sheet
@@ -298,7 +960,7 @@ export default function VehicleDetails() {
                         <Button
                             variant="outline"
                             className="bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
-                            onClick={() => setLocation(`/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=SI`)}
+                            onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=SI`)}
                         >
                             <FileText className="w-4 h-4 mr-2" />
                             Create Estimate/Invoice
@@ -314,6 +976,15 @@ export default function VehicleDetails() {
                         >
                             {fetchTechData.isPending || syncUKVDMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2 text-yellow-500 fill-yellow-500" />}
                             Fetch Premium Data
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                            onClick={() => openSevenZap(vehicle.vin, vehicle.make)}
+                            title={vehicle.vin ? "Copies the VIN and opens the 7zap VIN decoder" : "Opens the brand catalogue on 7zap"}
+                        >
+                            <Wrench className="w-4 h-4 mr-2" />
+                            OEM Parts (7zap)
                         </Button>
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
@@ -374,6 +1045,14 @@ export default function VehicleDetails() {
                                 MOT Check & Estimates
                             </Button>
                         </Link>
+                        <Button
+                            variant="outline"
+                            className="bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100"
+                            onClick={() => setLocation(`/appointments?reg=${encodeURIComponent(vehicle.registration as string)}`)}
+                        >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Book Appointment
+                        </Button>
                     </div>
                 </div>
 
@@ -387,362 +1066,175 @@ export default function VehicleDetails() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Make</p>
-                                    <p className="text-sm font-bold">{vehicle.make as string || "Unknown"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Model</p>
-                                    <p className="text-sm font-bold">{vehicle.model as string || "Unknown"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Fuel Type</p>
-                                    <div className="flex items-center gap-2 text-sm font-bold uppercase">
-                                        <Fuel className="w-4 h-4 text-orange-500" />
-                                        {(vehicle.fuelType as string) || "-"}
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Engine CC</p>
-                                    <p className="text-sm font-bold">{vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">MOT Expiry</p>
-                                    {typeof motInfo === "string" ? (
-                                        <p className="text-sm font-bold text-muted-foreground">{motInfo}</p>
-                                    ) : (
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-sm font-bold">{motInfo.date}</p>
-                                            <Badge variant={motBadge.variant} className={`text-[10px] px-2 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Tax Status</p>
-                                    <Badge variant={vehicle.taxStatus?.toLowerCase() === 'taxed' ? 'default' : 'destructive'} className="text-[10px] px-2 py-0">
-                                        {vehicle.taxStatus as string || "Unknown"}
-                                    </Badge>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Tax Due</p>
-                                    <p className="text-sm font-bold">{formatDate(vehicle.taxDueDate)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">Reg Date</p>
-                                    <p className="text-sm font-bold">{formatDate(vehicle.dateOfRegistration)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground uppercase">VIN</p>
-                                    <div className="flex items-center gap-1 group">
-                                        <p className="font-mono text-xs font-bold truncate max-w-[120px]" title={vehicle.vin || ""}>{vehicle.vin || "-"}</p>
-                                        {vehicle.vin && (
-                                            <>
-                                                <button
-                                                    onClick={() => {
-                                                        if (vehicle.vin) {
-                                                            navigator.clipboard.writeText(vehicle.vin);
-                                                            toast.success("VIN copied to clipboard");
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Copy VIN"
-                                                >
-                                                    <Copy className="w-3 h-3" />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (vehicle.vin) {
-                                                            navigator.clipboard.writeText(vehicle.vin);
-                                                            toast.success("VIN copied and opening PartSouq...");
-                                                            // Small delay to allow toast to render before opening tab
-                                                            setTimeout(() => {
-                                                                window.open(`https://partsouq.com/en/search/all?q=${vehicle.vin}`, "_blank");
-                                                            }, 300);
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-muted rounded text-blue-500 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Search on PartSouq"
-                                                >
-                                                    <ExternalLink className="w-3 h-3" />
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Customer Info */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
-                                Customer
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {customer ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
-                                        <Link href={`/customers/${customer.id}`}>
-                                            <p className="text-sm font-bold hover:underline cursor-pointer text-primary">
-                                                {customer.name as string}
-                                            </p>
-                                        </Link>
-                                    </div>
-                                    {!!customer.phone && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                                            <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
-                                        </div>
-                                    )}
-                                    {!!customer.email && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm font-bold truncate">{customer.email as string}</p>
-                                        </div>
-                                    )}
-                                    {(!!customer.address || !!customer.postcode) && (() => {
-                                        const addr = String(customer.address || "").trim().replace(/,\s*$/, "");
-                                        const pc = String(customer.postcode || "").trim();
-                                        const hasPc = pc && addr.replace(/\s+/g, "").toUpperCase().endsWith(pc.replace(/\s+/g, "").toUpperCase());
-                                        const full = [addr, hasPc ? "" : pc].filter(Boolean).join(", ");
-                                        return (
-                                            <div>
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Address</p>
-                                                <p className="text-sm font-medium">{full}</p>
-                                            </div>
-                                        );
-                                    })()}
-                                    <Link href={`/customers/${customer.id}`}>
-                                        <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
-                                    </Link>
-                                    {!!customer.optedOut && (
-                                        <Badge variant="destructive" className="w-full justify-center">
-                                            <AlertCircle className="w-3 h-3 mr-2" />
-                                            Opted Out
-                                        </Badge>
-                                    )}
-                                    <div className="pt-2 border-t">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                            disabled={unlinkOwner.isPending}
-                                            onClick={() => {
-                                                if (window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned. MOT reminders will stop going to this customer for this vehicle. You can reassign an owner later.`)) {
-                                                    unlinkOwner.mutate({ vehicleId: vehicle.id as number });
-                                                }
-                                            }}
-                                        >
-                                            {unlinkOwner.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <User className="w-3.5 h-3.5 mr-1.5" />}
-                                            {unlinkOwner.isPending ? "Removing…" : "Remove Owner"}
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center py-6 text-muted-foreground italic text-sm">
-                                    No customer assigned
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Rich Vehicle Intelligence */}
-                    {!!vehicle.comprehensiveTechnicalData && (
-                        <Card className="md:col-span-3 border-primary/20 bg-primary/5">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-primary">
-                                    <Zap className="w-5 h-5 fill-primary" />
-                                    Rich Vehicle Intelligence
-                                </CardTitle>
-                                <CardDescription>Data sourced from Premium UKVD and SWS Technical modules</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {/* UKVD Premium Render */}
-                                {(() => {
-                                    const ukvd = (vehicle.comprehensiveTechnicalData as any)?.ukvd;
-                                    if (!ukvd) return null;
-                                    return (
-                                        <div className="mb-8 border rounded-xl overflow-hidden shadow-sm bg-white border-blue-100">
-                                            <div className="bg-blue-50/50 p-4 border-b border-blue-100 flex items-center gap-2">
-                                                <Sparkles className="w-5 h-5 text-blue-600" />
-                                                <h3 className="font-bold text-blue-900">Premium Technical Data</h3>
-                                            </div>
-                                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {ukvd.imageUrl && (
-                                                    <div className="rounded-lg overflow-hidden border-2 border-white shadow-sm flex items-center justify-center bg-white/50 bg-gray-50">
-                                                        <img 
-                                                            src={ukvd.imageUrl} 
-                                                            alt={`${vehicle.make} ${vehicle.model}`} 
-                                                            className="w-full h-auto max-h-[250px] object-contain"
-                                                        />
-                                                    </div>
-                                                )}
-                                                <div className="grid grid-cols-2 gap-4 place-content-start">
-                                                    {ukvd.transmission?.type && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Transmission</div>
-                                                            <div className="font-medium capitalize text-sm">{ukvd.transmission.type.toLowerCase()} {ukvd.transmission.gears ? `(${ukvd.transmission.gears} Speed)` : ''}</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.transmission?.driveType && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Drivetrain</div>
-                                                            <div className="font-medium text-sm">{ukvd.transmission.driveType}</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.fuelTankCapacity && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Fuel Tank</div>
-                                                            <div className="font-medium text-sm">{ukvd.fuelTankCapacity} Litres</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.dimensions?.length && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Length</div>
-                                                            <div className="font-medium text-sm">{ukvd.dimensions.length} mm</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.dimensions?.width && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Width</div>
-                                                            <div className="font-medium text-sm">{ukvd.dimensions.width} mm</div>
-                                                        </div>
-                                                    )}
-                                                    {ukvd.weights?.kerb && (
-                                                        <div>
-                                                            <div className="text-xs text-slate-500 uppercase tracking-wide">Kerb Weight</div>
-                                                            <div className="font-medium text-sm">{ukvd.weights.kerb} kg</div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Provenance Block */}
-                                            {ukvd.provenance && (
-                                                <div className="border-t border-blue-100 bg-slate-50 p-6">
-                                                  <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                                                    <ShieldCheck className="w-5 h-5 text-slate-600" />
-                                                    Provenance & Security Details
-                                                  </h4>
-                                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                    {/* Police / Stolen */}
-                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.isStolen ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
-                                                      <div className="flex items-center gap-3">
-                                                        {ukvd.provenance.isStolen ? <ShieldAlert className="w-8 h-8 text-red-600" /> : <ShieldCheck className="w-8 h-8 text-green-600" />}
-                                                        <div>
-                                                          <div className="font-bold">Police Check</div>
-                                                          <div className="text-sm opacity-90">{ukvd.provenance.isStolen ? 'STOLEN RECORD' : 'Clear'}</div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-
-                                                    {/* MIAFTR / Write Offs */}
-                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.hasWriteOff ? 'bg-red-50 border-red-200 text-red-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
-                                                      <div className="flex items-center gap-3">
-                                                        {ukvd.provenance.hasWriteOff ? <AlertTriangle className="w-8 h-8 text-red-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
-                                                        <div>
-                                                          <div className="font-bold">Insurance (MIAFTR)</div>
-                                                          <div className="text-sm opacity-90">{ukvd.provenance.hasWriteOff ? 'WRITE-OFF RECORDED' : 'Clear'}</div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-
-                                                    {/* Outstanding Finance */}
-                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.hasFinance ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
-                                                      <div className="flex items-center gap-3">
-                                                        {ukvd.provenance.hasFinance ? <Banknote className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
-                                                        <div>
-                                                          <div className="font-bold">Finance</div>
-                                                          <div className="text-sm opacity-90">{ukvd.provenance.hasFinance ? 'OUTSTANDING FINANCE' : 'Clear'}</div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-
-                                                    {/* Mileage Anomaly */}
-                                                    <div className={`p-4 rounded-lg border \${ukvd.provenance.mileageAnomaly ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'}`}>
-                                                      <div className="flex items-center gap-3">
-                                                        {ukvd.provenance.mileageAnomaly ? <Gauge className="w-8 h-8 text-amber-600" /> : <CheckCircle2 className="w-8 h-8 text-green-600" />}
-                                                        <div>
-                                                          <div className="font-bold">Mileage</div>
-                                                          <div className="text-sm opacity-90">{ukvd.provenance.mileageAnomaly ? 'ANOMALY DETECTED' : 'Verified Sequence'}</div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-
-                                                    {/* Registration Status Flags */}
-                                                    {(ukvd.provenance.scrapped || ukvd.provenance.exported || ukvd.provenance.imported) && (
-                                                      <div className="col-span-full mt-2 flex flex-wrap gap-2">
-                                                        {ukvd.provenance.scrapped && <Badge variant="destructive" className="text-sm tracking-wide">SCRAPPED MARKER</Badge>}
-                                                        {ukvd.provenance.exported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">EXPORTED</Badge>}
-                                                        {ukvd.provenance.imported && <Badge variant="secondary" className="bg-slate-200 text-slate-800 text-sm tracking-wide">IMPORTED</Badge>}
-                                                      </div>
-                                                    )}
-                                                  </div>
+                            {(() => {
+                                const motTone = typeof motInfo === "string" ? "neutral" : motInfo.isExpired ? "red" : motInfo.daysUntilExpiry <= 30 ? "orange" : "green";
+                                const taxed = liveTaxStatus?.toLowerCase() === "taxed";
+                                const ctd = vehicle.comprehensiveTechnicalData as any;
+                                const oilInfo = engineOilInfo(ctd?.lubricants);
+                                const coolant = findLubricant(ctd?.lubricants, /COOLANT/i);
+                                const brakeFluid = findLubricant(ctd?.lubricants, /BRAKE FLUID/i);
+                                const gearOil = gearOilInfo(ctd?.lubricants);
+                                const aircon = ctd?.aircon;
+                                return (
+                                    <>
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                            <SpecTile label="Make" icon={<Car className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={<span className="block truncate">{vehicle.make as string || "Unknown"}</span>} />
+                                            <SpecTile label="Model" icon={<Tag className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={<span className="block truncate">{vehicle.model as string || "Unknown"}</span>} />
+                                            <SpecTile label="Fuel Type" icon={<Fuel className="w-3 h-3 text-orange-500" />} value={
+                                                <span className="uppercase">{(vehicle.fuelType as string) || "-"}</span>
+                                            } />
+                                            <SpecTile label="Engine CC" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={vehicle.engineCC ? `${vehicle.engineCC}cc` : "-"} />
+                                            <SpecTile label="MOT Expiry" icon={<ShieldCheck className={`w-3 h-3 ${SPEC_TONE_ICON[motTone]}`} />} tone={motTone} value={
+                                                typeof motInfo === "string" ? (
+                                                    <span className="font-normal text-muted-foreground">{motInfo}</span>
+                                                ) : (
+                                                    <>
+                                                        <span className="flex items-center gap-1.5 flex-wrap">
+                                                            {motInfo.date}
+                                                            <Badge variant={motBadge.variant} className={`text-[9px] px-1.5 py-0 ${motBadge.className || ""}`}>{motBadge.text}</Badge>
+                                                        </span>
+                                                        <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(motInfo.daysUntilExpiry)}</span>
+                                                    </>
+                                                )
+                                            } />
+                                            <SpecTile label="Tax Status" icon={<Receipt className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
+                                                <Badge variant={taxed ? "default" : "destructive"} className="text-[9px] px-1.5 py-0">
+                                                    {liveTaxStatus || "Unknown"}
+                                                </Badge>
+                                            } />
+                                            <SpecTile label="Tax Due" icon={<CalendarClock className={`w-3 h-3 ${SPEC_TONE_ICON[taxed ? "green" : "red"]}`} />} tone={taxed ? "green" : "red"} value={
+                                                <>
+                                                    {formatDate(liveTaxDueDate)}
+                                                    {liveTaxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(liveTaxDueDate))}</span>}
+                                                </>
+                                            } />
+                                            {(() => {
+                                                // DVLA VED (road tax) rates from the stored UKVD payload — only there
+                                                // once the vehicle has had a premium data fetch, so render nothing until then.
+                                                const ved = ctd?.ukvd?.raw?.Results?.VehicleDetails?.VehicleStatus?.VehicleExciseDutyDetails;
+                                                const std = ved?.VedRate?.Standard;
+                                                if (std?.TwelveMonths == null && std?.SixMonths == null) return null;
+                                                const sub = [
+                                                    std?.SixMonths != null ? `£${std.SixMonths} for 6 months` : null,
+                                                    ved?.DvlaBand ? `Band ${ved.DvlaBand}` : null,
+                                                ].filter(Boolean).join(" · ");
+                                                return (
+                                                    <SpecTile label="Tax Rate" icon={<Receipt className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                        <>
+                                                            {std?.TwelveMonths != null ? `£${std.TwelveMonths} a year` : `£${std.SixMonths} for 6 months`}
+                                                            {sub && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{sub}</span>}
+                                                        </>
+                                                    } />
+                                                );
+                                            })()}
+                                            <SpecTile label="Reg Date" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                <>
+                                                    {formatDate(vehicle.dateOfRegistration)}
+                                                    {vehicle.dateOfRegistration && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{vehicleAge(vehicle.dateOfRegistration)}</span>}
+                                                </>
+                                            } />
+                                            <SpecTile label="Engine Code" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={(vehicle as any).engineCode || "-"} />
+                                            {(oilInfo || aircon?.type || coolant || brakeFluid || gearOil) && (
+                                                <div className="col-span-full mt-1 pt-2 border-t flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                    <Droplet className="w-3.5 h-3.5" />
+                                                    Lubricants & Fluids
                                                 </div>
                                             )}
-
+                                            {oilInfo && (
+                                                <SpecTile label="Engine Oil" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
+                                                    <>
+                                                        <span className="block truncate">{oilInfo.grades}</span>
+                                                        {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {aircon?.type && (
+                                                <SpecTile label="Air Con" tone="cyan" icon={<Thermometer className={`w-3 h-3 ${SPEC_TONE_ICON.cyan}`} />} value={
+                                                    <>
+                                                        <span className="block truncate">{aircon.type}</span>
+                                                        {aircon.quantity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{String(aircon.quantity)}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {coolant && (
+                                                <SpecTile label="Coolant" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
+                                                    <>
+                                                        <span className="block truncate">{coolant.spec}</span>
+                                                        {coolant.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{coolant.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {brakeFluid && (
+                                                <SpecTile label="Brake Fluid" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
+                                                    <>
+                                                        <span className="block truncate">{brakeFluid.spec}</span>
+                                                        {brakeFluid.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{brakeFluid.capacity}</span>}
+                                                    </>
+                                                } />
+                                            )}
+                                            {gearOil && (
+                                                <SpecTile label="Gear Oil" tone="blue" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={<span className="block truncate">{gearOil}</span>} />
+                                            )}
                                         </div>
-                                    );
-                                })()}
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {/* Lubricants Section */}
-                                    {(vehicle.comprehensiveTechnicalData as any).lubricants && (
-                                        <div className="space-y-4">
-                                            <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                                <Droplet className="w-4 h-4 text-blue-500" />
-                                                Lubricants & Fluids
-                                            </h3>
-                                            <LubricantsSummary lubricants={(vehicle.comprehensiveTechnicalData as any).lubricants} />
-                                        </div>
-                                    )}
-
-                                    {/* Aircon Section */}
-                                    {(vehicle.comprehensiveTechnicalData as any).aircon && (
-                                        <div className="space-y-4">
-                                            <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                                <Thermometer className="w-4 h-4 text-cyan-500" />
-                                                Air Conditioning
-                                            </h3>
-                                            <div className="space-y-3">
-                                                <div className="text-sm">
-                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Refrigerant Type</p>
-                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.type as string) || 'N/A'}</p>
+                                        <div className="mt-3">
+                                            <SpecTile label="VIN" icon={<Hash className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                <div className="flex items-center gap-1 group">
+                                                    <span className="font-mono truncate" title={vehicle.vin || ""}>{vehicle.vin || "-"}</span>
+                                                    {vehicle.vin && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (vehicle.vin) {
+                                                                        navigator.clipboard.writeText(vehicle.vin);
+                                                                        toast.success("VIN copied to clipboard");
+                                                                    }
+                                                                }}
+                                                                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Copy VIN"
+                                                            >
+                                                                <Copy className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (vehicle.vin) {
+                                                                        navigator.clipboard.writeText(vehicle.vin);
+                                                                        toast.success("VIN copied and opening PartSouq...");
+                                                                        // Small delay to allow toast to render before opening tab
+                                                                        setTimeout(() => {
+                                                                            window.open(`https://partsouq.com/en/search/all?q=${vehicle.vin}`, "_blank");
+                                                                        }, 300);
+                                                                    }
+                                                                }}
+                                                                className="p-1 hover:bg-muted rounded text-blue-500 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Search on PartSouq"
+                                                            >
+                                                                <ExternalLink className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => openSevenZap(vehicle.vin, vehicle.make)}
+                                                                className="p-1 hover:bg-muted rounded text-orange-500 hover:text-orange-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="OEM catalogue on 7zap"
+                                                            >
+                                                                <Wrench className="w-3 h-3" />
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
-                                                <div className="text-sm">
-                                                    <p className="text-xs font-medium text-muted-foreground uppercase">Gas Quantity</p>
-                                                    <p className="font-bold">{((vehicle.comprehensiveTechnicalData as any).aircon.quantity as string) || 'N/A'}</p>
-                                                </div>
-                                            </div>
+                                            } />
                                         </div>
-                                    )}
+                                    </>
+                                );
+                            })()}
+                        </CardContent>
+                    </Card>
 
-                                    {/* Specs / Generic */}
-                                    <div className="space-y-4">
-                                        <h3 className="font-bold flex items-center gap-2 border-b pb-2">
-                                            <Wrench className="w-4 h-4 text-orange-500" />
-                                            Technical Specs
-                                        </h3>
-                                        <div className="space-y-3">
-                                            <div className="text-sm">
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Engine Code</p>
-                                                <p className="font-bold">{(vehicle.engineCode as string) || "-"}</p>
-                                            </div>
-                                            <div className="text-sm">
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Last Deep Scan</p>
-                                                <p className="text-xs font-bold">{vehicle.swsLastUpdated ? new Date(vehicle.swsLastUpdated).toLocaleString() : "Never"}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                    <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
+                        vehicleDesc={[vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration as any).getFullYear() : null, vehicle.make, vehicle.model].filter(Boolean).join(" ")}
+                        vin={vehicle.vin} make={vehicle.make} registration={vehicle.registration}
+                        onSaved={() => utils.vehicles.getByRegistration.invalidate()} />
+
+
+                    <ServicingCard servicing={servicing} />
 
                     {/* Service History */}
                     <Card className="md:col-span-3">
@@ -754,7 +1246,8 @@ export default function VehicleDetails() {
                             <CardDescription>Service timeline, every part fitted &amp; full MOT history</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} />
+                            <VehicleHistoryTabs vehicleId={vehicle.id} registration={vehicle.registration} make={vehicle.make || undefined} model={vehicle.model || undefined} />
+                            <EarlierCarsOnPlate cars={otherCarsOnPlate} base={base} />
                         </CardContent>
                     </Card>
 
@@ -776,11 +1269,12 @@ export default function VehicleDetails() {
                                             <TableHead>Status</TableHead>
                                             <TableHead>Sent At</TableHead>
                                             <TableHead>Method</TableHead>
+                                            <TableHead>Message</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {reminders.map((reminder) => (
-                                            <TableRow key={reminder.id}>
+                                            <TableRow key={reminder.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setOpenReminder(reminder)}>
                                                 <TableCell>
                                                     <Badge variant={reminder.type === 'MOT' ? 'default' : 'secondary'}>
                                                         {reminder.type}
@@ -800,6 +1294,11 @@ export default function VehicleDetails() {
                                                 </TableCell>
                                                 <TableCell>{formatDate(reminder.sentAt)}</TableCell>
                                                 <TableCell className="capitalize">{reminder.sentMethod || "-"}</TableCell>
+                                                <TableCell className="max-w-[420px]">
+                                                    {(reminder as any).messageContent
+                                                      ? <span className="block truncate text-[12px] text-slate-600" title={(reminder as any).messageContent}>{(reminder as any).messageContent}</span>
+                                                      : <span className="text-slate-400 text-[12px]">—</span>}
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -814,6 +1313,31 @@ export default function VehicleDetails() {
                     </Card>
                 </div>
             </div>
+            <Dialog open={!!openReminder} onOpenChange={(o) => { if (!o) setOpenReminder(null); }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-sm">
+                            {(openReminder as any)?.type || "Reminder"}
+                            {(openReminder as any)?.sentAt ? ` — sent ${new Date((openReminder as any).sentAt).toLocaleString("en-GB")}` : (openReminder as any)?.dueDate ? ` — due ${new Date((openReminder as any).dueDate).toLocaleDateString("en-GB")}` : ""}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2 text-[13px]">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+                            <span>Status: <strong>{(openReminder as any)?.status || "-"}</strong></span>
+                            {(openReminder as any)?.recipient && <span>To: <strong>{(openReminder as any).recipient}</strong></span>}
+                            {(openReminder as any)?.method && <span>Via: <strong>{(openReminder as any).method}</strong></span>}
+                        </div>
+                        <div className="rounded-md border bg-slate-50/60 p-3 whitespace-pre-wrap max-h-[50vh] overflow-auto">
+                            {(openReminder as any)?.messageContent || <span className="text-muted-foreground">No message text stored — this row came from the imported GA4 reminder queue, which only recorded that a reminder was due.</span>}
+                        </div>
+                        {(openReminder as any)?.messageContent && (
+                            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText((openReminder as any).messageContent); toast.success("Message copied"); }}>
+                                <Copy className="w-3.5 h-3.5 mr-1.5" />Copy message
+                            </Button>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }

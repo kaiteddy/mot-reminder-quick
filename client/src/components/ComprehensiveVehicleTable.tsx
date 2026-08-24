@@ -45,6 +45,7 @@ interface Vehicle {
     lastChecked?: Date | string | null;
     lastReminderSent: Date | string | null;
     lastReminderStatus: string | null;
+    lastVisit?: Date | string | null;
 }
 
 interface ComprehensiveVehicleTableProps {
@@ -64,7 +65,7 @@ interface ComprehensiveVehicleTableProps {
     onViewHistory: (vehicle: Vehicle) => void;
 }
 
-type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent" | "daysLeft";
+type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent" | "lastVisit" | "daysLeft";
 type SortDirection = "asc" | "desc";
 
 export function ComprehensiveVehicleTable({
@@ -142,6 +143,10 @@ export function ComprehensiveVehicleTable({
                     aVal = a.lastReminderSent ? new Date(a.lastReminderSent).getTime() : 0;
                     bVal = b.lastReminderSent ? new Date(b.lastReminderSent).getTime() : 0;
                     break;
+                case "lastVisit":
+                    aVal = a.lastVisit ? new Date(a.lastVisit).getTime() : 0;
+                    bVal = b.lastVisit ? new Date(b.lastVisit).getTime() : 0;
+                    break;
                 case "daysLeft":
                     const aStatus = getMOTStatus(a.motExpiryDate);
                     const bStatus = getMOTStatus(b.motExpiryDate);
@@ -205,6 +210,9 @@ export function ComprehensiveVehicleTable({
                         </TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Tax Status</TableHead>
+                        <TableHead className="cursor-pointer" onClick={() => toggleSort("lastVisit")}>
+                            <div className="flex items-center">Last Visit {getSortIcon("lastVisit")}</div>
+                        </TableHead>
                         <TableHead className="cursor-pointer" onClick={() => toggleSort("lastSent")}>
                             <div className="flex items-center">Last Sent {getSortIcon("lastSent")}</div>
                         </TableHead>
@@ -214,7 +222,7 @@ export function ComprehensiveVehicleTable({
                 <TableBody>
                     {sortedVehicles.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
+                            <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
                                 No vehicles found matching the criteria.
                             </TableCell>
                         </TableRow>
@@ -314,6 +322,22 @@ export function ComprehensiveVehicleTable({
                                                 {vehicle.taxStatus}
                                             </Badge>
                                         ) : "-"}
+                                    </TableCell>
+                                    <TableCell className="text-[11px] whitespace-nowrap">
+                                        {vehicle.lastVisit ? (
+                                            (() => {
+                                                const visitDate = new Date(vehicle.lastVisit as Date | string);
+                                                const diffDays = Math.floor((new Date().getTime() - visitDate.getTime()) / (1000 * 60 * 60 * 24));
+                                                return (
+                                                    <span className="font-medium">
+                                                        {visitDate.toLocaleDateString("en-GB")}
+                                                        <span className="text-slate-500 ml-1 font-normal">({diffDays}d ago)</span>
+                                                    </span>
+                                                );
+                                            })()
+                                        ) : (
+                                            <span className="text-slate-400">Never</span>
+                                        )}
                                     </TableCell>
                                     <TableCell>
                                         {vehicle.lastReminderSent ? (

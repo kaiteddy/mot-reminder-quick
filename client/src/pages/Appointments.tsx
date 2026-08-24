@@ -141,6 +141,26 @@ export default function Appointments() {
         setShowSearch(false);
     };
 
+    // "Book Appointment" on the vehicle page links here with ?reg=<reg> — look the car up the
+    // same way Quick Booking's search does, and open straight into a pre-filled create dialog
+    // instead of making staff search for the car they just came from.
+    const regParam = useMemo(() => new URLSearchParams(window.location.search).get("reg") || "", []);
+    const prefillLookup = trpc.vehicles.searchForJob.useQuery(
+        { query: regParam },
+        { enabled: regParam.length >= 2 }
+    );
+    const [prefillHandled, setPrefillHandled] = useState(false);
+    useEffect(() => {
+        if (prefillHandled || !regParam || !prefillLookup.data) return;
+        const norm = (s: string) => s.toUpperCase().replace(/\s+/g, "");
+        const match = prefillLookup.data.find((r: any) => norm(r.registration || "") === norm(regParam)) || prefillLookup.data[0];
+        if (match) {
+            pickResult(match);
+            setIsCreateOpen(true);
+        }
+        setPrefillHandled(true);
+    }, [prefillHandled, regParam, prefillLookup.data]);
+
     // Vehicle Lookup for quick populate
     const { data: vehicleLookup, isFetched: isLocalFetched } = trpc.vehicles.getByRegistration.useQuery(
         { registration: formData.registration.replace(/\s+/g, "") },
@@ -881,6 +901,7 @@ export default function Appointments() {
                                     <SelectItem value="MOT">MOT</SelectItem>
                                     <SelectItem value="MOT & Service">MOT &amp; Service</SelectItem>
                                     <SelectItem value="Service">Service</SelectItem>
+                                    <SelectItem value="Other">Other</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -1044,6 +1065,7 @@ export default function Appointments() {
                                     <SelectItem value="MOT">MOT</SelectItem>
                                     <SelectItem value="MOT & Service">MOT &amp; Service</SelectItem>
                                     <SelectItem value="Service">Service</SelectItem>
+                                    <SelectItem value="Other">Other</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

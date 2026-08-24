@@ -24,7 +24,21 @@ interface TwilioWebhookBody {
   SmsSid?: string;
   ButtonText?: string;    // present when the customer tapped a quick-reply button
   ButtonPayload?: string; // the button's id (if set in the template)
+  ErrorCode?: string;     // Twilio error code, present on failed/undelivered status callbacks
+  ErrorMessage?: string;
 }
+
+/** Known Twilio/WhatsApp error codes worth surfacing in plain English. */
+const TWILIO_ERROR_HINTS: Record<string, string> = {
+  "63016": "outside the 24-hour customer service window — customer must message first, or send an approved template",
+  "63018": "WhatsApp rate limit hit",
+  "63024": "message does not match an approved template",
+  "63003": "recipient's WhatsApp number is not valid or not reachable",
+  "63007": "recipient's WhatsApp channel is not set up correctly (sender number)",
+  "63013": "message blocked by WhatsApp Commerce Policy",
+  "63015": "template message was not approved or does not exist",
+  "21610": "recipient has opted out",
+};
 
 /** Map a tapped reminder button to an appointment-response action. */
 function buttonToResponse(text: string): "confirmed" | "cancel" | "reschedule" | null {
@@ -253,7 +267,13 @@ export async function handleTwilioStatusCallback(req: Request, res: Response) {
     const status = body.MessageStatus || body.SmsStatus || "unknown";
 
     // Update message status in database
-    const updated = await updateMessageStatus({ messageSid: msgSid || "unknown", status, timestamp: new Date() });
+    const updated = await updateMessageStatus({
+      messageSid: msgSid || "unknown",
+      status,
+      timestamp: new Date(),
+      errorCode: body.ErrorCode,
+      errorMessage: body.ErrorMessage,
+    });
     console.log("[Twilio Status] Database update result:", updated);
 
     // Also reflect delivery status on the day-of MOT reminder, if this SID is one.
@@ -416,6 +436,8 @@ async function updateMessageStatus(data: {
   messageSid: string;
   status?: string;
   timestamp: Date;
+  errorCode?: string;
+  errorMessage?: string;
 }): Promise<{ success: boolean; message: string }> {
 
 
@@ -432,8 +454,14 @@ async function updateMessageStatus(data: {
       console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as DELIVERED`);
       return { success: true, message: "Status updated to delivered" };
     } else if (data.status === "failed" || data.status === "undelivered") {
-      await updateReminderLogStatus(data.messageSid, "failed", data.timestamp, `Status: ${data.status}`);
-      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as FAILED: ${data.status}`);
+      const hint = data.errorCode ? TWILIO_ERROR_HINTS[data.errorCode] : undefined;
+      const detail = [
+        data.errorCode ? `Twilio error ${data.errorCode}` : `Status: ${data.status}`,
+        data.errorMessage,
+        hint,
+      ].filter(Boolean).join(" — ");
+      await updateReminderLogStatus(data.messageSid, "failed", data.timestamp, detail);
+      console.log(`[Twilio Status] ✓ Message ${data.messageSid} marked as FAILED: ${detail}`);
       return { success: true, message: `Status updated to failed: ${data.status}` };
     } else if (data.status === "sent") {
       await updateReminderLogStatus(data.messageSid, "sent", data.timestamp);

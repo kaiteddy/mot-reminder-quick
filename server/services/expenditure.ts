@@ -341,6 +341,16 @@ export async function setOverride(input: { id: number; category: string | null }
   return { ok: true };
 }
 
+/** Excel-style bulk apply: one category onto a dragged/shift-selected set of rows. */
+export async function setOverrideBulk(input: { ids: number[]; category: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const ids = (input.ids || []).map(Number).filter((n) => Number.isFinite(n));
+  if (!ids.length) return { ok: true, count: 0 };
+  await db.execute(sql`UPDATE "bankTransactions" SET "categoryOverride"=${input.category} WHERE "id" IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`);
+  return { ok: true, count: ids.length };
+}
+
 /** Book transaction(s) into a specific P&L month (YYYY-MM), or null to reset to the bank date. Fixes
  *  pay-date drift (e.g. a payroll paid on the 1st that belongs to the previous month). */
 export async function setTxnMonth(input: { ids: number[]; month: string | null }) {
@@ -450,6 +460,37 @@ type ParsedTxn = {
   bankCategoryHint: string; subcategory: string; dedupeKey: string; suggested: string;
 };
 
+/** Xero-style statement export: Date,Bank description,Spent,Received,VAT,From/To,Match/Categorise.
+ *  This is the format Adam downloads (both bank and card come out this way), so it's detected by
+ *  its header and parsed for either source. The Match/Categorise column is kept as the category
+ *  hint — when it names one of our categories the row lands labelled straight away. */
+async function parseXeroStyleCsv(text: string, source: "bank" | "card"): Promise<ParsedTxn[] | null> {
+  const head = text.split(/\r?\n/, 1)[0] || "";
+  if (!/bank description/i.test(head) || !/spent/i.test(head)) return null;
+  const { parse } = await import("csv-parse/sync");
+  const recs: any[] = parse(text, { columns: true, skip_empty_lines: true, relax_quotes: true, relax_column_count: true, trim: true, bom: true });
+  const money = (v: any) => { const n = parseFloat(String(v ?? "").replace(/[£,\s]/g, "")); return isNaN(n) ? 0 : n; };
+  const out: ParsedTxn[] = [];
+  for (const r of recs) {
+    const dm = String(r["Date"] || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!dm) continue;
+    const txnDate = new Date(`${dm[3]}-${dm[2]}-${dm[1]}T00:00:00`);
+    const spent = money(r["Spent"]), recvd = money(r["Received"]);
+    const amt = recvd > 0 ? recvd : -spent;
+    if (!amt) continue;
+    const desc = String(r["Bank description"] || "").trim().replace(/\s+/g, " ");
+    const payee = (String(r["From/To"] || "").trim() || desc).slice(0, 255);
+    const hint = String(r["Match/Categorise"] || "").trim();
+    out.push({
+      source, txnDate, amount: amt, direction: amt > 0 ? "IN" : "OUT",
+      counterparty: payee, counterpartyKey: normkey(payee), memo: desc, cardHolder: "",
+      bankCategoryHint: hint.slice(0, 120), subcategory: String(r["VAT"] || "").trim(),
+      dedupeKey: sha(source, txnDate.toISOString().slice(0, 10), amt.toFixed(2), normkey(desc).slice(0, 80)),
+      suggested: source === "bank" ? bankCat(desc, hint, amt) : cardCat(payee, hint),
+    });
+  }
+  return out;
+}
+
 function parseBankCsv(text: string): ParsedTxn[] {
   const out: ParsedTxn[] = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -504,15 +545,43 @@ async function parseCardCsv(text: string): Promise<ParsedTxn[]> {
 export async function importTransactions(input: { source: "bank" | "card"; csvText: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const parsed = input.source === "bank" ? parseBankCsv(input.csvText) : await parseCardCsv(input.csvText);
+  const parsed = (await parseXeroStyleCsv(input.csvText, input.source))
+    ?? (input.source === "bank" ? parseBankCsv(input.csvText) : await parseCardCsv(input.csvText));
   if (!parsed.length) return { inserted: 0, skipped: 0, total: 0, newLabels: 0 };
 
   const batch = "import-" + new Date().toISOString().slice(0, 19);
   let inserted = 0;
+
+  // ── Format-independent duplicate guard ──
+  // dedupeKey is derived from each format's own fields (statement number / transaction ID),
+  // so the SAME payment re-imported from a different export shape gets a different key and
+  // slips through — that's how 315 duplicates (£349k) got in on 31/07/2026. The only
+  // identifiers every export shares are source + date + amount, so we count what the ledger
+  // already holds for each (source, date, amount) and insert only the surplus this file adds.
+  // Counting (rather than a blanket skip) keeps genuine same-day repeats — two £45 tyre bills,
+  // or two staff paid £1,663.47 on the same day — while making re-uploads safe.
+  // Local Y-M-D, NOT toISOString(): parsed dates are local midnight, so during BST
+  // toISOString() rolls them back a day and every bucket misses.
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const bucket = (t: ParsedTxn) => `${t.source}|${ymd(t.txnDate)}|${t.amount.toFixed(2)}`;
+  const existing = new Map<string, number>();
+  const dates = parsed.map((t) => t.txnDate.getTime());
+  if (dates.length) {
+    const from = new Date(Math.min(...dates)), to = new Date(Math.max(...dates));
+    const res: any = await db.execute(sql`
+      SELECT "source", to_char("txnDate",'YYYY-MM-DD') d, "amount", COUNT(*) n
+      FROM "bankTransactions" WHERE "txnDate" BETWEEN ${from} AND ${to} GROUP BY 1,2,3`);
+    for (const r of (res.rows || res)) existing.set(`${r.source}|${r.d}|${Number(r.amount).toFixed(2)}`, Number(r.n));
+  }
+
+  let skippedAsDuplicate = 0;
   // de-dupe within the file too
   const seen = new Set<string>();
   for (const t of parsed) {
     if (seen.has(t.dedupeKey)) continue; seen.add(t.dedupeKey);
+    const b = bucket(t);
+    const held = existing.get(b) || 0;
+    if (held > 0) { existing.set(b, held - 1); skippedAsDuplicate++; continue; }
     const res: any = await db.execute(sql`
       INSERT INTO "bankTransactions"
         ("source","txnDate","amount","direction","counterparty","counterpartyKey","memo","cardHolder","bankCategoryHint","subcategory","dedupeKey","importBatch")
@@ -533,7 +602,7 @@ export async function importTransactions(input: { source: "bank" | "card"; csvTe
       ON CONFLICT ("source","counterpartyKey") DO NOTHING RETURNING "id"`);
     if ((res.rows || []).length) newLabels++;
   }
-  return { inserted, skipped: parsed.length - inserted, total: parsed.length, newLabels };
+  return { inserted, skipped: parsed.length - inserted, duplicatesBlocked: skippedAsDuplicate, total: parsed.length, newLabels };
 }
 
 // ── Car trading ledger ──────────────────────────────────────────────────────
@@ -593,6 +662,10 @@ function dealFields(input: any) {
   if ("status" in input) f.status = input.status;
   if ("notes" in input) f.notes = input.notes || null;
   if ("source" in input) f.source = input.source || null;
+  // Filling the purchase in from the Sales Stock page creates the deal for a car that's already
+  // in stock, so the link has to be set on insert — otherwise syncStockForDeal makes a SECOND
+  // stock row for a car that's already sitting there.
+  if ("salesStockId" in input) f.salesStockId = input.salesStockId ?? null;
   return f;
 }
 
@@ -616,10 +689,52 @@ export async function upsertCarDeal(input: any) {
         FROM (SELECT SUM(ABS("amount")) total FROM "bankTransactions" WHERE "carDealId"=${input.id}) lp
         WHERE d."id"=${input.id} AND COALESCE(lp.total,0) > 0`);
     }
+    // A new row starts blank and the reg is typed in afterwards — sync once it has one.
+    if ("registration" in input) await syncStockForDeal(input.id);
     return { id: input.id };
   }
   const [row]: any = await db.insert(carDeals).values(f).returning({ id: carDeals.id });
+  await syncStockForDeal(row.id);
   return { id: row.id };
+}
+
+/**
+ * Keep Sales Stock in step with the trading ledger.
+ *
+ * A car bought at auction exists in the business from the day it's paid for, but it isn't
+ * advertised until it's through prep — so it never appeared on Sales Stock, and the two lists
+ * silently drifted (five cars, ~£58k, sat in the ledger with no stock record). Adding a deal now
+ * creates its stock row immediately with status "IN PREP" rather than "ON FORECOURT"; the
+ * website stocklist import flips it to ON FORECOURT once the advert is live.
+ *
+ * Only ever creates — never overwrites a row the stocklist import owns.
+ */
+export async function syncStockForDeal(carDealId: number) {
+  const db = await getDb();
+  if (!db) return { created: false };
+  const d: any = await db.execute(sql`SELECT "registration", "description", "salesStockId" FROM "carDeals" WHERE "id"=${carDealId}`);
+  const deal = (d.rows || d)[0];
+  const reg = String(deal?.registration || "").trim();
+  if (!reg) return { created: false };            // a blank new row — nothing to sync yet
+  if (deal.salesStockId) return { created: false }; // already linked
+
+  const existing: any = await db.execute(sql`
+    SELECT "id" FROM "salesStock" WHERE REPLACE(UPPER("registration"),' ','') = ${reg.toUpperCase().replace(/\s/g, "")} LIMIT 1`);
+  let stockId = (existing.rows || existing)[0]?.id;
+
+  if (!stockId) {
+    const desc = String(deal?.description || "").trim();
+    const year = (desc.match(/\b(19|20)\d{2}\b/) || [])[0] || null;
+    const words = desc.replace(/\b(19|20)\d{2}\b/, "").trim().split(/\s+/).filter(Boolean);
+    const [ins]: any = await db.execute(sql`
+      INSERT INTO "salesStock" ("registration","title","make","model","year","status","createdAt","updatedAt")
+      VALUES (${reg}, ${desc || reg}, ${words[0] || null}, ${words.slice(1).join(" ") || null},
+              ${year ? Number(year) : null}, 'IN PREP', now(), now())
+      RETURNING "id"`).then((r: any) => r.rows || r);
+    stockId = ins?.id;
+  }
+  if (stockId) await db.execute(sql`UPDATE "carDeals" SET "salesStockId"=${stockId} WHERE "id"=${carDealId}`);
+  return { created: !!stockId, stockId };
 }
 
 export async function deleteCarDeal(input: { id: number }) {

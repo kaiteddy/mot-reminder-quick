@@ -23,6 +23,13 @@ import { parse } from "csv-parse/sync";
 import { mapGA4Document, buildCustomerName, buildAddress, getCustomerEmail, parseGA4Date } from "../server/services/csv-import";
 import { buildCustomerContacts } from "../server/services/contactCleanup";
 import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
+import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
+import { renumberCollidingWebDrafts } from "./renumber-colliding-web-drafts";
+import { archiveStaleVehicleOwners } from "./archive-stale-vehicle-owners";
+import { decodeRegChangeAnnotations } from "./decode-reg-change-annotations";
+import { archiveOldEstimates } from "./archive-old-estimates";
+import { archiveCreditNotes } from "./archive-credit-notes";
+import { linkOrphanedVehicleOwners } from "./link-orphaned-vehicle-owners";
 
 const GO = process.argv.includes("--go");
 const EXP = process.env.GA4_EXPORTS || path.join(os.homedir(), "Library/CloudStorage/GoogleDrive-adam@elimotors.co.uk/My Drive/Data Exports");
@@ -157,6 +164,14 @@ for (const r of await q(`SELECT id, "externalId" FROM customers WHERE "externalI
 for (const [ext, id] of mergedToPrimary) if (!custMap.has(ext)) custMap.set(ext, id);
 
 // ---- 2) Vehicles ----
+// syncTable's own dedup only matches by GA4 _ID, so it happily creates a SECOND vehicle
+// row for a plate that already exists under a different externalId (or none) whenever
+// the registration text differs by spacing/case — e.g. "PE59OFH" vs "PE59 OFH". The raw
+// UNIQUE(registration) constraint doesn't catch that either, since the strings differ.
+// Pre-load every existing registration (normalized), regardless of source, and skip any
+// GA4 row that would collide — never silently mint a duplicate vehicle for a known plate.
+const existingRegs = new Set<string>((await q(`SELECT registration FROM vehicles WHERE registration IS NOT NULL`)).map((r) => norm(r.registration).toUpperCase().replace(/\s+/g, "")));
+let vehiclesSkippedDupe = 0;
 const vehicles = load("Vehicles.csv");
 await syncTable({
   name: "Vehicles", table: "vehicles", rows: vehicles,
@@ -164,6 +179,9 @@ await syncTable({
   map: (r) => {
     const reg = norm(r.Registration).toUpperCase();
     if (!reg) return null;
+    const normReg = reg.replace(/\s+/g, "");
+    if (existingRegs.has(normReg)) { vehiclesSkippedDupe++; return null; }
+    existingRegs.add(normReg); // so two new GA4 rows for the same plate in one run don't both slip through
     return {
       externalId: norm(r._ID), registration: cap(reg, 20), make: cap(norm(r.Make), 100) || null, model: cap(norm(r.Model), 100) || null,
       colour: cap(norm(r.Colour), 50) || null, fuelType: cap(norm(r.FuelType), 50) || null, vin: cap(norm(r.VIN), 50) || null,
@@ -173,6 +191,7 @@ await syncTable({
   },
   insertOnly: true, // same as customers — don't overwrite existing vehicle records
 });
+if (vehiclesSkippedDupe) console.log(`  (skipped ${vehiclesSkippedDupe} GA4 vehicle row(s) already on file under a differently-spaced registration)`);
 
 const vehMap = new Map<string, number>();
 for (const r of await q(`SELECT id, "externalId" FROM vehicles WHERE "externalId" IS NOT NULL`)) vehMap.set(r.externalId, r.id);
@@ -287,6 +306,27 @@ function dt2(v: any): string | null { return v ? new Date(v).toISOString().slice
 
 // ---- 5) Retire web job sheets that GA4 has since invoiced (keeps the transition clean) ----
 await retireInvoicedJobSheets(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 6) Retire web invoices whose real GA4 invoice has now been imported (same ga4Number+reg+total) ----
+await retireSupersededWebInvoices(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 7) Renumber any web draft left holding a docNo a GA4 doc just synced in under (unrelated jobs) ----
+await renumberCollidingWebDrafts(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 8) Archive the customer link on vehicles nobody's invoiced in 5+ years (stops stale MOT reminders) ----
+await archiveStaleVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 9) Decode GA4's embedded reg-change annotations ("M10HAK*(date)") into a clean registration ----
+await decodeRegChangeAnnotations(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 10) Archive estimates nobody's actioned in 3+ months (soft — Documents.tsx Archive tab) ----
+await archiveOldEstimates(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 11) Archive credit notes unconditionally (unused doc type — soft, Documents.tsx Archive tab) ----
+await archiveCreditNotes(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 12) Link a vehicle to its owner when history names exactly one customer but the vehicle itself has none ----
+await linkOrphanedVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
