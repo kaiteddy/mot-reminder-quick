@@ -1175,6 +1175,125 @@ export default function VehicleDetails() {
                                             {gearOil && (
                                                 <SpecTile label="Gear Oil" tone="blue" icon={<Cog className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={<span className="block truncate">{gearOil}</span>} />
                                             )}
+                                            {(() => {
+                                                // Factory/DVLA data the paid UKVD lookup already returned — surfaced here
+                                                // instead of sitting unused in the stored payload. Absent fields hide their tile.
+                                                const r = ctd?.ukvd?.raw?.Results;
+                                                const md = r?.ModelDetails, vd = r?.VehicleDetails;
+                                                if (!md && !vd) return null;
+                                                const dvlaTech = vd?.DvlaTechnicalDetails;
+                                                const econ = md?.Performance?.FuelEconomy, stats = md?.Performance?.Statistics, power = md?.Performance?.Power;
+                                                const ncap = md?.Safety?.EuroNcap;
+                                                const w = md?.Weights, dims = md?.Dimensions;
+                                                const hist = vd?.VehicleHistory;
+                                                const v5cs: any[] = hist?.V5cCertificateList || [];
+                                                const v5cLatest = v5cs.map((c: any) => c?.IssueDate).filter(Boolean).sort().pop();
+                                                const keepers: any[] = hist?.KeeperChangeList || [];
+                                                const keeperLatest = keepers[keepers.length - 1];
+                                                const plates: any[] = hist?.PlateChangeList || [];
+                                                const engineNumber = (vehicle as any).engineNo || vd?.VehicleIdentification?.EngineNumber;
+                                                const co2 = md?.Emissions?.ManufacturerCo2 || dvlaTech?.Co2Emissions;
+                                                const euro = md?.Emissions?.EuroStatus;
+                                                const towB = dvlaTech?.MaxPermissibleBrakedTrailerMassKg, towU = dvlaTech?.MaxPermissibleUnbrakedTrailerMassKg;
+                                                const tank = md?.BodyDetails?.FuelTankCapacityLitres;
+                                                const fmtD = (d: any) => { const dt = d ? new Date(d) : null; return dt && !isNaN(dt.getTime()) ? dt.toLocaleDateString("en-GB") : null; };
+                                                const sub = (s: any) => <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{s}</span>;
+                                                if (!(engineNumber || towB || towU || w?.KerbWeightKg || ncap?.NcapStarRating != null || econ?.CombinedMpg || co2 || tank || dims?.LengthMm || v5cLatest || keeperLatest || plates.length)) return null;
+                                                return (
+                                                    <>
+                                                        <div className="col-span-full mt-1 pt-2 border-t flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                            <Car className="w-3.5 h-3.5" />
+                                                            Factory &amp; DVLA Data
+                                                        </div>
+                                                        {engineNumber && (
+                                                            <SpecTile label="Engine No" icon={<Hash className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={<span className="font-mono block truncate" title={String(engineNumber)}>{engineNumber}</span>} />
+                                                        )}
+                                                        {(towB || towU) && (
+                                                            <SpecTile label="Towing Limit" icon={<Car className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {towB ? `${towB} kg braked` : `${towU} kg unbraked`}
+                                                                    {towB && towU ? sub(`${towU} kg unbraked`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {w?.KerbWeightKg && (
+                                                            <SpecTile label="Weights" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {`${w.KerbWeightKg} kg kerb`}
+                                                                    {w.GrossVehicleWeightKg ? sub(`${w.GrossVehicleWeightKg} kg gross`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {ncap?.NcapStarRating != null && (
+                                                            <SpecTile label="Euro NCAP" icon={<ShieldCheck className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {`${ncap.NcapStarRating} / 5 stars`}
+                                                                    {ncap.NcapAdultPercent ? sub(`Adult ${ncap.NcapAdultPercent}% · Child ${ncap.NcapChildPercent ?? "–"}%`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {econ?.CombinedMpg && (
+                                                            <SpecTile label="Fuel Economy" icon={<Fuel className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {`${econ.CombinedMpg} mpg combined`}
+                                                                    {econ.UrbanColdMpg ? sub(`${econ.UrbanColdMpg} urban · ${econ.ExtraUrbanMpg ?? "–"} extra-urban`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {(power?.Bhp || stats?.ZeroToSixtyMph) && (
+                                                            <SpecTile label="Performance" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {power?.Bhp ? `${power.Bhp} bhp` : `${stats?.ZeroToSixtyMph}s 0–60`}
+                                                                    {power?.Bhp && (stats?.ZeroToSixtyMph || stats?.MaxSpeedMph) ? sub([stats?.ZeroToSixtyMph ? `0–60 in ${stats.ZeroToSixtyMph}s` : null, stats?.MaxSpeedMph ? `${stats.MaxSpeedMph} mph top` : null].filter(Boolean).join(" · ")) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {co2 && (
+                                                            <SpecTile label="CO₂ / Euro" icon={<Fuel className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {`${co2} g/km`}
+                                                                    {euro ? sub(`Euro ${euro}`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {tank && (
+                                                            <SpecTile label="Fuel Tank" icon={<Fuel className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={`${tank} L`} />
+                                                        )}
+                                                        {dims?.LengthMm && (
+                                                            <SpecTile label="Dimensions" icon={<Car className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    <span className="block truncate">{`${dims.LengthMm} × ${dims.WidthMm ?? "–"} × ${dims.HeightMm ?? "–"} mm`}</span>
+                                                                    {dims.WheelbaseLengthMm ? sub(`wheelbase ${dims.WheelbaseLengthMm} mm`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {v5cLatest && (
+                                                            <SpecTile label="V5C Issued" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {fmtD(v5cLatest)}
+                                                                    {v5cs.length > 1 ? sub(`${v5cs.length} certificates issued`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {keeperLatest?.KeeperStartDate && (
+                                                            <SpecTile label="Current Keeper" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    {`Since ${fmtD(keeperLatest.KeeperStartDate)}`}
+                                                                    {keeperLatest.NumberOfPreviousKeepers != null ? sub(`${keeperLatest.NumberOfPreviousKeepers} previous keeper${keeperLatest.NumberOfPreviousKeepers === 1 ? "" : "s"}`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {plates.length > 0 && plates[0]?.CurrentVrm && (
+                                                            <SpecTile label="Plate Change" tone="orange" icon={<ArrowLeftRight className={`w-3 h-3 ${SPEC_TONE_ICON.orange}`} />} value={
+                                                                <>
+                                                                    <span className="block truncate font-mono">{`${plates[0].PreviousVrm ?? "?"} → ${plates[0].CurrentVrm}`}</span>
+                                                                    {fmtD(plates[0].DateOfTransaction) ? sub(fmtD(plates[0].DateOfTransaction)) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="mt-3">
                                             <SpecTile label="VIN" icon={<Hash className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
