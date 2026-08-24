@@ -872,6 +872,84 @@ export default function VehicleDetails() {
                             </p>
                         </div>
                     </div>
+                    {/* Owner, right beside the reg — who to ring without scrolling */}
+                    <div className="min-w-[200px] max-w-[300px]">
+                        <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5" /> Customer
+                        </p>
+                        {customer ? (
+                            <div className="space-y-1 mt-1">
+                                <Link href={`${base}/customers/${customer.id}`}>
+                                    <p className="text-lg font-bold uppercase leading-tight text-primary hover:underline cursor-pointer">
+                                        {customer.name as string}
+                                    </p>
+                                </Link>
+                                {!!customer.phone && (
+                                    <p className="text-sm font-bold font-mono">{customer.phone as string}</p>
+                                )}
+                                {(!!customer.address || !!customer.postcode) && (() => {
+                                    const addr = String(customer.address || "").trim().replace(/,\s*$/, "");
+                                    const pc = String(customer.postcode || "").trim();
+                                    const hasPc = pc && addr.replace(/\s+/g, "").toUpperCase().endsWith(pc.replace(/\s+/g, "").toUpperCase());
+                                    const full = [addr, hasPc ? "" : pc].filter(Boolean).join(", ");
+                                    return full ? <p className="text-xs text-muted-foreground uppercase leading-snug">{full}</p> : null;
+                                })()}
+                                {!!customer.optedOut && (
+                                    <Badge variant="destructive">
+                                        <AlertCircle className="w-3 h-3 mr-1" />
+                                        Opted Out
+                                    </Badge>
+                                )}
+                                <Link href={`${base}/customers/${customer.id}`}>
+                                    <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
+                                </Link>
+                                <div className="flex gap-2 pt-1.5">
+                                    <AssignCustomerDialog
+                                        vehicleId={vehicle.id as number}
+                                        onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                        triggerButton={
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                            >
+                                                <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                                Transfer
+                                            </Button>
+                                        }
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                        disabled={unlinkOwner.isPending}
+                                        onClick={() => {
+                                            if (window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned. MOT reminders will stop going to this customer for this vehicle. You can reassign an owner later.`)) {
+                                                unlinkOwner.mutate({ vehicleId: vehicle.id as number });
+                                            }
+                                        }}
+                                    >
+                                        {unlinkOwner.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <User className="w-3.5 h-3.5 mr-1.5" />}
+                                        {unlinkOwner.isPending ? "Removing…" : "Remove Owner"}
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 mt-1">
+                                <p className="text-sm text-muted-foreground italic">No customer assigned</p>
+                                <AssignCustomerDialog
+                                    vehicleId={vehicle.id as number}
+                                    onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
+                                    triggerButton={
+                                        <Button variant="outline" size="sm" className="text-xs">
+                                            <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
+                                            Assign Owner
+                                        </Button>
+                                    }
+                                />
+                            </div>
+                        )}
+                    </div>
                     <div className="flex flex-col gap-2 min-w-[200px]">
                         <Button
                             onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
@@ -1131,115 +1209,11 @@ export default function VehicleDetails() {
                         </CardContent>
                     </Card>
 
-                    {/* Right column: Service Reset stacked above the customer, so the owner's
-                        details sit beside the specs instead of below them with dead space. */}
-                    <div className="space-y-6">
                     <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
                         vehicleDesc={[vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration as any).getFullYear() : null, vehicle.make, vehicle.model].filter(Boolean).join(" ")}
                         vin={vehicle.vin} make={vehicle.make} registration={vehicle.registration}
                         onSaved={() => utils.vehicles.getByRegistration.invalidate()} />
 
-                    {/* Customer Info */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
-                                Customer
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {customer ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
-                                        <Link href={`${base}/customers/${customer.id}`}>
-                                            <p className="text-sm font-bold uppercase hover:underline cursor-pointer text-primary">
-                                                {customer.name as string}
-                                            </p>
-                                        </Link>
-                                    </div>
-                                    {!!customer.phone && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                                            <p className="text-sm font-bold font-mono uppercase">{customer.phone as string}</p>
-                                        </div>
-                                    )}
-                                    {!!customer.email && (
-                                        <div>
-                                            <p className="text-xs font-medium text-muted-foreground uppercase">Email</p>
-                                            <p className="text-sm font-bold uppercase truncate">{customer.email as string}</p>
-                                        </div>
-                                    )}
-                                    {(!!customer.address || !!customer.postcode) && (() => {
-                                        const addr = String(customer.address || "").trim().replace(/,\s*$/, "");
-                                        const pc = String(customer.postcode || "").trim();
-                                        const hasPc = pc && addr.replace(/\s+/g, "").toUpperCase().endsWith(pc.replace(/\s+/g, "").toUpperCase());
-                                        const full = [addr, hasPc ? "" : pc].filter(Boolean).join(", ");
-                                        return (
-                                            <div>
-                                                <p className="text-xs font-medium text-muted-foreground uppercase">Address</p>
-                                                <p className="text-sm font-medium uppercase">{full}</p>
-                                            </div>
-                                        );
-                                    })()}
-                                    <Link href={`${base}/customers/${customer.id}`}>
-                                        <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
-                                    </Link>
-                                    {!!customer.optedOut && (
-                                        <Badge variant="destructive" className="w-full justify-center">
-                                            <AlertCircle className="w-3 h-3 mr-2" />
-                                            Opted Out
-                                        </Badge>
-                                    )}
-                                    <div className="pt-2 border-t space-y-2">
-                                        <AssignCustomerDialog
-                                            vehicleId={vehicle.id as number}
-                                            onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
-                                            triggerButton={
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="w-full text-xs text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                                                >
-                                                    <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
-                                                    Transfer Vehicle
-                                                </Button>
-                                            }
-                                        />
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                            disabled={unlinkOwner.isPending}
-                                            onClick={() => {
-                                                if (window.confirm(`Remove ${customer.name} as the owner of ${vehicle.registration}?\n\nThe vehicle and its full service history stay on the system — it just becomes unassigned. MOT reminders will stop going to this customer for this vehicle. You can reassign an owner later.`)) {
-                                                    unlinkOwner.mutate({ vehicleId: vehicle.id as number });
-                                                }
-                                            }}
-                                        >
-                                            {unlinkOwner.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <User className="w-3.5 h-3.5 mr-1.5" />}
-                                            {unlinkOwner.isPending ? "Removing…" : "Remove Owner"}
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center py-6 text-muted-foreground italic text-sm space-y-3">
-                                    <p>No customer assigned</p>
-                                    <AssignCustomerDialog
-                                        vehicleId={vehicle.id as number}
-                                        onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
-                                        triggerButton={
-                                            <Button variant="outline" size="sm" className="text-xs">
-                                                <ArrowLeftRight className="w-3.5 h-3.5 mr-1.5" />
-                                                Assign Owner
-                                            </Button>
-                                        }
-                                    />
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                    </div>
 
                     <ServicingCard servicing={servicing} />
 
