@@ -1131,6 +1131,9 @@ export default function VehicleDetails() {
                         </CardContent>
                     </Card>
 
+                    {/* Right column: Service Reset stacked above the customer, so the owner's
+                        details sit beside the specs instead of below them with dead space. */}
+                    <div className="space-y-6">
                     <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
                         vehicleDesc={[vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration as any).getFullYear() : null, vehicle.make, vehicle.model].filter(Boolean).join(" ")}
                         vin={vehicle.vin} make={vehicle.make} registration={vehicle.registration}
@@ -1236,6 +1239,7 @@ export default function VehicleDetails() {
                             )}
                         </CardContent>
                     </Card>
+                    </div>
 
                     <ServicingCard servicing={servicing} />
 
