@@ -398,6 +398,7 @@ export const appRouter = router({
         createCustomer: z.boolean().optional(),
         updateCustomerRecord: z.boolean().optional(),
         vehicle: z.record(z.string(), z.any()).optional(),
+        vehicleReg: z.string().optional(), // the reg `vehicle`'s identity fields were populated for
         customerName: z.string().optional(),
         custTitle: z.string().optional(),
         custForename: z.string().optional(),

@@ -23,6 +23,7 @@ import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { buildServiceSets } from "@/lib/serviceParts";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -177,6 +178,10 @@ function extrasToLineItems(form: Record<string, any>): Item[] {
   return out;
 }
 
+// The form fields that describe the physical car itself — everything a reg change invalidates.
+// (dateOfRegistration is display-only on the doc, but it's just as wrong-car as the rest.)
+const VEHICLE_IDENTITY_FIELDS = ["make", "model", "derivative", "colour", "fuelType", "engineCC", "engineNo", "engineCode", "vin", "paintCode", "keyCode", "radioCode", "dateOfRegistration"];
+
 export default function DocumentDetails() {
   const params = useParams();
   const isNew = params.id === "new";
@@ -206,6 +211,11 @@ export default function DocumentDetails() {
   const initRef = useRef<number | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const regOnLoadRef = useRef<string>(""); // the reg when the doc loaded — used to force a full refresh if it's changed
+  // Which reg the form's vehicle-identity fields (make/model/VIN/…) currently belong to. The
+  // fields lag a reg edit by the whole ~30s lookup, while auto-save fires after 1s — this ref is
+  // what lets us clear/suppress them so the previous car's identity can never be saved against
+  // the corrected reg (that's how LL14LDJ got stamped with a Peugeot's identity, 24/08/2026).
+  const vehIdentityRegRef = useRef<string>("");
   // Live matches for whatever's typed in the Registration field itself — lets staff pick an
   // already-known car straight from that field (no paid VRM lookup) instead of needing the
   // separate "Find vehicle" box above it.
@@ -216,6 +226,17 @@ export default function DocumentDetails() {
   const custInitRef = useRef<{ name: string; phone: string; email: string; postcode: string } | null>(null);
   const markDirty = () => { editSeq.current++; setDirty(true); };
   const set = (k: string, v: any) => { setForm((f) => ({ ...f, [k]: v })); markDirty(); };
+  // ALL reg edits go through here: the moment the reg no longer matches the car the identity
+  // fields describe, blank them in the SAME state update — the lookup refills them for the new
+  // reg, and until then auto-save ships blanks (which the server never writes over real data).
+  const setRegistration = (raw: string) => {
+    const value = String(raw ?? "").toUpperCase();
+    if (normRegKey(value) === vehIdentityRegRef.current) { set("registration", value); return; }
+    setForm((f) => ({ ...f, registration: value, ...Object.fromEntries(VEHICLE_IDENTITY_FIELDS.map((k) => [k, ""])) }));
+    setLookupTech(null); // the oil/MOT/tax/photo cards were the old car's too
+    vehIdentityRegRef.current = normRegKey(value);
+    markDirty();
+  };
   const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
   const [printing, setPrinting] = useState(false);
   // An invoice must have the customer name + vehicle mileage before it goes to the customer.
@@ -492,6 +513,7 @@ export default function DocumentDetails() {
       lubricantsAmount: extraSum((data as any).lineItems, "Lubricant"), paintAmount: extraSum((data as any).lineItems, "Paint"),
     });
     regOnLoadRef.current = (vehicle?.registration || doc.registration || "").toUpperCase().replace(/\s/g, "");
+    vehIdentityRegRef.current = normRegKey(vehicle?.registration || doc.registration || ""); // the identity fields just set are this reg's
     // snapshot the loaded customer details so the update prompt only fires on a genuine edit
     custInitRef.current = {
       name: ([doc.custTitle || nm.title, doc.custForename || nm.forename, doc.custSurname || nm.surname].filter(Boolean).join(" ") || doc.customerName || customer?.name || "").trim(),
@@ -521,8 +543,10 @@ export default function DocumentDetails() {
     setNewCust(false);
     initRef.current = null;     // so clicking back to a previous tab re-loads that doc
     regOnLoadRef.current = "";
+    vehIdentityRegRef.current = "";
     if (reg) {
       setForm((f) => ({ ...f, registration: reg.toUpperCase() }));
+      vehIdentityRegRef.current = normRegKey(reg); // identity fields are blank, owned by this reg
       lookup(reg, true); // fills the vehicle and its linked customer (silent — no auto-create yet)
     } else if (customerId) {
       (async () => {
@@ -605,9 +629,13 @@ export default function DocumentDetails() {
     // If the registration was CHANGED since the doc loaded, force a fresh fetch and OVERWRITE all
     // vehicle fields — so a corrected reg fully replaces the old vehicle's details (not a merge).
     const force = reg.toUpperCase().replace(/\s/g, "") !== regOnLoadRef.current;
+    const wanted = normRegKey(reg);
     setLooking(true);
     try {
       const res: any = await utils.documents.lookupVehicle.fetch({ registration: reg, force });
+      // The reg was edited again while this (slow) lookup was in flight — the result describes
+      // the reg as it WAS. Applying it would clobber the correction and re-attach that car.
+      if (vehIdentityRegRef.current !== wanted) { toast.message("Registration changed while the lookup was running — click Lookup to fetch the new reg."); return; }
       const v = res?.vehicle, c = res?.customer, last = res?.lastCustomer;
       if (!v) { toast.error("No vehicle data found for that registration"); return; }
       const sn = c ? splitName(c.name) : null;
@@ -637,6 +665,7 @@ export default function DocumentDetails() {
       // the record (and adopts this ownerless vehicle) instead of leaving the details unlinked.
       if (!c && last) { setNewCust(true); toast.message("Customer carried over from this vehicle's last invoice — check the details, then save to link them."); }
       regOnLoadRef.current = reg.toUpperCase().replace(/\s/g, ""); // this reg is now loaded — don't force again unless it changes
+      vehIdentityRegRef.current = normRegKey(v.registration || reg); // the identity fields now describe this reg
       setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
       if (!silent) markDirty();
       const src = String(res.source || "");
@@ -778,11 +807,15 @@ export default function DocumentDetails() {
   const custDisplayName = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
 
   function buildPayload(): any {
+    // Ship the vehicle-identity block only when it describes the reg on the doc (belt), and tag
+    // it with that reg so saveDocument can verify the provenance itself (braces).
+    const identityOwned = !!normRegKey(form.registration) && normRegKey(form.registration) === vehIdentityRegRef.current;
     return {
       id: isNew ? undefined : id, docType: form.docType || "JS", docNo: String(form.docNo ?? "").trim() || undefined, registration: form.registration,
       customerId: form.customerId || undefined,
       createCustomer: !form.customerId && !!custDisplayName && (isNew || newCust),
-      vehicle: { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode },
+      vehicle: identityOwned ? { make: form.make, model: form.model, derivative: form.derivative, colour: form.colour, fuelType: form.fuelType, engineCC: form.engineCC, engineNo: form.engineNo, engineCode: form.engineCode, vin: form.vin, paintCode: form.paintCode, keyCode: form.keyCode, radioCode: form.radioCode } : {},
+      vehicleReg: identityOwned ? form.registration : undefined,
       customerName: custDisplayName || undefined,
       custTitle: form.custTitle, custForename: form.custForename, custSurname: form.custSurname,
       company: form.company, accountNumber: form.accountNumber,
@@ -1325,7 +1358,7 @@ export default function DocumentDetails() {
               )}
               {!base && editing && (
                 <VehicleSearch onSelect={(v) => {
-                  set("registration", v.registration);
+                  setRegistration(v.registration);
                   regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, ""); // known car → use its cached data, no SWS re-pay
                   lookup(v.registration);
                 }} />
@@ -1334,15 +1367,15 @@ export default function DocumentDetails() {
                 <span className={base ? "" : "w-24 shrink-0 text-[12px] text-slate-600 text-right"}>Registration</span>
                 {base ? (
                   <div className="js-combo-field">
-                    <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                    <input value={form.registration ?? ""} onChange={(e) => setRegistration(e.target.value)} readOnly={!editing}
                       onBlur={autoLookupOnReg} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); autoLookupOnReg(); } }}
                       className="bg-yellow-50 font-mono font-semibold" />
                     <span className="js-combo-arrow" aria-hidden="true">▾</span>
-                    <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { set("registration", ""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
+                    <button type="button" className="js-combo-clear" disabled={!editing || !form.registration} onClick={() => { setRegistration(""); }} aria-label="Clear registration"><X className="w-3 h-3" /></button>
                   </div>
                 ) : (
                   <div className="relative flex-1 min-w-0">
-                    <input value={form.registration ?? ""} onChange={(e) => set("registration", e.target.value.toUpperCase())} readOnly={!editing}
+                    <input value={form.registration ?? ""} onChange={(e) => setRegistration(e.target.value)} readOnly={!editing}
                       onFocus={() => setRegFocused(true)}
                       onBlur={() => { setTimeout(() => setRegFocused(false), 150); autoLookupOnReg(); }}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setRegFocused(false); autoLookupOnReg(); } }}
@@ -1353,7 +1386,7 @@ export default function DocumentDetails() {
                           <button key={v.id} type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              set("registration", v.registration);
+                              setRegistration(v.registration);
                               regOnLoadRef.current = String(v.registration).toUpperCase().replace(/\s/g, "");
                               lookup(v.registration);
                               setRegFocused(false);

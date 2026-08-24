@@ -11,6 +11,7 @@ import {
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { vehicleIdentityForSave } from "../shared/vehicleIdentity";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -3851,6 +3852,9 @@ export interface SaveDocInput {
   createCustomer?: boolean;
   updateCustomerRecord?: boolean;
   vehicle?: Record<string, any>;
+  // The reg the `vehicle` identity fields were populated for. When present and different from
+  // `registration`, the fields describe another car (reg corrected mid-lookup) and are dropped.
+  vehicleReg?: string;
   customerName?: string; custTitle?: string; custForename?: string; custSurname?: string;
   company?: string; accountNumber?: string;
   custHouseNo?: string; custRoad?: string; custLocality?: string; custTown?: string; custCounty?: string; custPostcode?: string;
@@ -3897,13 +3901,10 @@ export async function saveDocument(input: SaveDocInput) {
   if (input.registration && normReg(input.registration)) {
     const reg = normReg(input.registration);
     const existing = (await db.select().from(vehicles).where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${reg}`).limit(1))[0];
-    const vf = undef({
-      make: input.vehicle?.make, model: input.vehicle?.model, colour: input.vehicle?.colour,
-      fuelType: input.vehicle?.fuelType, engineCC: input.vehicle?.engineCC ? Number(input.vehicle.engineCC) || null : input.vehicle?.engineCC,
-      engineNo: input.vehicle?.engineNo, engineCode: input.vehicle?.engineCode, vin: input.vehicle?.vin,
-      derivative: input.vehicle?.derivative,
-      paintCode: input.vehicle?.paintCode, keyCode: input.vehicle?.keyCode, radioCode: input.vehicle?.radioCode,
-    });
+    // Empty when the client's provenance tag says these fields belong to a different reg —
+    // the LL14LDJ corruption (24/08/2026): reg corrected, auto-save fired before the slow
+    // lookup replaced the previous car's make/model/VIN in the form.
+    const vf = vehicleIdentityForSave(input);
     if (existing) {
       vehicleId = existing.id; customerId = existing.customerId ?? null;
       // Only overwrite fields with a real value — never blank out an existing vehicle's details
@@ -4053,6 +4054,7 @@ export async function convertDocument(id: number, toType: string) {
       engineCC: vehicle.engineCC, engineNo: vehicle.engineNo, engineCode: vehicle.engineCode, vin: vehicle.vin,
       derivative: vehicle.derivative, paintCode: vehicle.paintCode, keyCode: vehicle.keyCode, radioCode: vehicle.radioCode,
     } : undefined,
+    vehicleReg: vehicle?.registration, // identity fields above are the vehicle row's own
     // doc.customerName is the document's own denormalized snapshot, which is blank on plenty of
     // real GA4-synced rows — fall back so a convert never carries a blank name into the new doc.
     customerName: doc.customerName || [doc.custTitle, doc.custForename, doc.custSurname].filter(Boolean).join(" ") || customer?.name || undefined,
