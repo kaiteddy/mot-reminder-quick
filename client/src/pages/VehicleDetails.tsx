@@ -1108,6 +1108,25 @@ export default function VehicleDetails() {
                                                     {liveTaxDueDate && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{relativeDays(daysFromToday(liveTaxDueDate))}</span>}
                                                 </>
                                             } />
+                                            {(() => {
+                                                // DVLA VED (road tax) rates from the stored UKVD payload — only there
+                                                // once the vehicle has had a premium data fetch, so render nothing until then.
+                                                const ved = ctd?.ukvd?.raw?.Results?.VehicleDetails?.VehicleStatus?.VehicleExciseDutyDetails;
+                                                const std = ved?.VedRate?.Standard;
+                                                if (std?.TwelveMonths == null && std?.SixMonths == null) return null;
+                                                const sub = [
+                                                    std?.SixMonths != null ? `£${std.SixMonths} for 6 months` : null,
+                                                    ved?.DvlaBand ? `Band ${ved.DvlaBand}` : null,
+                                                ].filter(Boolean).join(" · ");
+                                                return (
+                                                    <SpecTile label="Tax Rate" icon={<Receipt className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                        <>
+                                                            {std?.TwelveMonths != null ? `£${std.TwelveMonths} a year` : `£${std.SixMonths} for 6 months`}
+                                                            {sub && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{sub}</span>}
+                                                        </>
+                                                    } />
+                                                );
+                                            })()}
                                             <SpecTile label="Reg Date" icon={<Calendar className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
                                                 <>
                                                     {formatDate(vehicle.dateOfRegistration)}
