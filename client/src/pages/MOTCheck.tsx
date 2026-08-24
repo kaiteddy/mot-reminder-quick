@@ -59,6 +59,7 @@ interface VehicleData {
   fuelType?: string;
   taxStatus?: string;
   taxDueDate?: string;
+  vedRate?: { twelveMonths?: number | null; sixMonths?: number | null; band?: string | null } | null;
   motTests?: MOTTest[];
   // Additional DVLA fields
   engineCapacity?: number;
@@ -392,6 +393,21 @@ export default function MOTCheck() {
                         <div className="text-xs text-slate-500">Tax Due</div>
                         <div className="font-medium">
                           {new Date(vehicleData.taxDueDate).toLocaleDateString("en-GB")}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {vehicleData.vedRate && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <div>
+                        <div className="text-xs text-slate-500">Tax Rate</div>
+                        <div className="font-medium">
+                          {vehicleData.vedRate.twelveMonths != null ? `£${vehicleData.vedRate.twelveMonths}/yr` : `£${vehicleData.vedRate.sixMonths}/6mo`}
+                          <span className="text-xs text-slate-500 font-normal">
+                            {vehicleData.vedRate.twelveMonths != null && vehicleData.vedRate.sixMonths != null ? ` · £${vehicleData.vedRate.sixMonths}/6mo` : ""}
+                            {vehicleData.vedRate.band ? ` · Band ${vehicleData.vedRate.band}` : ""}
+                          </span>
                         </div>
                       </div>
                     </div>

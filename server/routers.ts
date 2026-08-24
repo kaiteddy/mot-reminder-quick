@@ -1949,8 +1949,26 @@ export const appRouter = router({
         const motExpiry = motData ? getLatestMOTExpiry(motData) : null;
         const finalExpiry = motExpiry || dvlaExpiry;
 
+        // DVLA road-tax rate (VED) — free to surface: it arrives inside the UKVD payload,
+        // live when this lookup bought one, otherwise from the vehicle's stored copy.
+        const vedOf = (raw: any) => raw?.Results?.VehicleDetails?.VehicleStatus?.VehicleExciseDutyDetails;
+        let ved = vedOf((ukvdData as any)?.raw);
+        if (!ved && existingVehicle?.comprehensiveTechnicalData) {
+          try {
+            const ctd = typeof existingVehicle.comprehensiveTechnicalData === "string"
+              ? JSON.parse(existingVehicle.comprehensiveTechnicalData)
+              : existingVehicle.comprehensiveTechnicalData;
+            ved = vedOf((ctd as any)?.ukvd?.raw);
+          } catch { /* no usable stored copy */ }
+        }
+        const vedStd = ved?.VedRate?.Standard;
+        const vedRate = (vedStd?.TwelveMonths ?? vedStd?.SixMonths) != null
+          ? { twelveMonths: vedStd.TwelveMonths ?? null, sixMonths: vedStd.SixMonths ?? null, band: ved?.DvlaBand ?? null }
+          : null;
+
         return {
           registration: input.registration,
+          vedRate,
           make: ukvdData?.make || motData?.make || dvlaData?.make,
           model: ukvdData?.model || motData?.model || dvlaData?.model,
           vin: ukvdData?.vin || dvlaData?.vin,
