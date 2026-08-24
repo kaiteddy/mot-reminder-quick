@@ -4207,8 +4207,22 @@ export async function popGa4Number(documentId: number): Promise<string | null> {
       SELECT p.id FROM "ga4NumberPool" p WHERE p.status='available'
         AND NOT EXISTS (
           SELECT 1 FROM "serviceHistory" sh
-          WHERE (sh."docNo" = p."ga4Number" OR sh."ga4Number" = p."ga4Number")
-            AND sh.id <> ${documentId}
+          WHERE sh.id <> ${documentId}
+            AND (
+              -- a real conflict: another document already carries this GA4 number
+              sh."ga4Number" = p."ga4Number"
+              -- or a GA4-side invoice genuinely took this number. Three docNo matches are
+              -- NOT conflicts and froze the whole pool on 24/08 (every issue failed):
+              --   * web docs whose internal always-ahead docNo landed on a pool number
+              --     (docNo is provisional; the printed number is ga4Number),
+              --   * the pool's own blank reserved draft, re-imported by the nightly sync
+              --     (a GA4 shell with no money, reg or customer on it),
+              --   * job sheets - GA4 numbers JS and SI sequences independently.
+              OR (sh."docNo" = p."ga4Number"
+                  AND sh."docType" IN ('SI','XS')
+                  AND (sh."externalId" IS NULL OR sh."externalId" NOT LIKE 'WEB-%')
+                  AND (COALESCE(sh."totalGross", 0)::numeric <> 0 OR COALESCE(sh.registration, '') <> '' OR sh."customerId" IS NOT NULL))
+            )
         )
       ORDER BY (p."ga4Number")::bigint ASC
       LIMIT 1 FOR UPDATE SKIP LOCKED
