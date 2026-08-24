@@ -838,8 +838,8 @@ export default function VehicleDetails() {
                     <ArrowLeft className="w-4 h-4" /> Back
                 </button>
                 {/* Header with Logo */}
-                <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
+                <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 md:shrink-0">
                         {(() => {
                             const ukvdImageUrl = (vehicle.comprehensiveTechnicalData as any)?.ukvd?.imageUrl;
                             return ukvdImageUrl && ukvdImageUrl !== failedImgUrl ? (
@@ -873,7 +873,7 @@ export default function VehicleDetails() {
                         </div>
                     </div>
                     {/* Owner, right beside the reg — who to ring without scrolling */}
-                    <div className="min-w-[200px] max-w-[300px]">
+                    <div className="min-w-[200px] max-w-[300px] md:shrink-0">
                         <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
                             <User className="w-3.5 h-3.5" /> Customer
                         </p>
@@ -950,7 +950,7 @@ export default function VehicleDetails() {
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col gap-2 min-w-[200px]">
+                    <div className="flex flex-col gap-2 min-w-[200px] md:shrink-0">
                         <Button
                             onClick={() => setLocation(`${base}/documents/new?reg=${encodeURIComponent(vehicle.registration)}&docType=JS`)}
                         >
@@ -987,7 +987,7 @@ export default function VehicleDetails() {
                             OEM Parts (7zap)
                         </Button>
                     </div>
-                    <div className="flex flex-col gap-2 min-w-[200px]">
+                    <div className="flex flex-col gap-2 min-w-[200px] md:shrink-0">
                         <Dialog>
                             <DialogTrigger asChild>
                                 <Button className="bg-green-600 hover:bg-green-700 text-white font-bold">
