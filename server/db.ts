@@ -1240,6 +1240,9 @@ export async function saveTechnicalData(registration: string, data: any) {
   const engineCC = data?.ukvd?.engineSize || data?.specs?.engineSize || null;
   const vin = data?.ukvd?.vin || data?.specs?.vin || data?.raw?.vinNumber || null;
   const engineCode = data?.specs?.engineCode || data?.raw?.engineCode || null;
+  const engineNo = data?.ukvd?.engineNumber || null;
+  const firstReg = data?.ukvd?.firstRegisteredUk ? new Date(data.ukvd.firstRegisteredUk) : null;
+  const dateOfRegistration = firstReg && !isNaN(firstReg.getTime()) ? firstReg : null;
   // derivative (variant/trim) — same source the lookup uses; previously omitted here, which left
   // enriched vehicles with swsLastUpdated set but a blank derivative the lookup would never refill.
   const derivative = tidyDerivative(data?.specs?.fullName || data?.specs?.name, make);
@@ -1256,6 +1259,8 @@ export async function saveTechnicalData(registration: string, data: any) {
         engineCC: v.engineCC || engineCC,
         vin: v.vin || vin,
         engineCode: v.engineCode || engineCode,
+        engineNo: v.engineNo || engineNo,
+        dateOfRegistration: v.dateOfRegistration || dateOfRegistration,
         comprehensiveTechnicalData: data,
         swsLastUpdated: new Date()
       })
@@ -1271,6 +1276,8 @@ export async function saveTechnicalData(registration: string, data: any) {
       engineCC: engineCC,
       vin: vin,
       engineCode: engineCode,
+      engineNo: engineNo,
+      dateOfRegistration: dateOfRegistration,
       comprehensiveTechnicalData: data,
       swsLastUpdated: new Date()
     });
@@ -2933,6 +2940,13 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (want("vin") && clean(u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = clean(u.vin || sp.vin || sws?.raw?.vinNumber);
           if (want("engineCC") && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
           if (effectiveForce) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
+          // The paid UKVD lookup is the ONLY source of the physical engine number and the exact
+          // first-registration date - map them, or they die unread in the stored payload.
+          if ((effectiveForce || empty(v.engineNo)) && clean(u.engineNumber)) v.engineNo = updates.engineNo = clean(u.engineNumber);
+          if ((effectiveForce || empty(v.dateOfRegistration)) && u.firstRegisteredUk) {
+            const dor = new Date(u.firstRegisteredUk);
+            if (!isNaN(dor.getTime())) { v.dateOfRegistration = dor; updates.dateOfRegistration = dor; }
+          }
           updates.swsLastUpdated = new Date(); // mark "SWS/UKVD attempted" so we never re-pay for this vehicle
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
@@ -3024,6 +3038,12 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
       v.fuelType = u.fuelType ?? null; v.engineCC = u.engineSize ?? null; v.vin = u.vin ?? null;
       v.derivative = tidyDerivative(sws?.specs?.fullName || sws?.specs?.name, v.make);
+      v.engineNo = u.engineNumber ?? null;               // paid data - only UKVD returns this
+      v.engineCode = sws?.specs?.engineCode ?? null;     // from SWS, was stored but never returned
+      if (u.firstRegisteredUk) {
+        const dor = new Date(u.firstRegisteredUk);
+        if (!isNaN(dor.getTime())) v.dateOfRegistration = dor;   // exact date, beats DVLA's year
+      }
       v.imageUrl = cleanImg(u.imageUrl);
       sources.push("sws");
     }
@@ -3041,7 +3061,11 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       v.motExpiryDate = d.motExpiryDate ?? null;
       v.taxStatus = (d as any).taxStatus ?? null;
       v.taxDueDate = (d as any).taxDueDate ?? null;
-      if (d.yearOfManufacture) v.dateOfRegistration = new Date(d.yearOfManufacture, 0, 1);
+      if (!v.dateOfRegistration) {
+        // prefer DVLA's real month; the 1st-of-January-of-manufacture-year guess is last resort
+        if (d.monthOfFirstRegistration) v.dateOfRegistration = new Date(d.monthOfFirstRegistration + "-01");
+        else if (d.yearOfManufacture) v.dateOfRegistration = new Date(d.yearOfManufacture, 0, 1);
+      }
       sources.push("dvla");
     }
   } catch (e) { /* DVLA unavailable */ }
