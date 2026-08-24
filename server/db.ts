@@ -1903,7 +1903,13 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
   if (!db) return blank;
 
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
-  const inRange = and(gte(dateCol, from), lte(dateCol, to),
+  // Exclude documents GA4 has VOIDED (its docStatus 3). GA4's own reports and statements leave
+  // them out; ours were adding them up, because this summary keyed only on docType and date.
+  // On 2026-08-24 that put 9 voided invoices worth £3,013.45 into the sales figures — including
+  // 88120 at £1,843.51 — and the web app has no void of its own, so nothing else was filtering
+  // them. Adam's call, 2026-08-24: voided invoices should not count.
+  const notVoid = sql`COALESCE(${serviceHistory.docStatus}, '') <> '3'`;
+  const inRange = and(gte(dateCol, from), lte(dateCol, to), notVoid,
     ...(opts.department ? [eq(serviceHistory.department, opts.department)] : []));
   const n = (v: any) => Number(v) || 0;
 
