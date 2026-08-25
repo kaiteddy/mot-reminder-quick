@@ -128,6 +128,29 @@ export const appRouter = router({
         return { optedOut: input.optOut };
       }),
 
+    // Trade accounts (dealers, bodyshops) own dozens of stock vehicles - per-vehicle MOT
+    // reminders would hammer one personal mobile. This is softer than optedOut: only the
+    // per-vehicle reminder stream stops; car-ready, appointment and reply messages still send.
+    setTradeAccount: publicProcedure
+      .input(z.object({ customerId: z.number(), trade: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const { getDb, addCustomerLog } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        await db.update(customers).set({ noVehicleReminders: input.trade ? 1 : 0 } as any).where(eq(customers.id, input.customerId));
+        try {
+          await addCustomerLog({
+            customerId: input.customerId, type: "system", direction: "internal",
+            subject: input.trade ? "Marked as trade account - per-vehicle reminders off" : "Trade flag removed - per-vehicle reminders back on",
+            body: input.trade
+              ? "Fleet/stock vehicles no longer generate MOT or service reminders to this customer. Car-ready and reply messages are unaffected."
+              : "This customer's vehicles are back in the normal reminder stream.",
+            createdBy: null,
+          } as any);
+        } catch { /* logging must never block the toggle */ }
+        return { trade: input.trade };
+      }),
+
     // The customer linked to a vehicle — used to pre-fill the "Email history" recipient.
     byVehicleId: publicProcedure
       .input(z.object({ vehicleId: z.number() }))
@@ -2100,6 +2123,9 @@ export const appRouter = router({
         if (customer && customer.optedOut) {
           throw new Error(`Customer ${customer.name} has opted out of messages. They can opt back in by replying START.`);
         }
+        if (customer && (customer as any).noVehicleReminders) {
+          throw new Error(`${customer.name} is a trade account - per-vehicle reminders are switched off for them.`);
+        }
 
         // Handle test messages (id = 0)
         if (input.id === 0) {
@@ -3055,7 +3081,7 @@ export const appRouter = router({
         for (const log of logsToResend) {
           // Never resend to a customer who has opted out since the original (failed) send.
           const recipientCustomer = await findCustomerByPhone(log.recipient);
-          if (recipientCustomer && recipientCustomer.optedOut) { skippedOptOut++; continue; }
+          if (recipientCustomer && (recipientCustomer.optedOut || (recipientCustomer as any).noVehicleReminders)) { skippedOptOut++; continue; }
           try {
             let messageContent = log.messageContent;
 

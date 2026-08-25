@@ -411,6 +411,7 @@ export default function CustomerDetails() {
         { id },
         { enabled: !!id }
     );
+    const tradeMutation = trpc.customers.setTradeAccount.useMutation({ onSuccess: () => refetch() });
 
     // Merging linked accounts (same phone, different GA4 account number — the Duplicates page
     // won't auto-merge these, so this is a deliberate, explicitly-confirmed override).
@@ -552,6 +553,16 @@ export default function CustomerDetails() {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={(customer as any).noVehicleReminders ? "text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 hover:text-amber-800" : ""}
+                            title="Trade accounts own many stock vehicles - this switches their per-vehicle MOT reminders off. Car-ready and reply messages still send."
+                            disabled={tradeMutation.isPending}
+                            onClick={() => tradeMutation.mutate({ customerId: customer.id, trade: !(customer as any).noVehicleReminders })}
+                        >
+                            {(customer as any).noVehicleReminders ? "Trade: reminders off" : "Mark as trade"}
+                        </Button>
                         <Button onClick={() => setIsEditOpen(true)} variant="outline" size="sm">
                             <Pencil className="w-4 h-4 mr-2" />
                             Edit Profile

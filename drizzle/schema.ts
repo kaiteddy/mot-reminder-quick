@@ -46,6 +46,11 @@ export const customers = pgTable("customers", {
   mergedExternalIds: jsonb("mergedExternalIds"), // GA4 ids of duplicate records merged into this one
   optedOut: integer("optedOut").default(0).notNull(), // 0 = false, 1 = true
   optedOutAt: timestamp("optedOutAt", { mode: "date" }),
+  // Trade/fleet accounts (dealers with dozens of stock vehicles): 1 = never send
+  // per-vehicle MOT/service reminders. Unlike optedOut, car-ready, appointment and
+  // conversation messages still send. Lives on the customer, so vehicles added later
+  // inherit it automatically.
+  noVehicleReminders: integer("noVehicleReminders").default(0).notNull(),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
