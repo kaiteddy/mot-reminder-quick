@@ -43,11 +43,11 @@ export default function Ga4SyncButton() {
       onClick={() => req.mutate()}
       disabled={busy}
       title={title}
-      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/60 bg-background px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-70"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border/60 bg-background px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-70"
     >
       <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin text-blue-600" : "text-muted-foreground"}`} />
-      <span className="hidden md:inline">{busy ? "Syncing…" : "Sync GA4"}</span>
-      <span className="hidden xl:inline text-[11px] text-muted-foreground/70">· {ago}</span>
+      <span className="hidden 2xl:inline">{busy ? "Syncing…" : "Sync GA4"}</span>
+      <span className="hidden 2xl:inline text-[11px] text-muted-foreground/70">· {ago}</span>
     </button>
   );
 }

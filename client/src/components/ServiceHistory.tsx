@@ -17,8 +17,8 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { Download, Edit, FileText, Loader2, Mail, Printer, Trash2, Key } from "lucide-react";
+import { useRef, useState, Fragment } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -213,6 +213,29 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
         ...Object.keys(DOC_META).filter((t) => counts[t]).map((t) => [t, DOC_META[t].label, counts[t]] as [string, string, number]),
     ];
 
+    // Mark where the car last changed hands, taken from who the invoices were billed to.
+    // shown is newest-first: find the current owner (newest document's billed-to) and, if the
+    // car previously belonged to someone else, drop ONE divider above the newest invoice of the
+    // current owner's most-recent run — "{owner} · owner from {when their run began}". Kept to a
+    // single marker on purpose: the older billing on these records is often mixed, so charting
+    // every flip would be noise rather than signal.
+    const ownerMarkers = (() => {
+        const map = new Map<number, { owner: string; fromDate: any }>();
+        const rows = shown as any[];
+        if (rows.length < 2) return map;
+        const nameAt = (i: number) => String(rows[i]?.ownerName || "").trim();
+        const dateOf = (d: any) => d?.dateIssued || d?.dateCreated || null;
+        const current = nameAt(0);
+        if (!current) return map;
+        const hasPriorOwner = rows.some((_, i) => nameAt(i) && nameAt(i) !== current);
+        if (!hasPriorOwner) return map; // never changed hands → nothing to indicate
+        let j = 0;
+        while (j + 1 < rows.length && nameAt(j + 1) === current) j++; // oldest doc of the current owner's run
+        map.set(rows[0].id, { owner: current, fromDate: dateOf(rows[j]) });
+        return map;
+    })();
+    const fmtFrom = (d: any) => { if (!d) return ""; const dt = new Date(d); return isNaN(dt.getTime()) ? "" : format(dt, "dd MMM yyyy"); };
+
     return (
         <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -343,8 +366,19 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 {shown.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No documents.</p>}
                 {shown.map((doc: any) => {
                     const { summary } = jobSummary(doc.mainDescription);
+                    const marker = ownerMarkers.get(doc.id);
                     return (
-                        <div key={doc.id} onClick={() => setSelectedDoc(doc.id)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                        <Fragment key={doc.id}>
+                        {marker && (
+                            <div className="flex items-center gap-2 text-[11px] pt-1">
+                                <span className="h-px flex-1 bg-amber-200" />
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 whitespace-nowrap">
+                                    <Key className="w-3 h-3" /> {marker.owner}{fmtFrom(marker.fromDate) ? ` · from ${fmtFrom(marker.fromDate)}` : ""}
+                                </span>
+                                <span className="h-px flex-1 bg-amber-200" />
+                            </div>
+                        )}
+                        <div onClick={() => setSelectedDoc(doc.id)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
                                 <span className="text-sm text-slate-600">{(doc.dateIssued || doc.dateCreated) ? format(new Date(doc.dateIssued || doc.dateCreated), "dd/MM/yyyy") : "-"}</span>
@@ -360,6 +394,7 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 </div>
                             </div>
                         </div>
+                        </Fragment>
                     );
                 })}
             </div>
@@ -377,9 +412,24 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {shown.map((doc: any) => (
+                    {shown.map((doc: any) => {
+                    const marker = ownerMarkers.get(doc.id);
+                    return (
+                        <Fragment key={doc.id}>
+                        {marker && (
+                            <TableRow className="hover:bg-transparent border-0">
+                                <TableCell colSpan={7} className="py-1.5">
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                        <span className="h-px flex-1 bg-amber-200" />
+                                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 whitespace-nowrap">
+                                            <Key className="w-3 h-3" /> {marker.owner}{fmtFrom(marker.fromDate) ? ` · owner from ${fmtFrom(marker.fromDate)}` : ""}
+                                        </span>
+                                        <span className="h-px flex-1 bg-amber-200" />
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        )}
                         <TableRow
-                            key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
                             onClick={() => setSelectedDoc(doc.id)}
                         >
@@ -447,7 +497,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 </div>
                             </TableCell>
                         </TableRow>
-                    ))}
+                        </Fragment>
+                    );
+                    })}
                 </TableBody>
             </Table>
 

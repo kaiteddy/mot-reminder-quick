@@ -9,12 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, GripVertical, CheckCircle2, Loader2, User, Phone, Car } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, GripVertical, CheckCircle2, Loader2, User, Phone, Car, MapPin } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { APP_TITLE } from "@/const";
 import { Badge } from "@/components/ui/badge";
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
+import { MOT_SLOTS } from "@/lib/appointmentSlots";
 
 // Define our resource columns (bays/ramps)
 const BAYS = [
@@ -23,16 +24,6 @@ const BAYS = [
     { id: "ramp-2", name: "Ramp 2", },
     { id: "ramp-3", name: "Ramp 3", },
     { id: "waitlist", name: "Waitlist / Unassigned" }
-];
-
-const MOT_SLOTS = [
-    { id: "08:30", label: "08:30 - 09:30", start: "08:30", end: "09:30" },
-    { id: "09:30", label: "09:30 - 10:30", start: "09:30", end: "10:30" },
-    { id: "11:00", label: "11:00 - 12:00", start: "11:00", end: "12:00" },
-    { id: "12:00", label: "12:00 - 13:00", start: "12:00", end: "13:00" },
-    { id: "14:00", label: "14:00 - 15:00", start: "14:00", end: "15:00" },
-    { id: "15:00", label: "15:00 - 16:00", start: "15:00", end: "16:00" },
-    { id: "16:00", label: "16:00 - 17:00", start: "16:00", end: "17:00" }
 ];
 
 const RAMP_SLOTS: { id: string; label: string; start: string; end: string }[] = [];
@@ -485,25 +476,25 @@ export default function Appointments() {
         <DashboardLayout>
             <div className="flex flex-col h-[calc(100vh-6rem)]">
                 {/* Header Options */}
-                <div className="flex-shrink-0 flex items-center justify-between mb-4">
-                    <div>
+                <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-4">
+                    <div className="min-w-0">
                         <h1 className="text-3xl font-bold tracking-tight">Calendar & Kanban</h1>
                         <p className="text-muted-foreground">Manage bookings seamlessly across your ramps and bays.</p>
                     </div>
-                    <div className="flex items-center space-x-4">
-                        <div className="flex items-center bg-background border rounded-md shadow-sm">
-                            <Button variant="ghost" size="icon" onClick={prevDay}>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="flex items-center bg-background border rounded-md shadow-sm flex-shrink-0">
+                            <Button variant="ghost" size="icon" onClick={prevDay} className="flex-shrink-0">
                                 <ChevronLeft className="w-5 h-5" />
                             </Button>
-                            <div className="flex items-center px-4 py-2 text-sm font-medium border-x select-none cursor-pointer hover:bg-accent hover:text-accent-foreground" onClick={today}>
-                                <CalendarIcon className="w-4 h-4 mr-2" />
-                                {format(currentDate, "EEEE, do MMM yyyy")}
+                            <div className="flex items-center px-3 py-2 text-sm font-medium border-x select-none cursor-pointer whitespace-nowrap hover:bg-accent hover:text-accent-foreground" onClick={today}>
+                                <CalendarIcon className="w-4 h-4 mr-2 flex-shrink-0" />
+                                {format(currentDate, "EEE, do MMM yyyy")}
                             </div>
-                            <Button variant="ghost" size="icon" onClick={nextDay}>
+                            <Button variant="ghost" size="icon" onClick={nextDay} className="flex-shrink-0">
                                 <ChevronRight className="w-5 h-5" />
                             </Button>
                         </div>
-                        <Button onClick={() => openCreateDialog("waitlist")}>
+                        <Button onClick={() => openCreateDialog("waitlist")} className="flex-shrink-0 whitespace-nowrap">
                             <Plus className="w-4 h-4 mr-2" />
                             New Booking
                         </Button>
@@ -545,44 +536,68 @@ export default function Appointments() {
                                                                                 <GripVertical className="w-3.5 h-3.5" />
                                                                             </div>
                                                                             <div className="flex-1 min-w-0" onClick={() => openApptEdit(appt)}>
-                                                                                <div className="flex items-center justify-between mb-0.5 cursor-pointer">
+                                                                                <div className="flex items-center justify-between gap-1 mb-0.5 cursor-pointer">
                                                                                     {appt.registration ? (
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <div className="font-mono font-bold text-xs tracking-wide bg-yellow-400 text-black px-1 py-0 rounded-sm shadow-sm flex items-center">
-                                                                                                {appt.registration}
-                                                                                            </div>
-                                                                                            {appt.vehicle?.make && (
-                                                                                                <div className="flex items-center">
-                                                                                                    <ManufacturerLogo make={appt.vehicle.make} size="sm" showName className="text-[10px]" />
-                                                                                                </div>
-                                                                                            )}
+                                                                                        <div className="font-mono font-bold text-xs tracking-wide bg-yellow-400 text-black px-1.5 py-0.5 rounded-sm shadow-sm flex items-center flex-shrink-0">
+                                                                                            {appt.registration}
                                                                                         </div>
                                                                                     ) : (
                                                                                         <div className="font-medium text-xs italic text-muted-foreground">No Reg</div>
                                                                                     )}
-                                                                                    {appt.startTime && (
-                                                                                        <div className="flex items-center text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1 py-0.5 rounded">
-                                                                                            <Clock className="w-2.5 h-2.5 mr-1 opacity-70" />
-                                                                                            {appt.startTime}
-                                                                                        </div>
-                                                                                    )}
+                                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                                        {appt.serviceType && (
+                                                                                            <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5 whitespace-nowrap">
+                                                                                                {appt.serviceType}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {appt.startTime && (
+                                                                                            <div className="flex items-center text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-background/60 px-1 py-0.5 rounded whitespace-nowrap">
+                                                                                                <Clock className="w-2.5 h-2.5 mr-0.5 opacity-70" />
+                                                                                                {appt.startTime}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
                                                                                 </div>
+                                                                                {/* Car — make + model + identifying details so it's unmistakably the right vehicle */}
                                                                                 {appt.vehicle && (
-                                                                                    <div className="flex items-center text-[10px] text-muted-foreground mt-0.5 mb-0 font-medium truncate">
-                                                                                        <Car className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
-                                                                                        <span className="truncate">{appt.vehicle.model || "Unknown Model"}</span>
+                                                                                    <div className="mt-1">
+                                                                                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 min-w-0">
+                                                                                            {appt.vehicle.make
+                                                                                                ? <ManufacturerLogo make={appt.vehicle.make} size="sm" className="flex-shrink-0" />
+                                                                                                : <Car className="w-3 h-3 opacity-70 flex-shrink-0" />}
+                                                                                            <span className="truncate">{[appt.vehicle.make, appt.vehicle.model].filter(Boolean).join(" ") || "Unknown vehicle"}</span>
+                                                                                        </div>
+                                                                                        {(appt.vehicle.colour || appt.vehicle.dateOfRegistration || appt.vehicle.fuelType) && (
+                                                                                            <div className="flex flex-wrap items-center gap-x-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                                                                                                {appt.vehicle.colour && <span>{appt.vehicle.colour}</span>}
+                                                                                                {appt.vehicle.dateOfRegistration && <span>· {new Date(appt.vehicle.dateOfRegistration).getFullYear()}</span>}
+                                                                                                {appt.vehicle.fuelType && <span>· {appt.vehicle.fuelType}</span>}
+                                                                                            </div>
+                                                                                        )}
+                                                                                        {appt.vehicle.motExpiryDate && (
+                                                                                            <div className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                                                                                                MOT exp {new Date(appt.vehicle.motExpiryDate).toLocaleDateString("en-GB")}
+                                                                                            </div>
+                                                                                        )}
                                                                                     </div>
                                                                                 )}
+                                                                                {/* Customer — name, phone, where they are, so it's unmistakably the right person */}
                                                                                 {appt.customer && (
-                                                                                    <div className="flex flex-col gap-0 mt-0.5 border-t pt-0.5 border-slate-100 dark:border-slate-800">
-                                                                                        <div className="flex items-center text-[9px] text-slate-500 font-medium truncate">
-                                                                                            <User className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
-                                                                                            <span className="truncate">{appt.customer.name}</span>
+                                                                                    <div className="flex flex-col gap-0.5 mt-1 border-t pt-1 border-slate-200/70 dark:border-slate-800">
+                                                                                        <div className="flex items-center text-[11px] text-slate-700 dark:text-slate-200 font-semibold min-w-0">
+                                                                                            <User className="w-3 h-3 mr-1 opacity-70 flex-shrink-0" />
+                                                                                            <span className="truncate">{appt.customer.name || "No name on file"}</span>
                                                                                         </div>
                                                                                         {appt.customer.phone && (
-                                                                                            <div className="flex items-center text-[9px] text-slate-500 font-medium truncate">
+                                                                                            <div className="flex items-center text-[10px] text-slate-500 font-medium min-w-0">
                                                                                                 <Phone className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
                                                                                                 <span className="truncate">{appt.customer.phone}</span>
+                                                                                            </div>
+                                                                                        )}
+                                                                                        {(appt.customer.address || appt.customer.postcode) && (
+                                                                                            <div className="flex items-center text-[10px] text-slate-500 font-medium min-w-0">
+                                                                                                <MapPin className="w-2.5 h-2.5 mr-1 opacity-70 flex-shrink-0" />
+                                                                                                <span className="truncate">{[appt.customer.address, appt.customer.postcode].filter(Boolean).join(", ")}</span>
                                                                                             </div>
                                                                                         )}
                                                                                     </div>

@@ -57,6 +57,7 @@ import { Button } from "./ui/button";
 import { UnreadMessageBadge } from "./UnreadMessageBadge";
 import UniversalSearch from "./UniversalSearch";
 import QuickMOTCheck from "./QuickMOTCheck";
+import BookMOTButton from "./BookMOTButton";
 import Ga4SyncButton from "./Ga4SyncButton";
 
 const menuGroups = [
@@ -318,8 +319,8 @@ function DashboardLayoutContent({
         <header className="h-16 flex items-center justify-between px-6 bg-background/80 backdrop-blur-md border-b border-border/40 sticky top-0 z-10">
           <div className="flex items-center gap-4">
             <SidebarTrigger className="h-9 w-9 hover:bg-accent/50 transition-colors" />
-            <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
-            <div className="flex flex-col">
+            <div className="h-4 w-[1px] bg-border/60 mx-1 hidden lg:block" />
+            <div className="hidden lg:flex flex-col">
               <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 leading-tight">
                 Current View
               </span>
@@ -329,19 +330,21 @@ function DashboardLayoutContent({
             </div>
           </div>
 
-          {/* Global search — available on every page */}
-          <div className="flex-1 max-w-xl mx-4 hidden sm:block">
+          {/* Global search — the most-used control, so it stays prominent: a solid min width means it
+              never collapses to an icon; the action buttons drop their labels to icons (below) to make room. */}
+          <div className="flex-1 min-w-[220px] md:min-w-[300px] max-w-2xl mx-3 hidden sm:block">
             <UniversalSearch placeholder="Search any customer, vehicle, reg, make/model, phone…" />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 lg:gap-3 shrink-0">
             <Ga4SyncButton />
             <button type="button" onClick={() => setLocation(workshopHref)} title="Flip to the workshop (mechanic) view"
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
-              <Wrench className="w-4 h-4" /> <span className="hidden lg:inline">Workshop</span>
+              className="inline-flex items-center gap-1.5 h-9 px-3 shrink-0 whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 text-[13px] font-medium text-amber-800 hover:bg-amber-100 transition-colors">
+              <Wrench className="w-4 h-4" /> <span className="hidden 2xl:inline">Workshop</span>
             </button>
             <QuickMOTCheck />
-            <div className="hidden md:flex flex-col items-end">
+            <BookMOTButton />
+            <div className="hidden 2xl:flex flex-col items-end">
               <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
               <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
             </div>

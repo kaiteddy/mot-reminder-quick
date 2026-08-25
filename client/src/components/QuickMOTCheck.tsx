@@ -36,10 +36,10 @@ export default function QuickMOTCheck() {
   const lastTest = data?.motTests?.[0];
 
   return (
-    <div ref={wrapRef} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-300 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-        <CalendarClock className="w-4 h-4 text-violet-600" /> <span className="hidden lg:inline">MOT Check</span>
+    <div ref={wrapRef} className="relative shrink-0">
+      <button type="button" onClick={() => setOpen((o) => !o)} title="Quick MOT & tax check"
+        className="inline-flex items-center gap-1.5 h-9 px-3 whitespace-nowrap rounded-lg border border-slate-300 bg-white text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+        <CalendarClock className="w-4 h-4 text-violet-600" /> <span className="hidden 2xl:inline">MOT Check</span>
       </button>
 
       {open && (

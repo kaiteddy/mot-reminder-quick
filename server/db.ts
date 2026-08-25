@@ -451,6 +451,7 @@ export async function searchVehiclesForJob(query: string, limit = 12) {
     const ors = [
       ilike(vehicles.make, term),
       ilike(vehicles.model, term),
+      ilike(vehicles.colour, term),
       ilike(sql`COALESCE(${vehicles.make}, '') || ' ' || COALESCE(${vehicles.model}, '')`, term),
       ilike(customers.name, term),
       ilike(customers.email, term),
@@ -955,9 +956,12 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
     createdAt: serviceHistory.createdAt,
     description: serviceHistory.description,
     mainDescription: sql<string>`COALESCE(${serviceHistory.description}, MIN(${serviceLineItems.description}))`,
+    // Who this document was billed to — used to mark ownership changes on the timeline.
+    ownerName: sql<string | null>`MIN(${customers.name})`,
   })
     .from(serviceHistory)
     .leftJoin(serviceLineItems, eq(serviceHistory.id, serviceLineItems.documentId))
+    .leftJoin(customers, eq(serviceHistory.customerId, customers.id))
     .where(eq(serviceHistory.vehicleId, vehicleId))
     .groupBy(serviceHistory.id)
     .orderBy(desc(serviceHistory.dateCreated));
@@ -1888,7 +1892,7 @@ export async function globalSearch(query: string, full = false) {
     db.select({ id: vehicles.id, registration: vehicles.registration, make: vehicles.make, model: vehicles.model, colour: vehicles.colour, customerId: vehicles.customerId, ownerName: customers.name, ownerPhone: customers.phone })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
-      .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(customers.name, l)]; }))
+      .where(allTokens((t) => { const l = likeOf(t); return [sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') ILIKE ${regLikeOf(t)}`, ilike(vehicles.make, l), ilike(vehicles.model, l), ilike(vehicles.derivative, l), ilike(vehicles.colour, l), ilike(customers.name, l)]; }))
       .orderBy(customers.name).limit(limV),
     db.select({ id: serviceHistory.id, docNo: serviceHistory.docNo, docType: serviceHistory.docType, registration: serviceHistory.registration, customerName: serviceHistory.customerName, accountNumber: serviceHistory.accountNumber, date: serviceHistory.dateCreated })
       .from(serviceHistory)

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +44,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Smartphone, QrCode } from "lucide-react";
+import { Smartphone, QrCode, Search, UserPlus, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // SWS returns engine oil as one row per ACEA/API/ILSAC standard (8+ rows that differ only by
@@ -221,6 +222,25 @@ export default function VehicleDetails() {
         }
     });
 
+    // Assign / change the owner: search customers and link one to this vehicle.
+    const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+    const [ownerSearch, setOwnerSearch] = useState("");
+    const ownerResults = trpc.customers.search.useQuery(
+        { query: ownerSearch.trim() },
+        { enabled: ownerPickerOpen && ownerSearch.trim().length >= 2, staleTime: 30_000 }
+    );
+    const assignOwner = trpc.reminders.assignVehicle.useMutation({
+        onSuccess: () => {
+            toast.success("Owner updated for this vehicle.");
+            setOwnerPickerOpen(false);
+            setOwnerSearch("");
+            utils.vehicles.getByRegistration.invalidate();
+        },
+        onError: (err) => {
+            toast.error("Failed to assign owner: " + err.message);
+        }
+    });
+
     const formatDate = (date: Date | string | null) => {
         if (!date) return "-";
         return new Date(date).toLocaleDateString("en-GB");
@@ -273,13 +293,13 @@ export default function VehicleDetails() {
                 </button>
                 {/* Header with Logo */}
                 <div className="bg-card p-6 rounded-xl border border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                        <ManufacturerLogo make={vehicle.make as string} size="xl" />
-                        <div>
+                    <div className="flex items-center gap-4 min-w-0">
+                        <ManufacturerLogo make={vehicle.make as string} size="xl" className="shrink-0" />
+                        <div className="min-w-0">
                             <div className="bg-yellow-400 text-black px-4 py-1 rounded font-mono font-bold text-2xl border-2 border-black inline-block shadow-sm">
                                 {vehicle.registration}
                             </div>
-                            <h1 className="text-2xl font-bold mt-2">
+                            <h1 className="text-2xl font-bold mt-2 break-words">
                                 {vehicle.make as string} {vehicle.model as string}
                             </h1>
                             <p className="text-muted-foreground flex items-center gap-2">
@@ -483,7 +503,45 @@ export default function VehicleDetails() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            {customer ? (
+                            {ownerPickerOpen ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-semibold">{customer ? "Change owner" : "Assign owner"}</p>
+                                        <button type="button" onClick={() => { setOwnerPickerOpen(false); setOwnerSearch(""); }} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+                                    </div>
+                                    <div className="relative">
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                        <input autoFocus value={ownerSearch} onChange={(e) => setOwnerSearch(e.target.value)}
+                                            placeholder="Search name, phone, email, postcode…"
+                                            className="w-full h-9 pl-8 pr-2 rounded-lg border border-slate-300 text-sm outline-none focus:border-violet-500" />
+                                    </div>
+                                    <div className="max-h-64 overflow-auto">
+                                        {ownerSearch.trim().length < 2 && (
+                                            <p className="text-xs text-slate-400 px-1 py-2">Type at least 2 characters to find a customer.</p>
+                                        )}
+                                        {ownerResults.isFetching && ownerSearch.trim().length >= 2 && (
+                                            <div className="text-xs text-slate-500 px-1 py-2 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…</div>
+                                        )}
+                                        {ownerResults.data?.length === 0 && !ownerResults.isFetching && ownerSearch.trim().length >= 2 && (
+                                            <p className="text-xs text-slate-400 px-1 py-2">No customers match “{ownerSearch.trim()}”.</p>
+                                        )}
+                                        {ownerResults.data?.map((c: any) => (
+                                            <button key={c.id} type="button" disabled={assignOwner.isPending}
+                                                onClick={() => assignOwner.mutate({ vehicleId: vehicle.id as number, customerId: c.id })}
+                                                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-violet-50 disabled:opacity-50 flex items-start gap-2">
+                                                <User className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block text-[13px] font-medium text-slate-800 truncate">{c.name}</span>
+                                                    {[c.phone, c.postcode].filter(Boolean).length > 0 && (
+                                                        <span className="block text-[11px] text-slate-500 truncate">{[c.phone, c.postcode].filter(Boolean).join(" · ")}</span>
+                                                    )}
+                                                </span>
+                                                {assignOwner.isPending && assignOwner.variables?.customerId === c.id && <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-600 shrink-0 mt-0.5" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : customer ? (
                                 <div className="space-y-4">
                                     <div>
                                         <p className="text-xs font-medium text-muted-foreground uppercase">Name</p>
@@ -526,7 +584,16 @@ export default function VehicleDetails() {
                                             Opted Out
                                         </Badge>
                                     )}
-                                    <div className="pt-2 border-t">
+                                    <div className="pt-2 border-t space-y-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full text-xs"
+                                            onClick={() => { setOwnerSearch(""); setOwnerPickerOpen(true); }}
+                                        >
+                                            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                                            Change owner
+                                        </Button>
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -544,8 +611,16 @@ export default function VehicleDetails() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-6 text-muted-foreground italic text-sm">
-                                    No customer assigned
+                                <div className="text-center py-6">
+                                    <p className="text-muted-foreground italic text-sm">No customer assigned</p>
+                                    <Button
+                                        size="sm"
+                                        className="mt-3"
+                                        onClick={() => { setOwnerSearch(""); setOwnerPickerOpen(true); }}
+                                    >
+                                        <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                                        Assign owner
+                                    </Button>
                                 </div>
                             )}
                         </CardContent>
