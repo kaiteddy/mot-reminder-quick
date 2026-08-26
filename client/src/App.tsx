@@ -1,4 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+import { useEffect } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
@@ -143,7 +145,38 @@ function Router() {
   );
 }
 
+/** New builds never reach an open tab on their own (SPA) - staff kept working on stale code
+ *  for hours after fixes shipped (the tyre-pressure card looked broken purely because the tab
+ *  predated the feature). Compare the running bundle against the one the server now serves,
+ *  every 5 minutes and on window focus, and offer a one-click refresh when they differ. */
+function useUpdateWatcher() {
+  useEffect(() => {
+    const running = (document.querySelector('script[src*="/assets/index-"]') as HTMLScriptElement | null)
+      ?.src.match(/index-[A-Za-z0-9_-]+\.js/)?.[0] ?? null;
+    let notified = false;
+    const check = async () => {
+      if (notified) return;
+      try {
+        const html = await fetch("/", { cache: "no-store" }).then((r) => r.text());
+        const served = html.match(/index-[A-Za-z0-9_-]+\.js/)?.[0];
+        if (!served || !running || served === running) return;
+        notified = true;
+        toast.info("An update to the app is ready", {
+          description: "Refresh to pick up the latest fixes - unsaved work is auto-saved first.",
+          duration: Infinity,
+          action: { label: "Refresh now", onClick: () => window.location.reload() },
+        });
+      } catch { /* offline - try again on the next tick */ }
+    };
+    check();
+    const iv = setInterval(check, 5 * 60 * 1000);
+    window.addEventListener("focus", check);
+    return () => { clearInterval(iv); window.removeEventListener("focus", check); };
+  }, []);
+}
+
 function App() {
+  useUpdateWatcher();
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
