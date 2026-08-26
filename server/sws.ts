@@ -189,9 +189,12 @@ function getHeuristicData(make: string, model: string, vin: string, fuelType: st
     return { lubricants, aircon };
 }
 
-// SWS confirmed 26/08: EVERY TechnicalData_Query call bills 2.5 GA4 credits (40p). The
-// repair tree costs 2 of the deep fetch's calls but is only used by the Technical Hub -
-// everyday lookups (job sheets, vehicle page) now skip it and the Hub fetches it on demand.
+// SWS billing (confirmed 26/08 from GA4's own Technical Data screen): 2.5 credits (40p)
+// buys ALL technical data for one vehicle for one CALENDAR DAY - further calls for that
+// vehicle are free until midnight, and lookups that return nothing are never charged. So
+// the right strategy is the opposite of trimming calls: once a vehicle's day pass is paid,
+// fetch everything (the deep fetch always includes the repair tree). The per-day model is
+// also why repair-node drill-downs are cached: a click on a LATER day buys a new day pass.
 export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = false, includeRepairs: boolean = true): Promise<SWSTechnicalData> {
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const result: SWSTechnicalData = { vrm: cleanVRM };

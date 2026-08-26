@@ -2910,7 +2910,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
       if (force || ((empty(v.derivative) || empty(v.model) || empty(v.fuelType) || empty(v.engineCode) || empty(v.vin) || empty(v.colour)) && !v.swsLastUpdated)) {
         try {
           const { fetchRichVehicleData } = await import("./sws");
-          const sws: any = await fetchRichVehicleData(reg, true, false); // repairs tree on-demand only - each SWS call bills 2.5 GA4 credits
+          const sws: any = await fetchRichVehicleData(reg, true); // SWS bills 2.5cr per VEHICLE-DAY (not per call) - so take the repair tree too while the day pass is already paid
           const u = sws?.ukvd || {}; const sp = sws?.specs || {};
           const _img = cleanImg(u.imageUrl); if (_img) v.imageUrl = _img;
           // SWS/UKVD can hand back junk placeholders ("NULL", "undefined", and via fullName even
@@ -3040,7 +3040,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
   const sources: string[] = [];
   try {
     const { fetchRichVehicleData } = await import("./sws");
-    const sws: any = await fetchRichVehicleData(reg, true, false); // repairs tree on-demand only - each SWS call bills 2.5 GA4 credits
+    const sws: any = await fetchRichVehicleData(reg, true); // SWS bills 2.5cr per VEHICLE-DAY (not per call) - so take the repair tree too while the day pass is already paid
     const u = sws?.ukvd || {};
     if (u.make || u.model || u.colour || u.fuelType || u.engineSize || u.vin) {
       v.make = u.make ?? null; v.model = u.model ?? null; v.colour = u.colour ?? null;
@@ -3124,7 +3124,7 @@ export async function liveVehicleTech(registration: string) {
       // Never cached (or cached before UKVD ran) — hit the paid APIs once, then store for good.
       console.log(`[liveVehicleTech] tech cache MISS for ${reg} — one-off paid lookup`);
       const { fetchRichVehicleData } = await import("./sws");
-      const fresh: any = await fetchRichVehicleData(reg, true, false); // repairs tree on-demand only - each SWS call bills 2.5 GA4 credits
+      const fresh: any = await fetchRichVehicleData(reg, true); // SWS bills 2.5cr per VEHICLE-DAY (not per call) - so take the repair tree too while the day pass is already paid
       ctd = fresh || ctd || {};
       if (!ctd.ukvd) ctd.ukvd = {}; // mark UKVD attempted so an unresolved vehicle is never re-billed
       if (veh) { try { await saveTechnicalData(reg, ctd); } catch { /* cache write best-effort */ } }
