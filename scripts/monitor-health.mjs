@@ -10,6 +10,7 @@
 //   • a duplicate web invoice the auto-retire couldn't clear (a payment is attached)
 //   • a web invoice whose GA4 number points at a DIFFERENT populated invoice (reg/total mismatch)
 //   • recently-issued invoices with labour but no work description (a CSV export fills these)
+//   • the paid UKVD account balance is below £20 (dry = lookups silently lose VIN/colour)
 // A clean night sends nothing.
 //
 // All checks are READ-ONLY. Reuses the app's own SMTP config (appSettings -> smtp_settings),
@@ -94,6 +95,21 @@ const missingDesc = (await c.query(`
     AND "dateIssued" >= now() - ($1 || ' days')::interval
   ORDER BY "dateIssued" DESC`, [DESC_WINDOW_DAYS])).rows;
 
+// 5. the paid UKVD account is running dry. Every UKVD response embeds the live account balance,
+//    so read it off the most recently stored payloads — the MINIMUM of the last few, because a
+//    re-saved months-old payload can carry a stale (higher) balance and mask a genuinely low one
+//    (seen 24/08/2026: a June response reporting £147.90 was re-saved into an August row).
+const UKVD_MIN_GBP = Number(process.env.UKVD_BALANCE_MIN_GBP || 20);
+const ukvdReadings = (await c.query(`
+  SELECT registration AS reg, "swsLastUpdated" AS at,
+         ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric AS balance
+  FROM vehicles
+  WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance' IS NOT NULL
+    AND "swsLastUpdated" IS NOT NULL
+  ORDER BY "swsLastUpdated" DESC
+  LIMIT 5`)).rows;
+const ukvdLow = ukvdReadings.length ? Math.min(...ukvdReadings.map((r) => Number(r.balance))) : null;
+
 // --- assemble issues, each with a detail table ---
 const issues = [];
 if (SYNC_RC !== 0)
@@ -125,6 +141,12 @@ if (missingDesc.length)
     summary: `${missingDesc.length} invoice(s) issued in the last ${DESC_WINDOW_DAYS} days have labour work but no description in the web app. The write-up lives in GA4 (on the job sheet shown). Do a GA4 CSV export (File → Export), then run ./scripts/update-descriptions.sh to pull them in.`,
     columns: ["Invoice", "Reg", "Customer", "Issued", "Total", "Labour", "Job sheet"],
     rows: missingDesc.map((r) => [S(r.invoice), S(r.reg), S(r.customer), dstr(r.issued), money(r.total), money(r.labour), S(r.jobsheet)]),
+  });
+if (ukvdLow != null && ukvdLow < UKVD_MIN_GBP)
+  issues.push({
+    summary: `The UKVD vehicle-data account is down to ${money(ukvdLow)} — below the £${UKVD_MIN_GBP} warning level (a lookup costs 14p). Top it up at vehicledataglobal.com. When it ran dry in April 2026, lookups did NOT fail — they silently came back with no VIN or colour. Latest balance readings:`,
+    columns: ["Date", "From lookup of", "Balance"],
+    rows: ukvdReadings.map((r) => [dstr(r.at), S(r.reg), money(r.balance)]),
   });
 
 const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
