@@ -4687,6 +4687,18 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     try { lt = vehicle?.registration ? await liveVehicleTech(vehicle.registration) : null; } catch { /* fall back to the record */ }
   }
   const td = (vehicle?.comprehensiveTechnicalData as any) || {};
+  // A job sheet must never print without the tyre pressures: if the vehicle predates tyre
+  // storage, fetch them now (one adjustments call) and cache them so this only ever runs once.
+  if (doc.docType === "JS" && vehicle?.registration && !td.tyres) {
+    try {
+      const { fetchTyrePressures } = await import("./sws");
+      const tyres = await fetchTyrePressures(vehicle.registration);
+      if (tyres) {
+        td.tyres = tyres;
+        await db.update(vehicles).set({ comprehensiveTechnicalData: td }).where(eq(vehicles.id, vehicle.id));
+      }
+    } catch { /* no tyre data available - the sheet prints without the box */ }
+  }
   const recOil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
   const oilSpec = lt?.oilSpec || recOil?.specification || "";
   const oilCap = lt?.oilCapacity || recOil?.capacity || "";

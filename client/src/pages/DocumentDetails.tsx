@@ -202,9 +202,12 @@ export default function DocumentDetails() {
   const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
   const fetchTyresDoc = trpc.vehicles.fetchTyrePressures.useMutation({
-    onSuccess: (r: any) => { setLookupTech((p: any) => ({ ...(p || {}), tyres: r.tyres })); toast.success("Tyre pressures fetched - they'll print on this job sheet"); },
-    onError: (e: any) => toast.error(e.message),
+    onSuccess: (r: any) => { setLookupTech((p: any) => ({ ...(p || {}), tyres: r.tyres })); },
+    onError: () => { /* card stays "Not on file"; the print path fetches again server-side */ },
   });
+  // Pull the pressures in automatically when the doc opens on an uncovered vehicle - staff
+  // shouldn't have to click. One attempt per registration per page visit; stored forever.
+  const tyresTriedRef = useRef<string>("");
   const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean; searchedPc?: string }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
@@ -786,6 +789,14 @@ export default function DocumentDetails() {
       tyres: lookupTech?.tyres ?? td.tyres ?? null,
     };
   }, [data, lookupTech, motTaxLive.data]);
+
+  useEffect(() => {
+    const reg = String((data as any)?.vehicle?.registration || "").replace(/\s/g, "").toUpperCase();
+    if (!reg || vehInfo.tyres || fetchTyresDoc.isPending || tyresTriedRef.current === reg) return;
+    tyresTriedRef.current = reg;
+    fetchTyresDoc.mutate({ registration: reg });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, vehInfo.tyres]);
 
   // Detect when the customer's name / phone / email / postcode on this doc differ from
   // their saved record, so we can offer to update the customer master (auto-save can't prompt).
