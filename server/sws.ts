@@ -83,6 +83,33 @@ export async function fetchTyrePressures(vrm: string): Promise<TyrePressureData 
     return parseTyresFromAdjustments(Array.isArray(adjustments) ? adjustments : [adjustments]);
 }
 
+/** Just the repair tree (REPAIR_IDS + REPAIR_CATEGORIES - 2 billed calls, nothing else):
+ *  tops up a cached record that was fetched without repairs when the Technical Hub opens it. */
+export async function fetchRepairTreeOnly(vrm: string): Promise<any | null> {
+    const cleanVRM = vrm.toUpperCase().replace(/\s/g, "");
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': SWS_CONFIG.authHeader, 'User-Agent': 'Garage Assistant/4.0' };
+    try {
+        const idsRes = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers, body: new URLSearchParams({ APIKey: SWS_CONFIG.apiKey, ACTION: 'REPAIR_IDS', VRM: cleanVRM }) });
+        const idsText = await idsRes.text();
+        if (!idsRes.ok || !idsText.includes('repairtimeTypeId')) return null;
+        const idsData = _swsParse(idsText, "repair-ids");
+        const repid = (idsData?.[0] || idsData?.["0"] || idsData)?.TechnicalData?.ExtRepairtimeType?.repairtimeTypeId;
+        if (!repid) return null;
+        const catRes = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers, body: new URLSearchParams({ APIKey: SWS_CONFIG.apiKey, ACTION: 'REPAIR_CATEGORIES', VRM: cleanVRM, REPID: repid.toString(), NODEID: 'root' }) });
+        const catText = await catRes.text();
+        const out: any = { repairedTypeId: repid, tree: [] };
+        if (catRes.ok && catText.trim() && catText.trim() !== "[]") {
+            const catData = _swsParse(catText, "repair-categories");
+            const extNode = (Array.isArray(catData) ? (catData[0] || {}) : catData)?.TechnicalData?.ExtRepairtimeNode;
+            let rawNodes: any[] = [];
+            if (Array.isArray(extNode)) rawNodes = extNode;
+            else { const ni = (extNode || {})?.nodes?.item || (extNode || {})?.nodes; rawNodes = Array.isArray(ni) ? ni : (ni ? [ni] : []); }
+            out.tree = rawNodes.map((n: any) => ({ id: n.id, text: n.description, hasChildren: n.hasSubnodes }));
+        }
+        return out;
+    } catch { return null; }
+}
+
 /** Tyre pressures from ANY source. UKVD TyreDetails leads (8p/lookup): it returns the car's
  *  ACTUAL fitment - not every factory option - with native psi plus wheel torque and PCD.
  *  SWS (rides the GA4 account) is the free fallback when UKVD lacks the car or the account
@@ -162,7 +189,10 @@ function getHeuristicData(make: string, model: string, vin: string, fuelType: st
     return { lubricants, aircon };
 }
 
-export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = false): Promise<SWSTechnicalData> {
+// SWS confirmed 26/08: EVERY TechnicalData_Query call bills 2.5 GA4 credits (40p). The
+// repair tree costs 2 of the deep fetch's calls but is only used by the Technical Hub -
+// everyday lookups (job sheets, vehicle page) now skip it and the Hub fetches it on demand.
+export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = false, includeRepairs: boolean = true): Promise<SWSTechnicalData> {
     const cleanVRM = vrm.toUpperCase().replace(/\s/g, '');
     const result: SWSTechnicalData = { vrm: cleanVRM };
 
@@ -310,8 +340,8 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         console.error("[SWS] Error on V4 Data Pass:", e);
     }
 
-    // 4. Labor Times / Repair Tree (GA4 Logic)
-    try {
+    // 4. Labor Times / Repair Tree (GA4 Logic) - two billed calls, on-demand only
+    if (includeRepairs) try {
         // A. Get Repair Type ID
         const repairIdsBody = new URLSearchParams({
             APIKey: SWS_CONFIG.apiKey,

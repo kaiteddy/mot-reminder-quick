@@ -1059,13 +1059,24 @@ export const appRouter = router({
         // 1. Check Cache first (unless forced refresh)
         if (!input.force) {
           const existingVehicle = await getVehicleByRegistration(cleanReg);
-          if (existingVehicle?.comprehensiveTechnicalData) {
-            console.log(`[SWS Cache] Hit for ${cleanReg} - skipping API call`);
-            return {
-              success: true,
-              data: existingVehicle.comprehensiveTechnicalData,
-              cached: true
-            };
+          const ctd: any = existingVehicle?.comprehensiveTechnicalData;
+          if (ctd) {
+            if (ctd.repairTimes) {
+              console.log(`[SWS Cache] Hit for ${cleanReg} - skipping API call`);
+              return { success: true, data: ctd, cached: true };
+            }
+            // Everyday lookups cache everything EXCEPT the repair tree (2 billed calls,
+            // Technical-Hub-only). Top up just the tree and keep the rest of the cache.
+            console.log(`[SWS Cache] Hit for ${cleanReg} but no repair tree - fetching tree only`);
+            const { fetchRepairTreeOnly } = await import("./sws");
+            const tree = await fetchRepairTreeOnly(cleanReg);
+            if (tree) {
+              ctd.repairTimes = tree;
+              const { getDb } = await import("./db");
+              const db = await getDb();
+              if (db && existingVehicle) await db.update(vehicles).set({ comprehensiveTechnicalData: ctd }).where(eq(vehicles.id, existingVehicle.id));
+            }
+            return { success: true, data: ctd, cached: true };
           }
         }
 
@@ -1152,9 +1163,24 @@ export const appRouter = router({
         nodeId: z.string()
       }))
       .mutation(async ({ input }) => {
+        // Every drill-down used to be a live billed call (2.5 GA4 credits) on EVERY click,
+        // forever. Repair times are static per vehicle - cache each node in the stored payload.
+        const { getDb, getVehicleByRegistration } = await import("./db");
+        const cleanReg = input.registration.toUpperCase().replace(/\s/g, "");
+        const veh = await getVehicleByRegistration(cleanReg);
+        let ctd: any = veh?.comprehensiveTechnicalData || null;
+        const key = `${input.repid}:${input.nodeId}`;
+        if (ctd?.repairNodes?.[key]) return { success: true, data: ctd.repairNodes[key], cached: true };
         const { fetchRepairNodes } = await import("./sws");
         try {
           const data = await fetchRepairNodes(input.registration, input.repid, input.nodeId);
+          if (veh && data) {
+            ctd = ctd || {};
+            ctd.repairNodes = ctd.repairNodes || {};
+            ctd.repairNodes[key] = data;
+            const db = await getDb();
+            if (db) await db.update(vehicles).set({ comprehensiveTechnicalData: ctd }).where(eq(vehicles.id, veh.id));
+          }
           return { success: true, data };
         } catch (error) {
           console.error("Failed to fetch repair nodes:", error);
