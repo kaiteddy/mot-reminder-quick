@@ -514,8 +514,7 @@ export async function generateInvoicePDF(data: any, opts: { customerCopyOnly?: b
     // Vehicle table
     y = checkBreak(ROW_H * 4);
     y = vehicleTable(doc, data.vehicle, y, true);
-    y += 14;
-    y = tyrePressureBox(doc, data.vehicle, y, checkBreak);
+    { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 14 : yb; } // flush under the tech row
 
     // Work description (title + lines) — width-wrapped so long text never overwrites
     y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
@@ -599,8 +598,7 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
     // Vehicle table
     y = checkBreak(ROW_H * 4);
     y = vehicleTable(doc, data.vehicle, y);
-    y += 14;
-    y = tyrePressureBox(doc, data.vehicle, y, checkBreak);
+    { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 14 : yb; } // flush under the tech row
 
     // Work description (title + lines) — width-wrapped so long text never overwrites
     y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
@@ -730,7 +728,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   // Vehicle table
   y = checkBreak(ROW_H * 4);
   y = vehicleTable(doc, data.vehicle, y);
-  y += 12;
+  { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 12 : yb; } // flush under the tech row
 
   // Acceptable engine-oil grades — printed prominently so the mechanic can see every grade the
   // engine takes (e.g. 5W-30 / 0W-20 / 0W-30) and pick the right one, not just the preferred.
@@ -747,9 +745,6 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     doc.fillColor('black').font('Helvetica-Bold').fontSize(9.5).text(line, M + 6, y + 4, { width: CW - 12 });
     y += h + 10;
   }
-
-  // Factory tyre pressures - same prominent treatment as the oil grades.
-  y = tyrePressureBox(doc, data.vehicle, y, checkBreak);
 
   // The work to do is now listed as tick-off rows in the Service / Parts table below
   // (so the mechanic can mark each off as completed), rather than as a plain text block.
