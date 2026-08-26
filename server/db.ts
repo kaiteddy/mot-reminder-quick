@@ -4723,6 +4723,21 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB')
       : '',
     colour: vehicle?.colour || '',
+    // Factory tyre pressures for the job sheet - first (normal-load) figure per size,
+    // from the stored SWS adjustments data. Empty when the vehicle has no tyre data yet.
+    tyre_pressures: (() => {
+      const seen = new Set<string>(); const lines: string[] = [];
+      for (const t of (((td.tyres || {}).entries || []) as any[])) {
+        const size = String(t.size || "").trim();
+        if (!size || seen.has(size)) continue;
+        seen.add(size);
+        const f = (t.front || [])[0], r = (t.rear || [])[0];
+        if (!f && !r) continue;
+        lines.push(`${size}: F ${f ?? "-"} / R ${r ?? "-"} bar`);
+      }
+      if (td.tyres?.spare?.pressure) lines.push(`Spare ${td.tyres.spare.pressure} bar`);
+      return lines;
+    })(),
     // boxed tech row
     engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',
     oil_grades: oilGrades,

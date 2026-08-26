@@ -697,6 +697,20 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     y += h + 10;
   }
 
+  // Factory tyre pressures - same prominent treatment as the oil grades, so the tech
+  // resetting pressures after the service reads them off the sheet instead of looking them up.
+  const tyreLines: string[] = Array.isArray(data.vehicle?.tyre_pressures) ? data.vehicle.tyre_pressures : [];
+  if (tyreLines.length) {
+    const tline = `Tyre Pressures:   ${tyreLines.join('     ')}`;
+    doc.font('Helvetica-Bold').fontSize(9.5);
+    const th = doc.heightOfString(tline, { width: CW - 12 }) + 8;
+    y = checkBreak(th + 6);
+    doc.save().rect(M, y, CW, th).fill('#eaf2fb').restore();
+    doc.save().rect(M, y, CW, th).lineWidth(0.8).stroke('#5b7fb9').restore();
+    doc.fillColor('black').font('Helvetica-Bold').fontSize(9.5).text(tline, M + 6, y + 4, { width: CW - 12 });
+    y += th + 10;
+  }
+
   // The work to do is now listed as tick-off rows in the Service / Parts table below
   // (so the mechanic can mark each off as completed), rather than as a plain text block.
 
