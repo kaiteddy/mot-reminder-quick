@@ -2959,7 +2959,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
           if (oil || sws?.aircon) {
-            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null };
+            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
           }
         } catch { /* SWS unavailable — keep stored record */ }
       }
@@ -3057,7 +3057,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
     if (oil || sws?.aircon) {
-      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null };
+      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
     }
   } catch (e) { /* SWS/UKVD unavailable */ }
   try {
@@ -3143,6 +3143,7 @@ export async function liveVehicleTech(registration: string) {
     out.oilPreferred = prefG;
     out.airconType = ctd?.aircon?.type ?? null;
     out.airconCapacity = ctd?.aircon?.quantity ?? ctd?.aircon?.capacity ?? null;
+    out.tyres = ctd?.tyres ?? null; // factory pressures - shown on the doc screen, printed on the job sheet
     out.imageUrl = cleanImg(ctd?.ukvd?.imageUrl);
   } catch { /* tech cache/fetch unavailable */ }
 

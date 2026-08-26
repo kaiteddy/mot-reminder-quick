@@ -201,6 +201,10 @@ export default function DocumentDetails() {
   const [looking, setLooking] = useState(false);
   const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
+  const fetchTyresDoc = trpc.vehicles.fetchTyrePressures.useMutation({
+    onSuccess: (r: any) => { setLookupTech((p: any) => ({ ...(p || {}), tyres: r.tyres })); toast.success("Tyre pressures fetched - they'll print on this job sheet"); },
+    onError: (e: any) => toast.error(e.message),
+  });
   const [addr, setAddr] = useState<{ loading: boolean; results: any[]; note?: string; open: boolean; searchedPc?: string }>({ loading: false, results: [], open: false });
   const [form, setForm] = useState<Record<string, any>>({ docType: "JS" });
   const [items, setItems] = useState<Item[]>([]);
@@ -779,6 +783,7 @@ export default function DocumentDetails() {
       taxStatus: motTaxLive.data?.taxStatus ?? lookupTech?.taxStatus ?? v?.taxStatus,
       taxDueDate: motTaxLive.data?.taxDueDate ?? lookupTech?.taxDueDate ?? v?.taxDueDate,
       transmission: lookupTech?.transmission ?? td.ukvd?.transmission ?? null,
+      tyres: lookupTech?.tyres ?? td.tyres ?? null,
     };
   }, [data, lookupTech, motTaxLive.data]);
 
@@ -1605,6 +1610,21 @@ export default function DocumentDetails() {
                 sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
                 main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
+              {vehInfo.tyres?.entries?.length ? (
+                <InfoCard icon={<Gauge className="w-4 h-4" />} tone="green" label="Tyre Pressures"
+                  main={`F ${vehInfo.tyres.entries[0].front?.[0] ?? "–"} · R ${vehInfo.tyres.entries[0].rear?.[0] ?? "–"} bar`}
+                  sub={[vehInfo.tyres.entries[0].size, vehInfo.tyres.entries.length > 1 ? `+${vehInfo.tyres.entries.length - 1} sizes` : null, "prints on the sheet"].filter(Boolean).join(" · ")} />
+              ) : (
+                <button type="button"
+                  onClick={() => fetchTyresDoc.mutate({ registration: String(form.registration || "") })}
+                  disabled={fetchTyresDoc.isPending || !String(form.registration || "").trim()}
+                  title="One technical-data call fetches this car's factory tyre pressures; they then print on the job sheet"
+                  className="rounded-md border px-2.5 py-1.5 text-left bg-slate-50 border-slate-200 hover:bg-slate-100 disabled:opacity-50">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80"><Gauge className="w-4 h-4" />Tyre Pressures</div>
+                  <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5">{fetchTyresDoc.isPending ? "Fetching…" : "Not on file"}</div>
+                  <div className="text-[10.5px] text-slate-500">click to fetch — will print on the sheet</div>
+                </button>
+              )}
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
                 main={form.mileage ? Number(form.mileage).toLocaleString("en-GB") : "—"} sub={form.mileage ? "miles (last)" : undefined} />
               <InfoCard icon={<CalendarClock className="w-4 h-4" />} tone={motTone(vehInfo.motExpiry)} label="MOT Expiry"
