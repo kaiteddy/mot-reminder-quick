@@ -450,6 +450,10 @@ export default function VehicleDetails() {
     const partsHistory = trpc.documents.partsHistory.useQuery({ vehicleId: vehicle?.id as number }, { enabled: !!vehicle?.id && historyTab === "parts", staleTime: 60_000 });
 
     // Added fetchTechnicalData mutation
+    const fetchTyres = trpc.vehicles.fetchTyrePressures.useMutation({
+        onSuccess: () => utils.vehicles.getByRegistration.invalidate(),
+        onError: (e) => toast.error(e.message),
+    });
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
         onSuccess: () => {
             toast.success("Rich technical data updated!");
@@ -1290,6 +1294,54 @@ export default function VehicleDetails() {
                                                                     {fmtD(plates[0].DateOfTransaction) ? sub(fmtD(plates[0].DateOfTransaction)) : null}
                                                                 </>
                                                             } />
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                            {(() => {
+                                                // Factory tyre fitments + pressures from the SWS adjustments data.
+                                                // Older records predate tyre storage - offer a one-call fetch.
+                                                const tyres = (ctd as any)?.tyres;
+                                                const psi = (bar: string) => { const b = parseFloat(String(bar).replace(/[^\d.]/g, "")); return isNaN(b) ? null : Math.round(b * 14.5038); };
+                                                const pair = (vals: string[]) => (vals || []).join("/");
+                                                const psiPair = (vals: string[]) => (vals || []).map(psi).filter((x) => x != null).join("/");
+                                                const sub = (t: any) => <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{t}</span>;
+                                                return (
+                                                    <>
+                                                        <div className="col-span-full mt-1 pt-2 border-t flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                            <Gauge className="w-3.5 h-3.5" />
+                                                            Tyres &amp; Pressures
+                                                            {!tyres && (
+                                                                <Button
+                                                                    variant="ghost" size="sm"
+                                                                    className="h-6 px-2 text-[11px] normal-case tracking-normal text-primary"
+                                                                    disabled={fetchTyres.isPending}
+                                                                    title="One technical-data call fetches this car's factory tyre sizes and pressures"
+                                                                    onClick={() => fetchTyres.mutate({ registration: vehicle.registration as string })}
+                                                                >
+                                                                    {fetchTyres.isPending ? "Fetching…" : "Get tyre pressures"}
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                        {(tyres?.entries || []).map((t: any, i: number) => (
+                                                            <SpecTile key={i} label={t.rim ? `Tyres · ${t.rim}` : "Tyres"} icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    <span className="block truncate">{t.size}</span>
+                                                                    {sub(`F ${pair(t.front)} · R ${pair(t.rear)} bar`)}
+                                                                    {sub(`${psiPair(t.front)} · ${psiPair(t.rear)} psi`)}
+                                                                </>
+                                                            } />
+                                                        ))}
+                                                        {tyres?.spare && (
+                                                            <SpecTile label="Spare" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
+                                                                <>
+                                                                    <span className="block truncate">{tyres.spare.size}</span>
+                                                                    {tyres.spare.pressure ? sub(`${tyres.spare.pressure} bar (${psi(tyres.spare.pressure) ?? "–"} psi)`) : null}
+                                                                </>
+                                                            } />
+                                                        )}
+                                                        {!tyres && (
+                                                            <div className="col-span-full text-xs text-muted-foreground italic">Not fetched yet - one click pulls this car's factory tyre sizes and pressures.</div>
                                                         )}
                                                     </>
                                                 );

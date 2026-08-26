@@ -1078,6 +1078,29 @@ export const appRouter = router({
         }
       }),
 
+    // On-demand tyre pressures for vehicles fetched before tyres were stored. New deep
+    // fetches include them automatically; this fills the gap with ONE adjustments call,
+    // cached into comprehensiveTechnicalData so it never re-fetches.
+    fetchTyrePressures: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { getDb, getVehicleByRegistration } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        const veh = await getVehicleByRegistration(input.registration.toUpperCase().replace(/\s/g, ""));
+        if (!veh) throw new Error("Vehicle not found");
+        let ctd: any = veh.comprehensiveTechnicalData;
+        try { if (typeof ctd === "string") ctd = JSON.parse(ctd); } catch { ctd = null; }
+        ctd = ctd || {};
+        if (ctd.tyres) return { tyres: ctd.tyres, cached: true };
+        const { fetchTyrePressures } = await import("./sws");
+        const tyres = await fetchTyrePressures(input.registration);
+        if (!tyres) throw new Error("No tyre data available for this vehicle");
+        ctd.tyres = tyres;
+        await db.update(vehicles).set({ comprehensiveTechnicalData: ctd }).where(eq(vehicles.id, veh.id));
+        return { tyres, cached: false };
+      }),
+
     syncUKVD: publicProcedure
       .input(z.object({ registration: z.string() }))
       .mutation(async ({ input }) => {

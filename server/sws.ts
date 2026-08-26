@@ -15,6 +15,8 @@ function _swsParse(text: string, ctx: string): any {
 export interface SWSTechnicalData {
     vrm: string;
     specs?: any;
+    /** Factory tyre fitments with pressures, parsed from GET_ADJUSTMENTS "Wheels and tyres". */
+    tyres?: TyrePressureData;
     lubricants?: any;
     tsb?: any;
     aircon?: any;
@@ -22,6 +24,63 @@ export interface SWSTechnicalData {
     maintenance?: any;
     ukvd?: any;
     raw?: any;
+}
+
+export interface TyrePressureData {
+    entries: Array<{ size: string; front: string[]; rear: string[]; rim?: string; offset?: string }>;
+    spare?: { size: string; pressure?: string };
+}
+
+/** Pull the "Wheels and tyres" group out of a parsed GET_ADJUSTMENTS response. The app has
+ *  always fetched this data and thrown it away, keeping only "Capacities" - the pressures
+ *  were bought on every deep fetch and never stored. */
+export function parseTyresFromAdjustments(adjustments: any[]): TyrePressureData | undefined {
+    const group = (adjustments || []).find((g: any) => /wheels and tyres/i.test(String(g?.name || "")));
+    if (!group) return undefined;
+    const itemsRaw = group.subAdjustments?.item || [];
+    const items = Array.isArray(itemsRaw) ? itemsRaw : [itemsRaw];
+    const out: TyrePressureData = { entries: [] };
+    const seen = new Set<string>();
+    for (const item of items) {
+        const name = String(item?.name || "");
+        const subsRaw = item?.subAdjustments?.item || [];
+        const subs = Array.isArray(subsRaw) ? subsRaw : [subsRaw];
+        const val = (n: RegExp) => subs.filter((x: any) => n.test(String(x?.name || ""))).map((x: any) => String(x?.value ?? "").trim()).filter(Boolean);
+        if (/^spare tyre size$/i.test(name) && item.value) {
+            out.spare = { size: String(item.value).trim(), pressure: val(/spare tyre pressure/i)[0] };
+        } else if (/^tyre size$/i.test(name) && item.value) {
+            const entry = {
+                size: String(item.value).trim(),
+                front: val(/^front tyre pressure/i),
+                rear: val(/^rear tyre pressure/i),
+                rim: val(/^rim size/i)[0],
+                offset: val(/^wheel offset/i)[0],
+            };
+            if (!entry.front.length && !entry.rear.length) continue; // bare size row, no data
+            const key = `${entry.size}|${entry.front.join(",")}|${entry.rear.join(",")}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.entries.push(entry);
+        }
+    }
+    return out.entries.length || out.spare ? out : undefined;
+}
+
+/** One-off GET_ADJUSTMENTS call for a vehicle that predates tyre storage - used by the
+ *  on-demand "get tyre pressures" action so old records don't need a full re-fetch. */
+export async function fetchTyrePressures(vrm: string): Promise<TyrePressureData | undefined> {
+    const cleanVRM = vrm.toUpperCase().replace(/\s/g, "");
+    const body = new URLSearchParams({ APIKey: SWS_CONFIG.apiKey, ACTION: 'GET_ADJUSTMENTS', VRM: cleanVRM });
+    const res = await fetch(SWS_CONFIG.lookupUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': SWS_CONFIG.authHeader, 'User-Agent': 'Garage Assistant/4.0' },
+        body,
+    });
+    const text = await res.text();
+    if (!res.ok || !text.trim() || text === "[]") return undefined;
+    const adjData = _swsParse(text, "adjustments");
+    const adjustments = adjData?.[0]?.TechnicalData?.ExtAdjustment || adjData?.["0"]?.TechnicalData?.ExtAdjustment || [];
+    return parseTyresFromAdjustments(Array.isArray(adjustments) ? adjustments : [adjustments]);
 }
 
 /**
@@ -156,6 +215,9 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         if (adjRes.ok && adjText.trim() && adjText !== "[]") {
             const adjData = _swsParse(adjText, "adjustments");
             const adjustments = adjData?.[0]?.TechnicalData?.ExtAdjustment || adjData?.["0"]?.TechnicalData?.ExtAdjustment || [];
+
+            const tyres = parseTyresFromAdjustments(Array.isArray(adjustments) ? adjustments : [adjustments]);
+            if (tyres) result.tyres = tyres;
 
             adjustments.forEach((group: any) => {
                 if (group.name === "Capacities") {
