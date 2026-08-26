@@ -70,10 +70,14 @@ export const appRouter = router({
       const { getSalesStock } = await import("./db");
       return getSalesStock();
     }),
-    refresh: publicProcedure.mutation(async () => {
-      const { refreshSalesStockMotTax } = await import("./db");
-      return refreshSalesStockMotTax();
-    }),
+    refresh: publicProcedure
+      // forceUkvd re-runs the PAID lookup even for cars already stamped as attempted —
+      // normal refreshes only ever pay once per car (salesStock.ukvdChecked).
+      .input(z.object({ forceUkvd: z.boolean().optional() }).optional())
+      .mutation(async ({ input }) => {
+        const { refreshSalesStockMotTax } = await import("./db");
+        return refreshSalesStockMotTax({ forceUkvd: input?.forceUkvd });
+      }),
     setSold: publicProcedure
       .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {

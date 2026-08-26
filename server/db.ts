@@ -3547,18 +3547,18 @@ export async function getSalesStock() {
 }
 
 // Re-fetch DVLA MOT expiry + tax status for every stock car (free). Used by the "Refresh" button.
-export async function refreshSalesStockMotTax() {
+export async function refreshSalesStockMotTax(opts?: { forceUkvd?: boolean }) {
   const db = await getDb();
   if (!db) return { updated: 0 };
   const cars = await db.select({
     id: salesStock.id, registration: salesStock.registration,
     mileage: salesStock.mileage, registrationDate: salesStock.registrationDate,
     make: salesStock.make, model: salesStock.model, colour: salesStock.colour, fuelType: salesStock.fuelType,
-    vin: salesStock.vin, engineNo: salesStock.engineNo,
+    vin: salesStock.vin, engineNo: salesStock.engineNo, ukvdChecked: salesStock.ukvdChecked,
   }).from(salesStock);
   const { getVehicleDetails } = await import("./dvlaApi");
   const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
-  const { fetchUKVDData } = await import("./ukvd");
+  const { fetchUKVDData, getLastUkvdBilling } = await import("./ukvd");
   const toDate = (x: any) => { if (!x) return null; const d = x instanceof Date ? x : new Date(x); return isNaN(d.getTime()) ? null : d; };
   let updated = 0, filled = 0;
   const gapsFilled: Record<string, number> = {};
@@ -3592,9 +3592,14 @@ export async function refreshSalesStockMotTax() {
 
       // Chassis and engine number exist on no free source — only the paid UKVD lookup returns
       // them. It is billed per call, so it only fires for a car actually short of something it
-      // can supply; a Refresh over complete stock costs nothing.
-      const wantsUkvd = !car.vin || !car.engineNo || !car.registrationDate;
+      // can supply — and only ONCE: a car UKVD can't complete (trade plates, private plates)
+      // stays incomplete forever, and without the ukvdChecked stamp every Refresh re-billed it.
+      const wantsUkvd = (!car.vin || !car.engineNo || !car.registrationDate)
+        && (opts?.forceUkvd || !car.ukvdChecked);
       const ukvd: any = wantsUkvd ? await fetchUKVDData(reg).catch(() => null) : null;
+      // Stamp only a BILLED attempt (mirrors vehicles.swsLastUpdated). An unbilled failure —
+      // rate limit, network, dry account — leaves the car retryable for free next Refresh.
+      if (wantsUkvd && getLastUkvdBilling()?.billed) set.ukvdChecked = new Date();
       if (!car.vin) fill("vin", ukvd?.vin);
       if (!car.engineNo) fill("engineNo", ukvd?.engineNumber);
 

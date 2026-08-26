@@ -55,6 +55,12 @@ export interface UKVDResponse {
 let _lastUkvdStatus: string | null = null;
 export const getLastUkvdStatus = () => _lastUkvdStatus;
 
+// Billing block of the last response. Present even when the lookup finds no vehicle, so a
+// caller can tell "billed, but UKVD has nothing for this reg" (never worth paying for again)
+// from "not billed at all" (rate limit, network, dry account — retryable for free).
+let _lastUkvdBilling: { billed: boolean; accountBalance: number | null } | null = null;
+export const getLastUkvdBilling = () => _lastUkvdBilling;
+
 // Whether a UKVD response carries usable data. StatusCode 0 is a clean success; a non-zero code
 // whose message still says "Success…" (e.g. 1 = "SuccessWithResultsBlockWarnings") DOES carry a
 // Results block — image, DVLA tech, populated model fields. Only a status WITHOUT "Success"
@@ -67,6 +73,7 @@ export function isUsableUkvdStatus(code: number | undefined, message: string | u
 
 export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Promise<UKVDResponse | null> {
     _lastUkvdStatus = null;
+    _lastUkvdBilling = null;
     if (!UKVD_CONFIG.apiKey) {
         console.warn("[UKVD] No API key configured. Skipping lookup.");
         _lastUkvdStatus = "No UKVD API key configured";
@@ -105,6 +112,12 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
         }
 
         const data = await response.json();
+
+        const bi = data.BillingInformation;
+        _lastUkvdBilling = {
+            billed: bi?.BillingResult === 0,
+            accountBalance: typeof bi?.AccountBalance === "number" ? bi.AccountBalance : null,
+        };
 
         const _status = data.ResponseInformation?.StatusMessage || "";
         const _code = data.ResponseInformation?.StatusCode ?? 0;

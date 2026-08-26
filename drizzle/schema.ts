@@ -513,6 +513,9 @@ export const salesStock = pgTable("salesStock", {
   registration: varchar("registration", { length: 20 }),
   vin: varchar("vin", { length: 50 }),
   engineNo: varchar("engineNo", { length: 50 }),   // for the sales invoice; filled by the UKVD lookup
+  // When the paid UKVD lookup last BILLED us for this car — set even when it returned nothing
+  // (trade plates, private plates), so a refresh never pays twice (cf. vehicles.swsLastUpdated).
+  ukvdChecked: timestamp("ukvdChecked", { mode: "date" }),
   title: text("title"),
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
