@@ -4741,22 +4741,25 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       ? new Date(vehicle.dateOfRegistration).toLocaleDateString('en-GB')
       : '',
     colour: vehicle?.colour || '',
-    // Factory tyre pressures for the job sheet - first (normal-load) figure per size,
-    // from the stored SWS adjustments data. Empty when the vehicle has no tyre data yet.
-    tyre_pressures: (() => {
-      // The workshop gauges read psi, so psi leads and bar rides in brackets.
+    // Factory tyre pressures, structured for the printed box. Most cars run the SAME
+    // pressures on every fitted size - the template collapses that to one line; only
+    // genuinely differing sizes print as a per-size table. psi leads (workshop gauges).
+    tyres_box: (() => {
       const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038)));
-      const seen = new Set<string>(); const lines: string[] = [];
+      const seen = new Set<string>(); const rows: any[] = [];
       for (const t of (((td.tyres || {}).entries || []) as any[])) {
         const size = String(t.size || "").trim();
         if (!size || seen.has(size)) continue;
         seen.add(size);
         const f = (t.front || [])[0], r = (t.rear || [])[0];
         if (!f && !r) continue;
-        lines.push(`${size}: F ${f ? toPsi(f) : "-"} / R ${r ? toPsi(r) : "-"} psi (${f ?? "-"} / ${r ?? "-"} bar)`);
+        rows.push({ size, fBar: f ?? "-", rBar: r ?? "-", fPsi: f ? toPsi(f) : "-", rPsi: r ? toPsi(r) : "-" });
       }
-      if (td.tyres?.spare?.pressure) lines.push(`Spare ${toPsi(td.tyres.spare.pressure)} psi (${td.tyres.spare.pressure} bar)`);
-      return lines;
+      const spare = td.tyres?.spare?.pressure
+        ? { psi: toPsi(td.tyres.spare.pressure), bar: td.tyres.spare.pressure }
+        : null;
+      const allSame = rows.length > 0 && rows.every((x) => x.fPsi === rows[0].fPsi && x.rPsi === rows[0].rPsi);
+      return rows.length || spare ? { rows, spare, allSame } : null;
     })(),
     // boxed tech row
     engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',

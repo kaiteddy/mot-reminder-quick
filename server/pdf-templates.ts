@@ -431,18 +431,51 @@ function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: 
   return y;
 }
 
-/** The highlighted tyre-pressures line. Printed on EVERY document type - a job sheet that
- *  converts to an invoice must not lose the pressures its sheet carried. Returns the new y. */
+/** The highlighted tyre-pressures box, printed on EVERY document type. When all fitted
+ *  sizes take the same pressures (the usual case) it collapses to one bold line the tech
+ *  reads in a glance; only genuinely differing sizes print as an aligned per-size table. */
 function tyrePressureBox(doc: InstanceType<typeof PDFDocument>, vehicle: any, y: number, checkBreak: (n: number) => number): number {
-  const tyreLines: string[] = Array.isArray(vehicle?.tyre_pressures) ? vehicle.tyre_pressures : [];
-  if (!tyreLines.length) return y;
-  const tline = `Tyre Pressures:   ${tyreLines.join('     ')}`;
-  doc.font('Helvetica-Bold').fontSize(9.5);
-  const th = doc.heightOfString(tline, { width: CW - 12 }) + 8;
+  const tb = vehicle?.tyres_box;
+  if (!tb || (!tb.rows?.length && !tb.spare)) return y;
+  const ROW = 14;
+  const drawBox = (h: number) => {
+    doc.save().rect(M, y, CW, h).fill('#eaf2fb').restore();
+    doc.save().rect(M, y, CW, h).lineWidth(0.8).stroke('#5b7fb9').restore();
+    doc.fillColor('black');
+  };
+  if (tb.allSame || !tb.rows?.length) {
+    const r0 = tb.rows?.[0];
+    const parts: string[] = [];
+    if (r0) parts.push(`Front ${r0.fPsi} psi   ·   Rear ${r0.rPsi} psi   (${r0.fBar} / ${r0.rBar} bar${tb.rows.length > 1 ? ' — all fitted sizes' : ''})`);
+    if (tb.spare) parts.push(`Spare ${tb.spare.psi} psi`);
+    const tline = `Tyre Pressures:   ${parts.join('     ·     ')}`;
+    doc.font('Helvetica-Bold').fontSize(10.5);
+    const th = doc.heightOfString(tline, { width: CW - 12 }) + 9;
+    y = checkBreak(th + 6);
+    drawBox(th);
+    doc.font('Helvetica-Bold').fontSize(10.5).text(tline, M + 6, y + 5, { width: CW - 12 });
+    return y + th + 10;
+  }
+  // Sizes differ: title + one aligned row per size, spare last.
+  const nRows = tb.rows.length + (tb.spare ? 1 : 0);
+  const th = 8 + ROW + nRows * ROW;
   y = checkBreak(th + 6);
-  doc.save().rect(M, y, CW, th).fill('#eaf2fb').restore();
-  doc.save().rect(M, y, CW, th).lineWidth(0.8).stroke('#5b7fb9').restore();
-  doc.fillColor('black').font('Helvetica-Bold').fontSize(9.5).text(tline, M + 6, y + 4, { width: CW - 12 });
+  drawBox(th);
+  let ly = y + 5;
+  doc.font('Helvetica-Bold').fontSize(9.5).text('Tyre Pressures — this car\'s fitted size is on the tyre sidewall:', M + 6, ly);
+  ly += ROW;
+  const cSize = M + 6, cFront = M + 190, cRear = M + 330;
+  for (const r of tb.rows) {
+    doc.font('Helvetica-Bold').fontSize(9.5).text(r.size, cSize, ly, { width: cFront - cSize - 8 });
+    doc.font('Helvetica').fontSize(9.5)
+      .text(`Front ${r.fPsi} psi (${r.fBar} bar)`, cFront, ly, { width: cRear - cFront - 8 })
+      .text(`Rear ${r.rPsi} psi (${r.rBar} bar)`, cRear, ly);
+    ly += ROW;
+  }
+  if (tb.spare) {
+    doc.font('Helvetica-Bold').fontSize(9.5).text('Spare', cSize, ly);
+    doc.font('Helvetica').fontSize(9.5).text(`${tb.spare.psi} psi (${tb.spare.bar} bar)`, cFront, ly);
+  }
   return y + th + 10;
 }
 

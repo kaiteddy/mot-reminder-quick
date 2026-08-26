@@ -1622,9 +1622,19 @@ export default function DocumentDetails() {
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
                 main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
               {vehInfo.tyres?.entries?.length ? (
-                <InfoCard icon={<Gauge className="w-4 h-4" />} tone="green" label="Tyre Pressures"
-                  main={(() => { const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038))); const e0 = vehInfo.tyres.entries[0]; return `F ${e0.front?.[0] ? toPsi(e0.front[0]) : "–"} · R ${e0.rear?.[0] ? toPsi(e0.rear[0]) : "–"} psi`; })()}
-                  sub={[vehInfo.tyres.entries[0].size, `${vehInfo.tyres.entries[0].front?.[0] ?? "–"}/${vehInfo.tyres.entries[0].rear?.[0] ?? "–"} bar`, vehInfo.tyres.entries.length > 1 ? `+${vehInfo.tyres.entries.length - 1} sizes` : null].filter(Boolean).join(" · ")} />
+                (() => {
+                  const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038)));
+                  const ent = vehInfo.tyres.entries;
+                  const e0 = ent[0];
+                  const allSame = ent.every((e: any) => e.front?.[0] === e0.front?.[0] && e.rear?.[0] === e0.rear?.[0]);
+                  return (
+                    <InfoCard icon={<Gauge className="w-4 h-4" />} tone="green" label="Tyre Pressures"
+                      main={`F ${e0.front?.[0] ? toPsi(e0.front[0]) : "–"} · R ${e0.rear?.[0] ? toPsi(e0.rear[0]) : "–"} psi`}
+                      sub={allSame
+                        ? `${ent.length > 1 ? "all sizes" : e0.size} · ${e0.front?.[0] ?? "–"}/${e0.rear?.[0] ?? "–"} bar`
+                        : `${e0.size} — other sizes differ, see printout`} />
+                  );
+                })()
               ) : (
                 <button type="button"
                   onClick={() => fetchTyresDoc.mutate({ registration: String(form.registration || "") })}
