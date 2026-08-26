@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -454,6 +454,17 @@ export default function VehicleDetails() {
         onSuccess: () => utils.vehicles.getByRegistration.invalidate(),
         onError: (e) => toast.error(e.message),
     });
+    // Tyre pressures pull in by themselves when the page opens on an uncovered car -
+    // the section's button remains only as a retry after a failure. One attempt per reg.
+    const tyresAutoRef = useRef<string>("");
+    useEffect(() => {
+        const reg = String(vehicle?.registration || "").replace(/\s/g, "").toUpperCase();
+        const hasTyres = !!(vehicle?.comprehensiveTechnicalData as any)?.tyres;
+        if (!reg || hasTyres || fetchTyres.isPending || tyresAutoRef.current === reg) return;
+        tyresAutoRef.current = reg;
+        fetchTyres.mutate({ registration: reg });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [vehicle]);
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
         onSuccess: () => {
             toast.success("Rich technical data updated!");
