@@ -438,9 +438,10 @@ function tyrePressureBox(doc: InstanceType<typeof PDFDocument>, vehicle: any, y:
   const tb = vehicle?.tyres_box;
   if (!tb || (!tb.rows?.length && !tb.spare)) return y;
   const ROW = 14;
+  // No fill and the table's own border colour - the box prints like a normal table
+  // row (zero extra ink) while the caps text still makes it easy to find.
   const drawBox = (h: number) => {
-    doc.save().rect(M, y, CW, h).fill('#eaf2fb').restore();
-    doc.save().rect(M, y, CW, h).lineWidth(0.8).stroke('#5b7fb9').restore();
+    doc.save().rect(M, y, CW, h).lineWidth(0.8).stroke(BORDER).restore();
     doc.fillColor('black');
   };
   if (tb.allSame || !tb.rows?.length) {
