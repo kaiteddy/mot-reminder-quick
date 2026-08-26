@@ -4739,6 +4739,8 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     // Factory tyre pressures for the job sheet - first (normal-load) figure per size,
     // from the stored SWS adjustments data. Empty when the vehicle has no tyre data yet.
     tyre_pressures: (() => {
+      // The workshop gauges read psi, so psi leads and bar rides in brackets.
+      const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038)));
       const seen = new Set<string>(); const lines: string[] = [];
       for (const t of (((td.tyres || {}).entries || []) as any[])) {
         const size = String(t.size || "").trim();
@@ -4746,9 +4748,9 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
         seen.add(size);
         const f = (t.front || [])[0], r = (t.rear || [])[0];
         if (!f && !r) continue;
-        lines.push(`${size}: F ${f ?? "-"} / R ${r ?? "-"} bar`);
+        lines.push(`${size}: F ${f ? toPsi(f) : "-"} / R ${r ? toPsi(r) : "-"} psi (${f ?? "-"} / ${r ?? "-"} bar)`);
       }
-      if (td.tyres?.spare?.pressure) lines.push(`Spare ${td.tyres.spare.pressure} bar`);
+      if (td.tyres?.spare?.pressure) lines.push(`Spare ${toPsi(td.tyres.spare.pressure)} psi (${td.tyres.spare.pressure} bar)`);
       return lines;
     })(),
     // boxed tech row

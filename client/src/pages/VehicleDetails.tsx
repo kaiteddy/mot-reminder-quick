@@ -1303,8 +1303,9 @@ export default function VehicleDetails() {
                                                 // Older records predate tyre storage - offer a one-call fetch.
                                                 const tyres = (ctd as any)?.tyres;
                                                 const psi = (bar: string) => { const b = parseFloat(String(bar).replace(/[^\d.]/g, "")); return isNaN(b) ? null : Math.round(b * 14.5038); };
+                                                const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038)));
                                                 const pair = (vals: string[]) => (vals || []).join("/");
-                                                const psiPair = (vals: string[]) => (vals || []).map(psi).filter((x) => x != null).join("/");
+                                                const psiPair = (vals: string[]) => (vals || []).map(toPsi).join("/");
                                                 const sub = (t: any) => <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{t}</span>;
                                                 return (
                                                     <>
@@ -1327,8 +1328,8 @@ export default function VehicleDetails() {
                                                             <SpecTile key={i} label={t.rim ? `Tyres · ${t.rim}` : "Tyres"} icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
                                                                 <>
                                                                     <span className="block truncate">{t.size}</span>
-                                                                    {sub(`F ${pair(t.front)} · R ${pair(t.rear)} bar`)}
-                                                                    {sub(`${psiPair(t.front)} · ${psiPair(t.rear)} psi`)}
+                                                                    {sub(`F ${psiPair(t.front)} · R ${psiPair(t.rear)} psi`)}
+                                                                    {sub(`${pair(t.front)} · ${pair(t.rear)} bar`)}
                                                                 </>
                                                             } />
                                                         ))}
@@ -1336,7 +1337,7 @@ export default function VehicleDetails() {
                                                             <SpecTile label="Spare" icon={<Gauge className={`w-3 h-3 ${SPEC_TONE_ICON.neutral}`} />} value={
                                                                 <>
                                                                     <span className="block truncate">{tyres.spare.size}</span>
-                                                                    {tyres.spare.pressure ? sub(`${tyres.spare.pressure} bar (${psi(tyres.spare.pressure) ?? "–"} psi)`) : null}
+                                                                    {tyres.spare.pressure ? sub(`${psi(tyres.spare.pressure) ?? "–"} psi (${tyres.spare.pressure} bar)`) : null}
                                                                 </>
                                                             } />
                                                         )}

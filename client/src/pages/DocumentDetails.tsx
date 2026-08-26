@@ -203,7 +203,7 @@ export default function DocumentDetails() {
   const [lookupTech, setLookupTech] = useState<any>(null);
   const fetchTyresDoc = trpc.vehicles.fetchTyrePressures.useMutation({
     onSuccess: (r: any) => { setLookupTech((p: any) => ({ ...(p || {}), tyres: r.tyres })); },
-    onError: () => { /* card stays "Not on file"; the print path fetches again server-side */ },
+    onError: (e: any) => toast.error(e.message), // silent failure made the button look broken
   });
   // Pull the pressures in automatically when the doc opens on an uncovered vehicle - staff
   // shouldn't have to click. One attempt per registration per page visit; stored forever.
@@ -1623,8 +1623,8 @@ export default function DocumentDetails() {
                 main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
               {vehInfo.tyres?.entries?.length ? (
                 <InfoCard icon={<Gauge className="w-4 h-4" />} tone="green" label="Tyre Pressures"
-                  main={`F ${vehInfo.tyres.entries[0].front?.[0] ?? "–"} · R ${vehInfo.tyres.entries[0].rear?.[0] ?? "–"} bar`}
-                  sub={[vehInfo.tyres.entries[0].size, vehInfo.tyres.entries.length > 1 ? `+${vehInfo.tyres.entries.length - 1} sizes` : null, "prints on the sheet"].filter(Boolean).join(" · ")} />
+                  main={(() => { const toPsi = (v: any) => String(v).replace(/\d+(?:\.\d+)?/g, (n) => String(Math.round(parseFloat(n) * 14.5038))); const e0 = vehInfo.tyres.entries[0]; return `F ${e0.front?.[0] ? toPsi(e0.front[0]) : "–"} · R ${e0.rear?.[0] ? toPsi(e0.rear[0]) : "–"} psi`; })()}
+                  sub={[vehInfo.tyres.entries[0].size, `${vehInfo.tyres.entries[0].front?.[0] ?? "–"}/${vehInfo.tyres.entries[0].rear?.[0] ?? "–"} bar`, vehInfo.tyres.entries.length > 1 ? `+${vehInfo.tyres.entries.length - 1} sizes` : null].filter(Boolean).join(" · ")} />
               ) : (
                 <button type="button"
                   onClick={() => fetchTyresDoc.mutate({ registration: String(form.registration || "") })}
@@ -1632,8 +1632,8 @@ export default function DocumentDetails() {
                   title="One technical-data call fetches this car's factory tyre pressures; they then print on the job sheet"
                   className="rounded-md border px-2.5 py-1.5 text-left bg-slate-50 border-slate-200 hover:bg-slate-100 disabled:opacity-50">
                   <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80"><Gauge className="w-4 h-4" />Tyre Pressures</div>
-                  <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5">{fetchTyresDoc.isPending ? "Fetching…" : "Not on file"}</div>
-                  <div className="text-[10.5px] text-slate-500">click to fetch — will print on the sheet</div>
+                  <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5">{fetchTyresDoc.isPending ? "Fetching…" : (fetchTyresDoc.isError ? "Unavailable" : "Not on file")}</div>
+                  <div className="text-[10.5px] text-slate-500">{fetchTyresDoc.isError ? "no tyre data for this car — tap to retry" : "click to fetch — will print on the sheet"}</div>
                 </button>
               )}
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
