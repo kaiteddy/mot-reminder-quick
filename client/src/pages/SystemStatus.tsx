@@ -274,9 +274,10 @@ function CostsPanel() {
                             <tbody>
                                 {row("Vehicle lookups (UKVD)", c.ukvd?.thisMonth?.spend, c.ukvd?.lastMonth?.spend,
                                     (c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""} · ` : "") + "from balance movement (exact)")}
-                                {row("Technical data (SWS day passes)", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} charged vehicles × 40p (estimate) · billed to GA4 credits`)}
+                                {row("SWS credits — technical data", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} vehicle day passes × 2.5 credits (estimate)`)}
+                                {row("SWS credits — VRM lookups", c.ga4?.thisMonth?.spend, c.ga4?.lastMonth?.spend, `${c.ga4?.thisMonth?.n ?? 0} invoice fills × 1 credit`)}
+                                {row("SWS credit pool (both rows)", (c.sws?.thisMonth?.spend || 0) + (c.ga4?.thisMonth?.spend || 0), (c.sws?.lastMonth?.spend || 0) + (c.ga4?.lastMonth?.spend || 0), "one pot — topped up by PayPal to SWS Solutions, £48 = 300 credits")}
                                 {row("Messages (Twilio)", c.twilio?.thisMonth, c.twilio?.lastMonth, c.twilio ? "exact, from Twilio" : "unavailable")}
-                                {row("GA4 invoice credits", c.ga4?.thisMonth?.spend, c.ga4?.lastMonth?.spend, `${c.ga4?.thisMonth?.n ?? 0} fills × 16p`)}
                                 {row("Address lookups", c.addr?.thisMonth?.spend, c.addr?.lastMonth?.spend, `${c.addr?.thisMonth?.n ?? 0} this month`)}
                                 <tr className="border-t font-semibold">
                                     <td className="py-2 pr-4">Total</td>
