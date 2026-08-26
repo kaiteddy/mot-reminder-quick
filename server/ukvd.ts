@@ -197,3 +197,44 @@ export async function fetchUKVDData(vrm: string, isPremium: boolean = false): Pr
         return null;
     }
 }
+
+
+/** Paid tyre-pressure fallback (TyreDetails package, 8p/lookup on this account) for cars the
+ *  SWS adjustments data doesn't cover. Returns the same shape sws.ts stores, plus wheel
+ *  torque/PCD when UKVD has them. Pressures arrive in bar+psi; we store bar - the UI derives psi. */
+export async function fetchTyreDetailsUKVD(vrm: string): Promise<{
+    entries: Array<{ size: string; front: string[]; rear: string[]; rim?: string; offset?: string; torqueNm?: number; pcd?: string }>;
+    spare?: { size: string; pressure?: string };
+} | null> {
+    if (!UKVD_CONFIG.apiKey) return null;
+    const cleanVRM = vrm.toUpperCase().replace(/\s/g, "");
+    const url = new URL(UKVD_CONFIG.baseUrl);
+    url.searchParams.append("ApiKey", UKVD_CONFIG.apiKey);
+    url.searchParams.append("PackageName", "TyreDetails");
+    url.searchParams.append("Vrm", cleanVRM);
+    const response = await fetch(url.toString());
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!isUsableUkvdStatus(data.ResponseInformation?.StatusCode ?? 0, data.ResponseInformation?.StatusMessage)) return null;
+    const list = data.Results?.TyreDetails?.TyreDetailsList || [];
+    const entries: any[] = [];
+    const seen = new Set<string>();
+    for (const item of list) {
+        const f = item?.Front?.Tyre, r = item?.Rear?.Tyre;
+        const size = [f?.SizeDescription, [f?.LoadIndex, f?.SpeedIndex].filter(Boolean).join("")].filter(Boolean).join(" ");
+        const bar = (t: any) => [t?.Pressure?.TyrePressure?.Bar, t?.Pressure?.TyrePressureLaden?.Bar].filter((x: any) => x != null).map(String);
+        const front = bar(f), rear = bar(r);
+        if (!size || (!front.length && !rear.length)) continue;
+        const key = `${size}|${front.join(",")}|${rear.join(",")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        entries.push({
+            size, front, rear,
+            rim: item?.Front?.Rim?.SizeDescription || undefined,
+            offset: item?.Front?.Rim?.OffsetMm != null ? String(item.Front.Rim.OffsetMm) : undefined,
+            torqueNm: item?.Fixing?.TorqueNm ?? undefined,
+            pcd: item?.Hub?.Pcd || undefined,
+        });
+    }
+    return entries.length ? { entries } : null;
+}

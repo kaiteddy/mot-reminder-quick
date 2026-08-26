@@ -4691,8 +4691,8 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // storage, fetch them now (one adjustments call) and cache them so this only ever runs once.
   if (doc.docType === "JS" && vehicle?.registration && !td.tyres) {
     try {
-      const { fetchTyrePressures } = await import("./sws");
-      const tyres = await fetchTyrePressures(vehicle.registration);
+      const { resolveTyrePressures } = await import("./sws");
+      const tyres = await resolveTyrePressures(vehicle.registration);
       if (tyres) {
         td.tyres = tyres;
         await db.update(vehicles).set({ comprehensiveTechnicalData: td }).where(eq(vehicles.id, vehicle.id));

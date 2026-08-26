@@ -1093,9 +1093,9 @@ export const appRouter = router({
         try { if (typeof ctd === "string") ctd = JSON.parse(ctd); } catch { ctd = null; }
         ctd = ctd || {};
         if (ctd.tyres) return { tyres: ctd.tyres, cached: true };
-        const { fetchTyrePressures } = await import("./sws");
-        const tyres = await fetchTyrePressures(input.registration);
-        if (!tyres) throw new Error("No tyre data available for this vehicle");
+        const { resolveTyrePressures } = await import("./sws");
+        const tyres = await resolveTyrePressures(input.registration);
+        if (!tyres) throw new Error("No tyre data available for this vehicle from either provider");
         ctd.tyres = tyres;
         await db.update(vehicles).set({ comprehensiveTechnicalData: ctd }).where(eq(vehicles.id, veh.id));
         return { tyres, cached: false };

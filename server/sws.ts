@@ -83,6 +83,18 @@ export async function fetchTyrePressures(vrm: string): Promise<TyrePressureData 
     return parseTyresFromAdjustments(Array.isArray(adjustments) ? adjustments : [adjustments]);
 }
 
+/** Tyre pressures from ANY source: SWS first (rides the GA4 account), then the paid UKVD
+ *  TyreDetails package (8p) - so "no tyre data" only happens when neither provider has the car. */
+export async function resolveTyrePressures(vrm: string): Promise<TyrePressureData | undefined> {
+    let own: TyrePressureData | undefined;
+    try { own = await fetchTyrePressures(vrm); } catch { /* SWS unavailable */ }
+    if (own) return own;
+    try {
+        const { fetchTyreDetailsUKVD } = await import("./ukvd");
+        return (await fetchTyreDetailsUKVD(vrm)) ?? undefined;
+    } catch { return undefined; }
+}
+
 /**
  * Smart Technical Intelligence Fallbacks
  * Provides accurate specifications based on vehicle patterns when the API is empty
