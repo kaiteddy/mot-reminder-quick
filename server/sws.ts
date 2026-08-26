@@ -83,16 +83,17 @@ export async function fetchTyrePressures(vrm: string): Promise<TyrePressureData 
     return parseTyresFromAdjustments(Array.isArray(adjustments) ? adjustments : [adjustments]);
 }
 
-/** Tyre pressures from ANY source: SWS first (rides the GA4 account), then the paid UKVD
- *  TyreDetails package (8p) - so "no tyre data" only happens when neither provider has the car. */
+/** Tyre pressures from ANY source. UKVD TyreDetails leads (8p/lookup): it returns the car's
+ *  ACTUAL fitment - not every factory option - with native psi plus wheel torque and PCD.
+ *  SWS (rides the GA4 account) is the free fallback when UKVD lacks the car or the account
+ *  is blocked/dry. Either result is cached on the vehicle, so each car costs at most once. */
 export async function resolveTyrePressures(vrm: string): Promise<TyrePressureData | undefined> {
-    let own: TyrePressureData | undefined;
-    try { own = await fetchTyrePressures(vrm); } catch { /* SWS unavailable */ }
-    if (own) return own;
     try {
         const { fetchTyreDetailsUKVD } = await import("./ukvd");
-        return (await fetchTyreDetailsUKVD(vrm)) ?? undefined;
-    } catch { return undefined; }
+        const paid = await fetchTyreDetailsUKVD(vrm);
+        if (paid) return paid;
+    } catch { /* UKVD unavailable - fall through to SWS */ }
+    try { return await fetchTyrePressures(vrm); } catch { return undefined; }
 }
 
 /**
