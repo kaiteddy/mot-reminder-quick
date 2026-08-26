@@ -214,13 +214,14 @@ export const diagnosticsRouter = router({
     // UKVD by BALANCE MOVEMENT, not by summing saved receipts: calls that never persist a
     // payload (stock refreshes, repeat syncs) still move the account balance, so consecutive
     // snapshots capture every charge. Positive drops are spend; rises are top-ups (excluded).
+    const prevLead = new Date(new Date(prev).getTime() - 3 * 86400000); // a few snapshots before the window so the first delta has a baseline
     const ukvd = await two(sql`
       WITH snaps AS (
         SELECT "swsLastUpdated" t,
                ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric bal
         FROM vehicles
         WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL
-          AND "swsLastUpdated" >= ${prev} - interval '3 days'
+          AND "swsLastUpdated" >= ${prevLead}
         ORDER BY "swsLastUpdated"
       ), deltas AS (
         SELECT t, GREATEST(LAG(bal) OVER (ORDER BY t) - bal, 0) AS drop
