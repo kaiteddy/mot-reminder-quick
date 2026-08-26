@@ -273,8 +273,8 @@ function CostsPanel() {
                             </thead>
                             <tbody>
                                 {row("Vehicle lookups (UKVD)", c.ukvd?.thisMonth?.spend, c.ukvd?.lastMonth?.spend,
-                                    c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""}` : "")}
-                                {row("Technical data (SWS day passes)", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} vehicles this month · billed to GA4 credits`)}
+                                    (c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""} · ` : "") + "from balance movement (exact)")}
+                                {row("Technical data (SWS day passes)", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} charged vehicles × 40p (estimate) · billed to GA4 credits`)}
                                 {row("Messages (Twilio)", c.twilio?.thisMonth, c.twilio?.lastMonth, c.twilio ? "exact, from Twilio" : "unavailable")}
                                 {row("GA4 invoice credits", c.ga4?.thisMonth?.spend, c.ga4?.lastMonth?.spend, `${c.ga4?.thisMonth?.n ?? 0} fills × 16p`)}
                                 {row("Address lookups", c.addr?.thisMonth?.spend, c.addr?.lastMonth?.spend, `${c.addr?.thisMonth?.n ?? 0} this month`)}

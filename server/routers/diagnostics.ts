@@ -211,12 +211,23 @@ export const diagnosticsRouter = router({
       return { thisMonth: by[k(cur)] || { n: 0, spend: 0 }, lastMonth: by[k(prev)] || { n: 0, spend: 0 } };
     };
 
+    // UKVD by BALANCE MOVEMENT, not by summing saved receipts: calls that never persist a
+    // payload (stock refreshes, repeat syncs) still move the account balance, so consecutive
+    // snapshots capture every charge. Positive drops are spend; rises are top-ups (excluded).
     const ukvd = await two(sql`
-      SELECT date_trunc('month', "swsLastUpdated") m, COUNT(*) n,
-             SUM(("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'TransactionCost')::numeric) spend
-      FROM vehicles
-      WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL AND "swsLastUpdated" >= ${prev}
-      GROUP BY 1`);
+      WITH snaps AS (
+        SELECT "swsLastUpdated" t,
+               ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric bal
+        FROM vehicles
+        WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL
+          AND "swsLastUpdated" >= ${prev} - interval '3 days'
+        ORDER BY "swsLastUpdated"
+      ), deltas AS (
+        SELECT t, GREATEST(LAG(bal) OVER (ORDER BY t) - bal, 0) AS drop
+        FROM snaps
+      )
+      SELECT date_trunc('month', t) m, COUNT(*) n, COALESCE(SUM(drop), 0) spend
+      FROM deltas WHERE t >= ${prev} GROUP BY 1`);
     const balRow: any = await db.execute(sql`
       SELECT ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric AS balance
       FROM vehicles
@@ -224,9 +235,14 @@ export const diagnosticsRouter = router({
       ORDER BY "swsLastUpdated" DESC NULLS LAST LIMIT 1`);
     const ukvdBalance = balRow.rows[0]?.balance != null ? Number(balRow.rows[0].balance) : null;
 
+    // Only fetches that RETURNED data count - GA4's Technical Data screen states no charge
+    // when nothing comes back, and swsLastUpdated is also stamped on empty "attempted" marks.
     const sws = await two(sql`
       SELECT date_trunc('month', "swsLastUpdated") m, COUNT(*) n, COUNT(*) * 0.40 spend
-      FROM vehicles WHERE "swsLastUpdated" >= ${prev} GROUP BY 1`);
+      FROM vehicles
+      WHERE "swsLastUpdated" >= ${prev}
+        AND ("comprehensiveTechnicalData"->'specs' IS NOT NULL OR "comprehensiveTechnicalData"->'lubricants' IS NOT NULL)
+      GROUP BY 1`);
 
     const ga4 = await two(sql`
       SELECT date_trunc('month', "filledAt") m, COUNT(*) n, COUNT(*) * 0.16 spend
