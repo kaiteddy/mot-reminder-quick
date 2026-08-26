@@ -42,6 +42,9 @@ export default function SystemStatus() {
                     </Button>
                 </div>
 
+                {/* Live data spend - real billed figures where the provider gives them */}
+                <CostsPanel />
+
                 {/* 1. Status Grid */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {isLoading ? (
@@ -226,5 +229,66 @@ function DebugVehicleForm() {
                 </div>
             )}
         </div>
+    );
+}
+
+
+function CostsPanel() {
+    const { data: c } = trpc.diagnostics.costsSummary.useQuery(undefined, { refetchOnWindowFocus: false, retry: false });
+    const gbp = (v: number | null | undefined) => (v == null ? "—" : `£${Number(v).toFixed(2)}`);
+    const row = (label: string, thisM?: number | null, lastM?: number | null, note?: string) => (
+        <tr className="border-b last:border-0">
+            <td className="py-1.5 pr-4 font-medium">{label}</td>
+            <td className="py-1.5 pr-4 tabular-nums">{gbp(thisM)}</td>
+            <td className="py-1.5 pr-4 tabular-nums text-muted-foreground">{gbp(lastM)}</td>
+            <td className="py-1.5 text-xs text-muted-foreground">{note || ""}</td>
+        </tr>
+    );
+    const total = (k: "thisMonth" | "lastMonth") => {
+        if (!c) return null;
+        return (c.ukvd?.[k]?.spend || 0) + (c.sws?.[k]?.spend || 0) + (c.ga4?.[k]?.spend || 0) + (c.addr?.[k]?.spend || 0) + (c.twilio ? (c.twilio[k] || 0) : 0);
+    };
+    return (
+        <Card>
+            <CardHeader className="pb-2">
+                <CardTitle className="text-xl">Data Costs</CardTitle>
+                <CardDescription>
+                    Per-use spend across the data services. UKVD and Twilio are exact billed figures; SWS
+                    (40p per vehicle per day) and GA4 credits (16p per invoice fill) are counted estimates.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {!c ? (
+                    <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="text-sm w-full">
+                            <thead>
+                                <tr className="text-xs uppercase text-muted-foreground border-b">
+                                    <th className="text-left py-1.5 pr-4">Service</th>
+                                    <th className="text-left py-1.5 pr-4">This month</th>
+                                    <th className="text-left py-1.5 pr-4">Last month</th>
+                                    <th className="text-left py-1.5">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {row("Vehicle lookups (UKVD)", c.ukvd?.thisMonth?.spend, c.ukvd?.lastMonth?.spend,
+                                    c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""}` : "")}
+                                {row("Technical data (SWS day passes)", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} vehicles this month · billed to GA4 credits`)}
+                                {row("Messages (Twilio)", c.twilio?.thisMonth, c.twilio?.lastMonth, c.twilio ? "exact, from Twilio" : "unavailable")}
+                                {row("GA4 invoice credits", c.ga4?.thisMonth?.spend, c.ga4?.lastMonth?.spend, `${c.ga4?.thisMonth?.n ?? 0} fills × 16p`)}
+                                {row("Address lookups", c.addr?.thisMonth?.spend, c.addr?.lastMonth?.spend, `${c.addr?.thisMonth?.n ?? 0} this month`)}
+                                <tr className="border-t font-semibold">
+                                    <td className="py-2 pr-4">Total</td>
+                                    <td className="py-2 pr-4 tabular-nums">{gbp(total("thisMonth"))}</td>
+                                    <td className="py-2 pr-4 tabular-nums">{gbp(total("lastMonth"))}</td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }

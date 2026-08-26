@@ -192,4 +192,65 @@ export const diagnosticsRouter = router({
         };
       }
     }),
+
+  /** Live data-spend tracker for the System Status page. Real billed figures where the
+   *  provider gives them (UKVD embeds its receipt in every response; Twilio's usage API is
+   *  exact); counted-times-price estimates for SWS day passes (2.5cr = 40p per vehicle-day)
+   *  and GA4 VRM credits (16p per invoice fill) until those accounts expose an API. */
+  costsSummary: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const months = (await db.execute(sql`SELECT date_trunc('month', now()) AS cur, date_trunc('month', now() - interval '1 month') AS prev`)) as any;
+    const { cur, prev } = months.rows[0];
+
+    const two = async (q: any) => {
+      const r: any = await db.execute(q);
+      const by: Record<string, { n: number; spend: number }> = {};
+      for (const row of r.rows) by[new Date(row.m).toISOString()] = { n: Number(row.n) || 0, spend: Number(row.spend) || 0 };
+      const k = (d: any) => new Date(d).toISOString();
+      return { thisMonth: by[k(cur)] || { n: 0, spend: 0 }, lastMonth: by[k(prev)] || { n: 0, spend: 0 } };
+    };
+
+    const ukvd = await two(sql`
+      SELECT date_trunc('month', "swsLastUpdated") m, COUNT(*) n,
+             SUM(("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'TransactionCost')::numeric) spend
+      FROM vehicles
+      WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL AND "swsLastUpdated" >= ${prev}
+      GROUP BY 1`);
+    const balRow: any = await db.execute(sql`
+      SELECT ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric AS balance
+      FROM vehicles
+      WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL
+      ORDER BY "swsLastUpdated" DESC NULLS LAST LIMIT 1`);
+    const ukvdBalance = balRow.rows[0]?.balance != null ? Number(balRow.rows[0].balance) : null;
+
+    const sws = await two(sql`
+      SELECT date_trunc('month', "swsLastUpdated") m, COUNT(*) n, COUNT(*) * 0.40 spend
+      FROM vehicles WHERE "swsLastUpdated" >= ${prev} GROUP BY 1`);
+
+    const ga4 = await two(sql`
+      SELECT date_trunc('month', "filledAt") m, COUNT(*) n, COUNT(*) * 0.16 spend
+      FROM "ga4NumberPool" WHERE "filledAt" >= ${prev} GROUP BY 1`);
+
+    const addr = await two(sql`
+      SELECT date_trunc('month', "createdAt") m, COUNT(*) n, COUNT(*) * 0.04 spend
+      FROM "addressLookups" WHERE source = 'Ideal Postcodes' AND results > 0 AND "createdAt" >= ${prev} GROUP BY 1`);
+
+    // Twilio: exact billed totals from their usage API (never blocks the panel on failure).
+    let twilio: { thisMonth: number; lastMonth: number } | null = null;
+    try {
+      const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN;
+      if (sid && tok) {
+        const auth = Buffer.from(`${sid}:${tok}`).toString("base64");
+        const get = async (period: string) => {
+          const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Usage/Records/${period}.json?Category=totalprice`, { headers: { Authorization: `Basic ${auth}` } });
+          const d: any = await r.json();
+          return Number(d?.usage_records?.[0]?.price) || 0;
+        };
+        twilio = { thisMonth: await get("ThisMonth"), lastMonth: await get("LastMonth") };
+      }
+    } catch { /* panel shows a dash */ }
+
+    return { ukvd: { ...ukvd, balance: ukvdBalance }, sws, ga4, addr, twilio };
+  }),
 });
