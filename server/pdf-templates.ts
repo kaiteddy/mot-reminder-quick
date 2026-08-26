@@ -446,35 +446,36 @@ function tyrePressureBox(doc: InstanceType<typeof PDFDocument>, vehicle: any, y:
   if (tb.allSame || !tb.rows?.length) {
     const r0 = tb.rows?.[0];
     const parts: string[] = [];
-    if (r0) parts.push(`Front ${r0.fPsi} psi   ·   Rear ${r0.rPsi} psi   (${r0.fBar} / ${r0.rBar} bar${tb.rows.length > 1 ? ' — all fitted sizes' : ''})`);
-    if (tb.spare) parts.push(`Spare ${tb.spare.psi} psi`);
-    const tline = `Tyre Pressures:   ${parts.join('     ·     ')}`;
-    doc.font('Helvetica-Bold').fontSize(10.5);
-    const th = doc.heightOfString(tline, { width: CW - 12 }) + 9;
+    if (r0) parts.push(`FRONT ${r0.fPsi} PSI   ·   REAR ${r0.rPsi} PSI   (${r0.fBar} / ${r0.rBar} BAR${tb.rows.length > 1 ? ' — ALL FITTED SIZES' : ''})`);
+    if (tb.spare) parts.push(`SPARE ${tb.spare.psi} PSI`);
+    const tline = `TYRE PRESSURES:   ${parts.join('     ·     ')}`.toUpperCase();
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    const th = doc.heightOfString(tline, { width: CW - 12 }) + 8;
     y = checkBreak(th + 6);
     drawBox(th);
-    doc.font('Helvetica-Bold').fontSize(10.5).text(tline, M + 6, y + 5, { width: CW - 12 });
+    doc.font('Helvetica-Bold').fontSize(8.5).text(tline, M + 6, y + 4.5, { width: CW - 12 });
     return y + th + 10;
   }
   // Sizes differ: title + one aligned row per size, spare last.
+  const TROW = 12;
   const nRows = tb.rows.length + (tb.spare ? 1 : 0);
-  const th = 8 + ROW + nRows * ROW;
+  const th = 7 + TROW + nRows * TROW;
   y = checkBreak(th + 6);
   drawBox(th);
-  let ly = y + 5;
-  doc.font('Helvetica-Bold').fontSize(9.5).text('Tyre Pressures — this car\'s fitted size is on the tyre sidewall:', M + 6, ly);
-  ly += ROW;
+  let ly = y + 4.5;
+  doc.font('Helvetica-Bold').fontSize(8.5).text('TYRE PRESSURES — THIS CAR\'S FITTED SIZE IS ON THE TYRE SIDEWALL:', M + 6, ly);
+  ly += TROW;
   const cSize = M + 6, cFront = M + 190, cRear = M + 330;
   for (const r of tb.rows) {
-    doc.font('Helvetica-Bold').fontSize(9.5).text(r.size, cSize, ly, { width: cFront - cSize - 8 });
-    doc.font('Helvetica').fontSize(9.5)
-      .text(`Front ${r.fPsi} psi (${r.fBar} bar)`, cFront, ly, { width: cRear - cFront - 8 })
-      .text(`Rear ${r.rPsi} psi (${r.rBar} bar)`, cRear, ly);
-    ly += ROW;
+    doc.font('Helvetica-Bold').fontSize(8.5).text(String(r.size).toUpperCase(), cSize, ly, { width: cFront - cSize - 8 });
+    doc.font('Helvetica').fontSize(8.5)
+      .text(`FRONT ${r.fPsi} PSI (${r.fBar} BAR)`, cFront, ly, { width: cRear - cFront - 8 })
+      .text(`REAR ${r.rPsi} PSI (${r.rBar} BAR)`, cRear, ly);
+    ly += TROW;
   }
   if (tb.spare) {
-    doc.font('Helvetica-Bold').fontSize(9.5).text('Spare', cSize, ly);
-    doc.font('Helvetica').fontSize(9.5).text(`${tb.spare.psi} psi (${tb.spare.bar} bar)`, cFront, ly);
+    doc.font('Helvetica-Bold').fontSize(8.5).text('SPARE', cSize, ly);
+    doc.font('Helvetica').fontSize(8.5).text(`${tb.spare.psi} PSI (${tb.spare.bar} BAR)`, cFront, ly);
   }
   return y + th + 10;
 }
