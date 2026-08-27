@@ -67,7 +67,9 @@ export type InsertCustomer = typeof customers.$inferInsert;
  */
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
-  registration: varchar("registration", { length: 20 }).notNull().unique(),
+  // GA4 appends a cherished-plate marker when a plate moves to another car — "AC51 ONE* (12/01/2023)"
+  // — so registrations reach 35 chars. At length 20 the nightly sync died on "value too long".
+  registration: varchar("registration", { length: 64 }).notNull().unique(),
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
   motExpiryDate: timestamp("motExpiryDate", { mode: "date" }),
@@ -226,9 +228,9 @@ export const serviceHistory = pgTable("serviceHistory", {
   subMotTax: numeric("subMotTax", { precision: 10, scale: 2 }),
   subMotGross: numeric("subMotGross", { precision: 10, scale: 2 }),
   paymentMethods: varchar("paymentMethods", { length: 255 }),
-  registration: varchar("registration", { length: 20 }),
+  registration: varchar("registration", { length: 64 }),
   customerName: varchar("customerName", { length: 255 }),
-  custTitle: varchar("custTitle", { length: 20 }),
+  custTitle: varchar("custTitle", { length: 64 }),
   custForename: varchar("custForename", { length: 100 }),
   custSurname: varchar("custSurname", { length: 150 }),
   custEmail: varchar("custEmail", { length: 320 }),
