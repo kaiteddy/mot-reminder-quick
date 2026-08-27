@@ -964,6 +964,17 @@ export default function DocumentDetails() {
     { enabled: docHistory.length === 0 && regForHistory.length >= 4, staleTime: 30_000 },
   );
   const history = docHistory.length ? docHistory : (byRegHistory.data ?? []);
+
+  // Prev Parts and Log key on the document's vehicleId, which a job sheet still being typed does
+  // not have yet — they showed "No vehicle linked to this document" on a car we plainly know.
+  // Resolve the plate to a vehicle so those tabs work from the moment the reg is matched, exactly
+  // as History, Mileage and MOT Advisories already do. Falls back to null for a car new to us.
+  const vehicleByReg = trpc.vehicles.getByRegistration.useQuery(
+    { registration: regForHistory },
+    { enabled: !(data as any)?.doc?.vehicleId && regForHistory.length >= 4, staleTime: 30_000 },
+  );
+  const resolvedVehicleId: number | undefined =
+    (data as any)?.doc?.vehicleId ?? (vehicleByReg.data as any)?.vehicle?.id ?? (vehicleByReg.data as any)?.id ?? undefined;
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
   const nameMissing = isInvoice && !(form.custSurname || form.custForename || form.company || form.customerName);
@@ -1747,7 +1758,7 @@ export default function DocumentDetails() {
                   <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
-                    vehicleId={(data as any)?.doc?.vehicleId}
+                    vehicleId={resolvedVehicleId}
                     onOpen={(docId) => setLocation(`${base}/documents/${docId}`)}
                     onAdd={(pt) => {
                       setItemsDirty((p) => [...p, recalc({ itemType: "Part", partNumber: pt.partNumber || undefined, description: pt.description, quantity: Number(pt.quantity) || 1, unitPrice: Number(pt.unitPrice) || 0, vatRate: 20, _k: nextItemKey() })]);
@@ -1774,7 +1785,7 @@ export default function DocumentDetails() {
                       }}
                     />
                   </TabsContent>
-                  <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={(data as any)?.doc?.vehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
+                  <TabsContent value="log" className="mt-0"><CustomerLog customerId={(data as any)?.doc?.customerId ?? (data as any)?.customer?.id} vehicleId={resolvedVehicleId} documentId={(data as any)?.doc?.id} /></TabsContent>
                   <TabsContent value="history" className="mt-0">
                     {base ? (
                       <div className="js-history-layout">
