@@ -2719,11 +2719,26 @@ export async function getDocumentDetail(id: number) {
   if (!doc) return null;
   let customer = null, vehicle = null, history: any[] = [];
   if (doc.customerId) customer = (await db.select().from(customers).where(eq(customers.id, doc.customerId)).limit(1))[0] ?? null;
+  // A document can carry a registration without ever being LINKED to a vehicles row — 94 of them
+  // do. It happens on a fresh job sheet whose reg was resolved by Lookup: the vehicle's details
+  // are written onto the document, but vehicleId stays null. Every history path below starts from
+  // a vehicleId, so the History tab showed "No documents for this vehicle" on a car with 22 years
+  // of invoices behind it (LT07 ZKO, 2026-08-27). Fall back to the plate so the tab reflects the
+  // car in front of you, not the state of a foreign key.
+  let historyVehicleId: number | null = doc.vehicleId ?? null;
+  if (!historyVehicleId && String(doc.registration ?? "").trim()) {
+    const norm = String(doc.registration).toUpperCase().replace(/\s+/g, "");
+    const hit = (await db.select({ id: vehicles.id }).from(vehicles)
+      .where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${norm}`).limit(1))[0];
+    if (hit) historyVehicleId = hit.id;
+  }
   if (doc.vehicleId) {
     vehicle = (await db.select().from(vehicles).where(eq(vehicles.id, doc.vehicleId)).limit(1))[0] ?? null;
+  }
+  if (historyVehicleId) {
     // Real GA4 lists the open document alongside its siblings in its own History tab (it's the
     // vehicle's full record set, not "everything but this one") — don't filter it out.
-    history = await getServiceHistoryByVehicleId(doc.vehicleId);
+    history = await getServiceHistoryByVehicleId(historyVehicleId);
   }
   const lineItems = await getServiceLineItemsByDocumentId(id);
   let accBalance = 0, custLastInvoiced: any = null, vehLastInvoiced: any = null;
