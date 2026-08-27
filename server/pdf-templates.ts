@@ -434,51 +434,52 @@ function workBlock(doc: InstanceType<typeof PDFDocument>, title: string, items: 
 /** The highlighted tyre-pressures box, printed on EVERY document type. When all fitted
  *  sizes take the same pressures (the usual case) it collapses to one bold line the tech
  *  reads in a glance; only genuinely differing sizes print as an aligned per-size table. */
-function tyrePressureBox(doc: InstanceType<typeof PDFDocument>, vehicle: any, y: number, checkBreak: (n: number) => number): number {
-  const tb = vehicle?.tyres_box;
+// TYRE PRESSURES on the job-sheet BACK page — same look as the Service Reset & OBD sections
+// (bold caps heading over a hairline rule), sized to be read at the wheel. Returns the new y.
+function tyrePressuresBackSection(doc: InstanceType<typeof PDFDocument>, tb: any, y: number): number {
   if (!tb || (!tb.rows?.length && !tb.spare)) return y;
-  const ROW = 14;
-  // No fill and the table's own border colour - the box prints like a normal table
-  // row (zero extra ink) while the caps text still makes it easy to find.
-  const drawBox = (h: number) => {
-    doc.save().rect(M, y, CW, h).lineWidth(0.8).stroke(BORDER).restore();
-    doc.fillColor('black');
-  };
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
+  doc.text('TYRE PRESSURES (COLD)', M, y); y += 14;
+  doc.moveTo(M, y - 3).lineTo(PW - M, y - 3).lineWidth(0.5).strokeColor('#bbbbbb').stroke();
+  y += 4;
+  const ROW = 16;
   if (tb.allSame || !tb.rows?.length) {
     const r0 = tb.rows?.[0];
-    const parts: string[] = [];
-    if (r0) parts.push(`FRONT ${r0.fPsi} PSI   ·   REAR ${r0.rPsi} PSI   (${r0.fBar} / ${r0.rBar} BAR${tb.rows.length > 1 ? ' — ALL FITTED SIZES' : ''})`);
-    if (tb.spare) parts.push(`SPARE ${tb.spare.psi} PSI`);
-    const tline = `TYRE PRESSURES:   ${parts.join('     ·     ')}`.toUpperCase();
-    doc.font('Helvetica-Bold').fontSize(8.5);
-    const th = doc.heightOfString(tline, { width: CW - 12 }) + 8;
-    y = checkBreak(th + 6);
-    drawBox(th);
-    doc.font('Helvetica-Bold').fontSize(8.5).text(tline, M + 6, y + 4.5, { width: CW - 12 });
-    return y + th + 10;
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('black');
+    if (r0) {
+      doc.text(`FRONT ${r0.fPsi} PSI   ·   REAR ${r0.rPsi} PSI   (${r0.fBar} / ${r0.rBar} BAR${tb.rows.length > 1 ? ' — ALL FITTED SIZES' : ''})`, M, y);
+      y += ROW;
+    }
+    if (tb.spare) { doc.text(`SPARE ${tb.spare.psi} PSI (${tb.spare.bar} BAR)`, M, y); y += ROW; }
+    return y + 10;
   }
-  // Sizes differ: title + one aligned row per size, spare last.
-  const TROW = 12;
-  const nRows = tb.rows.length + (tb.spare ? 1 : 0);
-  const th = 7 + TROW + nRows * TROW;
-  y = checkBreak(th + 6);
-  drawBox(th);
-  let ly = y + 4.5;
-  doc.font('Helvetica-Bold').fontSize(8.5).text('TYRE PRESSURES — THIS CAR\'S FITTED SIZE IS ON THE TYRE SIDEWALL:', M + 6, ly);
-  ly += TROW;
-  const cSize = M + 6, cFront = M + 190, cRear = M + 330;
+  // Sizes differ: note + one aligned row per size, spare last.
+  doc.font('Helvetica').fontSize(9).fillColor('#555555');
+  doc.text('THIS CAR\'S FITTED SIZE IS ON THE TYRE SIDEWALL', M, y); y += 14;
+  doc.fillColor('black');
+  const cSize = M, cFront = M + 200, cRear = M + 345;
   for (const r of tb.rows) {
-    doc.font('Helvetica-Bold').fontSize(8.5).text(String(r.size).toUpperCase(), cSize, ly, { width: cFront - cSize - 8 });
-    doc.font('Helvetica').fontSize(8.5)
-      .text(`FRONT ${r.fPsi} PSI (${r.fBar} BAR)`, cFront, ly, { width: cRear - cFront - 8 })
-      .text(`REAR ${r.rPsi} PSI (${r.rBar} BAR)`, cRear, ly);
-    ly += TROW;
+    doc.font('Helvetica-Bold').fontSize(10.5).text(String(r.size).toUpperCase(), cSize, y, { width: cFront - cSize - 8 });
+    doc.font('Helvetica-Bold').fontSize(10.5)
+      .text(`FRONT ${r.fPsi} PSI (${r.fBar} BAR)`, cFront, y, { width: cRear - cFront - 8 })
+      .text(`REAR ${r.rPsi} PSI (${r.rBar} BAR)`, cRear, y);
+    y += ROW;
   }
   if (tb.spare) {
-    doc.font('Helvetica-Bold').fontSize(8.5).text('SPARE', cSize, ly);
-    doc.font('Helvetica').fontSize(8.5).text(`${tb.spare.psi} PSI (${tb.spare.bar} BAR)`, cFront, ly);
+    doc.font('Helvetica-Bold').fontSize(10.5).text('SPARE', cSize, y);
+    doc.font('Helvetica-Bold').fontSize(10.5).text(`${tb.spare.psi} PSI (${tb.spare.bar} BAR)`, cFront, y);
+    y += ROW;
   }
-  return y + th + 10;
+  return y + 10;
+}
+
+// Deterministic height of the section above, for the back page's fit budget.
+function tyrePressuresBackHeight(tb: any): number {
+  if (!tb || (!tb.rows?.length && !tb.spare)) return 0;
+  const rows = (tb.allSame || !tb.rows?.length)
+    ? ((tb.rows?.length ? 1 : 0) + (tb.spare ? 1 : 0))
+    : (1 + tb.rows.length + (tb.spare ? 1 : 0));
+  return 18 + rows * 16 + 10;
 }
 
 export async function generateInvoicePDF(data: any, opts: { customerCopyOnly?: boolean } = {}): Promise<{ content: string; filename: string }> {
@@ -515,7 +516,7 @@ export async function generateInvoicePDF(data: any, opts: { customerCopyOnly?: b
     // Vehicle table
     y = checkBreak(ROW_H * 4);
     y = vehicleTable(doc, data.vehicle, y, true);
-    { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 14 : yb; } // flush under the tech row
+    y += 14;
 
     // Work description (title + lines) — width-wrapped so long text never overwrites
     y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
@@ -599,7 +600,7 @@ export async function generateEstimatePDF(data: any): Promise<{ content: string;
     // Vehicle table
     y = checkBreak(ROW_H * 4);
     y = vehicleTable(doc, data.vehicle, y);
-    { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 14 : yb; } // flush under the tech row
+    y += 14;
 
     // Work description (title + lines) — width-wrapped so long text never overwrites
     y = workBlock(doc, data.work_title, data.work_items, y, fullHeader);
@@ -729,7 +730,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   // Vehicle table
   y = checkBreak(ROW_H * 4);
   y = vehicleTable(doc, data.vehicle, y);
-  { const yb = tyrePressureBox(doc, data.vehicle, y, checkBreak); y = yb === y ? y + 12 : yb; } // flush under the tech row
+  y += 12; // tyre pressures print on the BACK page now, with the reset/OBD sections
 
   // Acceptable engine-oil grades — printed prominently so the mechanic can see every grade the
   // engine takes (e.g. 5W-30 / 0W-20 / 0W-30) and pick the right one, not just the preferred.
@@ -872,9 +873,10 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
   doc.font('Helvetica').fontSize(7.5);
   doc.text('Signed ________________          Date ________________', M, y);
 
-  // Diagnostic/service jobs carry the vehicle's Service Reset & OBD sheet as an extra
-  // page — OBD port location (with the Trakm8 interior diagram when captured) and the
-  // service-light reset procedure. See getRichPDF for when service_reset is populated.
+  // The BACK of the job card, as an extra (duplex) page: tyre pressures for every job, and —
+  // on diagnostic/service jobs — the Service Reset & OBD sheet: OBD port location (with the
+  // Trakm8 interior diagram when captured) and the service-light reset procedure. See
+  // getRichPDF for when service_reset is populated.
   const sr = data.service_reset;
   if (sr) {
     // Ask the printer for double-sided (long-edge flip) so the reset sheet lands on the
@@ -906,7 +908,7 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
       if (cautions.length) h += 16 + cautions.reduce((a, s) => a + para(s), 0);
       return h;
     };
-    const srBudget = PH - BOTTOM - M;
+    const srBudget = PH - BOTTOM - M - tyrePressuresBackHeight(data.vehicle?.tyres_box);
     let srCfg = srLevels[srLevels.length - 1];
     for (const l of srLevels) {
       if (srMeasure(l.fs, l.iw, l.variants, steps) <= srBudget) { srCfg = l; break; }
@@ -921,6 +923,9 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     doc.text(`Service Reset & OBD${sr.registration ? ` — ${sr.registration}` : ''}`, M, y); y += 20;
     doc.font('Helvetica').fontSize(9).fillColor('#555555');
     doc.text(`${sr.vehicleDesc || ''}${sr.generatedAt ? `  ·  generated ${new Date(sr.generatedAt).toLocaleDateString('en-GB')}` : ''}`, M, y); y += 22;
+
+    // Tyre pressures lead the back page — the section the mechanic reaches for at the wheel.
+    y = tyrePressuresBackSection(doc, data.vehicle?.tyres_box, y);
 
     const srHead = (t: string) => {
       doc.font('Helvetica-Bold').fontSize(10).fillColor('black');
@@ -958,6 +963,19 @@ export async function generateJobSheetPDF(data: any): Promise<{ content: string;
     if (cautions.length && y < PH - BOTTOM - 30) {
       srHead('Cautions');
       cautions.forEach((s) => srPara(s, '#92400e'));
+    }
+  } else {
+    // No reset sheet on this job — the tyre pressures still get the back of the card.
+    const tb = data.vehicle?.tyres_box;
+    if (tb && ((tb.rows && tb.rows.length) || tb.spare)) {
+      try { (doc as any)._root.data.ViewerPreferences = (doc as any).ref({ Duplex: 'DuplexFlipLongEdge' }); } catch { /* cosmetic */ }
+      doc.addPage();
+      y = M;
+      doc.font('Helvetica-Bold').fontSize(15).fillColor('black');
+      doc.text(`Tyre Pressures${data.vehicle?.reg ? ` — ${String(data.vehicle.reg).toUpperCase()}` : ''}`, M, y); y += 20;
+      doc.font('Helvetica').fontSize(9).fillColor('#555555');
+      doc.text([data.vehicle?.make, data.vehicle?.model].filter(Boolean).join(' '), M, y); y += 22;
+      y = tyrePressuresBackSection(doc, tb, y);
     }
   }
 

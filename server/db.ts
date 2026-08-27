@@ -4711,9 +4711,10 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
     try { lt = vehicle?.registration ? await liveVehicleTech(vehicle.registration) : null; } catch { /* fall back to the record */ }
   }
   const td = (vehicle?.comprehensiveTechnicalData as any) || {};
-  // No document prints without the tyre pressures (a converted invoice must keep what its
-  // job sheet carried): fetch-and-cache on first print, so this only ever runs once per car.
-  if (vehicle?.registration && !td.tyres) {
+  // Only the job sheet prints tyre pressures now (on its back page) — don't buy tyre data for
+  // invoice/estimate prints that no longer show it. Fetch-and-cache on first job-sheet print,
+  // so this only ever runs once per car.
+  if (vehicle?.registration && !td.tyres && String(doc.docType || "").toUpperCase() === "JS") {
     try {
       const { resolveTyrePressures } = await import("./sws");
       const tyres = await resolveTyrePressures(vehicle.registration);
