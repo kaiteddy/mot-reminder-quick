@@ -3371,6 +3371,10 @@ export async function searchCustomers(query: string, limit = 10) {
   const q = query.trim();
   const s = `%${q}%`;
   const conds: any[] = [ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s)];
+  // Multi-word names match word-by-word so order and titles don't matter: "DAVID SNODIN" finds
+  // "Mr Snodin David" as readily as "Mr David Snodin".
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length > 1) conds.push(and(...words.map((w) => ilike(customers.name, `%${w}%`))));
   // Match on the national significant number so "07951387353" finds "+447951387353" (and vice
   // versa) — strip the 0 / +44 / 44 prefix and match the remaining digits as a substring.
   let core = q.replace(/\D/g, "");
@@ -5272,10 +5276,34 @@ export async function getCustomerServiceHistoryPDF(customerId: number, opts?: { 
 export async function setSalesStockSold(input: { id: number; sold: boolean; soldPrice?: number | null; soldAt?: Date | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const prev: any = (await db.select().from(salesStock).where(eq(salesStock.id, input.id)).limit(1))[0];
   const patch = input.sold
     ? { status: "SOLD", soldAt: input.soldAt || new Date(), soldPrice: input.soldPrice != null ? String(input.soldPrice) : null }
     : { status: "ON FORECOURT", soldAt: null, soldPrice: null };
   await db.update(salesStock).set(patch as any).where(eq(salesStock.id, input.id));
+
+  // The popup is where the real sale price gets recorded, so push it through to the linked sale
+  // invoice — but only while the invoice still shows a system-seeded price (blank, the asking
+  // price, or the previously recorded sold price). A figure someone typed on the form is theirs.
+  if (input.sold && input.soldPrice != null && prev) {
+    const fmtMoney = (n: any) => {
+      const v = Number(n);
+      return Number.isFinite(v) && v !== 0 ? v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+    };
+    const want = fmtMoney(input.soldPrice);
+    const seededAll = ["", fmtMoney(prev.price), fmtMoney(prev.soldPrice)];
+    const seeded = seededAll.filter((s, i) => seededAll.indexOf(s) === i);
+    if (want) {
+      await db.execute(sql`
+        UPDATE "vehicleSaleInvoices"
+        SET "grossPrice" = ${want},
+            "balance" = CASE WHEN "balance" = "grossPrice" OR COALESCE("balance", '') = '' THEN ${want} ELSE "balance" END,
+            "updatedAt" = now()
+        WHERE "salesStockId" = ${input.id} AND "docKind" = 'sale'
+          AND "grossPrice" IS DISTINCT FROM ${want}
+          AND COALESCE("grossPrice", '') IN (${sql.join(seeded.map((s) => sql`${s}`), sql`, `)})`);
+    }
+  }
   return (await db.select().from(salesStock).where(eq(salesStock.id, input.id)).limit(1))[0];
 }
 

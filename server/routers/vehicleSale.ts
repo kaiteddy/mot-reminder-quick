@@ -115,15 +115,30 @@ export const vehicleSaleRouter = router({
 
       // Scoped to the kind: one car can legitimately have both a purchase (buying it in) and a
       // sale (selling it on), so matching on the stock car alone would hand back the wrong one.
-      const existing = await db.select({ id: vehicleSaleInvoices.id }).from(vehicleSaleInvoices)
+      const existing = await db.select().from(vehicleSaleInvoices)
         .where(and(
           eq(vehicleSaleInvoices.salesStockId, input.salesStockId),
           eq(vehicleSaleInvoices.docKind, input.docKind),
         )).limit(1).then((r: any) => r[0]);
-      if (existing) return { id: existing.id, existed: true };
 
       const car: any = await db.select().from(salesStock).where(eq(salesStock.id, input.salesStockId)).limit(1).then((r: any) => r[0]);
       if (!car) throw new Error("Stock car not found");
+
+      if (existing) {
+        // The Mark-sold popup may have (re)priced the car since this invoice was raised. Refresh
+        // the invoice only while its price is still a system-seeded value (blank or the asking
+        // price) — a figure someone typed on the form is theirs and stays.
+        if (input.docKind === "sale" && car.soldPrice != null) {
+          const want = money(car.soldPrice);
+          const seeded = ["", money(car.price)];
+          if (want !== existing.grossPrice && seeded.includes(existing.grossPrice ?? "")) {
+            const patch: any = { grossPrice: want };
+            if (!existing.balance || existing.balance === existing.grossPrice) patch.balance = want;
+            await db.update(vehicleSaleInvoices).set(patch).where(eq(vehicleSaleInvoices.id, existing.id));
+          }
+        }
+        return { id: existing.id, existed: true };
+      }
 
       // The garage's own vehicles row carries the engine number and first-registration date the
       // stocklist doesn't. Match on the reg with spaces stripped from both sides — stocklist regs
@@ -153,13 +168,44 @@ export const vehicleSaleRouter = router({
         engineNumber: car.engineNo || veh?.engineNo || "",
         firstRegisteredUK: ukDate(car.registrationDate || veh?.dateOfRegistration),
         mileage: car.mileage != null ? Number(car.mileage).toLocaleString("en-GB") : "",
-        grossPrice: money(car.price),
-        balance: money(car.price),
+        // A sale invoice bills what the car actually SOLD for (the Mark-sold popup's figure);
+        // the asking price only stands in while no sold price has been recorded yet.
+        grossPrice: money(input.docKind === "sale" ? (car.soldPrice ?? car.price) : car.price),
+        balance: money(input.docKind === "sale" ? (car.soldPrice ?? car.price) : car.price),
         sellerCertificateDate: ukDate(new Date()),
         buyerCertificateDate: ukDate(new Date()),
       }).returning({ id: vehicleSaleInvoices.id });
 
       return { id: created.id, existed: false };
+    }),
+
+  /**
+   * Names as they appear on past workshop documents. Catches buyers like "MR DAVID SNODIN" who
+   * exist only as a typed name on a GA4 invoice, never as a customer record — the customer
+   * search can't find them, but the paperwork can. Fills the name only; there is no customer
+   * record behind these, so no address/phone comes with them.
+   */
+  searchNames: publicProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ input }) => {
+      const q = input.query.trim();
+      if (q.length < 2) return [];
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      if (!db) return [];
+      const { sql } = await import("drizzle-orm");
+      const tokens = q.split(/\s+/).filter(Boolean).slice(0, 6);
+      const conds = sql.join(tokens.map((t) => sql`sh."customerName" ILIKE ${"%" + t + "%"}`), sql` AND `);
+      const rows: any[] = (await db.execute(sql`
+        SELECT sh."customerName" AS name,
+               MAX(COALESCE(sh."dateIssued", sh."dateCreated")) AS last,
+               (ARRAY_AGG(sh.registration ORDER BY COALESCE(sh."dateIssued", sh."dateCreated") DESC NULLS LAST))[1] AS reg
+        FROM "serviceHistory" sh
+        WHERE sh."customerName" IS NOT NULL AND sh."customerName" <> '' AND ${conds}
+        GROUP BY 1
+        ORDER BY last DESC NULLS LAST
+        LIMIT 5`)).rows ?? [];
+      return rows.map((r: any) => ({ name: String(r.name), reg: String(r.reg || "") }));
     }),
 
   // Autosave: patch only the fields the form sends.

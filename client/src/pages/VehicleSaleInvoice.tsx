@@ -51,6 +51,12 @@ export default function VehicleSaleInvoice() {
     { query: custQuery },
     { enabled: custQuery.trim().length >= 2, staleTime: 30_000 },
   );
+  // Some buyers only exist as a typed name on past paperwork (no customer record) — offer those
+  // names too, marked as filling the name alone.
+  const { data: histNames } = trpc.vehicleSale.searchNames.useQuery(
+    { query: custQuery },
+    { enabled: custQuery.trim().length >= 2, staleTime: 30_000 },
+  );
 
   async function fillPurchaser(customerId: number) {
     try {
@@ -94,6 +100,16 @@ export default function VehicleSaleInvoice() {
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
+
+  // Navigating away inside the debounce window used to drop the last second of typing
+  // ("DAVID SN" instead of "DAVID SNODIN"). Fire-and-forget whatever is unsaved on unmount —
+  // the request outlives the component.
+  const latest = useRef({ dirty: false, values: {} as VehicleSaleValues });
+  latest.current = { dirty, values };
+  useEffect(() => () => {
+    if (latest.current.dirty) save.mutate({ id, fields: latest.current.values as any });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   async function handlePrint() {
     await flush();
@@ -220,16 +236,36 @@ export default function VehicleSaleInvoice() {
           docKind={docKind}
           onChange={set}
           suggestFor="purchaserName"
-          suggest={{
-            items: (custMatches as any[] | undefined)?.map((c) => ({
+          suggest={(() => {
+            const custItems = (custMatches as any[] | undefined)?.map((c) => ({
               id: c.id,
               label: c.name,
               sub: [c.phone, c.postcode].filter(Boolean).join(" · ") || undefined,
-            })) ?? [],
-            loading: custSearching,
-            emptyHint: custQuery.trim().length >= 2 ? "No matching customer — typing here is fine" : undefined,
-            onPick: fillPurchaser,
-          }}
+            })) ?? [];
+            // Past-paperwork names get negative ids so onPick can tell them apart; they fill the
+            // name only — there is no customer record (address, phone) behind them.
+            const known = new Set(custItems.map((i) => i.label.trim().toLowerCase()));
+            const histItems = ((histNames as any[] | undefined) ?? [])
+              .filter((h) => !known.has(String(h.name).trim().toLowerCase()))
+              .map((h, i) => ({
+                id: -(i + 1),
+                label: h.name,
+                sub: `on a past invoice${h.reg ? ` · ${h.reg}` : ""} — fills the name only`,
+              }));
+            return {
+              items: [...custItems, ...histItems],
+              loading: custSearching,
+              emptyHint: custQuery.trim().length >= 2 ? "No matching customer — typing here is fine" : undefined,
+              onPick: (pid: number) => {
+                if (pid >= 0) return fillPurchaser(pid);
+                const h = histItems.find((x) => x.id === pid);
+                if (h) {
+                  set("purchaserName", h.label);
+                  toast.info("Name filled from past paperwork — no customer record attached");
+                }
+              },
+            };
+          })()}
         />
       </div>
     </DashboardLayout>
