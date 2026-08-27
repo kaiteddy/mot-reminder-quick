@@ -953,7 +953,17 @@ export default function DocumentDetails() {
   const docNo = (data as any)?.doc?.docNo;
   // GA4's stamped invoice number, once issued — the number on the printed/emailed copy.
   const ga4Number = String((data as any)?.doc?.ga4Number ?? "").trim();
-  const history = (data as any)?.history ?? [];
+  // History normally arrives with the document, keyed on its vehicleId. A job sheet still being
+  // typed has no vehicleId yet — the reg has been looked up but nothing is saved — so the tab sat
+  // empty on cars with years of history behind them. Fall back to the plate the moment it is
+  // recognisable, so History fills in as soon as the reg is matched rather than after a save.
+  const docHistory = (data as any)?.history ?? [];
+  const regForHistory = String(form.registration ?? "").toUpperCase().replace(/\s+/g, "");
+  const byRegHistory = trpc.serviceHistory.getByRegistration.useQuery(
+    { registration: regForHistory },
+    { enabled: docHistory.length === 0 && regForHistory.length >= 4, staleTime: 30_000 },
+  );
+  const history = docHistory.length ? docHistory : (byRegHistory.data ?? []);
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
   const nameMissing = isInvoice && !(form.custSurname || form.custForename || form.company || form.customerName);

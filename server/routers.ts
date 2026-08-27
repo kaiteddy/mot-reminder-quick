@@ -3364,6 +3364,26 @@ export const appRouter = router({
   }),
 
   serviceHistory: router({
+    /** History for a plate, for a document that has no vehicle link yet — a job sheet still being
+     *  typed, where the reg has just been looked up but nothing is saved. Resolves the plate to a
+     *  vehicle and then reuses getServiceHistoryByVehicleId, so it inherits that function's care
+     *  over GA4-spaced vs DVLA-solid registrations and over previous holders of a cherished plate.
+     *  Returns [] when the plate is unknown — a new car legitimately has no history. */
+    getByRegistration: publicProcedure
+      .input(z.object({ registration: z.string() }))
+      .query(async ({ input }) => {
+        const norm = input.registration.toUpperCase().replace(/\s+/g, "");
+        if (!norm) return [];
+        const { getDb, getServiceHistoryByVehicleId } = await import("./db");
+        const db = await getDb();
+        if (!db) return [];
+        const { vehicles } = await import("../drizzle/schema");
+        const { sql } = await import("drizzle-orm");
+        const hit = (await db.select({ id: vehicles.id }).from(vehicles)
+          .where(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '') = ${norm}`).limit(1))[0];
+        return hit ? await getServiceHistoryByVehicleId(hit.id) : [];
+      }),
+
     getByVehicleId: publicProcedure
       .input(z.object({ vehicleId: z.number() }))
       .query(async ({ input }) => {
