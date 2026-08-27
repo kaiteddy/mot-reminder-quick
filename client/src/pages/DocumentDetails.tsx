@@ -937,6 +937,26 @@ export default function DocumentDetails() {
     } catch (e: any) { toast.error("Update failed: " + (e.message || "")); }
   }
 
+  // ── Plate-keyed fallbacks. These MUST sit above the early returns below: a hook that only runs
+  //    on some renders changes the hook count between renders and React throws. Putting them
+  //    after those returns is exactly what broke the page in production on 2026-08-27.
+  //
+  //    History, Prev Parts and Log all key on the document's vehicleId, which a job sheet still
+  //    being typed does not have yet — so they sat empty on a car with years of history. Fall
+  //    back to the plate as soon as it is recognisable, as Mileage and MOT Advisories already do.
+  const docHistory = (data as any)?.history ?? [];
+  const regForHistory = String(form.registration ?? "").toUpperCase().replace(/\s+/g, "");
+  const byRegHistory = trpc.serviceHistory.getByRegistration.useQuery(
+    { registration: regForHistory },
+    { enabled: docHistory.length === 0 && regForHistory.length >= 4, staleTime: 30_000 },
+  );
+  const vehicleByReg = trpc.vehicles.getByRegistration.useQuery(
+    { registration: regForHistory },
+    { enabled: !(data as any)?.doc?.vehicleId && regForHistory.length >= 4, staleTime: 30_000 },
+  );
+  const resolvedVehicleId: number | undefined =
+    (data as any)?.doc?.vehicleId ?? (vehicleByReg.data as any)?.vehicle?.id ?? (vehicleByReg.data as any)?.id ?? undefined;
+
   // (skip the loading/not-found screens once we've already initialised this doc — e.g. right
   // after a new doc auto-saves and the URL switches to its id, the form is already populated)
   if (!isNew && isLoading && initRef.current !== id) return <DashboardLayout><div className="p-8 text-muted-foreground">Loading…</div></DashboardLayout>;
@@ -953,28 +973,7 @@ export default function DocumentDetails() {
   const docNo = (data as any)?.doc?.docNo;
   // GA4's stamped invoice number, once issued — the number on the printed/emailed copy.
   const ga4Number = String((data as any)?.doc?.ga4Number ?? "").trim();
-  // History normally arrives with the document, keyed on its vehicleId. A job sheet still being
-  // typed has no vehicleId yet — the reg has been looked up but nothing is saved — so the tab sat
-  // empty on cars with years of history behind them. Fall back to the plate the moment it is
-  // recognisable, so History fills in as soon as the reg is matched rather than after a save.
-  const docHistory = (data as any)?.history ?? [];
-  const regForHistory = String(form.registration ?? "").toUpperCase().replace(/\s+/g, "");
-  const byRegHistory = trpc.serviceHistory.getByRegistration.useQuery(
-    { registration: regForHistory },
-    { enabled: docHistory.length === 0 && regForHistory.length >= 4, staleTime: 30_000 },
-  );
   const history = docHistory.length ? docHistory : (byRegHistory.data ?? []);
-
-  // Prev Parts and Log key on the document's vehicleId, which a job sheet still being typed does
-  // not have yet — they showed "No vehicle linked to this document" on a car we plainly know.
-  // Resolve the plate to a vehicle so those tabs work from the moment the reg is matched, exactly
-  // as History, Mileage and MOT Advisories already do. Falls back to null for a car new to us.
-  const vehicleByReg = trpc.vehicles.getByRegistration.useQuery(
-    { registration: regForHistory },
-    { enabled: !(data as any)?.doc?.vehicleId && regForHistory.length >= 4, staleTime: 30_000 },
-  );
-  const resolvedVehicleId: number | undefined =
-    (data as any)?.doc?.vehicleId ?? (vehicleByReg.data as any)?.vehicle?.id ?? (vehicleByReg.data as any)?.id ?? undefined;
   const isInvoice = form.docType === "SI" || form.docType === "XS";
   const isExcess = form.docType === "XS";
   const nameMissing = isInvoice && !(form.custSurname || form.custForename || form.company || form.customerName);
