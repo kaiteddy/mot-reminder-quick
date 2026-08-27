@@ -77,6 +77,17 @@ function splitName(full?: string) {
   return { title, forename, surname };
 }
 
+// The typed name and the linked record's name "disagree" when they share no real name word —
+// titles don't count, so "Mrs C Rubens" still matches "Mrs Rubens", but a wholly different
+// person ("MR DAVID SNODIN" typed over "Mrs Rubens") trips the who-is-this warning.
+function nameWords(s?: string) {
+  return (s || "").toUpperCase().replace(/[^A-Z\s]/g, " ").split(/\s+/).filter((w) => w && !TITLES.includes(w));
+}
+function namesDisagree(typed?: string, linked?: string) {
+  const a = nameWords(typed), b = nameWords(linked);
+  return a.length > 0 && b.length > 0 && !a.some((w) => b.includes(w));
+}
+
 function daysUntil(d: any): number | null {
   if (!d) return null;
   const t = new Date(d).getTime();
@@ -197,6 +208,17 @@ export default function DocumentDetails() {
   // The document is always editable — changes auto-save (no Edit/Save step).
   const editing = true;
   const [newCust, setNewCust] = useState(false);
+  // lookup() completes asynchronously; this ref lets it see an explicit "new customer" choice
+  // made while it was in flight, so it never restores the old linked owner over one.
+  const newCustRef = useRef(false);
+  newCustRef.current = newCust;
+  // Canonical name of the linked customer record, for spotting a different person being typed
+  // over an existing link (which used to silently keep everything on the old record).
+  const [linkedName, setLinkedName] = useState("");
+  const [nameAckFor, setNameAckFor] = useState<number | null>(null);
+  const [transferOwner, setTransferOwner] = useState(true);
+  const transferRef = useRef<{ vehicleId: number; reg: string } | null>(null);
+  const assignVeh = trpc.reminders.assignVehicle.useMutation();
   const [findCustOpen, setFindCustOpen] = useState(false);   // Classic view "find customer" dialog
   const [looking, setLooking] = useState(false);
   const [regFocused, setRegFocused] = useState(false);
@@ -596,6 +618,20 @@ export default function DocumentDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.customerId]);
 
+  // Track the linked record's canonical name so a different person typed over the link is
+  // noticed (the warning box in the customer cell) instead of silently billed to the old record.
+  useEffect(() => {
+    const cid = form.customerId;
+    setNameAckFor(null);
+    if (!cid) { setLinkedName(""); return; }
+    let cancelled = false;
+    utils.customers.getById.fetch({ id: Number(cid) })
+      .then((r: any) => { if (!cancelled) setLinkedName(r?.customer?.name || ""); })
+      .catch(() => { if (!cancelled) setLinkedName(""); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.customerId]);
+
   // On opening an EXISTING job sheet, refresh the live engine-oil / A/C / MOT / tax
   // for the info cards (new sheets get this from the Lookup automatically).
   useEffect(() => {
@@ -655,7 +691,10 @@ export default function DocumentDetails() {
         engineCC: pick(v.engineCC, f.engineCC), engineNo: pick(v.engineNo, f.engineNo), engineCode: pick(v.engineCode, f.engineCode),
         vin: pick(v.vin, f.vin), paintCode: pick(v.paintCode, f.paintCode), keyCode: pick(v.keyCode, f.keyCode), radioCode: pick(v.radioCode, f.radioCode),
         dateOfRegistration: v.dateOfRegistration ? dateInput(v.dateOfRegistration) : (force ? "" : f.dateOfRegistration),
-        ...(c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad }
+        // An explicit "new customer" choice (typed while this lookup was in flight) wins over
+        // the vehicle's linked owner — restoring the old owner here is how a sold car's invoice
+        // once ended up billed to the previous keeper.
+        ...(newCustRef.current ? {} : c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad }
           // No linked owner, but this vehicle has a previous document — carry that customer's
           // details forward (unlinked, so saving creates + links a real customer record).
           : last ? {
@@ -670,7 +709,7 @@ export default function DocumentDetails() {
       }));
       // Treat a carried-forward customer as a new-customer entry so the save creates and links
       // the record (and adopts this ownerless vehicle) instead of leaving the details unlinked.
-      if (!c && last) { setNewCust(true); toast.message("Customer carried over from this vehicle's last invoice — check the details, then save to link them."); }
+      if (!newCustRef.current && !c && last) { setNewCust(true); toast.message("Customer carried over from this vehicle's last invoice — check the details, then save to link them."); }
       regOnLoadRef.current = reg.toUpperCase().replace(/\s/g, ""); // this reg is now loaded — don't force again unless it changes
       vehIdentityRegRef.current = normRegKey(v.registration || reg); // the identity fields now describe this reg
       setLookupTech((prev: any) => ({ ...(prev || {}), ...(v.technical || {}), motExpiry: v.motExpiryDate, taxStatus: v.taxStatus, taxDueDate: v.taxDueDate, imageUrl: v.imageUrl ?? prev?.imageUrl ?? null }));
@@ -822,6 +861,22 @@ export default function DocumentDetails() {
   // single field) for deciding whether to register a new customer and for the "will be created" hint.
   const custDisplayName = ([form.custTitle, form.custForename, form.custSurname].filter(Boolean).join(" ") || form.customerName || "").trim();
 
+  // A different person's name typed over a linked customer: warn instead of silently keeping
+  // the document (and the vehicle) on the old record. "Different person" unlinks but keeps the
+  // typed name, so the save creates the new record; the checkbox also moves the car over.
+  const nameClash = editing && !!form.customerId && !!linkedName
+    && nameAckFor !== form.customerId && namesDisagree(custDisplayName, linkedName);
+  const docVehicle: any = (data as any)?.vehicle;
+  const vehOwnedByLinked = !!(docVehicle?.id && docVehicle?.customerId && form.customerId && docVehicle.customerId === form.customerId);
+  function unlinkAsNewPerson() {
+    if (transferOwner && vehOwnedByLinked) transferRef.current = { vehicleId: docVehicle.id, reg: String(form.registration || "") };
+    setNewCust(true);
+    // Keep the typed name; drop everything that belongs to the old person.
+    setForm((f) => ({ ...f, customerId: undefined, accountNumber: "", company: "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", custPostcode: "", custTelephone: "", custMobile: "", custEmail: "" }));
+    markDirty();
+    toast.message("Unlinked — saving will create a new customer record with this name.");
+  }
+
   function buildPayload(): any {
     // Ship the vehicle-identity block only when it describes the reg on the doc (belt), and tag
     // it with that reg so saveDocument can verify the provenance itself (braces).
@@ -871,6 +926,15 @@ export default function DocumentDetails() {
         customerId: f.customerId ?? res.customerId,
         accountNumber: f.accountNumber ? f.accountNumber : (res.accountNumber ?? f.accountNumber),
       }));
+      // "Car changed hands" was ticked when the old owner was unlinked: now that the save has
+      // created the new customer record, move the vehicle (and its reminders) over to them.
+      if (transferRef.current && res?.customerId) {
+        const t = transferRef.current; transferRef.current = null;
+        assignVeh.mutate({ vehicleId: t.vehicleId, customerId: res.customerId }, {
+          onSuccess: () => { toast.success(`${t.reg || "Vehicle"} transferred to the new owner`); utils.vehicles.getById.invalidate({ id: t.vehicleId }); },
+          onError: (e: any) => toast.error(`Ownership transfer failed: ${e.message || ""}`),
+        });
+      }
       if (isNew && res?.id) {
         initRef.current = res.id;                    // don't let the re-fetch re-init the form
         setLocation(`${base}/documents/${res.id}`, { replace: true });
@@ -1524,9 +1588,24 @@ export default function DocumentDetails() {
             </div>
             {/* customer */}
             <div className={base ? "js-cell-customer space-y-1.5 @container/customer" : "@4xl:col-span-4 space-y-1.5 @container/customer"}>
+              {nameClash && (
+                <div className="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 text-[12px] text-amber-900 space-y-1.5">
+                  <div><strong>{custDisplayName}</strong> doesn't match the linked customer <strong>{linkedName}</strong> — saving as-is keeps this document (and its account number) on {linkedName}'s record.</div>
+                  {vehOwnedByLinked && (
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={transferOwner} onChange={(e) => setTransferOwner(e.target.checked)} />
+                      <span>Car changed hands — make them the new owner of {form.registration}</span>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="ga4-btn !text-[11px]" onClick={unlinkAsNewPerson}>Different person — create a new record</button>
+                    <button type="button" className="ga4-btn !text-[11px]" onClick={() => setNameAckFor(form.customerId ?? null)}>Same person — just correcting the name</button>
+                  </div>
+                </div>
+              )}
               {!base && editing && (
                 <>
-                  <CustomerSearch onSelect={(c) => { setNewCust(false); setForm((f) => attachCustomerPatch(f, c)); markDirty(); }} />
+                  <CustomerSearch onSelect={(c) => { setNewCust(false); transferRef.current = null; setForm((f) => attachCustomerPatch(f, c)); markDirty(); }} />
                   <div className="flex items-center justify-end gap-2 -mt-0.5 pr-1">
                     {form.customerId ? (
                       <span className="text-[11px] text-muted-foreground">Linked customer #{form.customerId}</span>
@@ -1598,7 +1677,7 @@ export default function DocumentDetails() {
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
               {!base && editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
-                onLink={(c) => { setNewCust(false); const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
+                onLink={(c) => { setNewCust(false); transferRef.current = null; const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
               {!base && <OtherNumbers customerId={form.customerId} editing={editing} />}
               {base && (
