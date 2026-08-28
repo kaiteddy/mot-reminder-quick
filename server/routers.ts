@@ -120,6 +120,15 @@ export const appRouter = router({
       return getAllCustomers();
     }),
 
+    // Paged + server-searched list for the Customers page and assign dialogs — never ships the
+    // whole table the way `list` does.
+    page: publicProcedure
+      .input(z.object({ search: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getCustomersPage } = await import("./db");
+        return getCustomersPage(input ?? {});
+      }),
+
     // Stop / re-enable MOT reminders for a customer (they replied STOP). The reminder
     // logic already skips opted-out customers, and the GA4 customer sync is insert-only so
     // this flag is never overwritten by a re-import.

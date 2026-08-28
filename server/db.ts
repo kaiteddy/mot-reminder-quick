@@ -391,6 +391,47 @@ export async function getAllCustomers() {
   return db.select().from(customers).orderBy(customers.name);
 }
 
+/** The Customers page and the assign-customer dialog: server-side search + pagination, so the
+ * client never ships the whole table (8,000+ rows, ~3.7MB, seconds of render). Matching mirrors
+ * searchCustomers — name / phone / email / postcode / address / account number, word-by-word
+ * names, and national-number phone digits. One round trip: the total rides along as a window
+ * count. */
+export async function getCustomersPage(opts: { search?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return { customers: [], total: 0 };
+  const limit = Math.min(Math.max(1, opts.limit ?? 50), 200);
+  const offset = Math.max(0, opts.offset ?? 0);
+  const q = String(opts.search ?? "").trim();
+  let where: any;
+  if (q) {
+    const s = `%${q}%`;
+    const conds: any[] = [
+      ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s),
+      ilike(customers.postcode, s), ilike(customers.address, s), ilike(customers.accountNumber, s),
+    ];
+    const words = q.split(/\s+/).filter(Boolean);
+    if (words.length > 1) conds.push(and(...words.map((w) => ilike(customers.name, `%${w}%`))));
+    let core = q.replace(/\D/g, "");
+    if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
+    if (core.length >= 6) conds.push(ilike(customers.phone, `%${core}%`));
+    where = or(...conds);
+  }
+  const rows = await db.select({
+    id: customers.id, name: customers.name, email: customers.email, phone: customers.phone,
+    address: customers.address, postcode: customers.postcode, notes: customers.notes,
+    accountNumber: customers.accountNumber,
+    total: sql<number>`count(*) OVER()`,
+  }).from(customers).where(where).orderBy(customers.name).limit(limit).offset(offset);
+  let total = rows.length ? Number((rows[0] as any).total) : 0;
+  if (!rows.length && offset > 0) {
+    // Paged past the end (e.g. the filter narrowed under the current page) — still report the
+    // real total so the client can snap back to a valid page.
+    const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(customers).where(where);
+    total = Number(n);
+  }
+  return { customers: rows.map(({ total: _t, ...c }: any) => c), total };
+}
+
 export async function getAllVehicles() {
   const db = await getDb();
   if (!db) return [];

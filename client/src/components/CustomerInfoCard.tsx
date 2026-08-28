@@ -6,15 +6,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: { vehicleId: number; triggerButton: React.ReactNode; onAssigned?: () => void }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
 
-  const { data: customers = [], isLoading } = trpc.customers.list.useQuery(undefined, {
-    enabled: open
-  });
+  // Server-side search (paged endpoint) — the full customer list is 8,000+ rows / ~3.7MB and
+  // used to be downloaded every time this dialog opened.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(searchTerm.trim()), 250);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+  const { data, isLoading } = trpc.customers.page.useQuery(
+    { search: debounced || undefined, limit: 50 },
+    { enabled: open, placeholderData: (prev: any) => prev, staleTime: 30_000 },
+  );
 
   const assignMutation = trpc.reminders.assignVehicle.useMutation({
     onSuccess: () => {
@@ -28,11 +36,7 @@ export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: {
     }
   });
 
-  const filtered = customers.filter(c => 
-    (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.phone || '').includes(searchTerm) ||
-    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = data?.customers ?? [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -59,7 +63,7 @@ export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: {
           <div className="border rounded-md divide-y max-h-[300px] overflow-y-auto">
              {isLoading ? <div className="p-4 text-center">Loading customers...</div> : 
               filtered.length === 0 ? <div className="p-4 text-center text-muted-foreground">No matching customers found.</div> :
-              filtered.map(c => (
+              filtered.map((c: any) => (
                 <div key={c.id} className="p-3 flex justify-between items-center hover:bg-slate-50 transition-colors">
                   <div>
                     <div className="font-semibold text-sm">{c.name}</div>

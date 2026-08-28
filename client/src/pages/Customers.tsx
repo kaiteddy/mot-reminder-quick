@@ -1,29 +1,44 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Mail, Phone, MapPin } from "lucide-react";
+import { Users, Search, Mail, Phone, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 
+const PAGE_SIZE = 50;
+
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [page, setPage] = useState(0);
   const base = useClassicBase();
-  const { data: customers, isLoading } = trpc.customers.list.useQuery();
 
-  const filteredCustomers = customers?.filter((customer) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      customer.name?.toLowerCase().includes(search) ||
-      customer.email?.toLowerCase().includes(search) ||
-      customer.phone?.toLowerCase().includes(search) ||
-      customer.postcode?.toLowerCase().includes(search)
-    );
-  }) || [];
+  // Search runs on the server, so debounce typing rather than querying per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => { setDebounced(searchTerm.trim()); setPage(0); }, 250);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // placeholderData keeps the previous page on screen while the next one loads — no flash
+  // of "Loading" between pages or keystrokes.
+  const { data, isLoading, isPlaceholderData } = trpc.customers.page.useQuery(
+    { search: debounced || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+    { placeholderData: (prev: any) => prev, staleTime: 30_000 },
+  );
+  const rows = data?.customers ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // The filter narrowed under the current page — snap back to the last valid one.
+  useEffect(() => { if (page > 0 && page >= pageCount) setPage(pageCount - 1); }, [page, pageCount]);
+
+  const from = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const to = Math.min(total, page * PAGE_SIZE + rows.length);
 
   return (
     <DashboardLayout>
@@ -46,14 +61,14 @@ export default function Customers() {
               Customer List
             </CardTitle>
             <CardDescription>
-              {customers?.length || 0} customers in database
+              {debounced ? `${total} matching customers` : `${total} customers in database`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2">
               <Search className="w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, phone, or postcode..."
+                placeholder="Search by name, email, phone, postcode or account number..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1"
@@ -64,8 +79,8 @@ export default function Customers() {
               <div className="text-center py-8 text-muted-foreground">
                 Loading customers...
               </div>
-            ) : filteredCustomers.length > 0 ? (
-              <div className="border rounded-lg overflow-hidden">
+            ) : rows.length > 0 ? (
+              <div className={`border rounded-lg overflow-hidden ${isPlaceholderData ? "opacity-60" : ""}`}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -77,7 +92,7 @@ export default function Customers() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCustomers.map((customer) => (
+                    {rows.map((customer: any) => (
                       <TableRow key={customer.id}>
                         <TableCell className="font-medium">
                           <Link href={`${base}/customers/${customer.id}`}>
@@ -142,11 +157,11 @@ export default function Customers() {
               <div className="text-center py-12 text-muted-foreground">
                 <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>
-                  {searchTerm
+                  {debounced
                     ? "No customers found matching your search"
                     : "No customers in database"}
                 </p>
-                {!searchTerm && (
+                {!debounced && (
                   <p className="text-sm mt-2">
                     Import data from Garage Assistant 4 to get started
                   </p>
@@ -154,9 +169,24 @@ export default function Customers() {
               </div>
             )}
 
-            {searchTerm && filteredCustomers.length > 0 && (
-              <div className="text-sm text-muted-foreground">
-                Showing {filteredCustomers.length} of {customers?.length} customers
+            {total > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing {from}–{to} of {total} customers
+                </div>
+                {pageCount > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                      <ChevronLeft className="w-4 h-4" /> Prev
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Page {page + 1} of {pageCount}
+                    </span>
+                    <Button variant="outline" size="sm" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>
+                      Next <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
