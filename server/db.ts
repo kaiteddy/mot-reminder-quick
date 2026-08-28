@@ -421,7 +421,9 @@ export async function getCustomersPage(opts: { search?: string; limit?: number; 
     address: customers.address, postcode: customers.postcode, notes: customers.notes,
     accountNumber: customers.accountNumber,
     total: sql<number>`count(*) OVER()`,
-  }).from(customers).where(where).orderBy(customers.name).limit(limit).offset(offset);
+    // Real names first: rows whose name starts with a letter sort ahead of the data-entry
+    // stragglers ("-", "..", "0") that otherwise open the alphabetical list.
+  }).from(customers).where(where).orderBy(sql`(${customers.name} ~ '^[A-Za-z]') DESC`, customers.name).limit(limit).offset(offset);
   let total = rows.length ? Number((rows[0] as any).total) : 0;
   if (!rows.length && offset > 0) {
     // Paged past the end (e.g. the filter narrowed under the current page) — still report the
