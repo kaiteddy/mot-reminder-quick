@@ -1,8 +1,15 @@
 import { describe, expect, it, beforeEach } from "vitest";
+
+// These suites wipe and repopulate customerMessages, and this project has NO separate test
+// database - a plain `vitest` run on 28/08/2026 deleted the entire production WhatsApp
+// history (restored from the Twilio log). They only run when the DB they point at is
+// explicitly declared disposable.
+const DB_IS_DISPOSABLE = process.env.VITEST_DB_IS_DISPOSABLE === "1";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { getDb } from "./db";
 import { customerMessages } from "../drizzle/schema";
+import { like } from "drizzle-orm";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -31,12 +38,12 @@ function createAuthContext(): TrpcContext {
   };
 }
 
-describe("messages.getUnreadCount", () => {
+describe.runIf(DB_IS_DISPOSABLE)("messages.getUnreadCount", () => {
   beforeEach(async () => {
     // Clean up test data
     const db = await getDb();
     if (db) {
-      await db.delete(customerMessages);
+      await db.delete(customerMessages).where(like(customerMessages.messageSid, "test-sid-%"));
     }
   });
 
@@ -90,12 +97,12 @@ describe("messages.getUnreadCount", () => {
   });
 });
 
-describe("messages.markAsRead", () => {
+describe.runIf(DB_IS_DISPOSABLE)("messages.markAsRead", () => {
   beforeEach(async () => {
     // Clean up test data
     const db = await getDb();
     if (db) {
-      await db.delete(customerMessages);
+      await db.delete(customerMessages).where(like(customerMessages.messageSid, "test-sid-%"));
     }
   });
 
@@ -129,12 +136,12 @@ describe("messages.markAsRead", () => {
   });
 });
 
-describe("messages.markAllAsRead", () => {
+describe.runIf(DB_IS_DISPOSABLE)("messages.markAllAsRead", () => {
   beforeEach(async () => {
     // Clean up test data
     const db = await getDb();
     if (db) {
-      await db.delete(customerMessages);
+      await db.delete(customerMessages).where(like(customerMessages.messageSid, "test-sid-%"));
     }
   });
 
