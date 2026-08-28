@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Mail, Phone, Smartphone, MapPin, ChevronLeft, ChevronRight, Building2, StickyNote } from "lucide-react";
+import { Users, Search, Mail, Phone, Smartphone, MapPin, ChevronLeft, ChevronRight, Building2, StickyNote, Car } from "lucide-react";
 import { APP_TITLE } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
@@ -110,10 +110,11 @@ export default function Customers() {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead className="min-w-[180px]">Customer</TableHead>
-                      <TableHead className="min-w-[160px]">Company</TableHead>
+                      <TableHead className="min-w-[140px]">Company</TableHead>
+                      <TableHead className="min-w-[150px]">Vehicles</TableHead>
                       <TableHead className="min-w-[150px]">Phone / Mobile</TableHead>
                       <TableHead className="min-w-[190px]">Email</TableHead>
-                      <TableHead className="min-w-[220px]">Address</TableHead>
+                      <TableHead className="min-w-[200px]">Address</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -146,6 +147,32 @@ export default function Customers() {
                               <div className="flex items-center gap-1.5 text-sm">
                                 <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                                 <span>{company}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground/50">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            {/* Current cars only — invoiced in the last 3 years, or the most
+                                recent one (shown greyed when even that is older). */}
+                            {(customer.vehicles?.length ?? 0) > 0 ? (
+                              <div className="flex flex-wrap gap-1 max-w-[220px]">
+                                {customer.vehicles.slice(0, 3).map((v: any) => (
+                                  <Link key={v.id} href={`${base}/view-vehicle/${encodeURIComponent(v.registration || "")}`}>
+                                    <span
+                                      title={[v.make, v.model].filter(Boolean).join(" ") + (v.current ? "" : " — no invoice in 3+ years")}
+                                      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-mono font-semibold cursor-pointer hover:underline whitespace-nowrap ${v.current ? "border-slate-300 bg-slate-50 text-slate-800" : "border-slate-200 bg-slate-50/50 text-slate-400"}`}
+                                    >
+                                      <Car className="w-3 h-3 shrink-0" />
+                                      {v.registration || "?"}
+                                    </span>
+                                  </Link>
+                                ))}
+                                {customer.vehicles.length > 3 && (
+                                  <Link href={`${base}/customers/${customer.id}`}>
+                                    <span className="text-[11px] text-muted-foreground cursor-pointer hover:underline">+{customer.vehicles.length - 3} more</span>
+                                  </Link>
+                                )}
                               </div>
                             ) : (
                               <span className="text-muted-foreground/50">—</span>

@@ -431,7 +431,36 @@ export async function getCustomersPage(opts: { search?: string; limit?: number; 
     const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(customers).where(where);
     total = Number(n);
   }
-  return { customers: rows.map(({ total: _t, ...c }: any) => c), total };
+
+  // Each customer's CURRENT cars only: invoiced within the last 3 years, or (when none are)
+  // just their most recent one — a customer's long-gone old cars don't belong on this view.
+  // Activity = latest document date, or when the vehicle was added (so a brand-new car with no
+  // invoice yet still counts as current).
+  const vehiclesByCustomer = new Map<number, any[]>();
+  const ids = rows.map((r: any) => r.id);
+  if (ids.length) {
+    const vrows: any[] = (await db.execute(sql`
+      SELECT v.id, v."customerId" AS cid, v.registration, v.make, v.model,
+             GREATEST(
+               COALESCE((SELECT MAX(COALESCE(sh."dateIssued", sh."dateCreated"))
+                         FROM "serviceHistory" sh WHERE sh."vehicleId" = v.id), 'epoch'::timestamptz),
+               COALESCE(v."createdAt", 'epoch'::timestamptz)
+             ) AS activity
+      FROM vehicles v
+      WHERE v."customerId" IN (${sql.join(ids.map((i: number) => sql`${i}`), sql`, `)})
+      ORDER BY activity DESC`)).rows ?? [];
+    const cutoff = Date.now() - 3 * 365.25 * 24 * 3600 * 1000;
+    for (const v of vrows) {
+      const list = vehiclesByCustomer.get(v.cid) ?? [];
+      const current = new Date(v.activity).getTime() >= cutoff;
+      if (current || list.length === 0) list.push({ id: v.id, registration: v.registration, make: v.make, model: v.model, current });
+      vehiclesByCustomer.set(v.cid, list);
+    }
+  }
+  return {
+    customers: rows.map(({ total: _t, ...c }: any) => ({ ...c, vehicles: vehiclesByCustomer.get(c.id) ?? [] })),
+    total,
+  };
 }
 
 export async function getAllVehicles() {
