@@ -396,6 +396,27 @@ export async function getAllCustomers() {
  * searchCustomers — name / phone / email / postcode / address / account number, word-by-word
  * names, and national-number phone digits. One round trip: the total rides along as a window
  * count. */
+/** Search relevance: staff are hunting for the account that owns cars and carries invoices; a
+ *  name-only stub is never the answer (a bad import on 15/01/2026 left hundreds of them, every
+ *  one with zero vehicles and zero history). Ordering purely by name floated those to the top —
+ *  searching "Jhon Spedsbjerg" put an empty stub above the real account, because "Jhon…" sorts
+ *  before "Mr Jhon…", and the stub opens a profile showing no linked vehicles at all. Alias is
+ *  only ever one of our own literals, never user input. */
+function customerSubstanceSql(alias: string) {
+  return sql.raw(`(
+      (CASE WHEN EXISTS (SELECT 1 FROM "vehicles" sv WHERE sv."customerId" = ${alias}."id") THEN 4 ELSE 0 END)
+    + (CASE WHEN EXISTS (SELECT 1 FROM "serviceHistory" sh WHERE sh."customerId" = ${alias}."id") THEN 2 ELSE 0 END)
+    + (CASE WHEN COALESCE(${alias}."accountNumber", '') <> '' THEN 1 ELSE 0 END))`);
+}
+
+/** National significant number, so "07951…" matches a stored "+447951…" and vice versa. */
+function phoneCoreOf(t: string): string {
+  let core = String(t ?? "").replace(/\D/g, "");
+  if (core.startsWith("44")) core = core.slice(2);
+  else if (core.startsWith("0")) core = core.slice(1);
+  return core;
+}
+
 export async function getCustomersPage(opts: { search?: string; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return { customers: [], total: 0 };
@@ -423,7 +444,13 @@ export async function getCustomersPage(opts: { search?: string; limit?: number; 
     total: sql<number>`count(*) OVER()`,
     // Real names first: rows whose name starts with a letter sort ahead of the data-entry
     // stragglers ("-", "..", "0") that otherwise open the alphabetical list.
-  }).from(customers).where(where).orderBy(sql`(${customers.name} ~ '^[A-Za-z]') DESC`, customers.name).limit(limit).offset(offset);
+    // Browsing the whole list stays alphabetical; once a search narrows it, real accounts come
+    // before the name-only stubs that would otherwise head the results.
+  }).from(customers).where(where)
+    .orderBy(...(q
+      ? [sql`(${customers.name} ~ '^[A-Za-z]') DESC`, sql`${customerSubstanceSql("customers")} DESC`, customers.name]
+      : [sql`(${customers.name} ~ '^[A-Za-z]') DESC`, customers.name]))
+    .limit(limit).offset(offset);
   let total = rows.length ? Number((rows[0] as any).total) : 0;
   if (!rows.length && offset > 0) {
     // Paged past the end (e.g. the filter narrowed under the current page) — still report the
@@ -3368,12 +3395,32 @@ export async function searchCustomersForAttach(query: string, limit = 25) {
   const q = query.trim();
   const like = `%${q}%`;
   const regNorm = q.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  // Postcodes are stored both ways ("NW11 9DY" and "NW119DY"), so compare with spaces stripped.
-  const pcNorm = regNorm;
   // National significant number, so 07951… finds +447951… and vice versa.
-  let phoneCore = q.replace(/\D/g, "");
-  if (phoneCore.startsWith("44")) phoneCore = phoneCore.slice(2);
-  else if (phoneCore.startsWith("0")) phoneCore = phoneCore.slice(1);
+  const phoneCore = phoneCoreOf(q);
+
+  // Match word-by-word, as searchCustomers already does: every typed word must hit the row
+  // somewhere, but separate words may land on different fields, so "Spedsbjerg Jhon" finds the
+  // same person as "Jhon Spedsbjerg". Postcodes are stored both ways ("NW11 9DY" and
+  // "NW119DY"), so those compare with the spaces stripped.
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const directWhere = sql.join(tokens.map((t) => {
+    const l = `%${t}%`;
+    const core = phoneCoreOf(t);
+    const pc = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return sql`(c."name" ILIKE ${l} OR c."email" ILIKE ${l} OR c."postcode" ILIKE ${l}
+       OR c."address" ILIKE ${l} OR c."accountNumber" ILIKE ${l} OR c."phone" ILIKE ${l}
+       OR (${core.length >= 6} AND c."phone" ILIKE ${'%' + core + '%'})
+       OR (${pc.length >= 5} AND REPLACE(UPPER(c."postcode"), ' ', '') LIKE ${'%' + pc + '%'}))`;
+  }), sql` AND `);
+  const docWhere = sql.join(tokens.map((t) => {
+    const l = `%${t}%`;
+    const core = phoneCoreOf(t);
+    const pc = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return sql`(d."customerName" ILIKE ${l} OR d."custPostcode" ILIKE ${l} OR d."custRoad" ILIKE ${l}
+       OR (${pc.length >= 5} AND REPLACE(UPPER(d."custPostcode"), ' ', '') LIKE ${'%' + pc + '%'})
+       OR (${core.length >= 6} AND (REPLACE(d."custMobile", ' ', '') LIKE ${'%' + core + '%'}
+                                 OR REPLACE(d."custTelephone", ' ', '') LIKE ${'%' + core + '%'})))`;
+  }), sql` AND `);
 
   const res: any = await db.execute(sql`
     WITH direct AS (
@@ -3384,14 +3431,12 @@ export async function searchCustomersForAttach(query: string, limit = 25) {
                WHEN c."postcode" ILIKE ${like} THEN 'postcode'
                WHEN c."address" ILIKE ${like} THEN 'address'
                WHEN c."email" ILIKE ${like} THEN 'email'
-               ELSE 'phone'
+               WHEN c."phone" ILIKE ${like} THEN 'phone'
+               WHEN ${phoneCore.length >= 6} AND c."phone" ILIKE ${'%' + phoneCore + '%'} THEN 'phone'
+               ELSE 'name'
              END AS via, NULL::text AS reg
       FROM ${customers} c
-      WHERE c."name" ILIKE ${like} OR c."email" ILIKE ${like} OR c."postcode" ILIKE ${like}
-         OR c."address" ILIKE ${like} OR c."accountNumber" ILIKE ${like}
-         OR c."phone" ILIKE ${like}
-         OR (${phoneCore.length >= 6} AND c."phone" ILIKE ${'%' + phoneCore + '%'})
-         OR (${pcNorm.length >= 5} AND REPLACE(UPPER(c."postcode"), ' ', '') LIKE ${'%' + pcNorm + '%'})
+      WHERE ${directWhere}
     ),
     -- Most contact detail lives on the document, not the customer record: a customer row often
     -- has no phone while every one of their invoices carries custMobile. Search those too and
@@ -3399,15 +3444,7 @@ export async function searchCustomersForAttach(query: string, limit = 25) {
     by_document AS (
       SELECT d."customerId" AS id, 'past document' AS via, d."registration" AS reg
       FROM ${serviceHistory} d
-      WHERE d."customerId" IS NOT NULL AND (
-            d."customerName" ILIKE ${like}
-         OR d."custPostcode" ILIKE ${like}
-         OR d."custRoad" ILIKE ${like}
-         OR (${pcNorm.length >= 5} AND REPLACE(UPPER(d."custPostcode"), ' ', '') LIKE ${'%' + pcNorm + '%'})
-         OR (${phoneCore.length >= 6} AND (
-               REPLACE(d."custMobile", ' ', '') LIKE ${'%' + phoneCore + '%'}
-            OR REPLACE(d."custTelephone", ' ', '') LIKE ${'%' + phoneCore + '%'}))
-      )
+      WHERE d."customerId" IS NOT NULL AND (${docWhere})
     ),
     by_vehicle AS (
       SELECT v."customerId" AS id, 'vehicle' AS via, v."registration" AS reg
@@ -3432,7 +3469,7 @@ export async function searchCustomersForAttach(query: string, limit = 25) {
     SELECT c."id", c."name", c."phone", c."email", c."postcode", c."address",
            c."accountNumber", r.via AS "matchedVia", r.reg AS "matchedReg"
     FROM ranked r JOIN ${customers} c ON c."id" = r.id
-    ORDER BY c."name"
+    ORDER BY ${customerSubstanceSql("c")} DESC, c."name" ASC
     LIMIT ${limit}`);
   return (res.rows ?? res) as any[];
 }
@@ -3455,7 +3492,8 @@ export async function searchCustomers(query: string, limit = 10) {
   return db.select({ id: customers.id, name: customers.name, phone: customers.phone, email: customers.email, postcode: customers.postcode, address: customers.address, accountNumber: customers.accountNumber })
     .from(customers)
     .where(or(...conds))
-    .orderBy(customers.name)
+    // Real accounts before empty stubs.
+    .orderBy(sql`${customerSubstanceSql("customers")} DESC, ${customers.name} ASC`)
     .limit(limit);
 }
 
@@ -3596,7 +3634,14 @@ export async function globalSearch(query: string, full = false) {
   const customersMerged = merged.map((c) => ({
     ...c,
     lastVisit: c.ids.reduce((max: string | null, id) => { const v = lastVisitByCust.get(id); return v && (!max || v > max) ? v : max; }, null),
-  })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    // Rank before naming: sorting purely by name put an empty import stub above the account
+    // that actually holds the customer's cars, so the top hit opened a blank profile. By this
+    // point we have the merged vehicle list and last-visit date to judge on.
+  })).sort((a, b) => {
+    const substance = (c: { vehicles: unknown[]; lastVisit: string | null; phone: string | null }) =>
+      (c.vehicles.length ? 4 : 0) + (c.lastVisit ? 2 : 0) + (c.phone ? 1 : 0);
+    return substance(b) - substance(a) || (a.name || "").localeCompare(b.name || "");
+  });
 
   // Last visit per matched vehicle (computed once, above, alongside every attached-customer car).
   const vehiclesWithVisit = veh.map((v) => ({ ...v, lastVisit: (v.id != null && lastVisitByVeh.get(v.id)) || null }));
