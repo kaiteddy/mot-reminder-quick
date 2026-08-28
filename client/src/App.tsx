@@ -151,9 +151,32 @@ function Router() {
  *  every 5 minutes and on window focus, and offer a one-click refresh when they differ. */
 function useUpdateWatcher() {
   useEffect(() => {
+    // Tidy away the one-off cache-busting query a forced refresh may have left in the URL.
+    if (new URLSearchParams(window.location.search).has("fresh")) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("fresh");
+      window.history.replaceState(null, "", u.toString());
+    }
     const running = (document.querySelector('script[src*="/assets/index-"]') as HTMLScriptElement | null)
       ?.src.match(/index-[A-Za-z0-9_-]+\.js/)?.[0] ?? null;
     let notified = false;
+    // A plain location.reload() can be served the CACHED page HTML (Safari does this through
+    // normal reloads), landing straight back on the old bundle — the toast then reappears
+    // forever. Force-refetch the HTML into the browser's cache first; if some layer still
+    // hands back the old copy, navigate with a one-off cache-busting query instead.
+    const forceRefresh = async () => {
+      try {
+        const html = await fetch(window.location.href, { cache: "reload" }).then((r) => r.text());
+        const served = html.match(/index-[A-Za-z0-9_-]+\.js/)?.[0];
+        if (served && running && served === running) {
+          const u = new URL(window.location.href);
+          u.searchParams.set("fresh", String(Date.now()));
+          window.location.replace(u.toString());
+          return;
+        }
+      } catch { /* offline — a plain reload is the best we can do */ }
+      window.location.reload();
+    };
     const check = async () => {
       if (notified) return;
       try {
@@ -164,7 +187,7 @@ function useUpdateWatcher() {
         toast.info("An update to the app is ready", {
           description: "Refresh to pick up the latest fixes - unsaved work is auto-saved first.",
           duration: Infinity,
-          action: { label: "Refresh now", onClick: () => window.location.reload() },
+          action: { label: "Refresh now", onClick: () => { void forceRefresh(); } },
         });
       } catch { /* offline - try again on the next tick */ }
     };
