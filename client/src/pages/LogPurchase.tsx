@@ -37,6 +37,11 @@ export default function LogPurchase() {
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+  // Not every car arrives with a parsable auction invoice. A car bought directly from a
+  // customer has no BCA PDF at all, and gating the form on a parsed registration meant there
+  // was simply no way to log one. The form and the save already take every field by hand —
+  // only the way in was missing.
+  const [manual, setManual] = useState(false);
   const [form, setForm] = useState<Parsed>({});
   const [fees, setFees] = useState<Record<string, number>>({});
 
@@ -82,6 +87,12 @@ export default function LogPurchase() {
 
   async function save() {
     try {
+      if (manual && !String(form.registration || "").trim()) {
+        toast.error("Enter the registration before saving"); return;
+      }
+      if (manual && !String(form.source || "").trim()) {
+        toast.error("Enter who you bought it from — it decides how the purchase is treated"); return;
+      }
       const out = await commit.mutateAsync({
         registration: String(form.registration || "").trim(),
         make: form.make || undefined, model: form.model || undefined,
@@ -93,7 +104,10 @@ export default function LogPurchase() {
         purchaseCost: Number(form.purchaseCost || 0),
         purchaseDate: form.purchaseDate || undefined,
         fees, marginScheme: !!form.marginScheme,
-        source: form.source || "BCA",
+        // Only fall back to BCA when the details actually came off a BCA invoice. A car bought
+        // from a customer would otherwise be filed as an auction purchase, which is wrong on the
+        // margin scheme and wrong in the car-trading ledger.
+        source: (form.source || "").trim() || (manual ? "Customer" : "BCA"),
         invoiceNumber: form.invoiceNumber || undefined,
       });
       toast.success(out.createdStock ? "Logged, and added to Sales Stock as IN PREP" : "Logged against the existing stock car");
@@ -138,6 +152,13 @@ export default function LogPurchase() {
               <Upload className="w-6 h-6 mx-auto mb-2" />
               <div className="font-medium text-slate-700">Drop the purchase invoice here</div>
               <div className="text-xs mt-1">or click to choose a PDF · BCA invoices are read automatically</div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setManual(true); }}
+                className="mt-3 text-sm font-medium text-violet-700 underline underline-offset-2 hover:text-violet-800"
+              >
+                No invoice? Enter the purchase by hand
+              </button>
             </div>
           )}
         </div>
@@ -150,7 +171,7 @@ export default function LogPurchase() {
           </div>
         )}
 
-        {p?.registration && (
+        {(p?.registration || manual) && (
           <>
             {/* what the invoice says vs what DVLA says */}
             <Card>
