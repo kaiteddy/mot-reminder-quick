@@ -174,6 +174,10 @@ export default function LogPurchase() {
         {(p?.registration || manual) && (
           <>
             {/* what the invoice says vs what DVLA says */}
+            {/* The DVLA cross-check is about what was read off an invoice. On a hand-entered
+                purchase there is no `result` at all, and reading result.dvla off null crashed
+                the page the moment the manual form opened. */}
+            {result && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -196,6 +200,7 @@ export default function LogPurchase() {
                 )}
               </CardContent>
             </Card>
+            )}
 
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">The car</CardTitle></CardHeader>
@@ -224,7 +229,8 @@ export default function LogPurchase() {
                   <span className="text-slate-600">Total paid</span>
                   <span className="font-semibold">£{(cost + feesTotal).toLocaleString("en-GB", { minimumFractionDigits: 2 })}</span>
                 </div>
-                {p.totalDue != null && Math.abs(cost + feesTotal - p.totalDue) > 0.005 && (
+                {/* Only an invoice has a total to reconcile against; a hand-entered purchase has no `p`. */}
+                {p?.totalDue != null && Math.abs(cost + feesTotal - p.totalDue) > 0.005 && (
                   <div className="text-xs text-amber-700">
                     The invoice total is £{p.totalDue.toLocaleString("en-GB", { minimumFractionDigits: 2 })} — these figures don't add up to it.
                   </div>
