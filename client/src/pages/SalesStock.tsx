@@ -119,11 +119,10 @@ export default function SalesStock() {
     onSuccess: (r: any) => raiseInvoice.mutate({ salesStockId: r.salesStockId, docKind: "purchase" }),
     onError: (e) => toast.error(e.message || "Could not start the purchase invoice"),
   });
-  const startPurchase = () => {
-    const reg = window.prompt("Registration of the car you have bought")?.trim();
-    if (!reg) return;
-    stockForReg.mutate({ registration: reg });
-  };
+  // An in-app dialog, not window.prompt: browsers suppress prompt() in enough situations
+  // (Safari especially) that the button simply did nothing.
+  const [purchaseReg, setPurchaseReg] = useState<string | null>(null);
+  const startPurchase = () => setPurchaseReg("");
 
   const raiseInvoice = trpc.vehicleSale.createFromStock.useMutation({
     onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setInvoiceFor(null); setLocation(`/vehicle-sale/${r.id}`); },
@@ -390,6 +389,38 @@ export default function SalesStock() {
             </div>
           )}
       </div>
+
+      {purchaseReg !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setPurchaseReg(null)}>
+          <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="font-semibold text-slate-800">Purchase invoice</div>
+            <p className="mt-1 text-sm text-slate-600">
+              Registration of the car you have bought. If it is already on the forecourt this uses that record rather than creating another.
+            </p>
+            <input
+              autoFocus
+              value={purchaseReg}
+              onChange={(e) => setPurchaseReg(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && purchaseReg.trim()) { stockForReg.mutate({ registration: purchaseReg.trim() }); setPurchaseReg(null); }
+                if (e.key === "Escape") setPurchaseReg(null);
+              }}
+              placeholder="e.g. LT07 ZKO"
+              className="mt-3 w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setPurchaseReg(null)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">Cancel</button>
+              <button
+                disabled={!purchaseReg.trim() || stockForReg.isPending || raiseInvoice.isPending}
+                onClick={() => { stockForReg.mutate({ registration: purchaseReg.trim() }); setPurchaseReg(null); }}
+                className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+                Raise it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fixTarget && (
         <PurchaseFillDialog
