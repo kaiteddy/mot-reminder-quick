@@ -104,6 +104,52 @@ export const vehicleSaleRouter = router({
    * matching vehicles row already know. Returns the existing invoice if one was already raised
    * for that car, so the button is safe to press twice.
    */
+  /**
+   * Raise a PURCHASE invoice for a car that is not on the forecourt yet — one bought directly
+   * from a customer, where there is no auction invoice to read and no stock row to hang it on.
+   *
+   * Matches the plate before it creates anything: a car already in stock gets its existing row,
+   * so buying in a car we have seen before does not mint a second forecourt record. The
+   * registration is normalised (upper-cased, spaces stripped) because the same plate is written
+   * both ways across GA4 and the web app.
+   */
+  createPurchaseForRegistration: publicProcedure
+    .input(z.object({ registration: z.string().min(2) }))
+    .mutation(async ({ input }) => {
+      const { getDb } = await import("../db");
+      const { salesStock, vehicles } = await import("../../drizzle/schema");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) throw new Error("Database unavailable");
+
+      const reg = input.registration.toUpperCase().trim();
+      const regKey = reg.replace(/\s+/g, "");
+
+      // Never a second forecourt row for a plate we already hold.
+      let [stock]: any[] = await db.select({ id: salesStock.id }).from(salesStock)
+        .where(sql`UPPER(REPLACE(${salesStock.registration}, ' ', '')) = ${regKey}`).limit(1);
+      const existed = !!stock;
+
+      if (!stock) {
+        // Borrow whatever the vehicles table already knows, so the form opens pre-filled rather
+        // than blank for a car that has been through the workshop before.
+        const [known]: any[] = await db.select().from(vehicles)
+          .where(sql`UPPER(REPLACE(${vehicles.registration}, ' ', '')) = ${regKey}`).limit(1);
+        [stock] = await db.insert(salesStock).values({
+          registration: reg,
+          make: known?.make ?? null,
+          model: known?.model ?? null,
+          status: "IN PREP",
+        } as any).returning({ id: salesStock.id });
+      }
+
+      // Deliberately does NOT raise the document itself — the caller then invokes
+      // createFromStock({ docKind: "purchase" }), which already returns an existing purchase
+      // document rather than duplicating one. Calling a sibling procedure from inside this one
+      // would need a context we do not have here.
+      return { salesStockId: stock.id, created: !existed };
+    }),
+
   createFromStock: publicProcedure
     .input(z.object({ salesStockId: z.number(), docKind: z.enum(["sale", "purchase"]).default("sale") }))
     .mutation(async ({ input }) => {

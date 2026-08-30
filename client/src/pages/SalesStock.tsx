@@ -112,6 +112,19 @@ export default function SalesStock() {
   }, [saleInvoices]);
   // Which car the sale-or-purchase chooser is open for.
   const [invoiceFor, setInvoiceFor] = useState<any>(null);
+  // Buying a car in from a customer: there is no auction invoice and often no stock row yet.
+  // Match the plate first (never a second forecourt row for a car we already hold), then raise
+  // the purchase document against it and open the same form we use for sales.
+  const stockForReg = trpc.vehicleSale.createPurchaseForRegistration.useMutation({
+    onSuccess: (r: any) => raiseInvoice.mutate({ salesStockId: r.salesStockId, docKind: "purchase" }),
+    onError: (e) => toast.error(e.message || "Could not start the purchase invoice"),
+  });
+  const startPurchase = () => {
+    const reg = window.prompt("Registration of the car you have bought")?.trim();
+    if (!reg) return;
+    stockForReg.mutate({ registration: reg });
+  };
+
   const raiseInvoice = trpc.vehicleSale.createFromStock.useMutation({
     onSuccess: (r: any) => { utils.vehicleSale.list.invalidate(); setInvoiceFor(null); setLocation(`/vehicle-sale/${r.id}`); },
     onError: (e) => toast.error(e.message || "Could not raise the invoice"),
@@ -188,6 +201,11 @@ export default function SalesStock() {
               <button onClick={() => setViewPersist("grid")} title="Grid view" className={`px-2.5 py-2 ${view === "grid" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><LayoutGrid className="w-4 h-4" /></button>
               <button onClick={() => setViewPersist("list")} title="List view" className={`px-2.5 py-2 border-l border-slate-300 ${view === "list" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><List className="w-4 h-4" /></button>
             </div>
+            <button onClick={startPurchase} disabled={stockForReg.isPending || raiseInvoice.isPending}
+              title="Raise a Used Car Purchase Invoice for a car bought from a customer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              <Upload className="w-4 h-4 rotate-180" /> Purchase invoice
+            </button>
             <button onClick={() => setLocation("/log-purchase")}
               title="Log a car you've bought by uploading its purchase invoice"
               className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">
