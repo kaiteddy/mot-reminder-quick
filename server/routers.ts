@@ -3550,10 +3550,12 @@ export const appRouter = router({
         let autogenCustomerId = input.customerId;
         let autogenVehicleId = input.vehicleId;
 
-        // Auto-create customer if missing but data provided
+        // Reuse the customer if they are already on file; only create when nobody fits, and
+        // never from a blank name. See findOrCreateCustomerForBooking for why a shared phone
+        // alone is not enough to merge on.
         if (!autogenCustomerId && input.customerName) {
-          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone }).returning({ id: customers.id });
-          autogenCustomerId = custRes[0].id;
+          const { findOrCreateCustomerForBooking } = await import("./db");
+          autogenCustomerId = (await findOrCreateCustomerForBooking(input.customerName, input.customerPhone)) ?? undefined;
         }
 
         // Auto-create vehicle if missing but data provided
@@ -3652,8 +3654,8 @@ export const appRouter = router({
         let autogenVehicleId = input.vehicleId;
 
         if (!autogenCustomerId && input.customerName) {
-          const custRes = await db.insert(customers).values({ name: input.customerName, phone: input.customerPhone }).returning({ id: customers.id });
-          autogenCustomerId = custRes[0].id;
+          const { findOrCreateCustomerForBooking } = await import("./db");
+          autogenCustomerId = (await findOrCreateCustomerForBooking(input.customerName, input.customerPhone)) ?? undefined;
         }
 
         if (!autogenVehicleId && input.registration && (input.vehicleMake || autogenCustomerId)) {

@@ -549,6 +549,59 @@ export async function getVehiclesForCustomerAcrossLinkedAccounts(customerId: num
   return tagged;
 }
 
+/** Find the customer a booking belongs to, and only create one if nobody fits.
+ *
+ * Booking an appointment used to insert a fresh customers row from whatever name was typed, with
+ * no lookup at all. That is what produced the 118 blank name-only records deleted on 01/09/2026,
+ * and it also quietly created a second row for people who were already on file.
+ *
+ * The matching rules come from what went wrong the other way round. A phone number alone is NOT
+ * identity — two different people share one often enough (see the Berry/Segal repair, where a
+ * shared mobile fused two customers into one record and put a stranger's name on someone's
+ * account). So a shared number is only trusted when the name agrees too; where it is ambiguous
+ * this creates a new record rather than guessing, because a duplicate is recoverable and a
+ * wrongly merged customer is not.
+ *
+ * Returns null when there is no name to work with — a nameless booking must not mint a record.
+ */
+export async function findOrCreateCustomerForBooking(
+  name: string | null | undefined,
+  phone: string | null | undefined,
+): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const cleanName = String(name ?? "").trim();
+  if (!cleanName) return null; // the blank-stub case: refuse outright
+
+  const nameKey = (s: any) =>
+    String(s ?? "").toLowerCase().replace(/^(mr|mrs|ms|miss|dr|prof)[\.\s]+/, "").replace(/[^a-z]/g, "");
+  const wanted = nameKey(cleanName);
+  const phoneKey = normPhoneKey(phone);
+
+  if (phoneKey) {
+    const all = await db.select({ id: customers.id, name: customers.name, phone: customers.phone })
+      .from(customers);
+    const onPhone = all.filter((c) => normPhoneKey(c.phone) === phoneKey);
+    if (onPhone.length === 1) return onPhone[0].id;
+    if (onPhone.length > 1) {
+      // Household or business sharing a line — only take the one whose name actually matches.
+      const byName = onPhone.filter((c) => nameKey(c.name) === wanted);
+      if (byName.length === 1) return byName[0].id;
+      // Ambiguous: fall through and create, rather than attaching to the wrong person.
+    }
+  } else if (wanted) {
+    // No phone to go on. Reuse a name match only when it is unambiguous.
+    const all = await db.select({ id: customers.id, name: customers.name }).from(customers);
+    const byName = all.filter((c) => nameKey(c.name) === wanted);
+    if (byName.length === 1) return byName[0].id;
+  }
+
+  const [row] = await db.insert(customers)
+    .values({ name: cleanName, phone: phone || null } as any)
+    .returning({ id: customers.id });
+  return row.id;
+}
+
 export async function getRemindersByCustomerId(customerId: number) {
   const db = await getDb();
   if (!db) return [];
