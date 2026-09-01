@@ -259,21 +259,40 @@ function WorkshopJobSheetInner() {
    *
    * So on a handheld, hand the OS the PDF as an ordinary URL and let its viewer print it.
    */
-  const isHandheld = () =>
-    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+  const isAndroid = () => /Android/i.test(navigator.userAgent);
+  const isApplePhone = () =>
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     // iPadOS calls itself a Mac; the touch points give it away.
     (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+  const isHandheld = () => isAndroid() || isApplePhone();
 
   async function handlePrint() {
     if (!savedId) return;
 
     if (isHandheld()) {
-      // Straight off the tap: anything awaited first loses the user gesture and the new tab
-      // gets blocked.
-      const url = `/api/documents/${savedId}/pdf`;
+      // The two phones need opposite things, and getting this wrong is why the button looked
+      // dead on Android:
+      //
+      // iOS opens the PDF in its own viewer, whose share sheet has Print — so hand it the file
+      // inline and the mechanic is two taps from paper.
+      //
+      // Android Chrome also renders the PDF inline, but its viewer has NO print control at all:
+      // you get a document you can scroll and nothing else. So download it instead. The file
+      // then opens in the phone's PDF app (Drive/Files), which does have Print.
+      const url = `/api/documents/${savedId}/pdf${isAndroid() ? "?download=1" : ""}`;
+
+      if (isAndroid()) {
+        // A download needs no new tab, and saying where it went saves hunting for it.
+        window.location.href = url;
+        toast.success("Job sheet downloaded — open it from your downloads to print");
+        return;
+      }
+
+      // Straight off the tap: anything awaited first loses the user gesture and the popup
+      // blocker eats the new tab.
       const win = window.open(url, "_blank");
-      // Some in-app browsers refuse the new tab outright. The sheet is already saved, so going
-      // there in this tab costs nothing.
+      // Some in-app browsers refuse it outright. The sheet is already saved, so going there in
+      // this tab costs nothing.
       if (!win) window.location.href = url;
       return;
     }

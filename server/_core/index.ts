@@ -62,8 +62,12 @@ function setupApp(app: Express) {
       if (!content) { res.status(404).send("No PDF for that document"); return; }
       await logDocEvent(id, "printed"); // the same audit line the tRPC print path writes
       res.setHeader("Content-Type", "application/pdf");
-      // `inline`, so the phone opens it in the viewer rather than dropping it into Downloads.
-      res.setHeader("Content-Disposition", `inline; filename="${String(filename || id + ".pdf").replace(/[^\w.\-]/g, "_")}"`);
+      // `inline` shows it in the browser's own viewer; `?download=1` forces a save instead.
+      // Android needs the second: Chrome renders a PDF inline but gives no way to print it, so
+      // the file has to reach a PDF app that can. See the workshop job sheet's print handler.
+      const disposition = req.query.download ? "attachment" : "inline";
+      const safeName = String(filename || id + ".pdf").replace(/[^\w.\-]/g, "_");
+      res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
       res.setHeader("Cache-Control", "no-store");
       res.send(Buffer.from(content, "base64"));
     } catch (e: any) {
