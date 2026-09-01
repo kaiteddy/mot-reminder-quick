@@ -21,7 +21,8 @@ import {
   Sparkles,
   ChevronDown,
   Zap,
-  Home
+  Home,
+  Camera
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -102,6 +103,24 @@ interface VehicleData {
   };
 }
 
+/**
+ * A phone camera photo is 8-12 megapixels and several megabytes. The plate or VIN occupies a small
+ * part of that, and none of the extra resolution survives the model's own preprocessing — so all it
+ * buys is a long upload from a phone on workshop wifi. Downscale before sending.
+ */
+async function downscaleForScan(file: File, maxEdge = 2000, quality = 0.85): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("This phone can't process the photo — type the reg instead.");
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 export default function WorkshopMOTCheck() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
@@ -140,6 +159,61 @@ export default function WorkshopMOTCheck() {
       setVehicleData(null);
     },
   });
+
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+
+  const rememberVrm = (vrm: string) => setRecentMOTSearches((prev) => {
+    const next = [vrm, ...prev.filter((v) => v !== vrm)].slice(0, 5);
+    localStorage.setItem("mot_recent_vrms", JSON.stringify(next));
+    return next;
+  });
+
+  /**
+   * Point the phone at the car instead of typing a plate with oily hands. A read plate goes
+   * straight into the normal check, which is what puts "Create Job Sheet" on screen — so the
+   * scan is a way in to the existing flow, not a parallel one.
+   */
+  const scanMutation = trpc.ai.scanVehicleId.useMutation({
+    onSuccess: (r: any) => {
+      if (r.registration) {
+        setRegistration(r.registration);
+        rememberVrm(r.registration);
+        lookupMutation.mutate({ registration: r.registration, checkType: "normal" });
+        toast.success(r.matchedFromVin ? `VIN matched to ${r.registration}` : `Read ${r.registration}`);
+        // A low-confidence read still gets used — it is a starting point, not a verdict — but the
+        // mechanic is told, because the wrong plate here means a job sheet against someone else's car.
+        setScanNote(
+          r.confidence === "low"
+            ? (r.note || "That photo was hard to read — check the reg above matches the car before you go on.")
+            : r.note,
+        );
+        return;
+      }
+      if (r.vin) {
+        // DVLA looks up by plate, so a VIN we do not already hold cannot start a check.
+        setScanNote(`Read VIN ${r.vin}, but no vehicle on file has it. Type the reg instead.`);
+        toast.message("VIN read, but not one on file");
+        return;
+      }
+      setScanNote(r.note || "Nothing readable in that photo — get closer, square on to the plate.");
+      toast.error("Couldn't read a reg or VIN");
+    },
+    onError: (e: any) => toast.error(e?.message || "Scan failed"),
+  });
+
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Clear it straight away, or retaking the same shot after a failed read fires no change event.
+    e.target.value = "";
+    if (!file) return;
+    setScanNote(null);
+    try {
+      scanMutation.mutate({ image: await downscaleForScan(file) });
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't read that photo");
+    }
+  };
 
   const handleSearch = (e: React.FormEvent, checkType: "normal" | "full" = "normal") => {
     e.preventDefault();
@@ -227,6 +301,37 @@ export default function WorkshopMOTCheck() {
                   className="text-center font-mono uppercase bg-[#FDD017] text-black border-4 border-slate-900 rounded-lg font-bold shadow-inner placeholder:text-black/30 h-16 text-3xl tracking-widest focus-visible:ring-offset-0 focus-visible:ring-black"
                   maxLength={8}
                 />
+
+                <input
+                  ref={scanInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleScanFile}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => scanInputRef.current?.click()}
+                  disabled={scanMutation.isPending || lookupMutation.isPending}
+                  className="mt-3 h-14 w-full rounded-lg border-2 border-dashed border-slate-300 bg-white text-base font-medium text-slate-700 active:bg-slate-50"
+                >
+                  {scanMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Reading photo...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-5 h-5 mr-2" />
+                      Scan reg or VIN
+                    </>
+                  )}
+                </Button>
+                {scanNote && (
+                  <p className="mt-2 px-1 text-center text-xs leading-snug text-slate-500">{scanNote}</p>
+                )}
                 
                 {recentMOTSearches.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 mt-3 pl-1">

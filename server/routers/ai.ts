@@ -3,8 +3,8 @@ import { z } from "zod";
 import { generateObject } from "ai";
 import { getDb } from "../db";
 import { appSettings, defectExplanations, serviceHistory, serviceLineItems, vehicles } from "../../drizzle/schema";
-import { eq, like, desc } from "drizzle-orm";
-import { AI_MODEL, AI_MODEL_GUIDE, getRuntimeProvider, hasAIKey } from "../services/aiProvider";
+import { eq, like, desc, sql } from "drizzle-orm";
+import { AI_MODEL, AI_MODEL_GUIDE, AI_MODEL_VISION, getRuntimeProvider, hasAIKey } from "../services/aiProvider";
 
 // Static rules + worked examples for generateJobSpec's system prompt. The target style is
 // a REAL UK garage's terse invoice note — not a training-manual checklist. See the worked
@@ -72,7 +72,119 @@ To remove and replace offside front wheel speed sensor
 Clear fault codes
 Road test`;
 
+
+// What the camera is pointed at, and the two things worth knowing about the strings coming back.
+// A UK plate is short and high-contrast, so it is the easy case. A VIN is 17 characters, often
+// stamped into metal or etched on glass at an angle, and is the case that actually goes wrong.
+const SCAN_SYSTEM = `You read vehicle identifiers off photographs taken by a mechanic in a UK garage, on a phone, usually one-handed and often in poor light.
+
+You are looking for either or both of:
+1. A UK NUMBER PLATE — the registration mark. Current style is two letters, two digits, three letters (LT07 ZKO). Older styles exist (A123 BCD, ABC 123A). Read it exactly as printed.
+2. A VIN / chassis number — EXACTLY 17 characters, letters and digits. Found on a plate in the engine bay, a door pillar sticker, or etched at the base of the windscreen.
+
+RULES THAT MATTER:
+- A VIN NEVER contains the letters I, O or Q. If you think you see one, it is 1, 0 and 0 respectively. Apply this before answering.
+- A VIN is exactly 17 characters. If you can only make out some of it, return null rather than padding or guessing the rest.
+- Ignore everything that is not the identifier: dealer boards and stickers, tax discs, advertising, the number plate supplier's name printed along the bottom of the plate, other cars in the background.
+- If two plates are visible (e.g. a car behind), read the one that is closest, largest and in focus.
+- Return null for anything you cannot actually read. A null is far more useful than a confident guess: a wrong character sends the mechanic's job sheet to somebody else's car.
+- Say so in "note" when characters were genuinely ambiguous (for example 8 vs B, 5 vs S, 2 vs Z), and set confidence accordingly.`;
+
+/** VINs never contain I, O or Q — so a model that reports one has misread a 1 or a 0. */
+const tidyVin = (raw: string) =>
+  raw.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/I/g, "1").replace(/[OQ]/g, "0");
+const VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
+
 export const aiRouter = router({
+  /**
+   * Read a registration or a VIN off a photo, so a mechanic can point a phone at a car instead of
+   * typing a plate with oily hands. Returns the identifier only — the caller runs the normal MOT
+   * lookup with it, which is what leads on to a job sheet.
+   *
+   * A VIN on its own cannot reach DVLA (their lookup is by registration), so a VIN is resolved
+   * against our own vehicles table to recover the plate. A VIN we have never seen is reported back
+   * honestly rather than being turned into a dead lookup.
+   */
+  scanVehicleId: publicProcedure
+    .input(z.object({
+      // A JPEG data URL from the phone camera, already downscaled client-side.
+      image: z.string().min(100).max(8_000_000),
+    }))
+    .mutation(async ({ input }) => {
+      if (!hasAIKey()) {
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+      }
+      // The SDK wants the raw base64 and a media type. Handed the whole data: URL it treats it as
+      // a URL to go and fetch, and fails with "URL scheme must be http or https".
+      const parsed = input.image.match(/^data:(image\/(?:jpe?g|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
+      if (!parsed) {
+        throw new Error("That photo isn't in a format we can read — take it again with the camera button.");
+      }
+      const [, mediaType, base64] = parsed;
+
+      let read: { registration: string | null; vin: string | null; confidence: "high" | "medium" | "low"; note: string | null };
+      try {
+        const provider = getRuntimeProvider();
+        const { object } = await generateObject({
+          model: provider(AI_MODEL_VISION),
+          system: SCAN_SYSTEM,
+          schema: z.object({
+            registration: z.string().nullable().describe("The UK number plate exactly as printed, or null if none is legible."),
+            vin: z.string().nullable().describe("The 17-character VIN, or null if one is not fully legible."),
+            confidence: z.enum(["high", "medium", "low"]),
+            note: z.string().nullable().describe("One short sentence, only when characters were ambiguous or nothing could be read."),
+          }),
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "Read the number plate and/or VIN in this photo." },
+              { type: "image", image: base64, mediaType },
+            ],
+          }],
+        });
+        read = object as typeof read;
+      } catch (e: any) {
+        console.error("Vehicle ID scan error:", e);
+        throw new Error("Couldn't read that photo: " + (e?.message || "the scan failed"));
+      }
+
+      const registration = (read.registration || "").toUpperCase().replace(/[^A-Z0-9]/g, "") || null;
+
+      // Trust the 17-character rule over the model: a VIN that fails it has been misread, and
+      // handing a wrong VIN on to a database match is worse than admitting we didn't get it.
+      const vinRaw = read.vin ? tidyVin(read.vin) : "";
+      const vin = VIN_RE.test(vinRaw) ? vinRaw : null;
+      const vinRejected = Boolean(read.vin && !vin);
+
+      // A VIN is only useful here if it names a car we already hold, since DVLA looks up by plate.
+      let matchedFromVin = false;
+      let plate = registration;
+      if (!plate && vin) {
+        const db = await getDb();
+        if (db) {
+          const [known]: any[] = await db
+            .select({ registration: vehicles.registration })
+            .from(vehicles)
+            .where(sql`UPPER(REPLACE(${vehicles.vin}, ' ', '')) = ${vin}`)
+            .limit(1);
+          if (known?.registration) {
+            plate = String(known.registration).toUpperCase().replace(/[^A-Z0-9]/g, "");
+            matchedFromVin = true;
+          }
+        }
+      }
+
+      return {
+        registration: plate,
+        vin,
+        matchedFromVin,
+        confidence: read.confidence,
+        note: vinRejected
+          ? "A VIN was visible but didn't come out as a full 17 characters, so it has been discarded rather than guessed."
+          : read.note,
+      };
+    }),
+
   generateMOTEstimate: publicProcedure
     .input(z.object({
       make: z.string().optional(),
