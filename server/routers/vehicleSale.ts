@@ -269,6 +269,41 @@ export const vehicleSaleRouter = router({
       if (Object.keys(patch).length) {
         await db.update(vehicleSaleInvoices).set(patch as any).where(eq(vehicleSaleInvoices.id, input.id));
       }
+
+      // Feed a PURCHASE back into the car's own record. Buying a car in is usually the first
+      // time we hold it at all, so the details typed onto this form are the only ones that
+      // exist — previously they stayed locked in the invoice and the forecourt row kept just a
+      // registration. Only ever FILLS BLANKS: a value already on the stock row was either
+      // synced or entered deliberately, and the invoice must not overwrite it.
+      const [doc]: any[] = await db.select({
+        salesStockId: vehicleSaleInvoices.salesStockId,
+        docKind: vehicleSaleInvoices.docKind,
+      }).from(vehicleSaleInvoices).where(eq(vehicleSaleInvoices.id, input.id)).limit(1);
+
+      if (doc?.docKind === "purchase" && doc.salesStockId) {
+        const { salesStock } = await import("../../drizzle/schema");
+        const [car]: any[] = await db.select().from(salesStock)
+          .where(eq(salesStock.id, doc.salesStockId)).limit(1);
+        if (car) {
+          const f: any = input.fields;
+          const blank = (v: any) => v === null || v === undefined || String(v).trim() === "";
+          const back: Record<string, any> = {};
+          if (blank(car.make) && !blank(f.vehicleMake)) back.make = String(f.vehicleMake).slice(0, 100);
+          if (blank(car.model) && !blank(f.vehicleType)) back.model = String(f.vehicleType).slice(0, 100);
+          if (blank(car.vin) && !blank(f.chassisNumber)) back.vin = String(f.chassisNumber).slice(0, 50);
+          if (blank(car.registration) && !blank(f.registrationNumber)) {
+            back.registration = String(f.registrationNumber).toUpperCase().slice(0, 20);
+          }
+          // Mileage is free text on the form ("54,120 miles") but an integer on the stock row.
+          if (car.mileage == null && !blank(f.mileage)) {
+            const m = parseInt(String(f.mileage).replace(/[^0-9]/g, ""), 10);
+            if (Number.isFinite(m) && m > 0) back.mileage = m;
+          }
+          if (Object.keys(back).length) {
+            await db.update(salesStock).set(back as any).where(eq(salesStock.id, doc.salesStockId));
+          }
+        }
+      }
       return { ok: true };
     }),
 
