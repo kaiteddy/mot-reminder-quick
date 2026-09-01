@@ -1,4 +1,4 @@
-
+import { AI_MODEL_VISION } from "../services/aiProvider";
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
 export type TextContent = {
@@ -285,9 +285,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    // Cheapest current vision-capable model (used by the GA4 image scanner).
-    // Override via CHAT_MODEL env (e.g. gemini-2.5-flash for higher accuracy).
-    model: process.env.CHAT_MODEL || "gemini-2.5-flash-lite",
+    // Both callers are vision jobs — the GA4 scanner reading a screenshot, and reminders
+    // extracted from a photo — so this shares AI_MODEL_VISION with the rest of the app rather
+    // than keeping its own default. It used to be gemini-2.5-flash-lite, which worked only
+    // because Forge was a multi-provider gateway that routed it to Google; OpenAI has no such
+    // model and the call would 404. Override with CHAT_MODEL.
+    model: process.env.CHAT_MODEL || AI_MODEL_VISION,
     messages: messages.map(normalizeMessage),
   };
 
@@ -303,10 +306,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
-  }
+  // `thinking` was an Anthropic/Gemini-style knob the Forge gateway accepted and translated.
+  // OpenAI rejects it outright ("unknown_parameter"), which failed every call, so it is gone.
+  payload.max_completion_tokens = 32768
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
