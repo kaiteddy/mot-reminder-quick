@@ -31,6 +31,8 @@ import UniversalSearch from "./UniversalSearch";
 import QuickMOTCheck from "./QuickMOTCheck";
 import Ga4SyncButton from "./Ga4SyncButton";
 import Ga4Shell from "./ga4/Ga4Shell";
+import { canSee } from "@/lib/access";
+import { NotForStaff } from "./NotForStaff";
 
 const menuGroups = [
   { section: "Workshop", items: [
@@ -115,6 +117,14 @@ export default function DashboardLayout({
     return null;
   }
 
+  // A page a staff login can't open is refused here rather than left to fail on its first
+  // request — the sidebar filtering below is the same rule, drawn.
+  if (!canSee(location, user.role)) {
+    // Plain and full width — SidebarProvider would reserve room for a sidebar that isn't drawn
+    // here, leaving the message squeezed into a narrow column.
+    return isClassic ? <Ga4Shell><NotForStaff /></Ga4Shell> : <NotForStaff />;
+  }
+
   if (isClassic) {
     return <Ga4Shell>{children}</Ga4Shell>;
   }
@@ -148,6 +158,13 @@ function DashboardLayoutContent({
   const isCollapsed = sidebarState === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  // Draw only what this login can actually open, and drop a section that empties out entirely —
+  // a "Finance" heading with nothing under it just advertises what staff can't have.
+  const visibleGroups = menuGroups
+    .map((g) => ({ ...g, items: g.items.filter((i) => canSee(i.path, user?.role)) }))
+    .filter((g) => g.items.length > 0);
   const activeMenuItem = menuItems.find((item: any) => item.path === location) || menuItems[0];
   const isMobileView = useIsMobile();
 
@@ -197,7 +214,7 @@ function DashboardLayoutContent({
         </SidebarHeader>
 
         <SidebarContent className="px-2">
-          {menuGroups.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.section} className="mb-1">
               {!isCollapsed && group.section && (
                 <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
@@ -246,11 +263,11 @@ function DashboardLayoutContent({
               <div className="flex items-center gap-3 p-3 bg-white/50 dark:bg-slate-800/50 rounded-xl border border-border/40 shadow-sm">
                 <Avatar className="h-10 w-10 border-2 border-primary/20 shadow-sm">
                   <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold uppercase">
-                    US
+                    {isAdmin ? "AD" : "WS"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col min-w-0 pr-2">
-                  <span className="text-sm font-bold truncate">User Account</span>
+                  <span className="text-sm font-bold truncate">{isAdmin ? "Owner Account" : "Workshop Staff"}</span>
                   <span className="text-[10px] text-muted-foreground truncate uppercase tracking-widest font-semibold flex items-center gap-1">
                     <UserCheck className="h-2 w-2" /> Verified
                   </span>
@@ -333,10 +350,10 @@ function DashboardLayoutContent({
               <QuickMOTCheck />
               <div className="hidden md:flex flex-col items-end">
                 <span className="text-xs font-bold text-foreground leading-tight">Welcome back</span>
-                <span className="text-[10px] text-muted-foreground/70 font-medium">System Administrator</span>
+                <span className="text-[10px] text-muted-foreground/70 font-medium">{isAdmin ? "System Administrator" : "Workshop Staff"}</span>
               </div>
               <Avatar className="h-9 w-9 border-2 border-accent transition-transform hover:scale-105 cursor-pointer">
-                <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">AD</AvatarFallback>
+                <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{isAdmin ? "AD" : "WS"}</AvatarFallback>
               </Avatar>
             </div>
           </div>

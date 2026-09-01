@@ -1,4 +1,4 @@
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
 const nominalPair = z.object({ std: z.string(), acct: z.string() });
@@ -17,55 +17,55 @@ const configSchema = z.object({
 });
 
 export const accountsExportRouter = router({
-  getConfig: protectedProcedure.query(async () => {
+  getConfig: adminProcedure.query(async () => {
     const { getAccountsConfig } = await import("../services/accounts-export");
     return getAccountsConfig();
   }),
 
-  saveConfig: protectedProcedure.input(configSchema).mutation(async ({ input }) => {
+  saveConfig: adminProcedure.input(configSchema).mutation(async ({ input }) => {
     const { saveAccountsConfig } = await import("../services/accounts-export");
     await saveAccountsConfig(input as any);
     return { ok: true };
   }),
 
-  logs: protectedProcedure.query(async () => {
+  logs: adminProcedure.query(async () => {
     const { getExportLogs } = await import("../services/accounts-export");
     return getExportLogs();
   }),
 
-  runSales: protectedProcedure
+  runSales: adminProcedure
     .input(z.object({ toDate: z.string(), fromDate: z.string().optional(), markExported: z.boolean().default(false) }))
     .mutation(async ({ input }) => {
       const { generateSalesExport } = await import("../services/accounts-export");
       return generateSalesExport({ toDate: input.toDate, fromDate: input.fromDate, markExported: input.markExported });
     }),
 
-  runExpenses: protectedProcedure
+  runExpenses: adminProcedure
     .input(z.object({ toDate: z.string(), fromDate: z.string().optional() }))
     .mutation(async ({ input }) => {
       const { generateExpensesExport } = await import("../services/accounts-export");
       return generateExpensesExport({ toDate: input.toDate, fromDate: input.fromDate });
     }),
 
-  markExported: protectedProcedure
+  markExported: adminProcedure
     .input(z.object({ toDate: z.string() }))
     .mutation(async ({ input }) => {
       const { markSalesExported } = await import("../services/accounts-export");
       return markSalesExported(input.toDate);
     }),
 
-  unpaidList: protectedProcedure.query(async () => {
+  unpaidList: adminProcedure.query(async () => {
     const { getUnpaidInvoices } = await import("../services/accounts-export");
     return getUnpaidInvoices();
   }),
 
-  searchInvoices: protectedProcedure.input(z.object({ term: z.string() })).query(async ({ input }) => {
+  searchInvoices: adminProcedure.input(z.object({ term: z.string() })).query(async ({ input }) => {
     if (!input.term.trim()) return [];
     const { searchInvoices } = await import("../services/accounts-export");
     return searchInvoices(input.term);
   }),
 
-  setUnpaid: protectedProcedure.input(z.object({ id: z.number(), unpaid: z.boolean() })).mutation(async ({ input }) => {
+  setUnpaid: adminProcedure.input(z.object({ id: z.number(), unpaid: z.boolean() })).mutation(async ({ input }) => {
     const { setInvoiceUnpaid } = await import("../services/accounts-export");
     return setInvoiceUnpaid(input.id, input.unpaid);
   }),

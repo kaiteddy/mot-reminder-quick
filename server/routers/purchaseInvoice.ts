@@ -1,4 +1,4 @@
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
 /**
@@ -37,7 +37,7 @@ function toCanonicalFees(fees: Record<string, number>) {
 
 export const purchaseInvoiceRouter = router({
   /** Read a PDF and report what's in it, alongside DVLA's view of the same registration. */
-  parse: protectedProcedure
+  parse: adminProcedure
     .input(z.object({
       // ~5MB of base64; an auction invoice is a few tens of KB
       fileBase64: z.string().max(7_000_000),
@@ -107,7 +107,7 @@ export const purchaseInvoiceRouter = router({
    * Write the purchase. Creates the Sales Stock row first so the deal can point at it, and
    * marks it IN PREP — a car off an auction invoice isn't on the forecourt yet.
    */
-  commit: protectedProcedure
+  commit: adminProcedure
     .input(z.object({
       registration: z.string().trim().min(1),
       make: z.string().trim().optional(),

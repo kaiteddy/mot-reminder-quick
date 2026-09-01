@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
@@ -69,11 +69,11 @@ export const appRouter = router({
   }),
 
   salesStock: router({
-    list: protectedProcedure.query(async () => {
+    list: adminProcedure.query(async () => {
       const { getSalesStock } = await import("./db");
       return getSalesStock();
     }),
-    refresh: protectedProcedure
+    refresh: adminProcedure
       // forceUkvd re-runs the PAID lookup even for cars already stamped as attempted —
       // normal refreshes only ever pay once per car (salesStock.ukvdChecked).
       .input(z.object({ forceUkvd: z.boolean().optional() }).optional())
@@ -81,7 +81,7 @@ export const appRouter = router({
         const { refreshSalesStockMotTax } = await import("./db");
         return refreshSalesStockMotTax({ forceUkvd: input?.forceUkvd });
       }),
-    setSold: protectedProcedure
+    setSold: adminProcedure
       .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {
         const { setSalesStockSold } = await import("./db");
@@ -603,7 +603,7 @@ export const appRouter = router({
   }),
 
   reports: router({
-    run: protectedProcedure
+    run: adminProcedure
       .input(z.object({
         reportId: z.string(),
         from: z.string(),
@@ -615,13 +615,13 @@ export const appRouter = router({
         const { runReport } = await import("./db");
         return runReport(input);
       }),
-    filters: protectedProcedure.query(async () => {
+    filters: adminProcedure.query(async () => {
       const { getReportFilters } = await import("./db");
       return getReportFilters();
     }),
     /** Run one report once per period, so several months come back separated rather than
      *  aggregated into a single range. One round trip instead of a query per month. */
-    runMulti: protectedProcedure
+    runMulti: adminProcedure
       .input(z.object({
         reportId: z.string(),
         periods: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })).min(1).max(12),
@@ -643,7 +643,7 @@ export const appRouter = router({
         return out;
       }),
     /** GA4's "Summary of Sales Issued", rebuilt over the web app's own documents. */
-    salesSummary: protectedProcedure
+    salesSummary: adminProcedure
       .input(z.object({
         from: z.string(), to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
@@ -653,7 +653,7 @@ export const appRouter = router({
         const { getSalesSummaryIssued } = await import("./db");
         return getSalesSummaryIssued(input);
       }),
-    salesSummaryPDF: protectedProcedure
+    salesSummaryPDF: adminProcedure
       .input(z.object({
         from: z.string(), to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
@@ -843,12 +843,12 @@ export const appRouter = router({
   }),
 
   email: router({
-    getSettings: protectedProcedure.query(async () => {
+    getSettings: adminProcedure.query(async () => {
       const { getEmailSettings } = await import("./services/email");
       const { pass, ...safe } = (await getEmailSettings()) as any;
       return { ...safe, hasPassword: !!pass };
     }),
-    saveSettings: protectedProcedure
+    saveSettings: adminProcedure
       .input(z.object({
         fromAddress: z.string().optional(), fromName: z.string().optional(), copyTo: z.string().optional(),
         host: z.string().optional(), port: z.number().optional(), secure: z.boolean().optional(),
@@ -858,11 +858,11 @@ export const appRouter = router({
         const { saveEmailSettings } = await import("./services/email");
         return saveEmailSettings(input);
       }),
-    test: protectedProcedure.mutation(async () => {
+    test: adminProcedure.mutation(async () => {
       const { testEmailConnection } = await import("./services/email");
       return testEmailConnection();
     }),
-    sendDocument: protectedProcedure
+    sendDocument: adminProcedure
       .input(z.object({ docId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { sendDocumentEmail } = await import("./services/email");
@@ -882,7 +882,7 @@ export const appRouter = router({
         } catch { /* logging must never block the send */ }
         return result;
       }),
-    sendVehicleHistory: protectedProcedure
+    sendVehicleHistory: adminProcedure
       .input(z.object({ vehicleId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendVehicleHistoryEmail } = await import("./services/email");
@@ -905,7 +905,7 @@ export const appRouter = router({
         } catch { /* logging must never block the send */ }
         return result;
       }),
-    sendCustomerHistory: protectedProcedure
+    sendCustomerHistory: adminProcedure
       .input(z.object({ customerId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendCustomerHistoryEmail } = await import("./services/email");
@@ -2714,12 +2714,12 @@ export const appRouter = router({
 
   // Database overview
   database: router({
-    getAllVehiclesWithCustomers: protectedProcedure.query(async () => {
+    getAllVehiclesWithCustomers: adminProcedure.query(async () => {
       const { getAllVehiclesWithCustomers } = await import("./db");
       return await getAllVehiclesWithCustomers();
     }),
 
-    bulkUpdateMOT: protectedProcedure
+    bulkUpdateMOT: adminProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()).optional(), // If empty, use limit
         limit: z.number().optional(), // Number of vehicles to update if no IDs provided
@@ -2864,7 +2864,7 @@ export const appRouter = router({
         };
       }),
 
-    markMOTBooked: protectedProcedure
+    markMOTBooked: adminProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
         date: z.string().nullable(), // The booked date, or null to clear it
@@ -2887,7 +2887,7 @@ export const appRouter = router({
       }),
 
     // Diagnostic endpoint to investigate vehicles without MOT data
-    diagnoseNoMOT: protectedProcedure.query(async () => {
+    diagnoseNoMOT: adminProcedure.query(async () => {
       const { getDb } = await import("./db");
       const { vehicles } = await import("../drizzle/schema");
       const { isNull, sql } = await import("drizzle-orm");
@@ -3009,7 +3009,7 @@ export const appRouter = router({
     }),
 
     // Bulk delete vehicles based on diagnostic categories
-    deleteCategorizedVehicles: protectedProcedure
+    deleteCategorizedVehicles: adminProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
         skipIfHistoryExists: z.boolean().default(true),
@@ -3035,7 +3035,7 @@ export const appRouter = router({
         };
       }),
 
-    delete: protectedProcedure
+    delete: adminProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
       }))
@@ -3049,7 +3049,7 @@ export const appRouter = router({
   }),
 
   // Test WhatsApp/SMS
-  testWhatsApp: protectedProcedure
+  testWhatsApp: adminProcedure
     .input(z.object({
       phoneNumber: z.string(),
       message: z.string().optional(),
@@ -3107,19 +3107,19 @@ export const appRouter = router({
 
   // Reminder Logs
   logs: router({
-    list: protectedProcedure.query(async () => {
+    list: adminProcedure.query(async () => {
       const { getAllReminderLogs } = await import("./db");
       return getAllReminderLogs();
     }),
 
-    byCustomer: protectedProcedure
+    byCustomer: adminProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getReminderLogsByCustomerId } = await import("./db");
         return getReminderLogsByCustomerId(input.customerId);
       }),
 
-    resendFailed: protectedProcedure
+    resendFailed: adminProcedure
       .input(z.object({ logIds: z.array(z.number()) }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -3223,7 +3223,7 @@ export const appRouter = router({
   // Customer Messages
   // Phone number cleanup
   cleanup: router({
-    phoneNumbers: protectedProcedure
+    phoneNumbers: adminProcedure
       .input(z.object({ dryRun: z.boolean().default(true) }))
       .mutation(async ({ input }) => {
         const { cleanupCustomerPhoneNumbers } = await import("./scripts/cleanupPhoneNumbers");
@@ -3232,19 +3232,19 @@ export const appRouter = router({
   }),
 
   messages: router({
-    list: protectedProcedure.query(async () => {
+    list: adminProcedure.query(async () => {
       const { getAllCustomerMessages } = await import("./db");
       return getAllCustomerMessages();
     }),
 
-    byCustomer: protectedProcedure
+    byCustomer: adminProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getCustomerMessagesByCustomerId } = await import("./db");
         return getCustomerMessagesByCustomerId(input.customerId);
       }),
 
-    markAsRead: protectedProcedure
+    markAsRead: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { markMessageAsRead } = await import("./db");
@@ -3252,12 +3252,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    getUnreadCount: protectedProcedure.query(async () => {
+    getUnreadCount: adminProcedure.query(async () => {
       const { getUnreadMessageCount } = await import("./db");
       return getUnreadMessageCount();
     }),
 
-    markAllAsRead: protectedProcedure.mutation(async () => {
+    markAllAsRead: adminProcedure.mutation(async () => {
       const { markAllMessagesAsRead } = await import("./db");
       await markAllMessagesAsRead();
       return { success: true };
@@ -3266,13 +3266,13 @@ export const appRouter = router({
 
   conversations: router({
     // Get all conversation threads
-    getThreads: protectedProcedure.query(async () => {
+    getThreads: adminProcedure.query(async () => {
       const { getConversationThreads } = await import("./conversations");
       return getConversationThreads();
     }),
 
     // Get messages for a specific conversation
-    getMessages: protectedProcedure
+    getMessages: adminProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getConversationMessages } = await import("./conversations");
@@ -3280,7 +3280,7 @@ export const appRouter = router({
       }),
 
     // Mark conversation as read
-    markAsRead: protectedProcedure
+    markAsRead: adminProcedure
       .input(z.object({ customerId: z.number() }))
       .mutation(async ({ input }) => {
         const { markConversationAsRead } = await import("./conversations");
@@ -3289,7 +3289,7 @@ export const appRouter = router({
       }),
 
     // Send reply in conversation
-    sendReply: protectedProcedure
+    sendReply: adminProcedure
       .input(z.object({
         customerId: z.number(),
         phoneNumber: z.string(),
@@ -3367,7 +3367,7 @@ export const appRouter = router({
       }),
 
     /** How long is left to answer on WhatsApp before a reply has to go by SMS. */
-    replyWindow: protectedProcedure
+    replyWindow: adminProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getReplyWindow } = await import("./services/customerReply");

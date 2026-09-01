@@ -1,4 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { canSee } from "@/lib/access";
+import { NotForStaff } from "./NotForStaff";
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -31,6 +33,13 @@ export function RequireLogin({ children }: { children: ReactNode }) {
       window.location.href = `/login?next=${encodeURIComponent(next)}`;
     }
     return null;
+  }
+
+  // These pages sit outside DashboardLayout, so they need the same role check it does —
+  // otherwise an owner-only tool that happens to live here (a debug screen, say) would open
+  // for the whole workshop.
+  if (!canSee(window.location.pathname, user.role)) {
+    return <NotForStaff />;
   }
 
   return <>{children}</>;

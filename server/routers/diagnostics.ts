@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { sdk } from "../_core/sdk";
 import { ENV } from "../_core/env";
 import { getDb } from "../db";
@@ -9,7 +9,7 @@ import { getVehicleDetails } from "../dvlaApi";
 import { getMOTHistory } from "../motApi";
 
 export const diagnosticsRouter = router({
-  checkCredentials: protectedProcedure.query(async () => {
+  checkCredentials: adminProcedure.query(async () => {
     const results = [];
 
     // 1. Twilio Diagnostic
@@ -167,7 +167,7 @@ export const diagnosticsRouter = router({
     return results;
   }),
 
-  debugVehicle: protectedProcedure
+  debugVehicle: adminProcedure
     .input(z.object({ registration: z.string().min(1) }))
     .mutation(async ({ input }) => { // Changed to mutation to allow triggering on demand
       try {
@@ -197,7 +197,7 @@ export const diagnosticsRouter = router({
    *  provider gives them (UKVD embeds its receipt in every response; Twilio's usage API is
    *  exact); counted-times-price estimates for SWS day passes (2.5cr = 40p per vehicle-day)
    *  and GA4 VRM credits (16p per invoice fill) until those accounts expose an API. */
-  costsSummary: protectedProcedure.query(async () => {
+  costsSummary: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
     const months = (await db.execute(sql`SELECT date_trunc('month', now()) AS cur, date_trunc('month', now() - interval '1 month') AS prev`)) as any;

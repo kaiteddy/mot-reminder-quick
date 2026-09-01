@@ -1,4 +1,4 @@
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 
 /**
@@ -68,7 +68,7 @@ function nationalPhone(phone: any): string {
 
 export const vehicleSaleRouter = router({
   // Every sales invoice raised so far, newest first — for the Sales Stock badge and the list.
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     const { getDb } = await import("../db");
     const { vehicleSaleInvoices } = await import("../../drizzle/schema");
     const { desc } = await import("drizzle-orm");
@@ -89,7 +89,7 @@ export const vehicleSaleRouter = router({
     }).from(vehicleSaleInvoices).orderBy(desc(vehicleSaleInvoices.id));
   }),
 
-  get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+  get: adminProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
     const { getDb } = await import("../db");
     const { vehicleSaleInvoices } = await import("../../drizzle/schema");
     const { eq } = await import("drizzle-orm");
@@ -113,7 +113,7 @@ export const vehicleSaleRouter = router({
    * registration is normalised (upper-cased, spaces stripped) because the same plate is written
    * both ways across GA4 and the web app.
    */
-  createPurchaseForRegistration: protectedProcedure
+  createPurchaseForRegistration: adminProcedure
     .input(z.object({ registration: z.string().min(2) }))
     .mutation(async ({ input }) => {
       const { getDb } = await import("../db");
@@ -150,7 +150,7 @@ export const vehicleSaleRouter = router({
       return { salesStockId: stock.id, created: !existed };
     }),
 
-  createFromStock: protectedProcedure
+  createFromStock: adminProcedure
     .input(z.object({ salesStockId: z.number(), docKind: z.enum(["sale", "purchase"]).default("sale") }))
     .mutation(async ({ input }) => {
       const { getDb } = await import("../db");
@@ -231,7 +231,7 @@ export const vehicleSaleRouter = router({
    * search can't find them, but the paperwork can. Fills the name only; there is no customer
    * record behind these, so no address/phone comes with them.
    */
-  searchNames: protectedProcedure
+  searchNames: adminProcedure
     .input(z.object({ query: z.string() }))
     .query(async ({ input }) => {
       const q = input.query.trim();
@@ -255,7 +255,7 @@ export const vehicleSaleRouter = router({
     }),
 
   // Autosave: patch only the fields the form sends.
-  save: protectedProcedure
+  save: adminProcedure
     .input(z.object({ id: z.number(), fields: fieldsSchema }))
     .mutation(async ({ input }) => {
       const { getDb } = await import("../db");
@@ -352,7 +352,7 @@ export const vehicleSaleRouter = router({
     }),
 
   // Link the purchaser to a customer record and copy their name/address/phone onto the form.
-  attachCustomer: protectedProcedure
+  attachCustomer: adminProcedure
     .input(z.object({ id: z.number(), customerId: z.number() }))
     .mutation(async ({ input }) => {
       const { getDb, getCustomerById } = await import("../db");
@@ -376,7 +376,7 @@ export const vehicleSaleRouter = router({
       return fields;
     }),
 
-  delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
     const { getDb } = await import("../db");
     const { vehicleSaleInvoices } = await import("../../drizzle/schema");
     const { eq } = await import("drizzle-orm");

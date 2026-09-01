@@ -1,4 +1,4 @@
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateObject } from "ai";
 import { getDb } from "../db";
@@ -585,7 +585,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       }
     }),
 
-  getPricingKnowledge: protectedProcedure
+  getPricingKnowledge: adminProcedure
     .query(async () => {
       const db = await getDb();
       if (!db) return null;
@@ -603,7 +603,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       };
     }),
 
-  savePricingKnowledge: protectedProcedure
+  savePricingKnowledge: adminProcedure
     .input(z.object({
       labourRate: z.number(),
       motCost: z.number(),
@@ -631,7 +631,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       return { success: true };
     }),
 
-  getHistoricalPricingMetrics: protectedProcedure
+  getHistoricalPricingMetrics: adminProcedure
     .query(async () => {
       const db = await getDb();
       if (!db) return [];

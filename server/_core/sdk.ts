@@ -112,30 +112,39 @@ class SDKServer {
     }
 
     if (!user) {
-      // For Admin, create if missing (first login)
-      if (session.openId === 'admin') {
+      // Create the account on first login. Two of them exist, both password-only: 'admin' is
+      // the owner's full view, 'staff' is the workshop view. The role here is what every
+      // adminProcedure downstream actually tests — the hidden sidebar entries are only
+      // cosmetic, so this is the line that really separates the two.
+      const KNOWN: Record<string, { name: string; email: string; role: "user" | "admin" }> = {
+        admin: { name: "Administrator", email: "admin@example.com", role: "admin" },
+        staff: { name: "Workshop Staff", email: "staff@example.com", role: "user" },
+      };
+      const known = KNOWN[session.openId];
+      if (known) {
         try {
           await db.upsertUser({
-            openId: 'admin',
-            name: 'Administrator',
-            email: 'admin@example.com',
+            openId: session.openId,
+            name: known.name,
+            email: known.email,
             loginMethod: 'password',
-            role: 'admin',
+            role: known.role,
             lastSignedIn: signedInAt,
           });
-          user = await db.getUserByOpenId('admin');
+          user = await db.getUserByOpenId(session.openId);
         } catch (e) {
-          console.error("Failed to create admin user in DB, using fallback", e);
+          console.error(`Failed to create ${session.openId} user in DB, using fallback`, e);
         }
 
-        // Fallback for Admin if DB is totally unavailable
+        // Fallback if the DB is totally unavailable. Note this keeps the SAME role — a staff
+        // session must never be promoted to admin just because the database blinked.
         if (!user) {
           user = {
             id: -1,
-            openId: 'admin',
-            name: 'Administrator (Recovery Mode)',
-            email: 'admin@example.com',
-            role: 'admin',
+            openId: session.openId,
+            name: `${known.name} (Recovery Mode)`,
+            email: known.email,
+            role: known.role,
             lastSignedIn: signedInAt,
           };
         }
