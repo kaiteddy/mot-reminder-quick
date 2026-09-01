@@ -112,7 +112,7 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input }) => {
       if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
       }
       // The SDK wants the raw base64 and a media type. Handed the whole data: URL it treats it as
       // a URL to go and fetch, and fails with "URL scheme must be http or https".
@@ -198,7 +198,7 @@ export const aiRouter = router({
     }))
     .mutation(async ({ input }) => {
       if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
       }
 
       const db = await getDb();
@@ -355,7 +355,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
       }
 
       if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
       }
 
       const prompt = `An MOT test in the UK recorded this ${severity === "ADVISORY" ? "advisory" : "defect"}:
@@ -425,7 +425,7 @@ Return these fields:
     }))
     .mutation(async ({ input }) => {
       if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
       }
       const veh = [input.year, input.make, input.model, input.derivative].filter(Boolean).join(" ") || "the vehicle";
       const detail = [input.engineCode && `engine ${input.engineCode}`, input.engineCC && `${input.engineCC}cc`, input.fuelType].filter(Boolean).join(", ");
@@ -454,7 +454,7 @@ Return these fields:
       make: z.string().optional(), model: z.string().optional(), year: z.number().optional(),
     }))
     .mutation(async ({ input }) => {
-      if (!hasAIKey()) throw new Error("AI API key is not configured. Set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in .env");
+      if (!hasAIKey()) throw new Error("AI API key is not configured. Set OPENAI_API_KEY in .env");
       const veh = [input.year, input.make, input.model].filter(Boolean).join(" ") || "the vehicle";
       const prompt = `A UK MOT test recorded these defects/advisories on ${veh}:
 ${input.defects.map((d, i) => `${i + 1}. ${d}`).join("\n")}
@@ -487,7 +487,7 @@ List the parts or consumables a garage would replace to put these right (e.g. bu
     .input(z.object({ docId: z.number(), description: z.string().optional() }))
     .mutation(async ({ input }) => {
       if (!hasAIKey()) {
-        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+        throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
       }
       const db = await getDb();
       if (!db) throw new Error("Database error");

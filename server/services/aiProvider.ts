@@ -1,5 +1,4 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { ENV } from "../_core/env";
 
 // Shared AI provider setup — used by the AI router and by server-side generation
 // (e.g. the Service Reset card created during a job-sheet print).
@@ -17,15 +16,14 @@ export const AI_MODEL_GUIDE = process.env.AI_MODEL_GUIDE || "gpt-5.4-mini";
 // the bay; set AI_MODEL_VISION to change it without a deploy.
 export const AI_MODEL_VISION = process.env.AI_MODEL_VISION || "gpt-5.5";
 
-export const hasAIKey = () => Boolean(process.env.OPENAI_API_KEY || ENV.forgeApiKey);
+// OPENAI_API_KEY only. The Manus Forge gateway used to stand behind this as a fallback, but its
+// credential was published in this repo for eight months and has been revoked — leaving the
+// fallback in place would turn a missing key into a confusing 401 from a dead endpoint instead of
+// a clear "not configured".
+export const hasAIKey = () => Boolean(process.env.OPENAI_API_KEY);
 
 export const getRuntimeProvider = () => {
-  const activeKey = process.env.OPENAI_API_KEY;
-
-  return activeKey
-    ? createOpenAI({ apiKey: activeKey, headers: { Authorization: `Bearer ${activeKey}` } })
-    : createOpenAI({
-        baseURL: ENV.forgeApiUrl ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1` : "https://forge.manus.im/v1",
-        apiKey: ENV.forgeApiKey,
-      });
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set — AI features are unavailable");
+  return createOpenAI({ apiKey, headers: { Authorization: `Bearer ${apiKey}` } });
 };

@@ -1,4 +1,3 @@
-import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -209,14 +208,20 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
+// Straight to OpenAI. This used to go through the Manus Forge gateway, whose credential was
+// published in this repo for eight months and has been revoked. Forge spoke the OpenAI
+// chat/completions dialect, which is why only the URL and the key change here — the payload,
+// tool-calling and response handling below are unchanged.
 const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+  process.env.OPENAI_API_BASE_URL
+    ? `${process.env.OPENAI_API_BASE_URL.replace(/\/$/, "")}/chat/completions`
+    : "https://api.openai.com/v1/chat/completions";
+
+const apiKey = () => process.env.OPENAI_API_KEY || "";
 
 const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("AI API Key is not configured. Please set BUILT_IN_FORGE_API_KEY or OPENAI_API_KEY in your .env file.");
+  if (!apiKey()) {
+    throw new Error("AI API Key is not configured. Please set OPENAI_API_KEY in your .env file.");
   }
 };
 
@@ -318,7 +323,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${apiKey()}`,
     },
     body: JSON.stringify(payload),
   });
