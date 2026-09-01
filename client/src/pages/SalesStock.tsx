@@ -1,9 +1,9 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2, Upload } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2, Upload, Printer } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -187,8 +187,89 @@ export default function SalesStock() {
     return { count: cars.length, value, motExpired, motSoon, untaxed, alerts };
   }, [cars]);
 
+  /**
+   * What the printed sheet says across the top. Deliberately counted from `sorted` — the rows that
+   * actually reach the paper — and not from `stats`, which counts the whole fleet: filter the list
+   * down to one make and a stats-based header would print "25 cars" above eight of them.
+   */
+  const printSummary = useMemo(() => {
+    let motExpired = 0, motSoon = 0, untaxed = 0;
+    for (const c of sorted) {
+      const m = motStatus(c.motExpiryDate);
+      if (m.tone === "red") motExpired++; else if (m.tone === "amber") motSoon++;
+      if (c.taxStatus && !/^taxed$/i.test(c.taxStatus)) untaxed++;
+    }
+    return { count: sorted.length, motExpired, motSoon, untaxed };
+  }, [sorted]);
+
+  /**
+   * Printing has to escape the dashboard shell. Hiding the chrome with `visibility` leaves its
+   * boxes in the layout, so the sheet inherits the sidebar's offset and prints far to the right.
+   * Tag every ancestor between the table and <body> instead: print CSS collapses those to
+   * `display: contents` and drops their other children, which is also what removes the page
+   * heading, the stat tiles and the filter bar from the printout without tagging each one.
+   *
+   * Same technique as the sales invoice, which documents it at length. The tag is inert on screen,
+   * but it MUST come off on unmount — left behind it would blank every other page's printout.
+   */
+  const taggedRef = useRef<Element[]>([]);
+  const untagPrintAncestors = useCallback(() => {
+    taggedRef.current.forEach((el) => el.classList.remove("stock-print-passthrough"));
+    taggedRef.current = [];
+  }, []);
+  const tagPrintAncestors = useCallback(() => {
+    const root = document.querySelector(".stock-print-root");
+    // Switching to grid view takes the table, and the root with it. The tags have to come off
+    // with it rather than sit there describing a shell that no longer wraps anything.
+    if (!root) { untagPrintAncestors(); return; }
+    for (let el = root.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.classList.contains("stock-print-passthrough")) continue;
+      el.classList.add("stock-print-passthrough");
+      taggedRef.current.push(el);
+    }
+  }, [untagPrintAncestors]);
+  // Tag on render as well as on click. Ctrl+P never goes through the button, and it has to find
+  // the shell already tagged or it prints the table halfway off the right-hand edge.
+  useEffect(() => { tagPrintAncestors(); }, [tagPrintAncestors, isLoading, view]);
+  useEffect(() => untagPrintAncestors, [untagPrintAncestors]);
+
+  /**
+   * The printed list IS the list-view table, so a print asked for from grid view has to switch
+   * view first and go to the printer on a later render — hence the flag rather than calling
+   * window.print() straight from the click.
+   */
+  const [pendingPrint, setPendingPrint] = useState(false);
+  useEffect(() => {
+    if (!pendingPrint || view !== "list" || isLoading) return;
+    setPendingPrint(false);
+    tagPrintAncestors();
+    window.print();
+  }, [pendingPrint, view, isLoading, tagPrintAncestors]);
+  const handlePrint = () => { if (view !== "list") setViewPersist("list"); setPendingPrint(true); };
+
   return (
     <DashboardLayout>
+      {/* Only the table goes to the printer, and it starts at the page origin. */}
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 9mm; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          /* Every shell rule is guarded on a print root being in the DOM. Grid view has no table
+             and so no root, and the tags can outlive it — unguarded, the rules then collapse the
+             shell around nothing and a blank sheet comes out of the printer. */
+          body:has(.stock-print-root) .stock-print-passthrough { display: contents !important; }
+          body:has(.stock-print-root) > *:not(.stock-print-passthrough):not(.stock-print-root),
+          body:has(.stock-print-root) .stock-print-passthrough > *:not(.stock-print-passthrough):not(.stock-print-root) { display: none !important; }
+          .stock-print-root { display: block !important; margin: 0 !important; padding: 0 !important; }
+          /* The screen table scrolls sideways inside a fixed minimum; paper has neither. */
+          .stock-print-root table { width: 100% !important; min-width: 0 !important; font-size: 9.5px !important; }
+          .stock-print-root td, .stock-print-root th { padding: 2.5px 4px !important; }
+          /* A stock list runs past one sheet, so repeat the header and never split a car in half. */
+          .stock-print-root thead { display: table-header-group; }
+          .stock-print-root tr { break-inside: avoid; }
+        }
+      `}</style>
+
       <div className="max-w-[1500px] mx-auto p-4 space-y-4 text-slate-800">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -213,6 +294,11 @@ export default function SalesStock() {
             <button onClick={() => refresh.mutate()} disabled={refresh.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
               {refresh.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh MOT/Tax
+            </button>
+            <button onClick={handlePrint}
+              title="Print the stock list for the garage — no sale prices, no buttons"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">
+              <Printer className="w-4 h-4" /> Print list
             </button>
           </div>
         </div>
@@ -245,7 +331,27 @@ export default function SalesStock() {
         {isLoading ? <div className="text-center text-slate-400 py-12"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
           : cars.length === 0 ? <div className="text-center text-slate-500 py-12">No stock cars yet. Import the stocklist with <code>scripts/import-sales-stock.ts</code>.</div>
           : view === "list" ? (
-            <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
+            <div className="stock-print-root rounded-xl border border-slate-200 bg-white overflow-x-auto print:overflow-visible print:rounded-none print:border-0">
+              {/* Paper only. A printed sheet has to say what it is and when it was run — and
+                  because the filter carries through to the printout, whether it is the whole
+                  fleet or a slice of it. */}
+              <div className="hidden print:block px-1 pb-1.5">
+                <div className="flex items-baseline justify-between">
+                  <div className="text-[13px] font-bold">ELI MOTORS LTD · Sales Cars Stock</div>
+                  <div className="text-[9px]">Printed {new Date().toLocaleDateString("en-GB")}</div>
+                </div>
+                <div className="text-[9px]">
+                  {printSummary.count} car{printSummary.count === 1 ? "" : "s"}
+                  {" · "}{printSummary.motExpired} MOT expired
+                  {" · "}{printSummary.motSoon} MOT due ≤30d
+                  {" · "}{printSummary.untaxed} untaxed/SORN
+                  {(filter.trim() || onlyStuck) && (
+                    <span className="font-semibold">
+                      {" · filtered"}{filter.trim() ? ` by “${filter.trim()}”` : ""}{onlyStuck ? ", missing invoice info only" : ""} — not the whole fleet
+                    </span>
+                  )}
+                </div>
+              </div>
               <table className="w-full text-[13px] min-w-[760px]">
                 <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
                   <tr>
@@ -259,8 +365,10 @@ export default function SalesStock() {
                     <SortHead label="Needs" k="missing" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="MOT" k="mot" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Tax" k="tax" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
-                    <th className="text-left font-semibold px-2 py-2">Status</th>
-                    <th className="text-right font-semibold px-3 py-2">Sale</th>
+                    {/* The garage's copy stops at Tax: the sold price and the row actions are no
+                        use on paper, and the sold price is not the workshop's business. */}
+                    <th className="text-left font-semibold px-2 py-2 print:hidden">Status</th>
+                    <th className="text-right font-semibold px-3 py-2 print:hidden">Sale</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -272,8 +380,8 @@ export default function SalesStock() {
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2.5">
                             {c.imageUrl
-                              ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
-                              : <div className="w-12 h-9 bg-slate-100 rounded flex items-center justify-center shrink-0"><Car className="w-4 h-4 text-slate-300" /></div>}
+                              ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0 print:hidden" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
+                              : <div className="w-12 h-9 bg-slate-100 rounded flex items-center justify-center shrink-0 print:hidden"><Car className="w-4 h-4 text-slate-300" /></div>}
                             <div className="min-w-0">
                               <div className="font-medium truncate">{c.make} {c.model}</div>
                               <div className="text-[11px] text-slate-500 truncate">{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
@@ -293,13 +401,13 @@ export default function SalesStock() {
                         <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
                         <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
-                        <td className="px-2 py-2">
+                        <td className="px-2 py-2 print:hidden">
                           {isSold(c)
                             ? <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">SOLD{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}</span>
                             : c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span>
                             : <span className="text-slate-300">—</span>}
                         </td>
-                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3 py-2 text-right print:hidden" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex gap-1.5">
                             <MarkSoldButton
                               car={c} compact
