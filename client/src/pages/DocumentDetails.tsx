@@ -18,6 +18,7 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-p
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
+import { printDocumentOnHandheld } from "@/lib/printDocument";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
@@ -317,6 +318,10 @@ export default function DocumentDetails() {
   }
 
   async function printDocById(documentId: number) {
+    // On a phone the iframe below prints nothing at all — see printDocument.ts. This page is on
+    // the staff allowlist, so a mechanic opening a job sheet from Live Jobs lands here.
+    if (printDocumentOnHandheld(documentId, (m) => toast.success(m))) return;
+
     const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId });
     if (!res?.content) { toast.error("Could not generate the PDF"); return; }
     const bytes = atob(res.content);
