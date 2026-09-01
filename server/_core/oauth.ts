@@ -6,7 +6,9 @@ export function registerAuthRoutes(app: Express) {
   // Simple Password Login
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     const { password } = req.body;
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+    // No default: an unset ADMIN_PASSWORD means no admin login exists (never the old public
+    // "admin123", which is published in this repo's history). Same rule the staff password uses.
+    const adminPassword = process.env.ADMIN_PASSWORD || "";
     // The workshop's own password. Same login box, a smaller view of the app: no purchase
     // costs, no margins, no takings. Unset means no staff login exists at all, which is the
     // right default — an accidentally-blank env var must never become a valid password.
@@ -15,7 +17,7 @@ export function registerAuthRoutes(app: Express) {
     // Admin is checked first so that setting STAFF_PASSWORD equal to ADMIN_PASSWORD by mistake
     // gives the owner their full view rather than silently demoting them.
     const openId =
-      password === adminPassword ? "admin"
+      adminPassword && password === adminPassword ? "admin"
       : staffPassword && password === staffPassword ? "staff"
       : null;
 

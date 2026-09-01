@@ -28,7 +28,13 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret || "default-dev-secret-change-me-in-prod";
+    const secret = ENV.cookieSecret;
+    if (!secret) {
+      // The old default key is public (in this repo's history). Refuse it in production;
+      // only fall back to it for local development.
+      if (ENV.isProduction) throw new Error("JWT_SECRET is not set in production");
+      return new TextEncoder().encode("default-dev-secret-change-me-in-prod");
+    }
     return new TextEncoder().encode(secret);
   }
 

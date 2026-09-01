@@ -24,13 +24,22 @@ CMD="$CMD --build-env VITE_ANALYTICS_WEBSITE_ID='ee63bbe4-c871-49e6-af32-1f7625b
 CMD="$CMD --build-env VITE_ANALYTICS_ENDPOINT='https://manus-analytics.com'"
 
 # Runtime variables
-CMD="$CMD --env DATABASE_URL='mysql://E3X1o2YRTeoc6Uy.b2280e0d2acf:44Sq3qX8fGOBcLjV6cp9@gateway02.us-east-1.prod.aws.tidbcloud.com:4000/CfLpVpWrxXxSPd5gXqPACt'"
-CMD="$CMD --env JWT_SECRET='BfXGA6q6ifkrrsYuSrjTsv'"
+# SECRETS ARE READ FROM THE ENVIRONMENT — never hardcode them here (this file is committed and
+# the repo is public). Export them in your shell before running, or manage them in the Vercel
+# dashboard (preferred: they persist across deploys). Fail closed if a required secret is missing.
+for v in DATABASE_URL JWT_SECRET ADMIN_PASSWORD BUILT_IN_FORGE_API_KEY; do
+  if [ -z "${!v}" ]; then echo "Error: $v is not set in the environment"; exit 1; fi
+done
+CMD="$CMD --env DATABASE_URL=\"$DATABASE_URL\""
+CMD="$CMD --env JWT_SECRET=\"$JWT_SECRET\""
 CMD="$CMD --env OAUTH_SERVER_URL='https://api.manus.im'"
 CMD="$CMD --env OWNER_OPEN_ID='9xXyagTsBbwvfSi85rALAq'"
 CMD="$CMD --env BUILT_IN_FORGE_API_URL='https://forge.manus.ai'"
-CMD="$CMD --env BUILT_IN_FORGE_API_KEY='aYJkRwFprWF4SqsnZNkQLF'"
-CMD="$CMD --env ADMIN_PASSWORD='admin123'"
+CMD="$CMD --env BUILT_IN_FORGE_API_KEY=\"$BUILT_IN_FORGE_API_KEY\""
+CMD="$CMD --env ADMIN_PASSWORD=\"$ADMIN_PASSWORD\""
+# Optional: workshop-staff login (a smaller view). Uncomment after setting STAFF_PASSWORD.
+# [ -n "$STAFF_PASSWORD" ] && CMD="$CMD --env STAFF_PASSWORD=\"$STAFF_PASSWORD\""
+
 
 # Twilio Secrets
 # Ensure these variables are set in your environment before running
