@@ -15,5 +15,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+    // The prod-protection guard: redirects every test run to the disposable sandbox branch
+    // and refuses to run at all when none is configured. See server/test-setup.ts.
+    setupFiles: ["./server/test-setup.ts"],
   },
 });
