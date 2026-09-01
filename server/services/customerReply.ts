@@ -93,7 +93,12 @@ export async function sendCustomerReply(input: { to: string; body: string; custo
   const waFrom = (process.env.TWILIO_WHATSAPP_NUMBER || "").trim();
   if (!accountSid || !authToken || !waFrom) return { success: false, error: "Twilio is not configured" };
 
-  const to = input.to.replace(/^whatsapp:/, "");
+  // Twilio needs E.164. Phones reach us in whatever shape the record holds — 490 customer rows
+  // store the local "07890206250" form — and WhatsApp rejects those outright ("not a valid phone
+  // number"), so the reply never leaves. sendSMS already normalises; this path did not.
+  const raw = input.to.replace(/^whatsapp:/, "");
+  const { normalizePhoneNumber } = await import("../utils/phoneUtils");
+  const to = normalizePhoneNumber(raw).normalized || raw;
   const { isOwnNumber } = await import("../smsService");
   if (isOwnNumber(to)) return { success: false, error: "That is the garage's own number — not sending." };
 
