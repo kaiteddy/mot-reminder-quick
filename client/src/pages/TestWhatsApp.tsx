@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Link } from "wouter";
 
 type TemplateType = "MOT" | "MOT_EXPIRED" | "Service";
 
-export default function TestWhatsApp() {
+function TestWhatsAppInner() {
   const [phoneNumber, setPhoneNumber] = useState("+447843275372");
   const [templateType, setTemplateType] = useState<TemplateType>("MOT");
   const [customerName, setCustomerName] = useState("Test Customer");
@@ -333,5 +334,13 @@ export default function TestWhatsApp() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function TestWhatsApp(props: any) {
+  return (
+    <RequireLogin>
+      <TestWhatsAppInner {...props} />
+    </RequireLogin>
   );
 }

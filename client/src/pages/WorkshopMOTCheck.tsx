@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -121,7 +122,7 @@ async function downscaleForScan(file: File, maxEdge = 2000, quality = 0.85): Pro
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-export default function WorkshopMOTCheck() {
+function WorkshopMOTCheckInner() {
   const [registration, setRegistration] = useState("");
   const [vehicleData, setVehicleData] = useState<VehicleData | null>(null);
   const [customerData, setCustomerData] = useState<any>(null);
@@ -922,3 +923,11 @@ function MOTTestCard({ test, vehicleData, isLatest = false }: { test: MOTTest; v
   );
 }
 
+
+export default function WorkshopMOTCheck(props: any) {
+  return (
+    <RequireLogin>
+      <WorkshopMOTCheckInner {...props} />
+    </RequireLogin>
+  );
+}

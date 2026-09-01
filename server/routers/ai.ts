@@ -1,4 +1,4 @@
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { generateObject } from "ai";
 import { getDb } from "../db";
@@ -105,7 +105,7 @@ export const aiRouter = router({
    * against our own vehicles table to recover the plate. A VIN we have never seen is reported back
    * honestly rather than being turned into a dead lookup.
    */
-  scanVehicleId: publicProcedure
+  scanVehicleId: protectedProcedure
     .input(z.object({
       // A JPEG data URL from the phone camera, already downscaled client-side.
       image: z.string().min(100).max(8_000_000),
@@ -185,7 +185,7 @@ export const aiRouter = router({
       };
     }),
 
-  generateMOTEstimate: publicProcedure
+  generateMOTEstimate: protectedProcedure
     .input(z.object({
       make: z.string().optional(),
       model: z.string().optional(),
@@ -331,7 +331,7 @@ Only return the JSON. Do not include markdown formatting like \`\`\`json.`;
   // call ever. Deliberately vehicle-agnostic (a drop link does the same job on every car);
   // make/model/year are still accepted so existing callers don't break, but don't feed the
   // prompt — that's what keeps the cache key honest.
-  explainDefect: publicProcedure
+  explainDefect: protectedProcedure
     .input(z.object({
       defect: z.string().min(3),
       type: z.string().optional(),      // ADVISORY | MINOR | MAJOR | DANGEROUS | FAIL | PRS
@@ -417,7 +417,7 @@ Return these fields:
   // Smart job specification: the technician types what job was done; the AI returns the
   // printed job-sheet/invoice description as plain lines, in real terse garage-note style
   // (see JOB_SPEC_SYSTEM) rather than a structured instructional checklist.
-  generateJobSpec: publicProcedure
+  generateJobSpec: protectedProcedure
     .input(z.object({
       job: z.string().min(2),
       make: z.string().optional(), model: z.string().optional(), derivative: z.string().optional(),
@@ -448,7 +448,7 @@ Return these fields:
 
   // From MOT defects/advisories, work out the parts/consumables a garage would replace to fix
   // them — used by the MOT Advisories tab to build a job (defects → description + these parts).
-  partsForDefects: publicProcedure
+  partsForDefects: protectedProcedure
     .input(z.object({
       defects: z.array(z.string().min(2)).min(1).max(15),
       make: z.string().optional(), model: z.string().optional(), year: z.number().optional(),
@@ -480,7 +480,7 @@ List the parts or consumables a garage would replace to put these right (e.g. bu
   // job is, how it's done on THIS vehicle, parts to check/replace together, and cautions.
   // Saved onto the document (serviceHistory.jobGuide) so it persists, prints, and follows
   // the job through convert (JS → SI).
-  generateJobGuide: publicProcedure
+  generateJobGuide: protectedProcedure
     // description override: the guide is usually generated straight after typing the
     // description, BEFORE parts are added or the doc is saved — use what's on screen,
     // not the stale saved copy.
@@ -573,7 +573,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
   // where its OBD port is. Vehicle-level knowledge (not job-level), so it's cached on the
   // vehicle record and reused across every job on the car. Core logic lives in
   // services/serviceReset (also used by getRichPDF when printing diagnostic/service jobs).
-  generateServiceReset: publicProcedure
+  generateServiceReset: protectedProcedure
     .input(z.object({ vehicleId: z.number() }))
     .mutation(async ({ input }) => {
       try {
@@ -585,7 +585,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       }
     }),
 
-  getPricingKnowledge: publicProcedure
+  getPricingKnowledge: protectedProcedure
     .query(async () => {
       const db = await getDb();
       if (!db) return null;
@@ -603,7 +603,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       };
     }),
 
-  savePricingKnowledge: publicProcedure
+  savePricingKnowledge: protectedProcedure
     .input(z.object({
       labourRate: z.number(),
       motCost: z.number(),
@@ -631,7 +631,7 @@ Be honest about vehicle-specific facts: where a spec (capacity, torque) varies b
       return { success: true };
     }),
 
-  getHistoricalPricingMetrics: publicProcedure
+  getHistoricalPricingMetrics: protectedProcedure
     .query(async () => {
       const db = await getDb();
       if (!db) return [];

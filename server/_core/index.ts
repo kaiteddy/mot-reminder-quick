@@ -3,6 +3,7 @@ import express, { Express } from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerAuthRoutes } from "./oauth";
+import { requireSession } from "./requireSession";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic } from "./serve-static";
@@ -52,7 +53,7 @@ function setupApp(app: Express) {
    * the login screen is client-side only and every tRPC procedure is already reachable
    * unauthenticated. This exposes nothing that serviceHistory.getRichPDF does not.
    */
-  app.get("/api/documents/:id/pdf", async (req, res) => {
+  app.get("/api/documents/:id/pdf", requireSession, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) { res.status(400).send("Bad document id"); return; }
     try {
@@ -278,10 +279,10 @@ function setupApp(app: Express) {
   );
 
   // Expose our new Drone-powered Autodata APIs
-  app.use("/api/autodata", autodataRouter);
+  app.use("/api/autodata", requireSession, autodataRouter);
 
   // Custom Customer Lookup API
-  app.use("/api/customer-lookup", customerLookupRouter);
+  app.use("/api/customer-lookup", requireSession, customerLookupRouter);
 
   // Scheduled jobs (Vercel Cron) — e.g. day-of MOT reminders
   app.use("/api/cron", cronRouter);

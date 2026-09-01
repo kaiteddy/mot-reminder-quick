@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -11,7 +12,7 @@ import { AlertCircle, CheckCircle2, Loader2, Phone, Trash2, Wrench } from "lucid
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-export default function PhoneCleanup() {
+function PhoneCleanupInner() {
   const [showResults, setShowResults] = useState(false);
   const [cleanupResults, setCleanupResults] = useState<any>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, name: '' });
@@ -264,5 +265,13 @@ export default function PhoneCleanup() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function PhoneCleanup(props: any) {
+  return (
+    <RequireLogin>
+      <PhoneCleanupInner {...props} />
+    </RequireLogin>
   );
 }

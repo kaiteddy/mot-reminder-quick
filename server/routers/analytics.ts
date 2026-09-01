@@ -1,11 +1,11 @@
 
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { z } from "zod";
 import { reminderLogs, customerMessages } from "../../drizzle/schema";
 import { sql, desc, gte, lte, and } from "drizzle-orm";
 
 export const analyticsRouter = router({
-    getStats: publicProcedure
+    getStats: protectedProcedure
         .query(async ({ ctx }) => {
             const { getDb } = await import("../db");
             const db = await getDb();
@@ -110,7 +110,7 @@ export const analyticsRouter = router({
             };
         }),
 
-    getConversionFunnel: publicProcedure
+    getConversionFunnel: protectedProcedure
         .query(async () => {
             const { getDb } = await import("../db");
             const db = await getDb();
@@ -167,7 +167,7 @@ export const analyticsRouter = router({
             }
         }),
         
-    getFinancialStats: publicProcedure
+    getFinancialStats: protectedProcedure
         .query(async ({ ctx }) => {
             const { getDb } = await import("../db");
             const db = await getDb();

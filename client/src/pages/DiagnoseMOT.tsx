@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,7 +34,7 @@ import {
 import { Trash2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-export default function DiagnoseMOT() {
+function DiagnoseMOTInner() {
   const [isProcessing, setIsProcessing] = useState(false);
   const { data, isLoading, refetch } = trpc.database.diagnoseNoMOT.useQuery();
 
@@ -410,5 +411,13 @@ export default function DiagnoseMOT() {
         )}
       </div>
     </div >
+  );
+}
+
+export default function DiagnoseMOT(props: any) {
+  return (
+    <RequireLogin>
+      <DiagnoseMOTInner {...props} />
+    </RequireLogin>
   );
 }

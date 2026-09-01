@@ -1,11 +1,12 @@
 import { useParams } from "wouter";
+import { RequireLogin } from "@/components/RequireLogin";
 import { trpc } from "@/lib/trpc";
 import { MapPin, Phone, Car, FileText, Navigation, ArrowLeft, Calendar, Construction } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function MobileJobSummary() {
+function MobileJobSummaryInner() {
     const { id } = useParams<{ id: string }>();
     const { data: result, isLoading } = trpc.vehicles.getById.useQuery({ id: parseInt(id) }, {
         enabled: !!id,
@@ -185,4 +186,12 @@ export default function MobileJobSummary() {
             </div>
         </div>
     );
+}
+
+export default function MobileJobSummary(props: any) {
+  return (
+    <RequireLogin>
+      <MobileJobSummaryInner {...props} />
+    </RequireLogin>
+  );
 }

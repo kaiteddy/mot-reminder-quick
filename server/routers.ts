@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "../shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
@@ -28,7 +28,7 @@ export const appRouter = router({
   purchaseInvoice: purchaseInvoiceRouter,
   ga4: router({
     // freshness + last-run status for the "Sync GA4" button
-    syncStatus: publicProcedure.query(async () => {
+    syncStatus: protectedProcedure.query(async () => {
       const { getDb, getAppSetting } = await import("./db");
       const s: any = (await getAppSetting("ga4_sync")) || {};
       const db = await getDb();
@@ -47,7 +47,7 @@ export const appRouter = router({
       };
     }),
     // drop a request in the DB; the local watcher (launchd) picks it up and runs ga4-autosync.sh
-    requestSync: publicProcedure.mutation(async () => {
+    requestSync: protectedProcedure.mutation(async () => {
       const { getAppSetting, setAppSetting } = await import("./db");
       const cur: any = (await getAppSetting("ga4_sync")) || {};
       await setAppSetting("ga4_sync", { ...cur, requestedAt: new Date().toISOString(), status: "requested" });
@@ -55,6 +55,9 @@ export const appRouter = router({
     }),
   }),
   auth: router({
+    // These two stay open deliberately. `me` IS the "am I logged in?" question — protecting it
+    // would make it answer 401 instead of null and the login gate could never see a logged-out
+    // user. `logout` only clears a cookie, and must work even from a session already dead.
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -66,11 +69,11 @@ export const appRouter = router({
   }),
 
   salesStock: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getSalesStock } = await import("./db");
       return getSalesStock();
     }),
-    refresh: publicProcedure
+    refresh: protectedProcedure
       // forceUkvd re-runs the PAID lookup even for cars already stamped as attempted —
       // normal refreshes only ever pay once per car (salesStock.ukvdChecked).
       .input(z.object({ forceUkvd: z.boolean().optional() }).optional())
@@ -78,7 +81,7 @@ export const appRouter = router({
         const { refreshSalesStockMotTax } = await import("./db");
         return refreshSalesStockMotTax({ forceUkvd: input?.forceUkvd });
       }),
-    setSold: publicProcedure
+    setSold: protectedProcedure
       .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {
         const { setSalesStockSold } = await import("./db");
@@ -94,19 +97,19 @@ export const appRouter = router({
   priceGuide: router({
     /** Our banded service labour, for anything that needs to price a service — the job sheet as
      *  well as the guide. One source, so the two can't drift the way the MOT price did. */
-    labourBands: publicProcedure
+    labourBands: protectedProcedure
       .input(z.object({ jobKey: z.string().optional() }).optional())
       .query(async ({ input }) => {
         const { getServiceLabourBands } = await import("./db");
         return getServiceLabourBands(input?.jobKey || "interimService");
       }),
-    forRegistration: publicProcedure
+    forRegistration: protectedProcedure
       .input(z.object({ registration: z.string(), years: z.number().optional() }))
       .query(async ({ input }) => {
         const { getPriceGuideForRegistration } = await import("./db");
         return getPriceGuideForRegistration(input.registration, { years: input.years });
       }),
-    get: publicProcedure
+    get: protectedProcedure
       .input(z.object({ years: z.number().optional() }).optional())
       .query(async ({ input }) => {
         const { getJobPriceGuide } = await import("./db");
@@ -115,14 +118,14 @@ export const appRouter = router({
   }),
 
   customers: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getAllCustomers } = await import("./db");
       return getAllCustomers();
     }),
 
     // Paged + server-searched list for the Customers page and assign dialogs — never ships the
     // whole table the way `list` does.
-    page: publicProcedure
+    page: protectedProcedure
       .input(z.object({ search: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() }).optional())
       .query(async ({ input }) => {
         const { getCustomersPage } = await import("./db");
@@ -132,7 +135,7 @@ export const appRouter = router({
     // Stop / re-enable MOT reminders for a customer (they replied STOP). The reminder
     // logic already skips opted-out customers, and the GA4 customer sync is insert-only so
     // this flag is never overwritten by a re-import.
-    setOptOut: publicProcedure
+    setOptOut: protectedProcedure
       .input(z.object({ customerId: z.number(), optOut: z.boolean() }))
       .mutation(async ({ input }) => {
         const { setCustomerOptOut, setCustomerOptIn } = await import("./db");
@@ -144,7 +147,7 @@ export const appRouter = router({
     // Trade accounts (dealers, bodyshops) own dozens of stock vehicles - per-vehicle MOT
     // reminders would hammer one personal mobile. This is softer than optedOut: only the
     // per-vehicle reminder stream stops; car-ready, appointment and reply messages still send.
-    setTradeAccount: publicProcedure
+    setTradeAccount: protectedProcedure
       .input(z.object({ customerId: z.number(), trade: z.boolean() }))
       .mutation(async ({ input }) => {
         const { getDb, addCustomerLog } = await import("./db");
@@ -165,7 +168,7 @@ export const appRouter = router({
       }),
 
     // The customer linked to a vehicle — used to pre-fill the "Email history" recipient.
-    byVehicleId: publicProcedure
+    byVehicleId: protectedProcedure
       .input(z.object({ vehicleId: z.number() }))
       .query(async ({ input }) => {
         const { getDb, getCustomerById } = await import("./db");
@@ -181,69 +184,69 @@ export const appRouter = router({
 
     /** Wider search for attaching an owner: also matches address, account number and any
      *  registration the customer has had, current or historical. */
-    searchForAttach: publicProcedure
+    searchForAttach: protectedProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
         const { searchCustomersForAttach } = await import("./db");
         return searchCustomersForAttach(input.query);
       }),
-    search: publicProcedure
+    search: protectedProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
         const { searchCustomers } = await import("./db");
         return searchCustomers(input.query);
       }),
-    byPhone: publicProcedure
+    byPhone: protectedProcedure
       .input(z.object({ phone: z.string() }))
       .query(async ({ input }) => {
         const { findCustomersByPhone } = await import("./db");
         return findCustomersByPhone(input.phone);
       }),
-    accountNumber: publicProcedure
+    accountNumber: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getCustomerAccountNumber } = await import("./db");
         return getCustomerAccountNumber(input.customerId);
       }),
 
-    contacts: publicProcedure
+    contacts: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getCustomerContacts } = await import("./db");
         return getCustomerContacts(input.customerId);
       }),
-    saveContacts: publicProcedure
+    saveContacts: protectedProcedure
       .input(z.object({ customerId: z.number(), contacts: z.array(z.object({ name: z.string().optional(), phone: z.string().optional(), email: z.string().optional() })) }))
       .mutation(async ({ input }) => {
         const { saveCustomerContacts } = await import("./db");
         return saveCustomerContacts(input.customerId, input.contacts);
       }),
 
-    duplicates: publicProcedure.query(async () => {
+    duplicates: protectedProcedure.query(async () => {
       const { getDuplicateGroups } = await import("./db");
       return getDuplicateGroups();
     }),
-    merge: publicProcedure
+    merge: protectedProcedure
       .input(z.object({ primaryId: z.number(), secondaryIds: z.array(z.number()).min(1), force: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { mergeCustomerRecords } = await import("./db");
         return mergeCustomerRecords(input.primaryId, input.secondaryIds, input.force);
       }),
-    dismissDuplicate: publicProcedure
+    dismissDuplicate: protectedProcedure
       .input(z.object({ phone: z.string() }))
       .mutation(async ({ input }) => {
         const { dismissDuplicateGroup } = await import("./db");
         return dismissDuplicateGroup(input.phone);
       }),
 
-    driveFromGarage: publicProcedure
+    driveFromGarage: protectedProcedure
       .input(z.object({ postcode: z.string() }))
       .query(async ({ input }) => {
         const { getDriveFromGarage } = await import("./db");
         return getDriveFromGarage(input.postcode);
       }),
 
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const { getCustomerById, getVehiclesForCustomerAcrossLinkedAccounts, getCustomerReminderTimeline, getServiceHistoryForCustomerAcrossLinkedAccounts, getLinkedCustomerAccounts } = await import("./db");
@@ -276,21 +279,21 @@ export const appRouter = router({
         };
       }),
 
-    getByPhone: publicProcedure
+    getByPhone: protectedProcedure
       .input(z.object({ phone: z.string() }))
       .query(async ({ input }) => {
         const { getCustomerWithVehiclesByPhone } = await import("./db");
         return getCustomerWithVehiclesByPhone(input.phone);
       }),
 
-    getByPhones: publicProcedure
+    getByPhones: protectedProcedure
       .input(z.object({ phones: z.array(z.string()) }))
       .query(async ({ input }) => {
         const { getCustomersWithVehiclesByPhones } = await import("./db");
         return getCustomersWithVehiclesByPhones(input.phones);
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         id: z.number(),
         name: z.string().optional(),
@@ -311,7 +314,7 @@ export const appRouter = router({
   }),
 
   documents: router({
-    list: publicProcedure
+    list: protectedProcedure
       .input(z.object({
         search: z.string().optional(),
         docType: z.string().optional(),
@@ -327,12 +330,12 @@ export const appRouter = router({
         return getDocuments(input ?? {});
       }),
 
-    stats: publicProcedure.query(async () => {
+    stats: protectedProcedure.query(async () => {
       const { getDocumentStats } = await import("./db");
       return getDocumentStats();
     }),
 
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const { getDocumentDetail } = await import("./db");
@@ -341,7 +344,7 @@ export const appRouter = router({
 
     // Images pasted onto a job (e.g. a screenshot of the 7zap exploded diagram for a part).
     // list omits the base64 payload; getAttachment fetches one image on demand.
-    listAttachments: publicProcedure
+    listAttachments: protectedProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -357,7 +360,7 @@ export const appRouter = router({
         })
           .from(docAttachments).where(eq(docAttachments.documentId, input.documentId)).orderBy(desc(docAttachments.createdAt));
       }),
-    getAttachment: publicProcedure
+    getAttachment: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -367,7 +370,7 @@ export const appRouter = router({
         if (!db) return null;
         return (await db.select().from(docAttachments).where(eq(docAttachments.id, input.id)).limit(1))[0] ?? null;
       }),
-    addAttachment: publicProcedure
+    addAttachment: protectedProcedure
       // data = base64 without the data: prefix. 4MB decoded cap keeps Neon rows sane.
       // mime text/uri-list = a saved LINK (e.g. the 7zap diagram deep link) — data is the base64'd URL.
       .input(z.object({ documentId: z.number(), name: z.string().min(1).max(200), mime: z.string().regex(/^image\/|^text\/uri-list$/), data: z.string().min(10) }))
@@ -381,7 +384,7 @@ export const appRouter = router({
         const [row] = await db.insert(docAttachments).values({ documentId: input.documentId, name: input.name, mime: input.mime, size, data: input.data }).returning({ id: docAttachments.id });
         return { id: row.id, size };
       }),
-    removeAttachment: publicProcedure
+    removeAttachment: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -393,21 +396,21 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    lookupVehicle: publicProcedure
+    lookupVehicle: protectedProcedure
       .input(z.object({ registration: z.string(), force: z.boolean().optional() }))
       .query(async ({ input }) => {
         const { lookupVehicleForReg } = await import("./db");
         return lookupVehicleForReg(input.registration, { force: input.force });
       }),
 
-    liveVehicleTech: publicProcedure
+    liveVehicleTech: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const { liveVehicleTech } = await import("./db");
         return liveVehicleTech(input.registration);
       }),
 
-    lookupAddress: publicProcedure
+    lookupAddress: protectedProcedure
       .input(z.object({ postcode: z.string() }))
       .query(async ({ input }) => {
         const { lookupAddresses } = await import("./addressApi");
@@ -419,12 +422,12 @@ export const appRouter = router({
         }
         return res;
       }),
-    addressLookupStats: publicProcedure.query(async () => {
+    addressLookupStats: protectedProcedure.query(async () => {
       const { getAddressLookupStats } = await import("./db");
       return getAddressLookupStats();
     }),
 
-    save: publicProcedure
+    save: protectedProcedure
       .input(z.object({
         id: z.number().optional(),
         docType: z.string().optional(),
@@ -474,51 +477,51 @@ export const appRouter = router({
         return saveDocument(input as any);
       }),
 
-    convert: publicProcedure
+    convert: protectedProcedure
       .input(z.object({ id: z.number(), toType: z.string() }))
       .mutation(async ({ input }) => {
         const { convertDocument } = await import("./db");
         return convertDocument(input.id, input.toType);
       }),
 
-    partsHistory: publicProcedure
+    partsHistory: protectedProcedure
       .input(z.object({ vehicleId: z.number() }))
       .query(async ({ input }) => {
         const { getVehiclePartsHistory } = await import("./db");
         return getVehiclePartsHistory(input.vehicleId);
       }),
-    partSuggest: publicProcedure
+    partSuggest: protectedProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
         const { suggestParts } = await import("./db");
         return suggestParts(input.query);
       }),
-    repairPricing: publicProcedure
+    repairPricing: protectedProcedure
       .input(z.object({ query: z.string().min(2), make: z.string().optional(), model: z.string().optional() }))
       .query(async ({ input }) => {
         const { getRepairPricing } = await import("./db");
         return getRepairPricing(input);
       }),
-    globalSearch: publicProcedure
+    globalSearch: protectedProcedure
       .input(z.object({ query: z.string(), full: z.boolean().optional() }))
       .query(async ({ input }) => {
         const { globalSearch } = await import("./db");
         return globalSearch(input.query, input.full);
       }),
-    customerLog: publicProcedure
+    customerLog: protectedProcedure
       .input(z.object({ customerId: z.number().optional(), vehicleId: z.number().optional() }))
       .query(async ({ input }) => {
         const { getCustomerLog } = await import("./db");
         return getCustomerLog(input.customerId, input.vehicleId);
       }),
-    motTests: publicProcedure
+    motTests: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const { getMOTHistory } = await import("./motApi");
         const data = await getMOTHistory(input.registration).catch(() => null);
         return data?.motTests || [];
       }),
-    addLog: publicProcedure
+    addLog: protectedProcedure
       .input(z.object({
         customerId: z.number().optional(), vehicleId: z.number().optional(), documentId: z.number().optional(),
         type: z.enum(["note", "email", "sms", "call", "letter", "system"]).optional(),
@@ -531,19 +534,19 @@ export const appRouter = router({
       }),
 
     // --- payments / receipts + issue invoice ---
-    payments: publicProcedure
+    payments: protectedProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
         const { getDocumentPayments } = await import("./db");
         return getDocumentPayments(input.documentId);
       }),
-    addPayment: publicProcedure
+    addPayment: protectedProcedure
       .input(z.object({ documentId: z.number(), customerId: z.number().nullable().optional(), method: z.string(), amount: z.number(), note: z.string().optional(), paymentDate: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { addPayment } = await import("./db");
         return addPayment(input);
       }),
-    deletePayment: publicProcedure
+    deletePayment: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { deletePayment } = await import("./db");
@@ -552,14 +555,14 @@ export const appRouter = router({
     /** Does this invoice's MOT line agree with the DVSA's record of when the test happened?
      *  Catches an MOT being billed weeks after it was carried out, which silently moves the
      *  sale into the wrong month. Returns null when there is nothing to check. */
-    motDateCheck: publicProcedure
+    motDateCheck: protectedProcedure
       .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
       .query(async ({ input }) => {
         const { checkMotDate } = await import("./services/motDateCheck");
         return checkMotDate(input.id, input.issueDate);
       }),
 
-    issue: publicProcedure
+    issue: protectedProcedure
       .input(z.object({ id: z.number(), issueDate: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { issueDocument } = await import("./db");
@@ -567,31 +570,31 @@ export const appRouter = router({
       }),
 
     // --- policy-excess insurance split ---
-    createExcess: publicProcedure
+    createExcess: protectedProcedure
       .input(z.object({ mainDocId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { createExcessInvoice } = await import("./db");
         return createExcessInvoice(input);
       }),
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
         const { deleteDocuments } = await import("./db");
         return deleteDocuments(input.ids);
       }),
-    archive: publicProcedure
+    archive: protectedProcedure
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
         const { archiveDocuments } = await import("./db");
         return archiveDocuments(input.ids);
       }),
-    unarchive: publicProcedure
+    unarchive: protectedProcedure
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
         const { unarchiveDocuments } = await import("./db");
         return unarchiveDocuments(input.ids);
       }),
-    updateExcess: publicProcedure
+    updateExcess: protectedProcedure
       .input(z.object({ docId: z.number(), excessNet: z.number(), discount: z.number().optional(), vatRegistered: z.boolean().optional(), fullVatToCustomer: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { updateExcessInvoice } = await import("./db");
@@ -600,7 +603,7 @@ export const appRouter = router({
   }),
 
   reports: router({
-    run: publicProcedure
+    run: protectedProcedure
       .input(z.object({
         reportId: z.string(),
         from: z.string(),
@@ -612,13 +615,13 @@ export const appRouter = router({
         const { runReport } = await import("./db");
         return runReport(input);
       }),
-    filters: publicProcedure.query(async () => {
+    filters: protectedProcedure.query(async () => {
       const { getReportFilters } = await import("./db");
       return getReportFilters();
     }),
     /** Run one report once per period, so several months come back separated rather than
      *  aggregated into a single range. One round trip instead of a query per month. */
-    runMulti: publicProcedure
+    runMulti: protectedProcedure
       .input(z.object({
         reportId: z.string(),
         periods: z.array(z.object({ from: z.string(), to: z.string(), label: z.string() })).min(1).max(12),
@@ -640,7 +643,7 @@ export const appRouter = router({
         return out;
       }),
     /** GA4's "Summary of Sales Issued", rebuilt over the web app's own documents. */
-    salesSummary: publicProcedure
+    salesSummary: protectedProcedure
       .input(z.object({
         from: z.string(), to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
@@ -650,7 +653,7 @@ export const appRouter = router({
         const { getSalesSummaryIssued } = await import("./db");
         return getSalesSummaryIssued(input);
       }),
-    salesSummaryPDF: publicProcedure
+    salesSummaryPDF: protectedProcedure
       .input(z.object({
         from: z.string(), to: z.string(),
         basedOn: z.enum(["issue", "created"]).optional(),
@@ -679,17 +682,17 @@ export const appRouter = router({
   }),
 
   descriptionPresets: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getDescriptionPresets } = await import("./db");
       return getDescriptionPresets();
     }),
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({ title: z.string(), body: z.string(), category: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { createDescriptionPreset } = await import("./db");
         return createDescriptionPreset(input);
       }),
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { deleteDescriptionPreset } = await import("./db");
@@ -699,13 +702,13 @@ export const appRouter = router({
   }),
 
   partsPriceList: router({
-    list: publicProcedure
+    list: protectedProcedure
       .input(z.object({ search: z.string().optional() }).optional())
       .query(async ({ input }) => {
         const { listPartsPriceList } = await import("./db");
         return listPartsPriceList(input?.search);
       }),
-    upsert: publicProcedure
+    upsert: protectedProcedure
       .input(z.object({
         id: z.number().optional(), partNumber: z.string().optional(), description: z.string().min(1),
         unitPrice: z.number(), vatRate: z.number().optional(), quantity: z.number().optional(), nominalCode: z.string().optional(),
@@ -715,7 +718,7 @@ export const appRouter = router({
         const { upsertPartsPriceListEntry } = await import("./db");
         return upsertPartsPriceListEntry(input);
       }),
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { deletePartsPriceListEntry } = await import("./db");
@@ -726,11 +729,11 @@ export const appRouter = router({
 
   // Push notifications to phones that installed the app to their home screen.
   push: router({
-    publicKey: publicProcedure.query(async () => {
+    publicKey: protectedProcedure.query(async () => {
       const { getPushPublicKey } = await import("./services/pushNotifications");
       return { publicKey: await getPushPublicKey() };
     }),
-    subscribe: publicProcedure
+    subscribe: protectedProcedure
       .input(z.object({
         endpoint: z.string().url(),
         p256dh: z.string(),
@@ -752,7 +755,7 @@ export const appRouter = router({
           });
         return { ok: true };
       }),
-    unsubscribe: publicProcedure
+    unsubscribe: protectedProcedure
       .input(z.object({ endpoint: z.string() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -763,7 +766,7 @@ export const appRouter = router({
         await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, input.endpoint));
         return { ok: true };
       }),
-    devices: publicProcedure.query(async () => {
+    devices: protectedProcedure.query(async () => {
       const { getDb } = await import("./db");
       const { pushSubscriptions } = await import("../drizzle/schema");
       const { desc } = await import("drizzle-orm");
@@ -774,7 +777,7 @@ export const appRouter = router({
         lastNotifiedAt: pushSubscriptions.lastNotifiedAt, createdAt: pushSubscriptions.createdAt,
       }).from(pushSubscriptions).orderBy(desc(pushSubscriptions.createdAt));
     }),
-    test: publicProcedure.mutation(async () => {
+    test: protectedProcedure.mutation(async () => {
       const { pushToAll } = await import("./services/pushNotifications");
       return pushToAll({
         title: "Test notification",
@@ -787,7 +790,7 @@ export const appRouter = router({
 
   // Text-on-inbound: who gets told when a customer replies on WhatsApp.
   staffAlerts: router({
-    get: publicProcedure.query(async () => {
+    get: protectedProcedure.query(async () => {
       const { getAppSetting } = await import("./db");
       const s: any = (await getAppSetting("staff_alerts")) || {};
       return {
@@ -798,7 +801,7 @@ export const appRouter = router({
         smsSenderConfigured: !!(s.fromNumber || process.env.TWILIO_SMS_NUMBER),
       };
     }),
-    save: publicProcedure
+    save: protectedProcedure
       .input(z.object({
         enabled: z.boolean(),
         phone: z.string().trim(),
@@ -811,7 +814,7 @@ export const appRouter = router({
         return { ok: true };
       }),
     // Send a test text to the configured number so it can be proven end-to-end.
-    test: publicProcedure.mutation(async () => {
+    test: protectedProcedure.mutation(async () => {
       const { notifyInboundMessage } = await import("./services/staffAlerts");
       return notifyInboundMessage({
         customerId: null,
@@ -825,13 +828,13 @@ export const appRouter = router({
   /** Tell a customer their car is ready to collect. */
   carReady: router({
     /** Everything the confirm dialog needs: who it's going to, and the wording to send. */
-    preview: publicProcedure
+    preview: protectedProcedure
       .input(z.object({ docId: z.number() }))
       .query(async ({ input }) => {
         const { getCarReadyPreview } = await import("./services/carReady");
         return getCarReadyPreview(input.docId);
       }),
-    send: publicProcedure
+    send: protectedProcedure
       .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1) }))
       .mutation(async ({ input }) => {
         const { sendCarReady } = await import("./services/carReady");
@@ -840,12 +843,12 @@ export const appRouter = router({
   }),
 
   email: router({
-    getSettings: publicProcedure.query(async () => {
+    getSettings: protectedProcedure.query(async () => {
       const { getEmailSettings } = await import("./services/email");
       const { pass, ...safe } = (await getEmailSettings()) as any;
       return { ...safe, hasPassword: !!pass };
     }),
-    saveSettings: publicProcedure
+    saveSettings: protectedProcedure
       .input(z.object({
         fromAddress: z.string().optional(), fromName: z.string().optional(), copyTo: z.string().optional(),
         host: z.string().optional(), port: z.number().optional(), secure: z.boolean().optional(),
@@ -855,11 +858,11 @@ export const appRouter = router({
         const { saveEmailSettings } = await import("./services/email");
         return saveEmailSettings(input);
       }),
-    test: publicProcedure.mutation(async () => {
+    test: protectedProcedure.mutation(async () => {
       const { testEmailConnection } = await import("./services/email");
       return testEmailConnection();
     }),
-    sendDocument: publicProcedure
+    sendDocument: protectedProcedure
       .input(z.object({ docId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional() }))
       .mutation(async ({ input }) => {
         const { sendDocumentEmail } = await import("./services/email");
@@ -879,7 +882,7 @@ export const appRouter = router({
         } catch { /* logging must never block the send */ }
         return result;
       }),
-    sendVehicleHistory: publicProcedure
+    sendVehicleHistory: protectedProcedure
       .input(z.object({ vehicleId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendVehicleHistoryEmail } = await import("./services/email");
@@ -902,7 +905,7 @@ export const appRouter = router({
         } catch { /* logging must never block the send */ }
         return result;
       }),
-    sendCustomerHistory: publicProcedure
+    sendCustomerHistory: protectedProcedure
       .input(z.object({ customerId: z.number(), to: z.string(), cc: z.string().optional(), subject: z.string().optional(), message: z.string().optional(), includeInvoices: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendCustomerHistoryEmail } = await import("./services/email");
@@ -924,14 +927,14 @@ export const appRouter = router({
   }),
 
   vehicles: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getAllVehicles } = await import("./db");
       return getAllVehicles();
     }),
 
     // Cache the Autodata vehicle id (e.g. "MER44336") once resolved, so the
     // "Autodata QR" deep-link is instant on subsequent opens and stays stable.
-    setAutodataMid: publicProcedure
+    setAutodataMid: protectedProcedure
       .input(z.object({ vehicleId: z.number(), mid: z.string().min(1).max(64) }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -945,14 +948,14 @@ export const appRouter = router({
 
     // Free, time-sensitive DVLA refresh — called automatically when a vehicle page loads so
     // MOT/tax never shows a stale cached status (see refreshVehicleMotTax in db.ts).
-    refreshMotTax: publicProcedure
+    refreshMotTax: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const { refreshVehicleMotTax } = await import("./db");
         return refreshVehicleMotTax(input.registration);
       }),
 
-    getByRegistration: publicProcedure
+    getByRegistration: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const { getVehicleByRegistration, getCustomerById, getRemindersByVehicleId, getLatestVehicleMileage } = await import("./db");
@@ -989,32 +992,32 @@ export const appRouter = router({
       }),
     /** Plate transferred to a different car: retire it from the old record so the new vehicle
      *  can take it. See retirePlateFromVehicle — the old car keeps all of its history. */
-    retirePlate: publicProcedure
+    retirePlate: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .mutation(async ({ input }) => {
         const { retirePlateFromVehicle } = await import("./db");
         return retirePlateFromVehicle(input.registration);
       }),
-    lookupExternal: publicProcedure
+    lookupExternal: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const { getVehicleDetails } = await import("./dvlaApi");
         const data = await getVehicleDetails(input.registration);
         return data ? { make: data.make, model: data.model } : null;
       }),
-    search: publicProcedure
+    search: protectedProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
         const { searchVehiclesByRegistration } = await import("./db");
         return searchVehiclesByRegistration(input.query);
       }),
-    searchForJob: publicProcedure
+    searchForJob: protectedProcedure
       .input(z.object({ query: z.string() }))
       .query(async ({ input }) => {
         const { searchVehiclesForJob } = await import("./db");
         return searchVehiclesForJob(input.query);
       }),
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const { getDb, getCustomerById, getRemindersByVehicleId, getLatestVehicleMileage, getServiceHistoryByVehicleId } = await import("./db");
@@ -1048,14 +1051,14 @@ export const appRouter = router({
           }
         };
       }),
-    listByCustomer: publicProcedure
+    listByCustomer: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getVehiclesByCustomerId } = await import("./db");
         return getVehiclesByCustomerId(input.customerId);
       }),
 
-    fetchTechnicalData: publicProcedure
+    fetchTechnicalData: protectedProcedure
       .input(z.object({
         registration: z.string(),
         force: z.boolean().optional(),
@@ -1105,7 +1108,7 @@ export const appRouter = router({
     // On-demand tyre pressures for vehicles fetched before tyres were stored. New deep
     // fetches include them automatically; this fills the gap with ONE adjustments call,
     // cached into comprehensiveTechnicalData so it never re-fetches.
-    fetchTyrePressures: publicProcedure
+    fetchTyrePressures: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .mutation(async ({ input }) => {
         const { getDb, getVehicleByRegistration } = await import("./db");
@@ -1125,7 +1128,7 @@ export const appRouter = router({
         return { tyres, cached: false };
       }),
 
-    syncUKVD: publicProcedure
+    syncUKVD: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -1165,7 +1168,7 @@ export const appRouter = router({
         return { success: true, vehicleId: dbVeh.id };
       }),
 
-    getRepairTimesByCategory: publicProcedure
+    getRepairTimesByCategory: protectedProcedure
       .input(z.object({
         registration: z.string(),
         repid: z.string(),
@@ -1199,7 +1202,7 @@ export const appRouter = router({
   }),
 
   reminders: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getVehiclesWithCustomersForReminders, getDb } = await import("./db");
       const vehiclesWithCustomers = await getVehiclesWithCustomersForReminders();
       const db = await getDb();
@@ -1392,7 +1395,7 @@ export const appRouter = router({
         });
     }),
 
-    checkStatusBatch: publicProcedure
+    checkStatusBatch: protectedProcedure
       .input(z.object({ registrations: z.array(z.string()) }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -1472,7 +1475,7 @@ export const appRouter = router({
         return result;
       }),
 
-    scanFromImage: publicProcedure
+    scanFromImage: protectedProcedure
       .input(z.object({ imageData: z.string() }))
       .mutation(async ({ input }) => {
         const { invokeLLM } = await import("./_core/llm");
@@ -1701,7 +1704,7 @@ export const appRouter = router({
         return results;
       }),
 
-    createManualReminder: publicProcedure
+    createManualReminder: protectedProcedure
       .input(z.object({
         registration: z.string(),
         dueDate: z.string(),
@@ -1832,7 +1835,7 @@ export const appRouter = router({
         };
       }),
 
-    processImage: publicProcedure
+    processImage: protectedProcedure
       .input(z.object({ imageData: z.string() }))
       .mutation(async ({ input }) => {
         const { invokeLLM } = await import("./_core/llm");
@@ -1962,7 +1965,7 @@ export const appRouter = router({
         };
       }),
 
-    lookupMOT: publicProcedure
+    lookupMOT: protectedProcedure
       .input(z.object({ 
         registration: z.string(),
         checkType: z.enum(["normal", "full"]).optional().default("normal")
@@ -2087,7 +2090,7 @@ export const appRouter = router({
         };
       }),
 
-    unlinkVehicle: publicProcedure
+    unlinkVehicle: protectedProcedure
       .input(z.object({ vehicleId: z.number() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -2100,7 +2103,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    assignVehicle: publicProcedure
+    assignVehicle: protectedProcedure
       .input(z.object({ vehicleId: z.number(), customerId: z.number() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -2118,7 +2121,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         id: z.number(),
         type: z.enum(["MOT", "Service", "Cambelt", "Other"]).optional(),
@@ -2152,7 +2155,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { deleteReminder } = await import("./db");
@@ -2160,7 +2163,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    sendWhatsApp: publicProcedure
+    sendWhatsApp: protectedProcedure
       .input(z.object({
         id: z.number(),
         phoneNumber: z.string(),
@@ -2421,7 +2424,7 @@ export const appRouter = router({
       }),
 
     // Auto-generate reminders from vehicles
-    generateFromVehicles: publicProcedure.query(async () => {
+    generateFromVehicles: protectedProcedure.query(async () => {
       const { getVehiclesWithCustomersForReminders, getDb } = await import("./db");
 
       const vehiclesWithCustomers = await getVehiclesWithCustomersForReminders();
@@ -2582,7 +2585,7 @@ export const appRouter = router({
       });
     }),
 
-    bulkVerifyMOT: publicProcedure
+    bulkVerifyMOT: protectedProcedure
       .input(z.object({
         registrations: z.array(z.string()),
       }))
@@ -2656,7 +2659,7 @@ export const appRouter = router({
         return results;
       }),
 
-    bookMOT: publicProcedure
+    bookMOT: protectedProcedure
       .input(z.object({
         vehicleId: z.number(),
         registration: z.string(),
@@ -2671,7 +2674,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    markResponded: publicProcedure
+    markResponded: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { updateReminder } = await import("./db");
@@ -2683,7 +2686,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    updateFollowUpFlags: publicProcedure.mutation(async () => {
+    updateFollowUpFlags: protectedProcedure.mutation(async () => {
       const { getDb } = await import("./db");
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -2711,12 +2714,12 @@ export const appRouter = router({
 
   // Database overview
   database: router({
-    getAllVehiclesWithCustomers: publicProcedure.query(async () => {
+    getAllVehiclesWithCustomers: protectedProcedure.query(async () => {
       const { getAllVehiclesWithCustomers } = await import("./db");
       return await getAllVehiclesWithCustomers();
     }),
 
-    bulkUpdateMOT: publicProcedure
+    bulkUpdateMOT: protectedProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()).optional(), // If empty, use limit
         limit: z.number().optional(), // Number of vehicles to update if no IDs provided
@@ -2861,7 +2864,7 @@ export const appRouter = router({
         };
       }),
 
-    markMOTBooked: publicProcedure
+    markMOTBooked: protectedProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
         date: z.string().nullable(), // The booked date, or null to clear it
@@ -2884,7 +2887,7 @@ export const appRouter = router({
       }),
 
     // Diagnostic endpoint to investigate vehicles without MOT data
-    diagnoseNoMOT: publicProcedure.query(async () => {
+    diagnoseNoMOT: protectedProcedure.query(async () => {
       const { getDb } = await import("./db");
       const { vehicles } = await import("../drizzle/schema");
       const { isNull, sql } = await import("drizzle-orm");
@@ -3006,7 +3009,7 @@ export const appRouter = router({
     }),
 
     // Bulk delete vehicles based on diagnostic categories
-    deleteCategorizedVehicles: publicProcedure
+    deleteCategorizedVehicles: protectedProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
         skipIfHistoryExists: z.boolean().default(true),
@@ -3032,7 +3035,7 @@ export const appRouter = router({
         };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({
         vehicleIds: z.array(z.number()),
       }))
@@ -3046,7 +3049,7 @@ export const appRouter = router({
   }),
 
   // Test WhatsApp/SMS
-  testWhatsApp: publicProcedure
+  testWhatsApp: protectedProcedure
     .input(z.object({
       phoneNumber: z.string(),
       message: z.string().optional(),
@@ -3104,19 +3107,19 @@ export const appRouter = router({
 
   // Reminder Logs
   logs: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getAllReminderLogs } = await import("./db");
       return getAllReminderLogs();
     }),
 
-    byCustomer: publicProcedure
+    byCustomer: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getReminderLogsByCustomerId } = await import("./db");
         return getReminderLogsByCustomerId(input.customerId);
       }),
 
-    resendFailed: publicProcedure
+    resendFailed: protectedProcedure
       .input(z.object({ logIds: z.array(z.number()) }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -3220,7 +3223,7 @@ export const appRouter = router({
   // Customer Messages
   // Phone number cleanup
   cleanup: router({
-    phoneNumbers: publicProcedure
+    phoneNumbers: protectedProcedure
       .input(z.object({ dryRun: z.boolean().default(true) }))
       .mutation(async ({ input }) => {
         const { cleanupCustomerPhoneNumbers } = await import("./scripts/cleanupPhoneNumbers");
@@ -3229,19 +3232,19 @@ export const appRouter = router({
   }),
 
   messages: router({
-    list: publicProcedure.query(async () => {
+    list: protectedProcedure.query(async () => {
       const { getAllCustomerMessages } = await import("./db");
       return getAllCustomerMessages();
     }),
 
-    byCustomer: publicProcedure
+    byCustomer: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getCustomerMessagesByCustomerId } = await import("./db");
         return getCustomerMessagesByCustomerId(input.customerId);
       }),
 
-    markAsRead: publicProcedure
+    markAsRead: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { markMessageAsRead } = await import("./db");
@@ -3249,12 +3252,12 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    getUnreadCount: publicProcedure.query(async () => {
+    getUnreadCount: protectedProcedure.query(async () => {
       const { getUnreadMessageCount } = await import("./db");
       return getUnreadMessageCount();
     }),
 
-    markAllAsRead: publicProcedure.mutation(async () => {
+    markAllAsRead: protectedProcedure.mutation(async () => {
       const { markAllMessagesAsRead } = await import("./db");
       await markAllMessagesAsRead();
       return { success: true };
@@ -3263,13 +3266,13 @@ export const appRouter = router({
 
   conversations: router({
     // Get all conversation threads
-    getThreads: publicProcedure.query(async () => {
+    getThreads: protectedProcedure.query(async () => {
       const { getConversationThreads } = await import("./conversations");
       return getConversationThreads();
     }),
 
     // Get messages for a specific conversation
-    getMessages: publicProcedure
+    getMessages: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getConversationMessages } = await import("./conversations");
@@ -3277,7 +3280,7 @@ export const appRouter = router({
       }),
 
     // Mark conversation as read
-    markAsRead: publicProcedure
+    markAsRead: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .mutation(async ({ input }) => {
         const { markConversationAsRead } = await import("./conversations");
@@ -3286,7 +3289,7 @@ export const appRouter = router({
       }),
 
     // Send reply in conversation
-    sendReply: publicProcedure
+    sendReply: protectedProcedure
       .input(z.object({
         customerId: z.number(),
         phoneNumber: z.string(),
@@ -3364,7 +3367,7 @@ export const appRouter = router({
       }),
 
     /** How long is left to answer on WhatsApp before a reply has to go by SMS. */
-    replyWindow: publicProcedure
+    replyWindow: protectedProcedure
       .input(z.object({ customerId: z.number() }))
       .query(async ({ input }) => {
         const { getReplyWindow } = await import("./services/customerReply");
@@ -3378,7 +3381,7 @@ export const appRouter = router({
      *  vehicle and then reuses getServiceHistoryByVehicleId, so it inherits that function's care
      *  over GA4-spaced vs DVLA-solid registrations and over previous holders of a cherished plate.
      *  Returns [] when the plate is unknown — a new car legitimately has no history. */
-    getByRegistration: publicProcedure
+    getByRegistration: protectedProcedure
       .input(z.object({ registration: z.string() }))
       .query(async ({ input }) => {
         const norm = input.registration.toUpperCase().replace(/\s+/g, "");
@@ -3393,34 +3396,34 @@ export const appRouter = router({
         return hit ? await getServiceHistoryByVehicleId(hit.id) : [];
       }),
 
-    getByVehicleId: publicProcedure
+    getByVehicleId: protectedProcedure
       .input(z.object({ vehicleId: z.number() }))
       .query(async ({ input }) => {
         const { getServiceHistoryByVehicleId } = await import("./db");
         return getServiceHistoryByVehicleId(input.vehicleId);
       }),
-    getDetailedByVehicleId: publicProcedure
+    getDetailedByVehicleId: protectedProcedure
       .input(z.object({ vehicleId: z.number() }))
       .query(async ({ input }) => {
         const { getDetailedServiceHistoryByVehicleId } = await import("./db");
         return getDetailedServiceHistoryByVehicleId(input.vehicleId);
       }),
 
-    getById: publicProcedure
+    getById: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
         const { getServiceDocumentById } = await import("./db");
         return getServiceDocumentById(input.id);
       }),
 
-    getLineItems: publicProcedure
+    getLineItems: protectedProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
         const { getServiceLineItemsByDocumentId } = await import("./db");
         return getServiceLineItemsByDocumentId(input.documentId);
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         doc: z.any(),
         items: z.array(z.any()),
@@ -3439,7 +3442,7 @@ export const appRouter = router({
         return result;
       }),
 
-    update: publicProcedure
+    update: protectedProcedure
       .input(z.object({
         id: z.number(),
         doc: z.any(),
@@ -3459,7 +3462,7 @@ export const appRouter = router({
         return result;
       }),
 
-    getRichPDF: publicProcedure
+    getRichPDF: protectedProcedure
       .input(z.object({ documentId: z.number() }))
       .query(async ({ input }) => {
         const { getRichPDF, logDocEvent } = await import("./db");
@@ -3468,7 +3471,7 @@ export const appRouter = router({
         return { content, filename };
       }),
 
-    getServiceHistoryPDF: publicProcedure
+    getServiceHistoryPDF: protectedProcedure
       .input(z.object({ vehicleId: z.number(), includeInvoices: z.boolean().optional() }))
       .query(async ({ input }) => {
         const { getServiceHistoryPDF } = await import("./db");
@@ -3476,7 +3479,7 @@ export const appRouter = router({
         return { content, filename };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { deleteServiceDocument } = await import("./db");
@@ -3486,7 +3489,7 @@ export const appRouter = router({
 
   // Appointments Router
   appointments: router({
-    listByDate: publicProcedure
+    listByDate: protectedProcedure
       .input(z.object({ date: z.string() })) // ISO string YYYY-MM-DD format
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -3520,7 +3523,7 @@ export const appRouter = router({
         }));
       }),
 
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         vehicleId: z.number().optional(),
         customerId: z.number().optional(),
@@ -3590,7 +3593,7 @@ export const appRouter = router({
         return { success: true, id: result[0].id };
       }),
 
-    updatePosition: publicProcedure
+    updatePosition: protectedProcedure
       .input(z.object({
         id: z.number(),
         bayId: z.string(),
@@ -3621,7 +3624,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    updateDetails: publicProcedure
+    updateDetails: protectedProcedure
       .input(z.object({
         id: z.number(),
         status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).optional(),
@@ -3694,7 +3697,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    updateManyDetails: publicProcedure
+    updateManyDetails: protectedProcedure
       .input(z.array(z.object({
         id: z.number(),
         startTime: z.string().optional().nullable(),
@@ -3723,7 +3726,7 @@ export const appRouter = router({
         return { success: true, count: results.length };
       }),
 
-    delete: publicProcedure
+    delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const { getDb } = await import("./db");

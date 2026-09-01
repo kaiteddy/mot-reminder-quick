@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Link } from "wouter";
 import { ArrowLeft, Home } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -147,7 +148,7 @@ const parseRepairTimes = (html: string): ParsedRepairData => {
     return { vehicleDetails, engineDetails, groups };
 };
 
-export default function WorkshopTechnicalData() {
+function WorkshopTechnicalDataInner() {
     const [vrm, setVrm] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -562,4 +563,12 @@ export default function WorkshopTechnicalData() {
             </div>
         </div>
     );
+}
+
+export default function WorkshopTechnicalData(props: any) {
+  return (
+    <RequireLogin>
+      <WorkshopTechnicalDataInner {...props} />
+    </RequireLogin>
+  );
 }

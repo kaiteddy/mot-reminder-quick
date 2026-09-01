@@ -1,4 +1,4 @@
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as cp from "child_process";
@@ -31,7 +31,7 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
 
 export const omnipartRouter = router({
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
-  lookupVrm: publicProcedure
+  lookupVrm: protectedProcedure
     .input(z.object({
       vrm: z.string(),
       token: z.string()
@@ -132,7 +132,7 @@ export const omnipartRouter = router({
     }),
 
   // Get matching parts based on vehicleId and search query / category
-  getPartsInfo: publicProcedure
+  getPartsInfo: protectedProcedure
     .input(z.object({
       vehicleId: z.string().optional(),
       vrm: z.string().optional(),

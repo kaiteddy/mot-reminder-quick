@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,7 @@ function LineRows({ rows, kind, upd, rm, add }: {
   );
 }
 
-export default function WorkshopJobSheet() {
+function WorkshopJobSheetInner() {
   const params = new URLSearchParams(window.location.search);
   const reg = (params.get("reg") || "").replace(/\s+/g, "").toUpperCase();
   const motMileage = (params.get("mileage") || "").replace(/\D/g, ""); // last odometer from MOT, passed by the workshop screen
@@ -451,5 +452,13 @@ export default function WorkshopJobSheet() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function WorkshopJobSheet(props: any) {
+  return (
+    <RequireLogin>
+      <WorkshopJobSheetInner {...props} />
+    </RequireLogin>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { RequireLogin } from "@/components/RequireLogin";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,7 +29,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-export default function WorkshopTechnicalHub() {
+function WorkshopTechnicalHubInner() {
     const [registration, setRegistration] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [repairHistory, setRepairHistory] = useState<{ id: string; text: string; data?: any }[]>([]);
@@ -660,4 +661,12 @@ export default function WorkshopTechnicalHub() {
             </div>
         </div>
     );
+}
+
+export default function WorkshopTechnicalHub(props: any) {
+  return (
+    <RequireLogin>
+      <WorkshopTechnicalHubInner {...props} />
+    </RequireLogin>
+  );
 }
