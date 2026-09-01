@@ -38,18 +38,23 @@ export function priceListMatch(desc: string, priceList: { description: string; u
   return hit ? { unitPrice: Number(hit.unitPrice), vatRate: hit.vatRate != null ? Number(hit.vatRate) : undefined } : {};
 }
 
-// Fallback only. Service labour is banded by engine size in the serviceLabourBands table —
-// these two tiers apply only while that query hasn't answered.
-export const SMALL_SERVICE_LABOUR_CC_CUTOFF = 2000;
-export const SMALL_SERVICE_LABOUR_SMALL = 124;
-export const SMALL_SERVICE_LABOUR_LARGE = 144;
+// Fallback only. Service labour is banded by engine size in the serviceLabourBands table — this
+// mirrors those four bands so that a slow or failed query quotes the same figure the table would,
+// rather than a coarser one. The old two-tier fallback (under/over 2000cc) quoted £124 for
+// everything below 2.0L, so a 1998cc car came out £20 light against its real £144 band.
+export const SERVICE_LABOUR_FALLBACK_BANDS: { maxCC: number | null; label: string; labour: number }[] = [
+  { maxCC: 999, label: "Up to 999cc", labour: 124 },
+  { maxCC: 1500, label: "1.0L – 1.5L", labour: 134 },
+  { maxCC: 2000, label: "Over 1.5L – 2.0L", labour: 144 },
+  { maxCC: null, label: "Over 2.0L", labour: 164 },
+];
 
 /** Banded small-service labour: bands are ordered by their ceiling with the last open-ended,
  * so the first whose maxCC the engine fits under is the right one. */
 export function bandedServiceLabour(cc: number, bands: any[] | undefined): number {
-  if (!bands?.length) return cc < SMALL_SERVICE_LABOUR_CC_CUTOFF ? SMALL_SERVICE_LABOUR_SMALL : SMALL_SERVICE_LABOUR_LARGE;
-  const hit = bands.find((b) => b.maxCC == null || cc <= Number(b.maxCC));
-  return Number(hit?.labour ?? SMALL_SERVICE_LABOUR_SMALL);
+  const use = bands?.length ? bands : SERVICE_LABOUR_FALLBACK_BANDS;
+  const hit = use.find((b: any) => b.maxCC == null || cc <= Number(b.maxCC));
+  return Number(hit?.labour ?? SERVICE_LABOUR_FALLBACK_BANDS[SERVICE_LABOUR_FALLBACK_BANDS.length - 1].labour);
 }
 
 /** Oil + aircon facts from a vehicle row's SWS tech data (vehicles.comprehensiveTechnicalData).

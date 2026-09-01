@@ -5700,39 +5700,66 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   const fullStats = guide.sizes.find((b: any) => b.band === band)?.cats?.fullService || guide.all.fullService;
   const MOT_PRICE = 50;
 
+  // THE PRICE TO QUOTE. Banded labour is a decided rate; the parts figure is what cars this size
+  // have actually needed. Keeping the two apart matters: quoting the historical median instead
+  // undercharges a 1998cc car by £23, because the history is full of jobs done at the old flat
+  // £124 labour rather than this engine's £144 band.
+  const quote = ourLabour && interimStats
+    ? (() => {
+        const labour = Number(ourLabour.labour);
+        const parts = Math.round(interimStats.parts / 1.2);
+        const net = labour + parts;
+        return {
+          bandLabel: ourLabour.label,
+          labour, parts, net,
+          gross: Math.round(net * 1.2),
+          withMot: Math.round(net * 1.2) + MOT_PRICE,
+          motPrice: MOT_PRICE,
+        };
+      })()
+    : null;
+
+  // `decided` separates a rate we set from an average of what we happened to charge. Only the
+  // interim service has a band in serviceLabourBands; everything else is history alone, and the
+  // page has to say so rather than presenting both in the same voice.
   const options = [
     {
       key: "mot",
       name: "MOT only",
       price: MOT_PRICE,
       priceExVat: MOT_PRICE,
+      decided: true,
       note: "No VAT on an MOT test",
       includes: ["MOT test", "Written pass or failure sheet with any advisories"],
     },
     {
       key: "interimService",
-      name: "Interim service (small)",
-      price: interimStats?.median ?? null,
-      priceExVat: interimStats ? Math.round(interimStats.median / 1.2) : null,
-      note: ourLabour ? `Labour £${ourLabour.labour} + parts` : null,
+      name: "Interim service",
+      price: quote ? quote.gross : interimStats?.median ?? null,
+      priceExVat: quote ? quote.net : interimStats ? Math.round(interimStats.median / 1.2) : null,
+      decided: !!quote,
+      note: quote ? `Labour £${quote.labour} (${quote.bandLabel}) + parts £${quote.parts}` : null,
       includes: ["Engine oil replaced", "Oil filter replaced", "Sump plug seal where needed", "Levels topped up and vehicle checked over"],
     },
     {
       key: "fullService",
-      name: "Full service (large)",
+      name: "Full service",
       price: fullStats?.median ?? null,
       priceExVat: fullStats ? Math.round(fullStats.median / 1.2) : null,
+      decided: false,
       note: "Everything in the interim, plus the two filters",
       includes: ["Everything in the interim service", "Air filter replaced", "Pollen / cabin filter replaced"],
     },
   ];
 
   // The combinations people actually ask for, so the difference is a number and not mental
-  // arithmetic on the phone.
+  // arithmetic on the phone. The interim leg uses the quote when there is one, so the combo can
+  // never disagree with the headline price sitting directly above it.
+  const interimPrice = quote ? quote.gross : interimStats?.median ?? null;
   const combos = [
-    interimStats ? { name: "MOT + interim service", price: interimStats.median + MOT_PRICE } : null,
-    fullStats ? { name: "MOT + full service", price: fullStats.median + MOT_PRICE } : null,
-    interimStats && fullStats ? { name: "Difference: interim → full", price: fullStats.median - interimStats.median, isDiff: true } : null,
+    interimPrice != null ? { name: "MOT + interim service", price: interimPrice + MOT_PRICE, decided: !!quote } : null,
+    fullStats ? { name: "MOT + full service", price: fullStats.median + MOT_PRICE, decided: false } : null,
+    interimPrice != null && fullStats ? { name: "Difference: interim → full", price: fullStats.median - interimPrice, isDiff: true, decided: false } : null,
   ].filter(Boolean);
 
   return {
@@ -5742,6 +5769,7 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     vehicle: { make: vehicle.make, model: vehicle.model, engineCC: cc },
     band,
     ourLabour,
+    quote,
     labourBands,
     // Full-service labour median for this size band, from what these jobs ACTUALLY carried —
     // there is no fullService row in serviceLabourBands, so the guide IS its price source.

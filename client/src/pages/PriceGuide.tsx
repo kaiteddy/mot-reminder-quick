@@ -190,41 +190,52 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
             {(data as any)?.source === "dvla" && <span className="text-[11px] text-slate-400">(not one of ours — looked up at DVLA)</span>}
           </div>
 
-          {/* Our banded labour price comes first: it's the figure to quote, decided rather than
-              derived. The history below it says what these jobs have actually come to. */}
-          {(data as any)?.ourLabour && (
+          {/* TWO BLOCKS, AND THEY MUST NOT LOOK ALIKE. The top one is what to charge; everything
+              below is what these jobs have historically come to. Rendering both as bold prices in
+              the same style is what made this page unreadable — the same interim service showed as
+              £255 up here and £232 below, and nothing said which to quote. */}
+          {(data as any)?.quote && (
             <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Interim service — quote this</div>
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-0.5">
-                <span className="text-[28px] font-bold leading-none text-emerald-900">{money((data as any).ourLabour.labour)}</span>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Quote this</div>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
+                <span className="text-[30px] font-bold leading-none text-emerald-900">{money((data as any).quote.gross)}</span>
                 <span className="text-sm text-emerald-800">
-                  + VAT = <strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2))}</strong> labour, plus parts
+                  interim service, inc VAT — <strong>{money((data as any).quote.withMot)}</strong> with the MOT
                 </span>
-                <span className="text-[11px] text-emerald-700">({(data as any).ourLabour.label} · {v?.engineCC}cc)</span>
               </div>
-              {prices.interimService?.parts != null && (
-                <div className="text-[11px] text-emerald-800/80 mt-1">
-                  Parts on a car this size have typically run {money(Math.round(exVat(prices.interimService.parts)))} + VAT — so around{" "}
-                  <strong>{money(Math.round(Number((data as any).ourLabour.labour) + exVat(prices.interimService.parts)))}</strong> + VAT
-                  {" "}(<strong>{money(Math.round(Number((data as any).ourLabour.labour) * 1.2 + prices.interimService.parts))}</strong> inc VAT) all in, MOT on top.
-                </div>
-              )}
+              <div className="text-[12px] text-emerald-900/90 mt-1.5">
+                Labour <strong>{money((data as any).quote.labour)}</strong> ({(data as any).quote.bandLabel} · {v?.engineCC}cc)
+                {" + "}parts <strong>{money((data as any).quote.parts)}</strong>
+                {" = "}<strong>{money((data as any).quote.net)}</strong> + VAT
+                {" · "}MOT {money((data as any).quote.motPrice)}, no VAT
+              </div>
+              <div className="text-[11px] text-emerald-800/70 mt-1">
+                Labour is your set rate for this engine size. Parts is what cars this size have actually needed —
+                swap in the real figure once the car is on a ramp.
+              </div>
             </div>
           )}
 
-          {/* The three things people ask to compare, side by side with what each one buys. The
-              "what's the difference?" question follows "how much?" every single time, so the
-              answer is on the page rather than in someone's head. */}
+          {/* Options. Anything without a decided rate is labelled, so a historical median is never
+              mistaken for a price you set. */}
           {(data as any)?.options && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {((data as any).options as any[]).map((o) => (
-                <div key={o.key} className="rounded-lg border border-slate-200 bg-white p-3 flex flex-col">
-                  <div className="text-[12px] font-semibold text-slate-700">{o.name}</div>
+                <div key={o.key} className={`rounded-lg border p-3 flex flex-col ${o.decided ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-white"}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="text-[12px] font-semibold text-slate-700">{o.name}</div>
+                    <div className={`text-[9px] uppercase tracking-wide ${o.decided ? "text-emerald-700" : "text-amber-700"}`}>
+                      {o.decided ? "set price" : "typical"}
+                    </div>
+                  </div>
                   <div className="text-[26px] font-bold leading-tight mt-0.5">{o.price != null ? money(o.price) : "—"}</div>
                   {o.priceExVat != null && o.key !== "mot" && (
                     <div className="text-[11px] text-slate-500">{money(o.priceExVat)} + VAT</div>
                   )}
                   {o.note && <div className="text-[10px] text-slate-400 mt-0.5">{o.note}</div>}
+                  {!o.decided && o.key !== "mot" && (
+                    <div className="text-[10px] text-amber-700/80 mt-0.5">no set rate — this is what it has averaged</div>
+                  )}
                   <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">
                     {o.includes.map((line: string) => (
                       <li key={line} className="flex gap-1.5"><span className="text-emerald-600">✓</span><span>{line}</span></li>
@@ -238,13 +249,21 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
           {(data as any)?.combos?.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {((data as any).combos as any[]).map((c) => (
-                <div key={c.name} className={`rounded-lg border px-3 py-2 ${c.isDiff ? "border-slate-300 bg-slate-50" : "border-violet-200 bg-violet-50"}`}>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-500">{c.name}</div>
+                <div key={c.name} className={`rounded-lg border px-3 py-2 ${c.isDiff ? "border-slate-300 bg-slate-50" : c.decided ? "border-emerald-200 bg-emerald-50" : "border-violet-200 bg-violet-50"}`}>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                    {c.name}{!c.decided && !c.isDiff ? " (typical)" : ""}
+                  </div>
                   <div className="text-[18px] font-bold leading-tight">{c.isDiff ? `+${money(c.price)}` : money(c.price)}</div>
                 </div>
               ))}
             </div>
           )}
+
+          {/* Everything from here down is history, and says so once, plainly. */}
+          <div className="flex items-baseline gap-2 pt-1">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What we've charged before</div>
+            <div className="text-[11px] text-slate-400">averages of past invoices — not a price list</div>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {/* MOT is a fixed charge, so it's stated rather than averaged. */}
@@ -276,7 +295,7 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
             })}
           </div>
           <p className="text-[11px] text-slate-500">
-            Typical for a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car, {vat === "inc" ? "VAT included" : "excluding VAT"} — labour plus the parts that car takes. MOT is on top.
+            What a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car has averaged, {vat === "inc" ? "VAT included" : "excluding VAT"} — labour plus the parts that car took. MOT is on top. Only the interim service above has a rate you set; these are history.
           </p>
         </>
       )}
