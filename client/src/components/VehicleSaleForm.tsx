@@ -716,8 +716,14 @@ export default function VehicleSaleForm({
         .vs-suggest-sub { display: block; font-size: 11px; color: #64748b; }
 
         @media print {
-          @page { size: A4 portrait; margin: 0; }
-          .vs-shell { width: 210mm; max-width: none; margin: 0; }
+          /* Every printer has a physical unprintable border of roughly 4-6mm, so a sheet laid out
+             at exactly 210mm with a zero page margin loses its edges — which is what was cutting
+             the form off all the way round. Give the page a real margin and size the sheet to
+             what is left. The artwork is drawn entirely in container units derived from 100cqw,
+             so narrowing the shell scales the whole form down with it and nothing is cropped.
+             198 x 280mm keeps the A4 ratio and clears the border on all four sides. */
+          @page { size: A4 portrait; margin: 6mm; }
+          .vs-shell { width: 198mm; max-width: none; margin: 0 auto; }
           .vs-page {
             box-shadow: none; margin: 0;
             break-after: page; page-break-after: always;
