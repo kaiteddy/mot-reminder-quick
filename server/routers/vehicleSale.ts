@@ -302,6 +302,50 @@ export const vehicleSaleRouter = router({
           if (Object.keys(back).length) {
             await db.update(salesStock).set(back as any).where(eq(salesStock.id, doc.salesStockId));
           }
+
+          // ...and into the car-trading ledger behind /reconciliation, which reads carDeals.
+          // Without this the purchase shows on the forecourt but never in the P&L, so a car
+          // bought from a customer looked like it cost nothing. Keyed on the stock car so
+          // repeated auto-saves update one row rather than stacking up duplicate deals.
+          const money = (v: any) => {
+            const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, ""));
+            return Number.isFinite(n) && n > 0 ? n : null;
+          };
+          // The form writes dates as dd/mm/yyyy; Date.parse reads that as US order or not at all.
+          const asDate = (v: any) => {
+            const m = String(v ?? "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+            if (!m) return null;
+            const yr = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+            // Midday UTC, not local midnight: in BST local midnight is 23:00 the day BEFORE in
+            // UTC, which stored 14/08 as the 13th. Purchase dates land in the P&L by month, so
+            // a day's drift can move a car into the wrong period.
+            const d = new Date(Date.UTC(yr, Number(m[2]) - 1, Number(m[1]), 12, 0, 0));
+            return isNaN(d.getTime()) ? null : d;
+          };
+          const cost = money(f.grossPrice);
+          const bought = asDate(f.transactionDate);
+          const seller = String(f.lastOwnerDetails ?? "").trim().split(/\r?\n/)[0] || null;
+
+          if (cost || bought || seller) {
+            const { carDeals } = await import("../../drizzle/schema");
+            const [deal]: any[] = await db.select({ id: carDeals.id }).from(carDeals)
+              .where(eq(carDeals.salesStockId, doc.salesStockId)).limit(1);
+            const vals: Record<string, any> = {};
+            if (cost != null) vals.purchaseCost = String(cost);
+            if (bought) vals.purchaseDate = bought;
+            if (seller) vals.source = seller.slice(0, 100);
+            if (deal) {
+              await db.update(carDeals).set(vals as any).where(eq(carDeals.id, deal.id));
+            } else {
+              await db.insert(carDeals).values({
+                registration: (car.registration ?? f.registrationNumber ?? "").toUpperCase().slice(0, 20),
+                salesStockId: doc.salesStockId,
+                status: "in stock",
+                purchaseInvoiceRef: "Purchase invoice",
+                ...vals,
+              } as any);
+            }
+          }
         }
       }
       return { ok: true };
