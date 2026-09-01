@@ -249,8 +249,34 @@ export default function WorkshopJobSheet() {
     onError: (e: any) => toast.error("Convert failed: " + (e.message || "")),
   });
 
+  /**
+   * A phone cannot print from the hidden iframe below. Neither iOS Safari nor Android Chrome
+   * renders a PDF inside an iframe, so print() has nothing to print; it throws nothing, so the
+   * catch-and-window.open fallback never runs; and even if it did, that open happens inside a
+   * timeout, long after the tap, so the popup blocker would eat it. The button simply does
+   * nothing — which is exactly what it did on the phone.
+   *
+   * So on a handheld, hand the OS the PDF as an ordinary URL and let its viewer print it.
+   */
+  const isHandheld = () =>
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    // iPadOS calls itself a Mac; the touch points give it away.
+    (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+
   async function handlePrint() {
     if (!savedId) return;
+
+    if (isHandheld()) {
+      // Straight off the tap: anything awaited first loses the user gesture and the new tab
+      // gets blocked.
+      const url = `/api/documents/${savedId}/pdf`;
+      const win = window.open(url, "_blank");
+      // Some in-app browsers refuse the new tab outright. The sheet is already saved, so going
+      // there in this tab costs nothing.
+      if (!win) window.location.href = url;
+      return;
+    }
+
     setPrinting(true);
     try {
       const res: any = await utils.serviceHistory.getRichPDF.fetch({ documentId: savedId });

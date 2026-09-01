@@ -38,6 +38,43 @@ function setupApp(app: Express) {
   // Auth routes (login/logout)
   registerAuthRoutes(app);
 
+  /**
+   * The document PDF as an ordinary URL, so a phone can print it.
+   *
+   * The workshop screens pull this same PDF over tRPC as base64 and print it from a hidden
+   * iframe. That works on a desktop and does nothing whatsoever on a phone: neither iOS Safari
+   * nor Android Chrome renders a PDF inside an iframe, so contentWindow.print() has nothing to
+   * print — and because it throws nothing, the window.open fallback beside it never fires
+   * either. The button just appears dead. Handing the phone a normal URL lets the OS open it in
+   * its own PDF viewer, where Share > Print does the job.
+   *
+   * There is no auth check here, which matches the rest of this API rather than relaxing it:
+   * the login screen is client-side only and every tRPC procedure is already reachable
+   * unauthenticated. This exposes nothing that serviceHistory.getRichPDF does not.
+   */
+  app.get("/api/documents/:id/pdf", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) { res.status(400).send("Bad document id"); return; }
+    try {
+      const { getRichPDF, logDocEvent } = await import("../db");
+      const { content, filename } = await getRichPDF(id);
+      if (!content) { res.status(404).send("No PDF for that document"); return; }
+      await logDocEvent(id, "printed"); // the same audit line the tRPC print path writes
+      res.setHeader("Content-Type", "application/pdf");
+      // `inline`, so the phone opens it in the viewer rather than dropping it into Downloads.
+      res.setHeader("Content-Disposition", `inline; filename="${String(filename || id + ".pdf").replace(/[^\w.\-]/g, "_")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(Buffer.from(content, "base64"));
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      // getRichPDF throws for a document that isn't there. A phone opening a stale link is a
+      // 404, not a server fault, and shouldn't page anyone.
+      if (/not found/i.test(msg)) { res.status(404).send("No such document"); return; }
+      console.error("PDF route error:", msg);
+      res.status(500).send("Could not generate that PDF");
+    }
+  });
+
   // Twilio webhook endpoints
   try {
     app.post("/api/webhooks/twilio", handleTwilioWebhook);
