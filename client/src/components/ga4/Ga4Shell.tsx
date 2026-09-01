@@ -56,7 +56,7 @@ const ZOOM_LEVELS = [50, 75, 100, 125] as const;
 const ZOOM_STORAGE_KEY = "ga4-classic-zoom";
 
 export default function Ga4Shell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
@@ -146,7 +146,9 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
                 looked like the owner's — and being refused Job Sheets then read as the app being
                 broken rather than as being on the wrong login. The login box takes a password and
                 no username, so this line is the only thing on screen that tells the two apart. */}
-            {user && <span className="current-user">User: <strong>{user.role === "admin" ? "Admin" : "Staff"}</strong></span>}
+            <span className="current-user">
+              User: <strong>{loading || !user ? "…" : user.role === "admin" ? "Admin" : "Staff"}</strong>
+            </span>
           </div>
         </header>
 
