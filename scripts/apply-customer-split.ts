@@ -22,8 +22,15 @@ import path from "node:path";
 
 const DB = path.join(os.homedir(), "Downloads", "ga4.sqlite");
 const APPLY = process.argv.includes("--apply");
-const ids = process.argv.slice(2).filter((a) => !a.startsWith("--")).map(Number).filter(Boolean);
-if (!ids.length) throw new Error("give at least one web customer id");
+// "<id>" infers the counterpart from the name (works when the record wears the other person's
+// name, the Berry/Segal shape). "<id>:<ACCT>" names it explicitly — needed when the name is
+// correct and it is the CARS and DOCUMENTS that belong to someone else, which is what
+// scan-fused-customers.ts turns up.
+const targets = process.argv.slice(2).filter((a) => !a.startsWith("--")).map((a) => {
+  const [i, acct] = a.split(":");
+  return { id: Number(i), acct: acct || null };
+}).filter((t) => t.id);
+if (!targets.length) throw new Error("give at least one web customer id (or id:ACCOUNT)");
 
 const q = <T = any>(sql: string): T[] => {
   const out = execFileSync("sqlite3", ["-json", DB, sql], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
@@ -48,7 +55,7 @@ const gaddr = (g: any) =>
   if (!db) throw new Error("no database");
   const run = (sql: string): Promise<any[]> => db.execute(sql as any).then((r: any) => r.rows ?? r);
 
-  for (const id of ids) {
+  for (const { id, acct } of targets) {
     const [web]: any = await run(`SELECT * FROM customers WHERE id = ${id}`);
     if (!web) { console.log(`#${id}: no such customer`); continue; }
     const [A] = q(`SELECT * FROM Customers WHERE _ID = '${esc(web.externalId)}';`);
@@ -56,17 +63,24 @@ const gaddr = (g: any) =>
 
     const key = nat(A.contactMobile) || nat(A.contactTelephone);
     const wn = String(web.name).toLowerCase().replace(/[^a-z]/g, "");
-    const B = (key
+    const B = acct
+      ? q(`SELECT * FROM Customers WHERE AccountNumber = '${esc(acct)}';`)[0]
+      : (key
       ? q(`SELECT * FROM Customers WHERE _ID <> '${esc(A._ID)}' AND (
              replace(replace(replace(contactMobile,' ',''),'+',''),'-','') LIKE '%${key}'
           OR replace(replace(replace(contactTelephone,' ',''),'+',''),'-','') LIKE '%${key}');`)
       : []
-    ).find((x: any) => {
-      const s = String(x.nameSurname ?? "").toLowerCase().replace(/[^a-z]/g, "");
-      const c = String(x.nameCompany ?? "").toLowerCase().replace(/[^a-z]/g, "");
-      return (s && wn.includes(s)) || (c && wn.includes(c));
-    });
-    if (!B) { console.log(`#${id}: no phone-sharing GA4 account explains the name — skipped`); continue; }
+      ).find((x: any) => {
+        const s = String(x.nameSurname ?? "").toLowerCase().replace(/[^a-z]/g, "");
+        const c = String(x.nameCompany ?? "").toLowerCase().replace(/[^a-z]/g, "");
+        return (s && wn.includes(s)) || (c && wn.includes(c));
+      });
+    if (!B) { console.log(`#${id}: no counterpart account${acct ? ` ${acct}` : " explains the name"} — skipped`); continue; }
+    if (B._ID === A._ID) { console.log(`#${id}: counterpart is the record's own account — skipped`); continue; }
+    // A GA4 row with no name AND no address is a junk account (XZZ005 "X"), not a second person.
+    if (!String(B.nameSurname ?? "").trim() && !String(B.nameCompany ?? "").trim() && !String(B.addressRoad ?? "").trim()) {
+      console.log(`#${id}: counterpart ${B.AccountNumber} has no name or address — junk, not a person — skipped`); continue;
+    }
 
     const carsB = new Set(q(`SELECT Registration FROM Vehicles WHERE _ID_Customer='${esc(B._ID)}';`).map((r: any) => norm(r.Registration)));
 
