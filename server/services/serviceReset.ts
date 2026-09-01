@@ -12,7 +12,7 @@ import { fetchTrakm8ObdImage } from "./trakm8";
 // job sheet is printed for a vehicle that doesn't have a card yet.
 export async function generateServiceResetCard(vehicleId: number) {
   if (!hasAIKey()) {
-    throw new Error("AI API key is not configured. Please set OPENAI_API_KEY or BUILT_IN_FORGE_API_KEY in your .env");
+    throw new Error("AI API key is not configured. Please set OPENAI_API_KEY in your .env");
   }
   const db = await getDb();
   if (!db) throw new Error("Database error");
