@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useDebouncedValue, looksLikeCompleteReg } from "@/hooks/useDebouncedValue";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
@@ -802,9 +803,14 @@ export default function DocumentDetails() {
   // MOT/tax refresh live from DVSA/DVLA on every doc view (same as the vehicle page) —
   // the cached row goes stale the moment a car passes its MOT here, and a job sheet
   // reading "Expired 1d ago" right after the test is exactly the wrong thing to show.
+  // Wait for typing to stop before asking DVSA/DVLA. Bound straight to the input this fired on
+  // every keystroke, so entering a plate asked about each half-finished version of it and showed
+  // a failure for each — the slower you type, the more errors you collect for a car you are still
+  // entering. The field itself stays instant; only the lookup waits.
+  const debouncedReg = useDebouncedValue(form.registration || "", 600);
   const motTaxLive = trpc.vehicles.refreshMotTax.useQuery(
-    { registration: form.registration || "" },
-    { enabled: !isNew && !!form.registration, staleTime: 5 * 60_000 }
+    { registration: debouncedReg },
+    { enabled: !isNew && looksLikeCompleteReg(debouncedReg), staleTime: 5 * 60_000 }
   );
 
   const vehInfo = useMemo(() => {
@@ -2617,7 +2623,9 @@ function PhoneMatchHint({ phone, currentCustomerId, onLink }: { phone: string; c
 function MotMileageHint({ registration, current, onUse }: { registration: string; current: any; onUse: (v: string) => void }) {
   const base = useClassicBase();
   const reg = (registration || "").replace(/\s+/g, "").toUpperCase();
-  const { data } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: reg.length >= 4, staleTime: 60_000 });
+  // Debounced for the same reason as the job-sheet lookup above: a partial plate is not an error.
+  const debReg = useDebouncedValue(reg, 600);
+  const { data } = trpc.documents.motTests.useQuery({ registration: debReg }, { enabled: looksLikeCompleteReg(debReg), staleTime: 60_000 });
   const latest = useMemo(() => {
     const tests = ((data as any[]) || []).filter((t) => num(t.odometerValue) != null);
     if (!tests.length) return null;
