@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Search, History, Wrench, SlidersHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { toast } from "sonner";
 import Ga4QuickSearchModal from "./Ga4QuickSearchModal";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 // GA4 Classic — the real GA4 desktop chrome, ported from a purpose-built recreation
 // that was verified pixel-for-pixel against a live screenshot (graphite gradients,
@@ -55,6 +56,7 @@ const ZOOM_LEVELS = [50, 75, 100, 125] as const;
 const ZOOM_STORAGE_KEY = "ga4-classic-zoom";
 
 export default function Ga4Shell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
@@ -140,7 +142,11 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
                 <ZoomIn size={13} />
               </button>
             </div>
-            <span className="current-user">User: <strong>Admin</strong></span>
+            {/* Whoever is actually signed in. This said "Admin" for everyone, so a staff session
+                looked like the owner's — and being refused Job Sheets then read as the app being
+                broken rather than as being on the wrong login. The login box takes a password and
+                no username, so this line is the only thing on screen that tells the two apart. */}
+            {user && <span className="current-user">User: <strong>{user.role === "admin" ? "Admin" : "Staff"}</strong></span>}
           </div>
         </header>
 
