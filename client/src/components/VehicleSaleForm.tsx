@@ -716,16 +716,21 @@ export default function VehicleSaleForm({
         .vs-suggest-sub { display: block; font-size: 11px; color: #64748b; }
 
         @media print {
-          /* Every printer has a physical unprintable border of roughly 4-6mm, so a sheet laid out
-             at exactly 210mm with a zero page margin loses its edges — which is what was cutting
-             the form off all the way round. Give the page a real margin and size the sheet to
-             what is left. The artwork is drawn entirely in container units derived from 100cqw,
-             so narrowing the shell scales the whole form down with it and nothing is cropped.
-             198 x 280mm keeps the A4 ratio and clears the border on all four sides. */
-          @page { size: A4 portrait; margin: 6mm; }
-          .vs-shell { width: 198mm; max-width: none; margin: 0 auto; }
+          /* Exact A4, edge to edge. Both dimensions are pinned rather than left to the aspect
+             ratio: 3438/2409 is 1.42714..., very slightly taller than A4's 1.41421, so a sheet
+             sized only by width came out ~2.7mm too tall and lost its bottom edge. Setting the
+             height explicitly squares that off and fills the paper exactly.
+             Needs "borderless" or "scale to fit: none/100%" in the print dialog — a printer
+             without borderless will still clip its own few mm, which no CSS can change. */
+          @page { size: A4 portrait; margin: 0; }
+          .vs-shell {
+            width: 210mm; max-width: none; margin: 0;
+            --ux: calc(210mm / 2409);
+            --uy: calc(297mm / 3438);
+          }
           .vs-page {
             box-shadow: none; margin: 0;
+            width: 210mm; height: 297mm;
             break-after: page; page-break-after: always;
           }
           .vs-page:last-child { break-after: auto; page-break-after: auto; }
