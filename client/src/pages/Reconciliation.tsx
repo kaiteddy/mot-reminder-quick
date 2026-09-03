@@ -1163,7 +1163,10 @@ function CarTradingTab() {
     //                 stops growing there rather than turning into a poster
     //   floor   0.9 — below ~7.2pt it stops being readable, so it paginates at a legible size
     //                 instead of cramming everything onto one sheet
-    const scale = Math.max(0.9, Math.min(2, pageH / Math.max(h, 1)));
+    // 0.95, not 1.0. Filling the sheet exactly puts the fit on a knife edge — measuring 732px
+    // against 733px available still spilled one car and the totals onto a second sheet, because
+    // the print engine rounds its own way. The headroom costs nothing visible and stops that.
+    const scale = Math.max(0.9, Math.min(2, (pageH * 0.95) / Math.max(h, 1)));
     el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
   };
   const handlePrint = useReactToPrint({
@@ -1588,14 +1591,18 @@ function CarTradingTab() {
                and margin are boxed, so the two states are never confused at a glance. */
             .car-print tbody tr.sold td { background: #fef3c7; }
             .car-print tbody tr.sold:nth-child(even) td { background: #fde9ab; }
+            /* nowrap matters more than it looks: a plate stored with a space ("WR69 WKY") wrapped
+               to two lines, doubling that row and spilling the last cars onto a second sheet. */
             .car-print .reg { font-weight: 700; font-family: ui-monospace, "SF Mono", Menlo, monospace;
-              background: #fde047; border: 0.5pt solid #713f12; letter-spacing: 0.3px; text-align: center; }
+              background: #fde047; border: 0.5pt solid #713f12; letter-spacing: 0.3px; text-align: center;
+              white-space: nowrap; }
             .car-print .nw { white-space: nowrap; }
             .car-print .money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
             .car-print .sale { font-weight: 700; }
             .car-print .margin-pos { font-weight: 700; color: #14532d; }
             .car-print .margin-neg { font-weight: 700; color: #7f1d1d; }
-            .car-print tfoot td { background: #1e293b; color: #fff; font-weight: 700; border-color: #1e293b; }
+            .car-print tfoot td { background: #1e293b; color: #fff; font-weight: 700; border-color: #1e293b;
+              white-space: nowrap; padding-left: 5px; padding-right: 5px; }
             @media print {
               .car-print { zoom: var(--print-scale, 1); }
               .car-print thead { display: table-header-group; }
@@ -1629,7 +1636,7 @@ function CarTradingTab() {
             type Col = { key: string; head: string; money?: boolean; w: number; cell: (r: any) => any; foot?: () => any; always?: boolean };
             const sum = (f: (r: any) => number) => gbp(round2(filtered.reduce((t: number, r: any) => t + (f(r) || 0), 0)));
             const cols: Col[] = [
-              { key: "reg", head: "Reg", always: true, w: 9, cell: (r) => <td className="reg">{r.registration || "—"}</td> },
+              { key: "reg", head: "Reg", always: true, w: 11, cell: (r) => <td className="reg">{r.registration || "—"}</td> },
               { key: "desc", head: "Description", always: true, w: 26, cell: (r) => <td className="desc">{r.description || ""}</td> },
               { key: "status", head: "Status", always: true, w: 8, cell: (r) => <td className="nw" style={{ fontWeight: r.status === "sold" ? 700 : 400 }}>{r.status === "sold" ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td> },
               { key: "source", head: "Source", w: 12, cell: (r) => <td className="nw">{r.source || ""}</td> },
