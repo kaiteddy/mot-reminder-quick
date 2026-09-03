@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment as Frag, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useReactToPrint } from "react-to-print";
 import { round2 } from "@/lib/utils";
@@ -1157,12 +1157,13 @@ function CarTradingTab() {
     // Measure the CONTENT, not the box — a fixed-height container reports its own height and
     // every list then looks like it already fits.
     const h = (el.firstElementChild ? el.scrollHeight : 0) || el.getBoundingClientRect().height;
-    // Measured on the real list at 8pt: a sheet holds ~43 rows, so 22 cars leave room to spare
-    // and 69 cannot fit however small it goes. So this scales BOTH ways and clamps.
-    //   ceiling 1.35 — a 22-car stock list prints at ~10.8pt instead of rattling around at 8pt
-    //   floor    0.9 — below ~7.2pt it stops being readable, which was the complaint; past that
-    //                  it paginates at a legible size rather than cramming onto one sheet
-    const scale = Math.max(0.9, Math.min(1.35, pageH / Math.max(h, 1)));
+    // Fill the sheet. Measured on the real list at 8pt a page holds ~43 rows, so a 22-car stock
+    // list would otherwise print across the top third and leave the rest blank.
+    //   ceiling 2.0 — 8pt * 2 = 16pt, about as large as a table wants to be; a very short list
+    //                 stops growing there rather than turning into a poster
+    //   floor   0.9 — below ~7.2pt it stops being readable, so it paginates at a legible size
+    //                 instead of cramming everything onto one sheet
+    const scale = Math.max(0.9, Math.min(2, pageH / Math.max(h, 1)));
     el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
   };
   const handlePrint = useReactToPrint({
@@ -1584,6 +1585,7 @@ function CarTradingTab() {
             .car-print tbody tr.sold:nth-child(even) td { background: #fde9ab; }
             .car-print .reg { font-weight: 700; font-family: ui-monospace, "SF Mono", Menlo, monospace;
               background: #fde047; border: 0.5pt solid #713f12; letter-spacing: 0.3px; text-align: center; }
+            .car-print .nw { white-space: nowrap; }
             .car-print .money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
             .car-print .sale { font-weight: 700; }
             .car-print .margin-pos { font-weight: 700; color: #14532d; }
@@ -1608,56 +1610,64 @@ function CarTradingTab() {
             </div>
             <div className="text-[10px] text-slate-600">Printed {new Date().toLocaleDateString("en-GB")}</div>
           </div>
-          <table style={{ fontSize: "8pt" }}>
-            <thead>
-              <tr>
-                {["Reg", "Description", "Status", "Source", "Bought", "Vehicle £", "Fees £", "Total cost £", "Sold", "Sale £", "Days", "Margin £"].map((h) => (
-                  <th key={h} className={["Vehicle £", "Fees £", "Total cost £", "Sale £", "Days", "Margin £"].includes(h) ? "money" : ""}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r: any) => {
-                const isSold = r.status === "sold";
-                const fees = (r.reconditioningCost || 0) + (r.onCostVat || 0);
-                const d = daysHeld(r);
-                return (
-                  <tr key={r.id} className={isSold ? "sold" : ""}>
-                    <td className="reg">{r.registration || "—"}</td>
-                    <td className="desc">{r.description || ""}</td>
-                    <td style={{ whiteSpace: "nowrap", fontWeight: isSold ? 700 : 400 }}>
-                      {isSold ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}
+          {/* Columns are described rather than hard-coded so the ones that are empty for the
+              current filter can be dropped entirely. On an "In stock" list, Sold / Sale £ /
+              Margin £ have nothing in them for any row — printing them wastes a quarter of the
+              width on blank space and squeezes the columns that do say something. */}
+          {(() => {
+            const feesOf = (r: any) => (r.reconditioningCost || 0) + (r.onCostVat || 0);
+            type Col = { key: string; head: string; money?: boolean; cell: (r: any) => any; foot?: () => any; always?: boolean };
+            const sum = (f: (r: any) => number) => gbp(round2(filtered.reduce((t: number, r: any) => t + (f(r) || 0), 0)));
+            const cols: Col[] = [
+              { key: "reg", head: "Reg", always: true, cell: (r) => <td className="reg">{r.registration || "—"}</td> },
+              { key: "desc", head: "Description", always: true, cell: (r) => <td className="desc">{r.description || ""}</td> },
+              { key: "status", head: "Status", always: true, cell: (r) => <td className="nw" style={{ fontWeight: r.status === "sold" ? 700 : 400 }}>{r.status === "sold" ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td> },
+              { key: "source", head: "Source", cell: (r) => <td className="nw">{r.source || ""}</td> },
+              { key: "bought", head: "Bought", cell: (r) => <td className="nw">{dmy(r.purchaseDate)}</td> },
+              { key: "vehicle", head: "Vehicle £", money: true, cell: (r) => <td className="money">{gbp(r.purchaseCost)}</td>, foot: () => sum((r) => r.purchaseCost) },
+              { key: "fees", head: "Fees £", money: true, cell: (r) => <td className="money">{feesOf(r) ? gbp(feesOf(r)) : ""}</td>, foot: () => sum(feesOf) },
+              { key: "total", head: "Total cost £", money: true, cell: (r) => <td className="money tot">{gbp(r.effectiveCost)}</td>, foot: () => sum((r) => r.effectiveCost) },
+              { key: "solddate", head: "Sold", cell: (r) => <td className="nw">{dmy(r.saleDate)}</td> },
+              { key: "sale", head: "Sale £", money: true, cell: (r) => <td className="money sale">{r.status === "sold" ? gbp(r.salePrice) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.salePrice : 0)) },
+              { key: "days", head: "Days", money: true, cell: (r) => { const d = daysHeld(r); return <td className="money">{d == null ? "" : d}</td>; } },
+              { key: "margin", head: "Margin £", money: true, cell: (r) => <td className={`money ${r.status === "sold" ? ((r.margin || 0) < 0 ? "margin-neg" : "margin-pos") : ""}`}>{r.status === "sold" ? gbp(r.margin) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.margin : 0)) },
+            ];
+            // Keep a column only if something in it is non-blank for the rows being printed.
+            const hasValue: Record<string, (r: any) => any> = {
+              source: (r) => r.source, bought: (r) => r.purchaseDate, vehicle: (r) => r.purchaseCost,
+              fees: (r) => feesOf(r), total: (r) => r.effectiveCost, solddate: (r) => r.saleDate,
+              sale: (r) => (r.status === "sold" ? r.salePrice : null), days: (r) => daysHeld(r),
+              margin: (r) => (r.status === "sold" ? r.margin : null),
+            };
+            const shown = cols.filter((c) => c.always || !hasValue[c.key] || filtered.some((r: any) => {
+              const v = hasValue[c.key](r); return v != null && v !== "" && v !== 0;
+            }));
+            const firstFoot = shown.findIndex((c) => !!c.foot);
+            return (
+              <table style={{ fontSize: "8pt" }}>
+                <thead>
+                  <tr>{shown.map((c) => <th key={c.key} className={c.money ? "money" : ""}>{c.head}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r: any) => (
+                    <tr key={r.id} className={r.status === "sold" ? "sold" : ""}>
+                      {shown.map((c) => <Frag key={c.key}>{c.cell(r)}</Frag>)}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={Math.max(1, firstFoot < 0 ? shown.length : firstFoot)}>
+                      {filtered.filter((r: any) => r.status === "in_stock").length} in stock · {filtered.filter((r: any) => r.status === "sold").length} sold
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{r.source || ""}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{dmy(r.purchaseDate)}</td>
-                    <td className="money">{gbp(r.purchaseCost)}</td>
-                    <td className="money">{fees ? gbp(fees) : "—"}</td>
-                    <td className="money" style={{ fontWeight: 600 }}>{gbp(r.effectiveCost)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{dmy(r.saleDate)}</td>
-                    <td className="money sale">{isSold ? gbp(r.salePrice) : ""}</td>
-                    <td className="money">{d == null ? "" : d}</td>
-                    <td className={`money ${isSold ? ((r.margin || 0) < 0 ? "margin-neg" : "margin-pos") : ""}`}>
-                      {isSold ? gbp(r.margin) : ""}
-                    </td>
+                    {shown.slice(firstFoot < 0 ? shown.length : firstFoot).map((c) => (
+                      <td key={c.key} className={c.money ? "money" : ""}>{c.foot ? c.foot() : ""}</td>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={5}>
-                  {filtered.filter((r: any) => r.status === "in_stock").length} in stock · {filtered.filter((r: any) => r.status === "sold").length} sold
-                </td>
-                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.purchaseCost || 0), 0)))}</td>
-                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.reconditioningCost || 0) + (r.onCostVat || 0), 0)))}</td>
-                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.effectiveCost || 0), 0)))}</td>
-                <td />
-                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.salePrice || 0), 0)))}</td>
-                <td />
-                <td className="money">{gbp(round2(filtered.filter((r: any) => r.status === "sold").reduce((t: number, r: any) => t + (r.margin || 0), 0)))}</td>
-              </tr>
-            </tfoot>
-          </table>
+                </tfoot>
+              </table>
+            );
+          })()}
         </div>
       </div>
     </div>
