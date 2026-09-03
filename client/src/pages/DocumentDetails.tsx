@@ -23,6 +23,7 @@ import { printDocumentOnHandheld } from "@/lib/printDocument";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
+import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { buildServiceSets } from "@/lib/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
@@ -1574,6 +1575,11 @@ export default function DocumentDetails() {
                       onClick={() => openSevenZap(form.vin, form.make)}
                       className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-orange-200 bg-orange-50 rounded-sm px-2 text-[11px] font-medium text-orange-600 hover:bg-orange-100">
                       <ExternalLink className="w-3.5 h-3.5" /> 7zap
+                    </button>
+                    <button type="button" title="Opens this VIN's dealer catalogue on partslink24 (needs your partslink24 login)"
+                      onClick={() => openPartslink24(form.vin, form.make)}
+                      className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-sky-200 bg-sky-50 rounded-sm px-2 text-[11px] font-medium text-sky-600 hover:bg-sky-100">
+                      <ExternalLink className="w-3.5 h-3.5" /> partslink24
                     </button>
                   </>
                 )}

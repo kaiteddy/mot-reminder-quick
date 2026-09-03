@@ -36,6 +36,7 @@ import {
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
 import { openSevenZap } from "@/lib/sevenZap";
+import { openPartslink24, partslink24Service } from "@/lib/partslink24";
 import { ServiceResetCard } from "@/components/ServiceResetCard";
 import { ga4Spaced } from "@/components/RegPlate";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -1001,6 +1002,17 @@ export default function VehicleDetails() {
                             <Wrench className="w-4 h-4 mr-2" />
                             OEM Parts (7zap)
                         </Button>
+                        <Button
+                            variant="outline"
+                            className="bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100"
+                            onClick={() => openPartslink24(vehicle.vin, vehicle.make)}
+                            title={partslink24Service(vehicle.vin, vehicle.make)
+                                ? "Opens this VIN's dealer catalogue on partslink24 (needs your partslink24 login)"
+                                : "Copies the VIN and opens the partslink24 catalogue picker"}
+                        >
+                            <Wrench className="w-4 h-4 mr-2" />
+                            partslink24
+                        </Button>
                     </div>
                     <div className="flex flex-col gap-2 min-w-[200px] md:shrink-0">
                         <Dialog>
@@ -1397,6 +1409,13 @@ export default function VehicleDetails() {
                                                                 onClick={() => openSevenZap(vehicle.vin, vehicle.make)}
                                                                 className="p-1 hover:bg-muted rounded text-orange-500 hover:text-orange-700 transition-colors opacity-0 group-hover:opacity-100"
                                                                 title="OEM catalogue on 7zap"
+                                                            >
+                                                                <Wrench className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => openPartslink24(vehicle.vin, vehicle.make)}
+                                                                className="p-1 hover:bg-muted rounded text-sky-500 hover:text-sky-700 transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Dealer catalogue on partslink24"
                                                             >
                                                                 <Wrench className="w-3 h-3" />
                                                             </button>
