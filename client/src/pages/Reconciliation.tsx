@@ -1571,10 +1571,15 @@ function CarTradingTab() {
             /* Backgrounds carry the sold/in-stock split, so they have to survive the printer's
                default of dropping them. */
             .car-print, .car-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .car-print table { border-collapse: collapse; width: 100%; }
+            /* Fixed layout so the colgroup widths below are honoured exactly. Without it the
+               table spreads its surplus evenly over the nowrap columns and Reg/Status/Source end
+               up several times wider than anything in them. */
+            .car-print table { border-collapse: collapse; width: 100%; table-layout: fixed; }
             .car-print th, .car-print td { border: 0.5pt solid #94a3b8; padding: 1.5px 3px; }
-            /* A wrapped description doubles its row and breaks the fit maths — clip instead. */
-            .car-print td.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            /* Description is the only column with no width set, so it takes whatever is left —
+               and clips rather than wrapping, since a wrapped line doubles its row and breaks
+               the fit calculation. */
+            .car-print td.desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .car-print thead th { background: #1e293b; color: #fff; font-size: 8pt; text-align: left; }
             /* A car is one visual unit: every other row banded, so the eye tracks across twelve
                columns without losing its line. */
@@ -1616,21 +1621,26 @@ function CarTradingTab() {
               width on blank space and squeezes the columns that do say something. */}
           {(() => {
             const feesOf = (r: any) => (r.reconditioningCost || 0) + (r.onCostVat || 0);
-            type Col = { key: string; head: string; money?: boolean; cell: (r: any) => any; foot?: () => any; always?: boolean };
+            // A weight per column, turned into a percentage below. Fixed widths left every
+            // column at its minimum and dumped all the leftover width into whichever column had
+            // none — Description ended up over half the sheet, mostly empty. Weights share the
+            // slack out in proportion instead, so nine columns fill the page as comfortably as
+            // twelve do.
+            type Col = { key: string; head: string; money?: boolean; w: number; cell: (r: any) => any; foot?: () => any; always?: boolean };
             const sum = (f: (r: any) => number) => gbp(round2(filtered.reduce((t: number, r: any) => t + (f(r) || 0), 0)));
             const cols: Col[] = [
-              { key: "reg", head: "Reg", always: true, cell: (r) => <td className="reg">{r.registration || "—"}</td> },
-              { key: "desc", head: "Description", always: true, cell: (r) => <td className="desc">{r.description || ""}</td> },
-              { key: "status", head: "Status", always: true, cell: (r) => <td className="nw" style={{ fontWeight: r.status === "sold" ? 700 : 400 }}>{r.status === "sold" ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td> },
-              { key: "source", head: "Source", cell: (r) => <td className="nw">{r.source || ""}</td> },
-              { key: "bought", head: "Bought", cell: (r) => <td className="nw">{dmy(r.purchaseDate)}</td> },
-              { key: "vehicle", head: "Vehicle £", money: true, cell: (r) => <td className="money">{gbp(r.purchaseCost)}</td>, foot: () => sum((r) => r.purchaseCost) },
-              { key: "fees", head: "Fees £", money: true, cell: (r) => <td className="money">{feesOf(r) ? gbp(feesOf(r)) : ""}</td>, foot: () => sum(feesOf) },
-              { key: "total", head: "Total cost £", money: true, cell: (r) => <td className="money tot">{gbp(r.effectiveCost)}</td>, foot: () => sum((r) => r.effectiveCost) },
-              { key: "solddate", head: "Sold", cell: (r) => <td className="nw">{dmy(r.saleDate)}</td> },
-              { key: "sale", head: "Sale £", money: true, cell: (r) => <td className="money sale">{r.status === "sold" ? gbp(r.salePrice) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.salePrice : 0)) },
-              { key: "days", head: "Days", money: true, cell: (r) => { const d = daysHeld(r); return <td className="money">{d == null ? "" : d}</td>; } },
-              { key: "margin", head: "Margin £", money: true, cell: (r) => <td className={`money ${r.status === "sold" ? ((r.margin || 0) < 0 ? "margin-neg" : "margin-pos") : ""}`}>{r.status === "sold" ? gbp(r.margin) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.margin : 0)) },
+              { key: "reg", head: "Reg", always: true, w: 9, cell: (r) => <td className="reg">{r.registration || "—"}</td> },
+              { key: "desc", head: "Description", always: true, w: 26, cell: (r) => <td className="desc">{r.description || ""}</td> },
+              { key: "status", head: "Status", always: true, w: 8, cell: (r) => <td className="nw" style={{ fontWeight: r.status === "sold" ? 700 : 400 }}>{r.status === "sold" ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td> },
+              { key: "source", head: "Source", w: 12, cell: (r) => <td className="nw">{r.source || ""}</td> },
+              { key: "bought", head: "Bought", w: 9, cell: (r) => <td className="nw">{dmy(r.purchaseDate)}</td> },
+              { key: "vehicle", head: "Vehicle £", money: true, w: 10, cell: (r) => <td className="money">{gbp(r.purchaseCost)}</td>, foot: () => sum((r) => r.purchaseCost) },
+              { key: "fees", head: "Fees £", money: true, w: 8, cell: (r) => <td className="money">{feesOf(r) ? gbp(feesOf(r)) : ""}</td>, foot: () => sum(feesOf) },
+              { key: "total", head: "Total cost £", money: true, w: 10, cell: (r) => <td className="money tot">{gbp(r.effectiveCost)}</td>, foot: () => sum((r) => r.effectiveCost) },
+              { key: "solddate", head: "Sold", w: 9, cell: (r) => <td className="nw">{dmy(r.saleDate)}</td> },
+              { key: "sale", head: "Sale £", money: true, w: 10, cell: (r) => <td className="money sale">{r.status === "sold" ? gbp(r.salePrice) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.salePrice : 0)) },
+              { key: "days", head: "Days", money: true, w: 5, cell: (r) => { const d = daysHeld(r); return <td className="money">{d == null ? "" : d}</td>; } },
+              { key: "margin", head: "Margin £", money: true, w: 10, cell: (r) => <td className={`money ${r.status === "sold" ? ((r.margin || 0) < 0 ? "margin-neg" : "margin-pos") : ""}`}>{r.status === "sold" ? gbp(r.margin) : ""}</td>, foot: () => sum((r) => (r.status === "sold" ? r.margin : 0)) },
             ];
             // Keep a column only if something in it is non-blank for the rows being printed.
             const hasValue: Record<string, (r: any) => any> = {
@@ -1645,6 +1655,10 @@ function CarTradingTab() {
             const firstFoot = shown.findIndex((c) => !!c.foot);
             return (
               <table style={{ fontSize: "8pt" }}>
+                <colgroup>{(() => {
+                  const tw = shown.reduce((t, c) => t + c.w, 0);
+                  return shown.map((c) => <col key={c.key} style={{ width: `${((c.w / tw) * 100).toFixed(2)}%` }} />);
+                })()}</colgroup>
                 <thead>
                   <tr>{shown.map((c) => <th key={c.key} className={c.money ? "money" : ""}>{c.head}</th>)}</tr>
                 </thead>
