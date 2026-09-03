@@ -1146,9 +1146,26 @@ function CarTradingTab() {
   // Must sit above the `if (deals.isLoading)` early return below — a hook declared after it runs
   // on the loaded render but not the loading one, which is a Rules-of-Hooks crash.
   const printRef = useRef<HTMLDivElement>(null);
+  // Shrink the sheet until it fits ONE side of A4 landscape. 69 cars at a readable size run onto
+  // three sheets and stop being a single at-a-glance list, which is the whole point of it.
+  // Measured just before the dialog opens, because the row count depends on the live filters.
+  const fitToOnePage = () => {
+    const el = printRef.current;
+    if (!el) return;
+    el.style.setProperty("--print-scale", "1");
+    // A4 landscape minus 8mm margins, in CSS px at 96dpi (1mm = 96/25.4).
+    const pageW = (297 - 16) * (96 / 25.4);
+    const pageH = (210 - 16) * (96 / 25.4);
+    const w = el.scrollWidth, h = el.scrollHeight;
+    // Never enlarge, and never go below 45% — past that it is unreadable and two clear sheets
+    // beat one illegible one, so it stops scaling and lets the table paginate instead.
+    const scale = Math.max(0.45, Math.min(1, pageW / Math.max(w, 1), pageH / Math.max(h, 1)));
+    el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
+  };
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `car-stock-${new Date().toISOString().slice(0, 10)}`,
+    onBeforePrint: () => { fitToOnePage(); return Promise.resolve(); },
   });
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
@@ -1546,9 +1563,29 @@ function CarTradingTab() {
         <div ref={printRef} className="car-print bg-white text-black p-0">
           <style>{`
             @page { size: A4 landscape; margin: 8mm; }
+            .car-print { font-family: system-ui, -apple-system, sans-serif; }
+            /* Backgrounds carry the sold/in-stock split, so they have to survive the printer's
+               default of dropping them. */
+            .car-print, .car-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .car-print table { border-collapse: collapse; width: 100%; }
+            .car-print th, .car-print td { border: 0.5pt solid #94a3b8; padding: 1.5px 3px; }
+            .car-print thead th { background: #1e293b; color: #fff; font-size: 8pt; text-align: left; }
+            /* A car is one visual unit: every other row banded, so the eye tracks across twelve
+               columns without losing its line. */
+            .car-print tbody tr:nth-child(even) td { background: #f1f5f9; }
+            /* Sold vs in stock, readable in mono: sold rows sit on a tint and their sale price
+               and margin are boxed, so the two states are never confused at a glance. */
+            .car-print tbody tr.sold td { background: #fef3c7; }
+            .car-print tbody tr.sold:nth-child(even) td { background: #fde9ab; }
+            .car-print .reg { font-weight: 700; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+              background: #fde047; border: 0.5pt solid #713f12; letter-spacing: 0.3px; text-align: center; }
+            .car-print .money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+            .car-print .sale { font-weight: 700; }
+            .car-print .margin-pos { font-weight: 700; color: #14532d; }
+            .car-print .margin-neg { font-weight: 700; color: #7f1d1d; }
+            .car-print tfoot td { background: #1e293b; color: #fff; font-weight: 700; border-color: #1e293b; }
             @media print {
-              .car-print { font-family: system-ui, sans-serif; }
-              /* Repeat the header on every sheet and never split a car across two. */
+              .car-print { zoom: var(--print-scale, 1); }
               .car-print thead { display: table-header-group; }
               .car-print tr { break-inside: avoid; page-break-inside: avoid; }
             }
@@ -1566,48 +1603,53 @@ function CarTradingTab() {
             </div>
             <div className="text-[10px] text-slate-600">Printed {new Date().toLocaleDateString("en-GB")}</div>
           </div>
-          <table className="w-full border-collapse text-[9.5px]">
+          <table style={{ fontSize: "8pt" }}>
             <thead>
-              <tr className="bg-slate-100">
-                {["Reg", "Description", "Status", "Source", "Purchased", "Vehicle £", "Fees £", "Total cost £", "Sold", "Sale £", "Days held", "Margin £"].map((h, i) => (
-                  <th key={h} className={`border border-slate-300 px-1 py-0.5 ${i >= 5 && h !== "Sold" ? "text-right" : "text-left"}`}>{h}</th>
+              <tr>
+                {["Reg", "Description", "Status", "Source", "Bought", "Vehicle £", "Fees £", "Total cost £", "Sold", "Sale £", "Days", "Margin £"].map((h) => (
+                  <th key={h} className={["Vehicle £", "Fees £", "Total cost £", "Sale £", "Days", "Margin £"].includes(h) ? "money" : ""}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((r: any) => {
+                const isSold = r.status === "sold";
                 const fees = (r.reconditioningCost || 0) + (r.onCostVat || 0);
                 const d = daysHeld(r);
                 return (
-                  <tr key={r.id}>
-                    <td className="border border-slate-300 px-1 py-0.5 font-semibold whitespace-nowrap">{r.registration || ""}</td>
-                    <td className="border border-slate-300 px-1 py-0.5">{r.description || ""}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{r.status === "in_stock" ? "In stock" : r.status === "sold" ? "Sold" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{r.source || ""}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{dmy(r.purchaseDate)}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{gbp(r.purchaseCost)}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{fees ? gbp(fees) : ""}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap font-semibold">{gbp(r.effectiveCost)}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{dmy(r.saleDate)}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{gbp(r.salePrice)}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{d == null ? "" : d}</td>
-                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap font-semibold">{r.status === "sold" ? gbp(r.margin) : ""}</td>
+                  <tr key={r.id} className={isSold ? "sold" : ""}>
+                    <td className="reg">{r.registration || "—"}</td>
+                    <td>{r.description || ""}</td>
+                    <td style={{ whiteSpace: "nowrap", fontWeight: isSold ? 700 : 400 }}>
+                      {isSold ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>{r.source || ""}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{dmy(r.purchaseDate)}</td>
+                    <td className="money">{gbp(r.purchaseCost)}</td>
+                    <td className="money">{fees ? gbp(fees) : "—"}</td>
+                    <td className="money" style={{ fontWeight: 600 }}>{gbp(r.effectiveCost)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{dmy(r.saleDate)}</td>
+                    <td className="money sale">{isSold ? gbp(r.salePrice) : ""}</td>
+                    <td className="money">{d == null ? "" : d}</td>
+                    <td className={`money ${isSold ? ((r.margin || 0) < 0 ? "margin-neg" : "margin-pos") : ""}`}>
+                      {isSold ? gbp(r.margin) : ""}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-100 font-semibold">
-                <td className="border border-slate-300 px-1 py-0.5" colSpan={5}>
+              <tr>
+                <td colSpan={5}>
                   {filtered.filter((r: any) => r.status === "in_stock").length} in stock · {filtered.filter((r: any) => r.status === "sold").length} sold
                 </td>
-                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.purchaseCost || 0), 0)))}</td>
-                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.reconditioningCost || 0) + (r.onCostVat || 0), 0)))}</td>
-                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.effectiveCost || 0), 0)))}</td>
-                <td className="border border-slate-300 px-1 py-0.5" />
-                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.salePrice || 0), 0)))}</td>
-                <td className="border border-slate-300 px-1 py-0.5" />
-                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.filter((r: any) => r.status === "sold").reduce((t: number, r: any) => t + (r.margin || 0), 0)))}</td>
+                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.purchaseCost || 0), 0)))}</td>
+                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.reconditioningCost || 0) + (r.onCostVat || 0), 0)))}</td>
+                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.effectiveCost || 0), 0)))}</td>
+                <td />
+                <td className="money">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.salePrice || 0), 0)))}</td>
+                <td />
+                <td className="money">{gbp(round2(filtered.filter((r: any) => r.status === "sold").reduce((t: number, r: any) => t + (r.margin || 0), 0)))}</td>
               </tr>
             </tfoot>
           </table>
