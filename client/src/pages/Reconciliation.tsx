@@ -1146,20 +1146,23 @@ function CarTradingTab() {
   // Must sit above the `if (deals.isLoading)` early return below — a hook declared after it runs
   // on the loaded render but not the loading one, which is a Rules-of-Hooks crash.
   const printRef = useRef<HTMLDivElement>(null);
-  // Shrink the sheet until it fits ONE side of A4 landscape. 69 cars at a readable size run onto
-  // three sheets and stop being a single at-a-glance list, which is the whole point of it.
-  // Measured just before the dialog opens, because the row count depends on the live filters.
+  // Size the sheet to the sheet of paper. Measured just before the dialog opens, because how
+  // many rows there are depends on the live filters.
   const fitToOnePage = () => {
     const el = printRef.current;
     if (!el) return;
     el.style.setProperty("--print-scale", "1");
     // A4 landscape minus 8mm margins, in CSS px at 96dpi (1mm = 96/25.4).
-    const pageW = (297 - 16) * (96 / 25.4);
     const pageH = (210 - 16) * (96 / 25.4);
-    const w = el.scrollWidth, h = el.scrollHeight;
-    // Never enlarge, and never go below 45% — past that it is unreadable and two clear sheets
-    // beat one illegible one, so it stops scaling and lets the table paginate instead.
-    const scale = Math.max(0.45, Math.min(1, pageW / Math.max(w, 1), pageH / Math.max(h, 1)));
+    // Measure the CONTENT, not the box — a fixed-height container reports its own height and
+    // every list then looks like it already fits.
+    const h = (el.firstElementChild ? el.scrollHeight : 0) || el.getBoundingClientRect().height;
+    // Measured on the real list at 8pt: a sheet holds ~43 rows, so 22 cars leave room to spare
+    // and 69 cannot fit however small it goes. So this scales BOTH ways and clamps.
+    //   ceiling 1.35 — a 22-car stock list prints at ~10.8pt instead of rattling around at 8pt
+    //   floor    0.9 — below ~7.2pt it stops being readable, which was the complaint; past that
+    //                  it paginates at a legible size rather than cramming onto one sheet
+    const scale = Math.max(0.9, Math.min(1.35, pageH / Math.max(h, 1)));
     el.style.setProperty("--print-scale", String(Math.round(scale * 1000) / 1000));
   };
   const handlePrint = useReactToPrint({
@@ -1569,6 +1572,8 @@ function CarTradingTab() {
             .car-print, .car-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .car-print table { border-collapse: collapse; width: 100%; }
             .car-print th, .car-print td { border: 0.5pt solid #94a3b8; padding: 1.5px 3px; }
+            /* A wrapped description doubles its row and breaks the fit maths — clip instead. */
+            .car-print td.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .car-print thead th { background: #1e293b; color: #fff; font-size: 8pt; text-align: left; }
             /* A car is one visual unit: every other row banded, so the eye tracks across twelve
                columns without losing its line. */
@@ -1619,7 +1624,7 @@ function CarTradingTab() {
                 return (
                   <tr key={r.id} className={isSold ? "sold" : ""}>
                     <td className="reg">{r.registration || "—"}</td>
-                    <td>{r.description || ""}</td>
+                    <td className="desc">{r.description || ""}</td>
                     <td style={{ whiteSpace: "nowrap", fontWeight: isSold ? 700 : 400 }}>
                       {isSold ? "SOLD" : r.status === "in_stock" ? "In stock" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}
                     </td>
