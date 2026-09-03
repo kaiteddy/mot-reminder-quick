@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useReactToPrint } from "react-to-print";
 import { round2 } from "@/lib/utils";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -13,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download, ChevronsUpDown } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, Plus, Trash2, Search, Check, Lock, Unlock, Download, ChevronsUpDown, Printer } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 
 const money = (n: number) => (n < 0 ? "−" : "") + "£" + Math.abs(Math.round(n || 0)).toLocaleString("en-GB");
@@ -1142,6 +1143,13 @@ function CarTradingTab() {
   const [needsData, setNeedsData] = useState(false);
   const [unlockedIds, setUnlockedIds] = useState<Set<number>>(new Set());
   const [splitFor, setSplitFor] = useState<{ carId: number; total: number; payee: string } | null>(null); // auction fee-split prompt
+  // Must sit above the `if (deals.isLoading)` early return below — a hook declared after it runs
+  // on the loaded render but not the loading one, which is a Rules-of-Hooks crash.
+  const printRef = useRef<HTMLDivElement>(null);
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `car-stock-${new Date().toISOString().slice(0, 10)}`,
+  });
   const inval = () => {
     utils.expenditure.carDeals.invalidate();
     utils.expenditure.vehiclePurchases.invalidate();
@@ -1262,6 +1270,21 @@ function CarTradingTab() {
   const soldMargin = sold.reduce((s, r) => s + (r.margin || 0), 0);
   const purch: any[] = purchases.data || [];
   const toLink = purch.filter((p) => !p.carDealId).length;
+  // Print the listed cars as an A4 landscape stock sheet. Twelve money/date columns do not fit
+  // portrait, and the CSV answers a different question — this is the one you carry round the
+  // forecourt. Prints whatever the filters currently show, so "In stock" gives a stock list and
+  // "Sold" gives the year's disposals.
+  /** Days a car has been held: to its sale if sold, to today if still on the forecourt. */
+  const daysHeld = (r: any): number | null => {
+    if (!r.purchaseDate) return null;
+    const from = new Date(r.purchaseDate).getTime();
+    const to = r.status === "sold" && r.saleDate ? new Date(r.saleDate).getTime() : Date.now();
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    return Math.max(0, Math.round((to - from) / 86_400_000));
+  };
+  const dmy = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "");
+  const gbp = (n: any) => (n == null ? "" : Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
   // export the currently-filtered cars to CSV (use the Needs-data filter to get the incomplete list)
   const exportCsv = () => {
     const cols = ["Registration", "Description", "Status", "Purchase price", "Purchase date", "Source", "Fees & delivery", "Fee VAT", "Sale price", "Sale date", "Margin", "VAT basis", "VAT on margin", "Net margin", "Missing", "Linked payment total"];
@@ -1340,6 +1363,7 @@ function CarTradingTab() {
             </Button>
           </div>
           <Button variant="outline" size="sm" className="h-9" onClick={exportCsv} title="Download the listed cars as CSV (filter to Needs data first for the incomplete list)"><Download className="mr-1 h-4 w-4" />Export</Button>
+          <Button variant="outline" size="sm" className="h-9" onClick={() => handlePrint()} title="Print the listed cars as an A4 landscape stock sheet"><Printer className="mr-1 h-4 w-4" />Print</Button>
           <Button size="sm" disabled={addCar.isPending} onClick={() => addCar.mutate({ status: "in_stock" })}><Plus className="mr-1 h-4 w-4" />{addCar.isPending ? "Adding…" : "Add car"}</Button>
         </CardHeader>
         <CardContent>
@@ -1515,6 +1539,80 @@ function CarTradingTab() {
           onSkip={() => setSplitFor(null)}
           onSave={(fees, vat) => { save(splitFor.carId, { reconditioningCost: fees, onCostVat: vat }); setSplitFor(null); toast.success("Fees split — the car price is worked out"); }} />
       )}
+
+      {/* The printed stock sheet. Off-screen rather than hidden — react-to-print copies the node,
+          and display:none measures as zero and prints blank. */}
+      <div className="absolute -left-[10000px] top-0 w-[1120px]" aria-hidden>
+        <div ref={printRef} className="car-print bg-white text-black p-0">
+          <style>{`
+            @page { size: A4 landscape; margin: 8mm; }
+            @media print {
+              .car-print { font-family: system-ui, sans-serif; }
+              /* Repeat the header on every sheet and never split a car across two. */
+              .car-print thead { display: table-header-group; }
+              .car-print tr { break-inside: avoid; page-break-inside: avoid; }
+            }
+          `}</style>
+          <div className="flex items-baseline justify-between mb-1.5">
+            <div>
+              <div className="text-[15px] font-bold">ELI MOTORS LTD — Car Trading</div>
+              <div className="text-[10px] text-slate-600">
+                {filterActive ? "Filtered list" : "All cars"}
+                {statusFilter !== "all" ? ` · ${statusFilter === "in_stock" ? "In stock" : "Sold"}` : ""}
+                {sourceFilter !== "all" ? ` · ${sourceFilter}` : ""}
+                {monthFilter ? ` · bought ${monthFilter}` : ""}
+                {" · "}{filtered.length} car{filtered.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-600">Printed {new Date().toLocaleDateString("en-GB")}</div>
+          </div>
+          <table className="w-full border-collapse text-[9.5px]">
+            <thead>
+              <tr className="bg-slate-100">
+                {["Reg", "Description", "Status", "Source", "Purchased", "Vehicle £", "Fees £", "Total cost £", "Sold", "Sale £", "Days held", "Margin £"].map((h, i) => (
+                  <th key={h} className={`border border-slate-300 px-1 py-0.5 ${i >= 5 && h !== "Sold" ? "text-right" : "text-left"}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r: any) => {
+                const fees = (r.reconditioningCost || 0) + (r.onCostVat || 0);
+                const d = daysHeld(r);
+                return (
+                  <tr key={r.id}>
+                    <td className="border border-slate-300 px-1 py-0.5 font-semibold whitespace-nowrap">{r.registration || ""}</td>
+                    <td className="border border-slate-300 px-1 py-0.5">{r.description || ""}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{r.status === "in_stock" ? "In stock" : r.status === "sold" ? "Sold" : String(r.status || "").replace(/^./, (c: string) => c.toUpperCase())}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{r.source || ""}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{dmy(r.purchaseDate)}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{gbp(r.purchaseCost)}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{fees ? gbp(fees) : ""}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap font-semibold">{gbp(r.effectiveCost)}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 whitespace-nowrap">{dmy(r.saleDate)}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{gbp(r.salePrice)}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap">{d == null ? "" : d}</td>
+                    <td className="border border-slate-300 px-1 py-0.5 text-right whitespace-nowrap font-semibold">{r.status === "sold" ? gbp(r.margin) : ""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-semibold">
+                <td className="border border-slate-300 px-1 py-0.5" colSpan={5}>
+                  {filtered.filter((r: any) => r.status === "in_stock").length} in stock · {filtered.filter((r: any) => r.status === "sold").length} sold
+                </td>
+                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.purchaseCost || 0), 0)))}</td>
+                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.reconditioningCost || 0) + (r.onCostVat || 0), 0)))}</td>
+                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.effectiveCost || 0), 0)))}</td>
+                <td className="border border-slate-300 px-1 py-0.5" />
+                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.reduce((t: number, r: any) => t + (r.salePrice || 0), 0)))}</td>
+                <td className="border border-slate-300 px-1 py-0.5" />
+                <td className="border border-slate-300 px-1 py-0.5 text-right">{gbp(round2(filtered.filter((r: any) => r.status === "sold").reduce((t: number, r: any) => t + (r.margin || 0), 0)))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
