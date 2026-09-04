@@ -65,13 +65,24 @@ function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "p
   const active = sortKey === k;
   const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
   return (
-    <th className={`font-semibold py-2 ${pad} text-${align} ${extra}`}>
+    <th className={`font-semibold py-2 ${pad} text-${align} whitespace-nowrap ${extra}`}>
       <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 ${justify} hover:text-slate-700 ${active ? "text-violet-700" : ""}`}>
         {label}
         {active ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
       </button>
     </th>
   );
+}
+
+/** A heading that carries two sorts — "MOT / Tax" — so fusing the columns costs no sorting. */
+function TwoSort({ a, b, sortKey, sortDir, onSort }: { a: { label: string; k: string }; b: { label: string; k: string }; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void }) {
+  const One = ({ label, k }: { label: string; k: string }) => (
+    <button onClick={() => onSort(k)} className={`inline-flex items-center gap-0.5 hover:text-slate-700 ${sortKey === k ? "text-violet-700" : ""}`}>
+      {label}
+      {sortKey === k ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+    </button>
+  );
+  return <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><One {...a} /><span className="opacity-40">/</span><One {...b} /></span>;
 }
 
 export default function SalesStock() {
@@ -408,24 +419,25 @@ export default function SalesStock() {
                   )}
                 </div>
               </div>
-              <table className="w-full text-[13px] min-w-[760px]">
+              <table className="w-full text-[13px] min-w-[720px]">
                 <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
                   <tr>
                     <SortHead label="Vehicle" k="vehicle" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} pad="px-3"
                       extra="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 print:static print:border-r-0" />
                     <SortHead label="Reg" k="reg" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
-                    <SortHead label="Mileage" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
+                    <SortHead label="Miles" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
                     <SortHead label="Days" k="days" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="center" />
-                    <SortHead label="Purchased" k="purchased" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
-                    <SortHead label="Added" k="added" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    <SortHead label="Bought" k="purchased" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Needs" k="missing" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
-                    <SortHead label="MOT" k="mot" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
-                    <SortHead label="Tax" k="tax" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
-                    {/* The garage's copy stops at Tax: the sold price and the row actions are no
-                        use on paper, and the sold price is not the workshop's business. */}
-                    <th className="text-left font-semibold px-2 py-2 print:hidden">Status</th>
-                    <th className="text-right font-semibold px-3 py-2 print:hidden">Sale</th>
+                    {/* One column, both sorts. MOT and tax are read together — "is this car legal
+                        to sell?" — and as two columns they cost 200px the table hasn't got. */}
+                    <th className="text-left font-semibold px-2 py-2">
+                      <TwoSort a={{ label: "MOT", k: "mot" }} b={{ label: "Tax", k: "tax" }} sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+                    </th>
+                    {/* The garage's copy stops at the MOT: the sold price and the row actions are
+                        no use on paper, and the sold price is not the workshop's business. */}
+                    <th className="text-right font-semibold px-2 py-2 print:hidden">Sale</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -444,9 +456,17 @@ export default function SalesStock() {
                             {c.imageUrl
                               ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0 print:hidden" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
                               : <div className="w-12 h-9 bg-slate-100 rounded flex items-center justify-center shrink-0 print:hidden"><Car className="w-4 h-4 text-slate-300" /></div>}
-                            <div className="min-w-0">
-                              <div className="font-medium truncate">{c.make} {c.model}</div>
-                              <div className="text-[11px] text-slate-500 truncate">{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
+                            {/* Capped, because this column is the widest thing in the table and the
+                                spec line is what sets its width. Both lines carry a title so the
+                                truncation costs nothing. */}
+                            <div className="min-w-0 max-w-[160px]">
+                              <div className="font-medium truncate" title={`${c.make || ""} ${c.model || ""}${c.variant ? ` ${c.variant}` : ""}`.trim()}>{c.make} {c.model}</div>
+                              <div className="text-[11px] text-slate-500 truncate" title={[c.year, c.colour, c.fuelType, c.transmission].filter(Boolean).join(" · ")}>{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
+                              {c.checkIssues && (
+                                <div className="text-[11px] font-semibold text-red-700 inline-flex items-center gap-1 max-w-full" title={`Vehicle check: ${c.checkIssues}`}>
+                                  <AlertTriangle className="w-3 h-3 shrink-0" /><span className="truncate">{c.checkIssues}</span>
+                                </div>
+                              )}
                               {!!lastSync && !isAdvertised(c) && !isSold(c) && (
                                 <div className="text-[11px] text-sky-700 inline-flex items-center gap-1 print:hidden" title={c.lastSeenOnline ? `Last advertised ${fmtDate(c.lastSeenOnline)}` : "Never advertised on the website"}>
                                   <CloudOff className="w-3 h-3" />not advertised
@@ -459,22 +479,27 @@ export default function SalesStock() {
                         <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">£{money(c.price)}</td>
                         <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{money(c.mileage)}</td>
                         <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-slate-600">
+                        {/* "Added" was a column of its own and was almost always the import date.
+                            It is the tooltip here instead, and the table is 90px narrower. */}
+                        <td className="px-2 py-2 whitespace-nowrap text-slate-600" title={c.createdAt ? `Added to the list ${fmtDate(c.createdAt)}` : undefined}>
                           {c.purchasedOn
                             ? <>{fmtDate(c.purchasedOn)}{c.purchasedFrom && <span className="block text-[11px] text-slate-400">{c.purchasedFrom}</span>}</>
                             : <span className="text-slate-300">—</span>}
                         </td>
-                        <td className="px-2 py-2 whitespace-nowrap text-slate-600">{fmtDate(c.createdAt) || <span className="text-slate-300">—</span>}</td>
-                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
-                        <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span></td>
-                        <td className="px-2 py-2"><span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span></td>
-                        <td className="px-2 py-2 print:hidden">
-                          {isSold(c)
-                            ? <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">SOLD{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}</span>
-                            : c.checkIssues ? <span className="inline-flex items-center gap-1 text-red-700 text-[11px] font-semibold whitespace-nowrap"><AlertTriangle className="w-3 h-3" />{c.checkIssues}</span>
-                            : <span className="text-slate-300">—</span>}
+                        <td className="px-2 py-2 max-w-[150px]" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
+                        <td className="px-2 py-2 leading-tight">
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span>
+                          <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span>
                         </td>
-                        <td className="px-3 py-2 text-right print:hidden" onClick={(e) => e.stopPropagation()}>
+                        {/* The SOLD badge used to have a column to itself two along from the button
+                            that undoes it. Same cell now — a column saved, and the sale reads as
+                            one thing. */}
+                        <td className="px-2 py-2 text-right print:hidden" onClick={(e) => e.stopPropagation()}>
+                          {isSold(c) && (
+                            <div className="mb-1 inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">
+                              SOLD{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}
+                            </div>
+                          )}
                           <div className="inline-flex gap-1.5">
                             <MarkSoldButton
                               car={c} compact
@@ -890,7 +915,7 @@ function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?:
   const Tag = ({ kind, gaps, tone, hint, fixable }: { kind: string; gaps: string[]; tone: string; hint: string; fixable?: boolean }) => {
     const inner = (<>
       <AlertTriangle className="h-3 w-3 shrink-0" />
-      <span className="truncate"><b className="font-semibold">{kind}</b> {gaps.join(", ")}</span>
+      <span className="truncate"><b className="font-semibold">{kind}</b>{gaps.length ? ` ${gaps.join(", ")}` : ""}</span>
     </>);
     const cls = `inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`;
     if (!fixable || !onFix) return <span title={hint} className={cls}>{inner}</span>;
@@ -903,7 +928,7 @@ function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?:
   return (
     <span className={`${block ? "flex" : "inline-flex"} flex-wrap items-center gap-1`}>
       {noDeal
-        ? <Tag kind="not bought in" gaps={["no purchase logged"]} tone="border-red-300 bg-red-50 text-red-800" fixable
+        ? <Tag kind="not bought in" gaps={[]} tone="border-red-300 bg-red-50 text-red-800" fixable
             hint="No car deal exists for this car — there's no record of what was paid for it or who from." />
         : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800" fixable
             hint={`Missing from the purchase record: ${purchase.join(", ")}`} />}
