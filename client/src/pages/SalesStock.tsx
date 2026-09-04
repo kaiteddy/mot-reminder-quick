@@ -53,6 +53,12 @@ const taxTone = (t: any) => !t ? "slate" : /^taxed$/i.test(t) ? "green" : "red";
 // AutoTrader price indicator vs market: High = above guide (slow to sell) → flag amber.
 const priceTone = (p: any) => { const s = String(p || "").toLowerCase(); if (s === "good") return "green"; if (s === "high") return "amber"; if (s === "low") return "sky"; return "slate"; };
 
+/** The price verdict as plain coloured text — a pill here would just be another badge in a row
+ *  that already has enough of them. Only "High" (slow to sell) is meant to catch the eye. */
+const PRICE_TEXT: Record<string, string> = {
+  green: "text-green-600", amber: "text-amber-600 font-medium", sky: "text-sky-600", slate: "text-slate-400",
+};
+
 const TONE: Record<string, string> = {
   green: "border-green-200 bg-green-50 text-green-700",
   amber: "border-amber-200 bg-amber-50 text-amber-700",
@@ -456,12 +462,13 @@ export default function SalesStock() {
                             {c.imageUrl
                               ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0 print:hidden" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
                               : <div className="w-12 h-9 bg-slate-100 rounded flex items-center justify-center shrink-0 print:hidden"><Car className="w-4 h-4 text-slate-300" /></div>}
-                            {/* Capped, because this column is the widest thing in the table and the
-                                spec line is what sets its width. Both lines carry a title so the
-                                truncation costs nothing. */}
-                            <div className="min-w-0 max-w-[160px]">
+                            {/* No width cap: truncation is by `truncate` alone, so the column takes
+                                the room the table has spare and only clips when it genuinely runs
+                                out. A fixed cap clipped the name on a wide screen with space beside
+                                it. Both lines carry a title either way. */}
+                            <div className="min-w-0">
                               <div className="font-medium truncate" title={`${c.make || ""} ${c.model || ""}${c.variant ? ` ${c.variant}` : ""}`.trim()}>{c.make} {c.model}</div>
-                              <div className="text-[11px] text-slate-500 truncate" title={[c.year, c.colour, c.fuelType, c.transmission].filter(Boolean).join(" · ")}>{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
+                              <div className="text-[11px] text-slate-500 truncate" title={[c.year, c.colour, c.fuelType, c.transmission].filter(Boolean).join(" · ")}>{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}</div>
                               {c.checkIssues && (
                                 <div className="text-[11px] font-semibold text-red-700 inline-flex items-center gap-1 max-w-full" title={`Vehicle check: ${c.checkIssues}`}>
                                   <AlertTriangle className="w-3 h-3 shrink-0" /><span className="truncate">{c.checkIssues}</span>
@@ -476,7 +483,15 @@ export default function SalesStock() {
                           </div>
                         </td>
                         <td className="px-2 py-2"><span className="font-mono font-semibold text-[12px] bg-slate-100 rounded px-1.5 py-0.5 whitespace-nowrap">{c.registration}</span></td>
-                        <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">£{money(c.price)}</td>
+                        <td className="px-2 py-2 text-right whitespace-nowrap">
+                          <div className="font-semibold">£{money(c.price)}</div>
+                          {c.priceIndicator && c.priceIndicator !== "No analysis" && (
+                            <div className={`text-[10.5px] ${PRICE_TEXT[priceTone(c.priceIndicator)]}`}
+                              title={`AutoTrader rates this ${String(c.priceIndicator).toLowerCase()} against the market${c.retailValuation ? ` — guide £${money(c.retailValuation)}` : ""}`}>
+                              {c.priceIndicator}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{money(c.mileage)}</td>
                         <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
                         {/* "Added" was a column of its own and was almost always the import date.
@@ -487,9 +502,17 @@ export default function SalesStock() {
                             : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-2 py-2 max-w-[150px]" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
+                        {/* Colour marks the exception, not the rule. An MOT with months on it and
+                            a taxed car are the normal state — as bordered pills they made every row
+                            shout and the genuinely bad ones disappeared into the pattern. */}
                         <td className="px-2 py-2 leading-tight">
-                          <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`}>{mot.label}</span>
-                          <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span>
+                          <span className={mot.bad
+                            ? `inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`
+                            : "inline-block text-[11px] text-slate-600 whitespace-nowrap"}>{mot.label}</span>
+                          {" "}
+                          <span className={/^taxed$/i.test(String(c.taxStatus || ""))
+                            ? "inline-block text-[11px] text-slate-400 whitespace-nowrap"
+                            : `inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[taxTone(c.taxStatus)]}`}>{c.taxStatus || "Unknown"}</span>
                         </td>
                         {/* The SOLD badge used to have a column to itself two along from the button
                             that undoes it. Same cell now — a column saved, and the sale reads as
@@ -753,7 +776,9 @@ function SaleInvoiceButton({
       onClick={onChoose}
     >
       {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ReceiptText className="w-3.5 h-3.5" />}
-      {raised ? "Open invoice" : "Invoice"}
+      {/* Icon only in the list. Two labelled buttons on every one of 27 rows was the single
+          noisiest thing on the page; the tooltip and the green tint still say which it is. */}
+      {compact ? <span className="sr-only">{raised ? "Open invoice" : "Invoice"}</span> : (raised ? "Open invoice" : "Invoice")}
     </button>
   );
 }
@@ -909,7 +934,9 @@ function PurchaseFillDialog({ car, onClose, onSaved }: { car: any; onClose: () =
 function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?: (car: any) => void }) {
   const { purchase, invoice, noDeal } = missingBits(car);
   if (!purchase.length && !invoice.length) {
-    return <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-green-700" title="Purchase logged and everything the sales invoice needs is on file"><ShieldCheck className="h-3 w-3" />complete</span>;
+    // Deliberately just a tick. This is the state 20-odd rows are in, and as a bordered green
+    // pill it was louder than the handful of rows that actually need something doing.
+    return <span className="inline-flex items-center text-green-600" title="Purchase logged and everything the sales invoice needs is on file"><ShieldCheck className="h-4 w-4" /><span className="sr-only">complete</span></span>;
   }
   // The buying-side chips are clickable — they name the gap, so they may as well fix it.
   const Tag = ({ kind, gaps, tone, hint, fixable }: { kind: string; gaps: string[]; tone: string; hint: string; fixable?: boolean }) => {
