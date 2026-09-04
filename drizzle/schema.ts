@@ -558,6 +558,10 @@ export const salesStock = pgTable("salesStock", {
   // with what the car actually went for would destroy the asking price we listed it at.
   soldAt: timestamp("soldAt", { mode: "date" }),
   soldPrice: numeric("soldPrice", { precision: 10, scale: 2 }),
+  // Last time the public website advertised this car. Null = never advertised (a car in prep, a
+  // trade car, a part-exchange). The website sync only ever SETS this — a car dropping off the
+  // site is reported, not deleted — so it doubles as "off the website since".
+  lastSeenOnline: timestamp("lastSeenOnline", { mode: "date" }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({

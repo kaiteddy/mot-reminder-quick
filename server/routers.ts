@@ -81,6 +81,15 @@ export const appRouter = router({
         const { refreshSalesStockMotTax } = await import("./db");
         return refreshSalesStockMotTax({ forceUkvd: input?.forceUkvd });
       }),
+    // Pull what the website is actually advertising into the stock list. Adds cars that went live
+    // without being entered here, refreshes prices and photos, and reports — without touching —
+    // the cars we hold that aren't advertised. It never deletes and never marks anything sold.
+    syncWebsite: adminProcedure
+      .input(z.object({ dryRun: z.boolean().optional() }).optional())
+      .mutation(async ({ input }) => {
+        const { syncWebsiteStock } = await import("./services/websiteStock");
+        return syncWebsiteStock({ apply: !input?.dryRun });
+      }),
     setSold: adminProcedure
       .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {

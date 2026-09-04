@@ -145,3 +145,34 @@ cronRouter.get("/ga4-pool-check", async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+/**
+ * Nightly website stock sync (see vercel.json).
+ *
+ * The forecourt changes on the website — a car goes live, a price is cut, one sells — and until
+ * this ran nightly the app only found out when someone remembered to export a CSV. It is safe to
+ * run unattended because it only ever adds and updates: a car that is in stock but not advertised
+ * (in prep, held back, a part-exchange) is reported and left exactly as it is.
+ *
+ * Auth: same as the other crons — Bearer CRON_SECRET when one is set.
+ */
+cronRouter.get("/website-stock-sync", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { syncWebsiteStock } = await import("../services/websiteStock");
+    const r = await syncWebsiteStock({ apply: req.query.dry !== "1" });
+    const unsold = r.notAdvertised.filter((c) => !/^sold$/i.test(String(c.status || "")));
+    console.log(`[CRON website-stock-sync] ${r.applied ? "applied" : "DRY"} — ${r.online} advertised, ${r.added.length} added, ${r.updated.length} updated, ${unsold.length} in stock but not advertised`);
+    return res.json({
+      ok: true, applied: r.applied, online: r.online, added: r.added, updated: r.updated.length,
+      unchanged: r.unchanged, notAdvertised: unsold, statusDisagrees: r.statusDisagrees,
+      skipped: r.skipped, errors: r.errors,
+    });
+  } catch (err: any) {
+    console.error("[CRON website-stock-sync] error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});

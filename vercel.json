@@ -3,7 +3,8 @@
     "regions": ["lhr1"],
     "crons": [
         { "path": "/api/cron/mot-day-reminders", "schedule": "0 7 * * *" },
-        { "path": "/api/cron/ga4-pool-check", "schedule": "30 8 * * *" }
+        { "path": "/api/cron/ga4-pool-check", "schedule": "30 8 * * *" },
+        { "path": "/api/cron/website-stock-sync", "schedule": "15 6 * * *" }
     ],
     "outputDirectory": "dist/public",
     "rewrites": [

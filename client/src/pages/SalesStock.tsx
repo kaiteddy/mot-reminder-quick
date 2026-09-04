@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2, Upload, Printer } from "lucide-react";
+import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2, Upload, Printer, Globe, CloudOff } from "lucide-react";
 
 const money = (n: any) => Number(n || 0).toLocaleString("en-GB");
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-GB") : "";
@@ -93,6 +93,24 @@ export default function SalesStock() {
     onError: (e) => toast.error(e.message || "Refresh failed"),
   });
 
+  // Pull in what the website is advertising. Adds and updates only — a car in stock that isn't
+  // advertised is reported back and left alone, which is why this is safe to press at any time.
+  const syncSite = trpc.salesStock.syncWebsite.useMutation({
+    onSuccess: (r: any) => {
+      const unlisted = (r.notAdvertised || []).filter((c: any) => !/^sold$/i.test(String(c.status || "")));
+      const bits = [
+        r.added.length ? `added ${r.added.length} (${r.added.map((a: any) => a.registration).join(", ")})` : "",
+        r.updated.length ? `updated ${r.updated.length}` : "",
+        unlisted.length ? `${unlisted.length} in stock but not advertised` : "",
+        r.statusDisagrees?.length ? `${r.statusDisagrees.length} advertised but marked ${r.statusDisagrees[0].status}` : "",
+      ].filter(Boolean);
+      toast.success(`Website: ${r.online} advertised · ${bits.join(" · ") || "everything already matched"}`);
+      if (r.errors?.length) toast.error(r.errors.join("; "));
+      utils.salesStock.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message || "Could not read the website"),
+  });
+
   const [sortKey, setSortKey] = useState("price");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sortBy = (k: string) => {
@@ -147,12 +165,30 @@ export default function SalesStock() {
 
   const cars = (data as any[]) || [];
   const stuckCount = useMemo(() => cars.filter((c) => missingCount(c) > 0).length, [cars]);
+  /**
+   * Which cars the website is currently advertising.
+   *
+   * The sync stamps `lastSeenOnline` on every car it found and leaves the rest untouched, so the
+   * cars carrying the LATEST stamp are the ones on the site — an old stamp means "was advertised,
+   * isn't now". With no stamps anywhere the sync has never run, and the page says nothing at all
+   * rather than labelling the whole forecourt unadvertised.
+   */
+  const lastSync = useMemo(
+    () => cars.reduce((m: number, c: any) => Math.max(m, c.lastSeenOnline ? +new Date(c.lastSeenOnline) : 0), 0), [cars]);
+  const isAdvertised = useCallback(
+    (c: any) => !!lastSync && !!c.lastSeenOnline && +new Date(c.lastSeenOnline) >= lastSync - 36e5, [lastSync]);
+  // Worth someone's attention: still on the books, not sold, and the website isn't showing it.
+  const unlisted = useMemo(
+    () => (lastSync ? cars.filter((c: any) => !isAdvertised(c) && !isSold(c)) : []), [cars, lastSync, isAdvertised]);
+  const [onlyUnlisted, setOnlyUnlisted] = useState(false);
+
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
     let out = onlyStuck ? cars.filter((c) => missingCount(c) > 0) : cars;
+    if (onlyUnlisted) out = out.filter((c: any) => !isAdvertised(c) && !isSold(c));
     if (f) out = out.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
     return out;
-  }, [cars, filter, onlyStuck]);
+  }, [cars, filter, onlyStuck, onlyUnlisted, isAdvertised]);
 
   const sorted = useMemo(() => {
     const VAL: Record<string, (c: any) => any> = {
@@ -291,6 +327,11 @@ export default function SalesStock() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">
               <Upload className="w-4 h-4" /> Log a purchase
             </button>
+            <button onClick={() => syncSite.mutate({})} disabled={syncSite.isPending}
+              title="Read elimotors.co.uk and bring the stock list into line — adds cars that went live, updates prices and photos. Never removes a car that isn't advertised."
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
+              {syncSite.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Sync website
+            </button>
             <button onClick={() => refresh.mutate()} disabled={refresh.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
               {refresh.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh MOT/Tax
@@ -326,10 +367,20 @@ export default function SalesStock() {
             <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
             Missing invoice info {stuckCount}
           </button>
+          {unlisted.length > 0 && (
+            <button
+              onClick={() => setOnlyUnlisted((v) => !v)}
+              title="In stock and not sold, but the website isn't advertising it — in prep, held back, or sold without being marked"
+              className={`h-9 rounded-lg border px-3 text-[13px] font-medium whitespace-nowrap ${onlyUnlisted ? "border-sky-400 bg-sky-100 text-sky-900" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+            >
+              <CloudOff className="mr-1.5 inline h-3.5 w-3.5" />
+              Not advertised {unlisted.length}
+            </button>
+          )}
         </div>
 
         {isLoading ? <div className="text-center text-slate-400 py-12"><Loader2 className="w-6 h-6 animate-spin inline" /></div>
-          : cars.length === 0 ? <div className="text-center text-slate-500 py-12">No stock cars yet. Import the stocklist with <code>scripts/import-sales-stock.ts</code>.</div>
+          : cars.length === 0 ? <div className="text-center text-slate-500 py-12">No stock cars yet — press <strong>Sync website</strong> to pull in what elimotors.co.uk is advertising.</div>
           : view === "list" ? (
             <div className="stock-print-root rounded-xl border border-slate-200 bg-white overflow-x-auto print:overflow-visible print:rounded-none print:border-0">
               {/* Paper only. A printed sheet has to say what it is and when it was run — and
@@ -385,6 +436,11 @@ export default function SalesStock() {
                             <div className="min-w-0">
                               <div className="font-medium truncate">{c.make} {c.model}</div>
                               <div className="text-[11px] text-slate-500 truncate">{[c.year, c.colour, c.fuelType].filter(Boolean).join(" · ")}{c.priceIndicator && c.priceIndicator !== "No analysis" ? ` · ${c.priceIndicator} price` : ""}</div>
+                              {!!lastSync && !isAdvertised(c) && !isSold(c) && (
+                                <div className="text-[11px] text-sky-700 inline-flex items-center gap-1 print:hidden" title={c.lastSeenOnline ? `Last advertised ${fmtDate(c.lastSeenOnline)}` : "Never advertised on the website"}>
+                                  <CloudOff className="w-3 h-3" />not advertised
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -442,9 +498,14 @@ export default function SalesStock() {
                         : <div className="w-full h-full flex items-center justify-center text-slate-300"><Car className="w-10 h-10" /></div>}
                       <div className="absolute top-2 left-2 bg-black/75 text-white text-[13px] font-bold tracking-wider rounded px-2 py-0.5">{c.registration}</div>
                       <div className="absolute bottom-2 right-2 bg-white/95 text-slate-900 text-[15px] font-bold rounded px-2 py-0.5 shadow">£{money(c.price)}</div>
-                      {isSold(c) && (
+                      {isSold(c) ? (
                         <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wide rounded px-2 py-0.5 shadow">
                           Sold{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}
+                        </div>
+                      ) : !!lastSync && !isAdvertised(c) && (
+                        <div className="absolute top-2 right-2 inline-flex items-center gap-1 bg-white/95 text-sky-800 text-[11px] font-semibold rounded px-2 py-0.5 shadow"
+                          title={c.lastSeenOnline ? `Last advertised ${fmtDate(c.lastSeenOnline)}` : "Never advertised on the website"}>
+                          <CloudOff className="w-3 h-3" /> Not advertised
                         </div>
                       )}
                     </div>
