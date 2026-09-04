@@ -237,10 +237,23 @@ async function retryAsSms(messageSid: string, errCode: number) {
   // live rescues. A partial unique index on this marker makes the second insert lose, and the
   // loser returns without sending. The row is written before the SMS so a crash mid-send costs
   // a missed message rather than a duplicate one.
-  const customer: any = await findCustomerByPhone(plain).catch(() => null);
+  // The row for the WhatsApp attempt this is rescuing. The rescue INHERITS its context — the
+  // vehicle, the registration, the reminder, the due date, the type. Filed without them, as it
+  // was, a rescued MOT reminder became an untyped "Other" against a bare phone number: invisible
+  // to "have I contacted them about THIS car recently?", which is the question that decides who
+  // gets messaged next. So the customer got their text and still looked overdue a reminder.
+  const [orig]: any = ((await db.execute(sql`
+    SELECT "customerId", "vehicleId", "reminderId", "messageType", registration, "dueDate", "customerName"
+      FROM "reminderLogs" WHERE "messageSid" = ${messageSid} ORDER BY id DESC LIMIT 1`)) as any).rows ?? [];
+
+  const customer: any = orig?.customerId ? null : await findCustomerByPhone(plain).catch(() => null);
   const claim: any = await db.execute(sql`
-    INSERT INTO "reminderLogs" ("customerId", "messageType", "recipient", "status", "templateUsed", "messageContent", "sentAt")
-    VALUES (${customer?.id ?? null}, 'Other', ${plain}, 'queued', ${marker}, ${body}, now())
+    INSERT INTO "reminderLogs" ("customerId", "vehicleId", "reminderId", "messageType", "recipient",
+                                "status", "templateUsed", "messageContent", "customerName",
+                                registration, "dueDate", "sentAt")
+    VALUES (${orig?.customerId ?? customer?.id ?? null}, ${orig?.vehicleId ?? null}, ${orig?.reminderId ?? null},
+            ${orig?.messageType ?? "Other"}, ${plain}, 'queued', ${marker}, ${body},
+            ${orig?.customerName ?? null}, ${orig?.registration ?? null}, ${orig?.dueDate ?? null}, now())
     ON CONFLICT DO NOTHING
     RETURNING id`);
   const claimedId = claim?.rows?.[0]?.id;
@@ -260,6 +273,17 @@ async function retryAsSms(messageSid: string, errCode: number) {
            status = ${out.success ? "sent" : "failed"},
            "errorMessage" = ${out.success ? null : (out.error ?? null)}
      WHERE id = ${claimedId}`).catch(() => undefined);
+
+  // And the original stops calling itself a failure. `failedAt` should mean "this customer did
+  // not get their reminder" — once the text has gone, they did. The WhatsApp refusal is kept in
+  // the error text so the history and the channel diagnosis are not lost.
+  if (out.success) {
+    await db.execute(sql`
+      UPDATE "reminderLogs"
+         SET "failedAt" = NULL, status = 'rescued',
+             "errorMessage" = ${`WhatsApp ${errCode} — resent as SMS${out.messageId ? ` (${out.messageId})` : ""}`}
+       WHERE "messageSid" = ${messageSid}`).catch(() => undefined);
+  }
 }
 
 export async function handleTwilioStatusCallback(req: Request, res: Response) {
