@@ -199,13 +199,36 @@ export default function SalesStock() {
     () => (lastSync ? cars.filter((c: any) => !isAdvertised(c) && !isSold(c)) : []), [cars, lastSync, isAdvertised]);
   const [onlyUnlisted, setOnlyUnlisted] = useState(false);
 
+  /**
+   * MOT and tax share a column now, but they are separate questions and stay separately
+   * filterable — an expired MOT, an MOT due within the month and an untaxed car are three
+   * different jobs for three different days. The stat tiles already counted them, so they are the
+   * filters: click one to see just those cars, click it again to clear.
+   */
+  const [statFilter, setStatFilter] = useState<null | "alerts" | "motExpired" | "motSoon" | "untaxed">(null);
+  const toggleStat = (k: typeof statFilter) => setStatFilter((v) => (v === k ? null : k));
+  const STAT_LABEL: Record<string, string> = {
+    alerts: "vehicle-check alerts only", motExpired: "MOT expired only",
+    motSoon: "MOT due within 30 days only", untaxed: "untaxed / SORN only",
+  };
+  /** One car against one tile. Shares motStatus/taxTone with the tiles so the count and the list
+   *  can never disagree. */
+  const matchesStat = useCallback((c: any, k: NonNullable<typeof statFilter>) => {
+    const tone = motStatus(c.motExpiryDate).tone;
+    if (k === "alerts") return !!c.checkIssues;
+    if (k === "motExpired") return tone === "red";
+    if (k === "motSoon") return tone === "amber";
+    return !!c.taxStatus && !/^taxed$/i.test(String(c.taxStatus));
+  }, []);
+
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
     let out = onlyStuck ? cars.filter((c) => missingCount(c) > 0) : cars;
     if (onlyUnlisted) out = out.filter((c: any) => !isAdvertised(c) && !isSold(c));
+    if (statFilter) out = out.filter((c: any) => matchesStat(c, statFilter));
     if (f) out = out.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
     return out;
-  }, [cars, filter, onlyStuck, onlyUnlisted, isAdvertised]);
+  }, [cars, filter, onlyStuck, onlyUnlisted, isAdvertised, statFilter, matchesStat]);
 
   const sorted = useMemo(() => {
     const VAL: Record<string, (c: any) => any> = {
@@ -369,10 +392,14 @@ export default function SalesStock() {
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
           <Stat label="Cars in stock" value={String(stats.count)} />
           <Stat label="Total value" value={`£${money(stats.value)}`} />
-          <Stat label="Check alerts" value={String(stats.alerts)} tone={stats.alerts ? "red" : "green"} />
-          <Stat label="MOT expired" value={String(stats.motExpired)} tone={stats.motExpired ? "red" : "green"} />
-          <Stat label="MOT due ≤30d" value={String(stats.motSoon)} tone={stats.motSoon ? "amber" : "green"} />
-          <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "red" : "green"} />
+          <Stat label="Check alerts" value={String(stats.alerts)} tone={stats.alerts ? "red" : "green"}
+            active={statFilter === "alerts"} onClick={() => toggleStat("alerts")} />
+          <Stat label="MOT expired" value={String(stats.motExpired)} tone={stats.motExpired ? "red" : "green"}
+            active={statFilter === "motExpired"} onClick={() => toggleStat("motExpired")} />
+          <Stat label="MOT due ≤30d" value={String(stats.motSoon)} tone={stats.motSoon ? "amber" : "green"}
+            active={statFilter === "motSoon"} onClick={() => toggleStat("motSoon")} />
+          <Stat label="Untaxed / SORN" value={String(stats.untaxed)} tone={stats.untaxed ? "red" : "green"}
+            active={statFilter === "untaxed"} onClick={() => toggleStat("untaxed")} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -418,9 +445,9 @@ export default function SalesStock() {
                   {" · "}{printSummary.motExpired} MOT expired
                   {" · "}{printSummary.motSoon} MOT due ≤30d
                   {" · "}{printSummary.untaxed} untaxed/SORN
-                  {(filter.trim() || onlyStuck) && (
+                  {(filter.trim() || onlyStuck || onlyUnlisted || statFilter) && (
                     <span className="font-semibold">
-                      {" · filtered"}{filter.trim() ? ` by “${filter.trim()}”` : ""}{onlyStuck ? ", missing invoice info only" : ""} — not the whole fleet
+                      {" · filtered"}{filter.trim() ? ` by “${filter.trim()}”` : ""}{onlyStuck ? ", missing invoice info only" : ""}{onlyUnlisted ? ", not advertised only" : ""}{statFilter ? `, ${STAT_LABEL[statFilter]}` : ""} — not the whole fleet
                     </span>
                   )}
                 </div>
@@ -965,12 +992,19 @@ function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?:
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Stat({ label, value, tone, active, onClick }: { label: string; value: string; tone?: string; active?: boolean; onClick?: () => void }) {
+  const cls = `rounded-lg border p-3 text-left ${tone ? TONE[tone] : "border-slate-200 bg-white"}${
+    onClick ? " cursor-pointer hover:brightness-[0.97]" : ""}${active ? " ring-2 ring-violet-500" : ""}`;
+  const body = (<>
+    <div className="text-[11px] uppercase font-semibold opacity-70">{label}</div>
+    <div className="text-[20px] font-bold leading-tight mt-0.5">{value}</div>
+  </>);
+  // A counting tile is only a filter when there is something to filter TO — "MOT expired 0" that
+  // narrows the list to nothing is a dead end, not a feature.
+  if (!onClick || value === "0") return <div className={cls}>{body}</div>;
   return (
-    <div className={`rounded-lg border p-3 ${tone ? TONE[tone] : "border-slate-200 bg-white"}`}>
-      <div className="text-[11px] uppercase font-semibold opacity-70">{label}</div>
-      <div className="text-[20px] font-bold leading-tight mt-0.5">{value}</div>
-    </div>
+    <button type="button" onClick={onClick} title={active ? `Showing ${label.toLowerCase()} only — click to clear` : `Show only these cars`}
+      className={`${cls} w-full`}>{body}</button>
   );
 }
 
