@@ -3758,7 +3758,11 @@ export async function refreshSalesStockMotTax(opts?: { forceUkvd?: boolean }) {
       // MOT history from DVSA (authoritative for expiry, and the only source of a mileage
       // reading); tax and the vehicle's registry details from DVLA VES.
       const [d, mot]: any = await Promise.all([getVehicleDetails(reg).catch(() => null), getMOTHistory(reg).catch(() => null)]);
-      const motExp = mot ? getLatestMOTExpiry(mot) : null;
+      // DVSA is authoritative for the expiry and is the only source of an odometer reading — but
+      // it is also the one that falls over, and when its token went stale every car in the list
+      // read "No MOT data" while DVLA, which we call in the same breath, was returning the expiry
+      // date all along. Take DVSA when it answers and DVLA when it doesn't.
+      const motExp = (mot ? getLatestMOTExpiry(mot) : null) ?? toDate(d?.motExpiryDate);
       const set: any = { taxStatus: d?.taxStatus || null, taxDueDate: toDate(d?.taxDueDate), motTaxChecked: new Date() };
       if (motExp) set.motExpiryDate = motExp;
 
