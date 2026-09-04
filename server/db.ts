@@ -5453,6 +5453,25 @@ export async function setSalesStockSold(input: { id: number; sold: boolean; sold
     : { status: "ON FORECOURT", soldAt: null, soldPrice: null };
   await db.update(salesStock).set(patch as any).where(eq(salesStock.id, input.id));
 
+  // Push the sale through to the car deal behind this stock row, which is what the P&L, the
+  // margin and the VAT are actually computed from. Marking a car sold here used to touch only
+  // the forecourt list, so the deal sat at "in_stock" and the sale reached the accounts nowhere:
+  // LR18XDE was sold for £14,000 on 27/08/2026 and £4,054 of margin never appeared.
+  //
+  // Only a deal still open is updated. A car can legitimately have more than one — LY63FUM was
+  // sold, bought back and put out again, and both cycles hang off the same stock row — so the
+  // closed one must be left exactly as it is.
+  //
+  // And only when a price came with it: the rollup reads revenue as COALESCE(salePrice, 0)
+  // against the full purchase cost, so a sold deal with no price would book the whole car as a
+  // loss. Without one the deal stays open and the mismatch stays visible instead.
+  if (input.sold && input.soldPrice != null) {
+    await db.execute(sql`
+      UPDATE "carDeals" SET "salePrice" = ${String(input.soldPrice)},
+             "saleDate" = ${(patch as any).soldAt}, "status" = 'sold', "updatedAt" = now()
+       WHERE "salesStockId" = ${input.id} AND "status" = 'in_stock'`);
+  }
+
   // The popup is where the real sale price gets recorded, so push it through to the linked sale
   // invoice — but only while the invoice still shows a system-seeded price (blank, the asking
   // price, or the previously recorded sold price). A figure someone typed on the form is theirs.
