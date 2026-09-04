@@ -90,6 +90,23 @@ export const appRouter = router({
         const { syncWebsiteStock } = await import("./services/websiteStock");
         return syncWebsiteStock({ apply: !input?.dryRun });
       }),
+    // The gaps the "invoice" chip names, filled from the stock list rather than somewhere else.
+    updateDetails: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        make: z.string().nullable().optional(), model: z.string().nullable().optional(),
+        vin: z.string().nullable().optional(), engineNo: z.string().nullable().optional(),
+        registrationDate: z.string().nullable().optional(),
+        mileage: z.number().nullable().optional(), price: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { updateSalesStockDetails } = await import("./db");
+        const { registrationDate, ...rest } = input;
+        return updateSalesStockDetails({
+          ...rest,
+          ...(registrationDate === undefined ? {} : { registrationDate: registrationDate ? new Date(registrationDate) : null }),
+        });
+      }),
     setSold: adminProcedure
       .input(z.object({ id: z.number(), sold: z.boolean(), soldPrice: z.number().nullable().optional(), soldAt: z.string().nullable().optional() }))
       .mutation(async ({ input }) => {

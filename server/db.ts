@@ -3811,6 +3811,49 @@ export async function refreshSalesStockMotTax(opts?: { forceUkvd?: boolean }) {
   return { updated, filled, gapsFilled };
 }
 
+/**
+ * Fill in what the sales invoice needs, from the stock list itself.
+ *
+ * The "invoice: chassis, first reg, mileage" chip named the gaps precisely and then left you to
+ * find the car somewhere else to fill them — so they mostly never got filled. Only the fields
+ * actually passed are written; anything omitted is left alone.
+ *
+ * A chassis number or a first-registration date typed here is also backfilled onto the garage's
+ * own vehicle record when THAT is blank, because the sales invoice reads either and the workshop
+ * wants them too. Blank-only, and matched on the exact plate: overwriting a vehicle's identity
+ * from a stock row is how one car's details ended up on another's (see the autoSave race).
+ */
+export async function updateSalesStockDetails(input: {
+  id: number;
+  make?: string | null; model?: string | null; vin?: string | null; engineNo?: string | null;
+  registrationDate?: Date | null; mileage?: number | null; price?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const patch: any = {};
+  const put = (k: string, v: any) => { if (v !== undefined) patch[k] = v; };
+  put("make", input.make); put("model", input.model);
+  put("vin", input.vin ? String(input.vin).toUpperCase().replace(/\s+/g, "") : input.vin);
+  put("engineNo", input.engineNo); put("registrationDate", input.registrationDate);
+  put("mileage", input.mileage);
+  if (input.price !== undefined) patch.price = input.price == null ? null : String(input.price);
+  if (!Object.keys(patch).length) return { updated: 0 };
+
+  await db.update(salesStock).set(patch).where(eq(salesStock.id, input.id));
+
+  const [row]: any = await db.select({ registration: salesStock.registration }).from(salesStock).where(eq(salesStock.id, input.id)).limit(1);
+  const reg = String(row?.registration ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (reg && (patch.vin || patch.engineNo || patch.registrationDate)) {
+    await db.execute(sql`
+      UPDATE "vehicles" SET
+        "vin" = COALESCE(NULLIF("vin", ''), ${patch.vin ?? null}),
+        "engineNo" = COALESCE(NULLIF("engineNo", ''), ${patch.engineNo ?? null}),
+        "dateOfRegistration" = COALESCE("dateOfRegistration", ${patch.registrationDate ?? null})
+      WHERE REPLACE(UPPER("registration"), ' ', '') = ${reg}`);
+  }
+  return { updated: 1, fields: Object.keys(patch) };
+}
+
 export async function getCustomerContacts(customerId: number) {
   const db = await getDb();
   if (!db) return [];

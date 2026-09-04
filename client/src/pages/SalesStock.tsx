@@ -55,6 +55,8 @@ const priceTone = (p: any) => { const s = String(p || "").toLowerCase(); if (s =
 
 /** The price verdict as plain coloured text — a pill here would just be another badge in a row
  *  that already has enough of them. Only "High" (slow to sell) is meant to catch the eye. */
+const PRICE_RANK: Record<string, number> = { great: 0, low: 1, good: 2, fair: 3, high: 4 };
+
 const PRICE_TEXT: Record<string, string> = {
   green: "text-green-600", amber: "text-amber-600 font-medium", sky: "text-sky-600", slate: "text-slate-400",
 };
@@ -167,7 +169,7 @@ export default function SalesStock() {
   // Mark sold: capture price/date, then hand over to the invoice if asked.
   const [soldTarget, setSoldTarget] = useState<any>(null);
   // Which car's purchase details are being filled in from the Needs column.
-  const [fixTarget, setFixTarget] = useState<any>(null);
+  const [fixTarget, setFixTarget] = useState<{ car: any; kind: "purchase" | "invoice" } | null>(null);
   const unsell = trpc.salesStock.setSold.useMutation({
     onSuccess: (_r, v) => { utils.salesStock.list.invalidate(); toast.success("Back on the forecourt"); },
     onError: (e) => toast.error(e.message || "Could not update this car"),
@@ -236,6 +238,9 @@ export default function SalesStock() {
       reg: (c) => String(c.registration || ""),
       price: (c) => Number(c.price) || 0,
       mileage: (c) => Number(c.mileage) || 0,
+      // Ranked, not alphabetical: the useful sort is dearest-against-the-market first, because
+      // "High" is the car that isn't shifting. Unrated cars sort to the far end either way.
+      indicator: (c) => PRICE_RANK[String(c.priceIndicator || "").toLowerCase()] ?? -1,
       days: (c) => Number(c.daysInStock) || 0,
       mot: (c) => (c.motExpiryDate ? new Date(c.motExpiryDate).getTime() : 0),
       tax: (c) => (/^taxed$/i.test(c.taxStatus || "") ? 1 : 0), // untaxed/SORN sort first when asc
@@ -459,6 +464,7 @@ export default function SalesStock() {
                       extra="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 print:static print:border-r-0" />
                     <SortHead label="Reg" k="reg" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
+                    <SortHead label="Market" k="indicator" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Miles" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
                     <SortHead label="Days" k="days" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="center" />
                     <SortHead label="Bought" k="purchased" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
@@ -510,14 +516,14 @@ export default function SalesStock() {
                           </div>
                         </td>
                         <td className="px-2 py-2"><span className="font-mono font-semibold text-[12px] bg-slate-100 rounded px-1.5 py-0.5 whitespace-nowrap">{c.registration}</span></td>
-                        <td className="px-2 py-2 text-right whitespace-nowrap">
-                          <div className="font-semibold">£{money(c.price)}</div>
-                          {c.priceIndicator && c.priceIndicator !== "No analysis" && (
-                            <div className={`text-[10.5px] ${PRICE_TEXT[priceTone(c.priceIndicator)]}`}
-                              title={`AutoTrader rates this ${String(c.priceIndicator).toLowerCase()} against the market${c.retailValuation ? ` — guide £${money(c.retailValuation)}` : ""}`}>
-                              {c.priceIndicator}
-                            </div>
-                          )}
+                        <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">£{money(c.price)}</td>
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          {c.priceIndicator && c.priceIndicator !== "No analysis"
+                            ? <span className={`text-[11px] font-medium ${PRICE_TEXT[priceTone(c.priceIndicator)]}`}
+                                title={`AutoTrader rates this ${String(c.priceIndicator).toLowerCase()} against the market${c.retailValuation ? ` — guide £${money(c.retailValuation)}` : ""}`}>
+                                {c.priceIndicator}
+                              </span>
+                            : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{money(c.mileage)}</td>
                         <td className="px-2 py-2 text-center text-slate-500">{c.daysInStock ?? "—"}</td>
@@ -528,11 +534,11 @@ export default function SalesStock() {
                             ? <>{fmtDate(c.purchasedOn)}{c.purchasedFrom && <span className="block text-[11px] text-slate-400">{c.purchasedFrom}</span>}</>
                             : <span className="text-slate-300">—</span>}
                         </td>
-                        <td className="px-2 py-2 max-w-[150px]" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={setFixTarget} /></td>
+                        <td className="px-2 py-2 max-w-[150px]" onClick={(e) => e.stopPropagation()}><MissingCell car={c} onFix={(car, kind) => setFixTarget({ car, kind })} /></td>
                         {/* Colour marks the exception, not the rule. An MOT with months on it and
                             a taxed car are the normal state — as bordered pills they made every row
                             shout and the genuinely bad ones disappeared into the pattern. */}
-                        <td className="px-2 py-2 leading-tight">
+                        <td className="px-2 py-2 leading-tight whitespace-nowrap">
                           <span className={mot.bad
                             ? `inline-block rounded px-1.5 py-0.5 text-[11px] border whitespace-nowrap ${TONE[mot.tone]}`
                             : "inline-block text-[11px] text-slate-600 whitespace-nowrap"}>{mot.label}</span>
@@ -614,7 +620,7 @@ export default function SalesStock() {
                         {c.views7d != null && <span className="inline-flex items-center gap-1"><Eye className="w-3 h-3" />{c.views7d}/wk</span>}
                         {c.purchasedOn && <span title={`Bought in${c.purchasedFrom ? ` from ${c.purchasedFrom}` : ""}`}>bought {fmtDate(c.purchasedOn)}</span>}
                       </div>
-                      <div onClick={(e) => e.stopPropagation()}><MissingCell car={c} block onFix={setFixTarget} /></div>
+                      <div onClick={(e) => e.stopPropagation()}><MissingCell car={c} block onFix={(car, kind) => setFixTarget({ car, kind })} /></div>
                       <div className="flex flex-col gap-1.5 mt-auto pt-1">
                         <Badge icon={<CalendarClock className="w-3.5 h-3.5" />} label="MOT" main={mot.label} tone={mot.tone} />
                         <Badge icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Tax" main={c.taxStatus || "Unknown"} sub={c.taxDueDate ? `due ${fmtDate(c.taxDueDate)}` : undefined} tone={taxTone(c.taxStatus)} />
@@ -677,12 +683,11 @@ export default function SalesStock() {
         </div>
       )}
 
-      {fixTarget && (
-        <PurchaseFillDialog
-          car={fixTarget}
-          onClose={() => setFixTarget(null)}
-          onSaved={() => setFixTarget(null)}
-        />
+      {fixTarget?.kind === "purchase" && (
+        <PurchaseFillDialog car={fixTarget.car} onClose={() => setFixTarget(null)} onSaved={() => setFixTarget(null)} />
+      )}
+      {fixTarget?.kind === "invoice" && (
+        <InvoiceFillDialog car={fixTarget.car} onClose={() => setFixTarget(null)} onSaved={() => setFixTarget(null)} />
       )}
 
       {soldTarget && (
@@ -895,8 +900,11 @@ function PurchaseFillDialog({ car, onClose, onSaved }: { car: any; onClose: () =
         source: source || null,
         ...(onCosts.trim() === "" ? {} : { reconditioningCost: oc }),
       });
-      await utils.salesStock.list.invalidate();
-      toast.success(`Purchase details saved for ${car.registration}`);
+      // This writes a CAR DEAL, which is what Profit & Cashbook is built from — so refresh that
+      // too. Without it the money was in the database and the page you'd check still said it
+      // wasn't, until a reload.
+      await Promise.all([utils.salesStock.list.invalidate(), utils.expenditure.invalidate()]);
+      toast.success(`Purchase saved for ${car.registration} — it's in Profit & Cashbook now`);
       onSaved();
     } catch (e: any) {
       toast.error(e.message || "Couldn't save the purchase details");
@@ -954,39 +962,143 @@ function PurchaseFillDialog({ car, onClose, onSaved }: { car: any; onClose: () =
 }
 
 /**
+ * Fill in what the sales invoice is short of, without leaving the stock list.
+ *
+ * Shows ONLY the fields the chip complained about — asking for a chassis number on a car that
+ * already has one is how a ten-second correction turns back into a form. A chassis number or a
+ * first-registration date typed here is also backfilled onto the garage's own vehicle record when
+ * that one is blank, so the workshop and the forecourt stop holding different answers.
+ */
+function InvoiceFillDialog({ car, onClose, onSaved }: { car: any; onClose: () => void; onSaved: () => void }) {
+  const gaps = new Set(missingBits(car).invoice);
+  const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+  const [make, setMake] = useState(car.make || "");
+  const [model, setModel] = useState(car.model || "");
+  const [vin, setVin] = useState(car.vin || car.vehVin || "");
+  const [firstReg, setFirstReg] = useState(iso(car.registrationDate || car.vehFirstRegistered));
+  const [mileage, setMileage] = useState(car.mileage != null ? String(car.mileage) : "");
+  const [price, setPrice] = useState(Number(car.price) > 0 ? String(car.price) : "");
+  const [saving, setSaving] = useState(false);
+  const utils = trpc.useUtils();
+  const update = trpc.salesStock.updateDetails.useMutation();
+  const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^0-9.\-]/g, "")));
+
+  const save = async () => {
+    const m = num(mileage), p = num(price);
+    if ((m != null && !isFinite(m)) || (p != null && !isFinite(p))) { toast.error("Enter a valid number"); return; }
+    setSaving(true);
+    try {
+      await update.mutateAsync({
+        id: car.id,
+        ...(gaps.has("make") ? { make: make.trim().toUpperCase() || null } : {}),
+        ...(gaps.has("model") ? { model: model.trim().toUpperCase() || null } : {}),
+        ...(gaps.has("chassis") ? { vin: vin.trim() || null } : {}),
+        ...(gaps.has("first reg") ? { registrationDate: firstReg || null } : {}),
+        ...(gaps.has("mileage") ? { mileage: m } : {}),
+        ...(gaps.has("sale price") ? { price: p } : {}),
+      });
+      await utils.salesStock.list.invalidate();
+      toast.success(`Saved for ${car.registration} — the sales invoice can fill itself in now`);
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't save these details");
+    } finally { setSaving(false); }
+  };
+
+  const Field = ({ show, label, hint, children }: any) => (!show ? null : (
+    <div>
+      <label className="text-[11px] text-slate-500">{label}</label>
+      {children}
+      {hint && <div className="mt-0.5 text-[10px] text-slate-400">{hint}</div>}
+    </div>
+  ));
+  const input = "w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-violet-500";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <div className="font-semibold text-slate-800">What the sales invoice needs</div>
+          <div className="text-[12px] text-slate-500">{car.registration} · {[car.make, car.model].filter(Boolean).join(" ")}</div>
+        </div>
+        <Field show={gaps.has("make")} label="Make">
+          <input value={make} onChange={(e) => setMake(e.target.value)} className={input} autoFocus />
+        </Field>
+        <Field show={gaps.has("model")} label="Model">
+          <input value={model} onChange={(e) => setModel(e.target.value)} className={input} />
+        </Field>
+        <Field show={gaps.has("chassis")} label="Chassis / VIN" hint="17 characters. Also saved onto the workshop's vehicle record if that one is blank.">
+          <input value={vin} onChange={(e) => setVin(e.target.value.toUpperCase())} className={`${input} font-mono`} maxLength={20} />
+        </Field>
+        <Field show={gaps.has("first reg")} label="First registered">
+          <input type="date" value={firstReg} onChange={(e) => setFirstReg(e.target.value)} className={input} />
+        </Field>
+        <Field show={gaps.has("mileage")} label="Mileage">
+          <input value={mileage} onChange={(e) => setMileage(e.target.value)} inputMode="numeric" className={input} />
+        </Field>
+        <Field show={gaps.has("sale price")} label="Price" hint="The advertised figure the invoice starts from — not what it eventually sells for.">
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={input} />
+        </Field>
+        {gaps.has("reg") && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+            This car has no registration. Everything else keys off the plate, so that one has to be
+            put right on the car's own record rather than here.
+          </p>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={save} disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-700 px-4 py-1.5 text-sm text-white hover:bg-violet-800 disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * What this car is still short of — kept in two groups because they're different jobs: the buying
  * side is bookkeeping (what you paid, when, who from), the invoice side is what the sales form
  * can't fill in on its own.
  */
-function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?: (car: any) => void }) {
+function MissingCell({ car, block, onFix }: { car: any; block?: boolean; onFix?: (car: any, kind: "purchase" | "invoice") => void }) {
   const { purchase, invoice, noDeal } = missingBits(car);
   if (!purchase.length && !invoice.length) {
     // Deliberately just a tick. This is the state 20-odd rows are in, and as a bordered green
     // pill it was louder than the handful of rows that actually need something doing.
     return <span className="inline-flex items-center text-green-600" title="Purchase logged and everything the sales invoice needs is on file"><ShieldCheck className="h-4 w-4" /><span className="sr-only">complete</span></span>;
   }
-  // The buying-side chips are clickable — they name the gap, so they may as well fix it.
-  const Tag = ({ kind, gaps, tone, hint, fixable }: { kind: string; gaps: string[]; tone: string; hint: string; fixable?: boolean }) => {
-    const inner = (<>
+  // A symbol, not a sentence. Spelled out, this was the widest column in the table for the sake
+  // of two or three rows; the tooltip says exactly what is missing and clicking it opens the form
+  // that fills those very fields. `block` (the grid card) has room, so it still reads in words.
+  const Tag = ({ kind, gaps, tone, hint, fixable, opens }: { kind: string; gaps: string[]; tone: string; hint: string; fixable?: "purchase" | "invoice"; opens?: string }) => {
+    const title = `${hint}${fixable && onFix ? ` — click to fill it in${opens ? ` (${opens})` : ""}` : ""}`;
+    const words = (<>
       <AlertTriangle className="h-3 w-3 shrink-0" />
       <span className="truncate"><b className="font-semibold">{kind}</b>{gaps.length ? ` ${gaps.join(", ")}` : ""}</span>
     </>);
-    const cls = `inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`;
-    if (!fixable || !onFix) return <span title={hint} className={cls}>{inner}</span>;
+    const cls = block
+      ? `inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${tone}`
+      : `inline-flex items-center rounded p-0.5 ${tone.replace(/bg-\S+/, "").replace(/border-\S+/, "")}`;
+    const inner = block ? words : <AlertTriangle className="h-4 w-4" />;
+    if (!fixable || !onFix) return <span title={title} className={cls}>{inner}</span>;
     return (
-      <button type="button" title={`${hint} — click to fill it in`}
-        onClick={(e) => { e.stopPropagation(); onFix(car); }}
+      <button type="button" title={title}
+        onClick={(e) => { e.stopPropagation(); onFix(car, fixable); }}
         className={`${cls} cursor-pointer hover:brightness-95`}>{inner}</button>
     );
   };
   return (
     <span className={`${block ? "flex" : "inline-flex"} flex-wrap items-center gap-1`}>
       {noDeal
-        ? <Tag kind="not bought in" gaps={[]} tone="border-red-300 bg-red-50 text-red-800" fixable
+        ? <Tag kind="not bought in" gaps={[]} tone="border-red-300 bg-red-50 text-red-800" fixable="purchase"
+            opens="also posts it to Profit & Cashbook"
             hint="No car deal exists for this car — there's no record of what was paid for it or who from." />
-        : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800" fixable
+        : purchase.length > 0 && <Tag kind="purchase" gaps={purchase} tone="border-amber-300 bg-amber-50 text-amber-800" fixable="purchase"
+            opens="also posts it to Profit & Cashbook"
             hint={`Missing from the purchase record: ${purchase.join(", ")}`} />}
-      {invoice.length > 0 && <Tag kind="invoice" gaps={invoice} tone="border-sky-300 bg-sky-50 text-sky-800"
+      {invoice.length > 0 && <Tag kind="invoice" gaps={invoice} tone="border-sky-300 bg-sky-50 text-sky-800" fixable="invoice"
         hint={`The sales invoice can't fill these in: ${invoice.join(", ")}`} />}
     </span>
   );
