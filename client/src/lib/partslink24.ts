@@ -148,13 +148,32 @@ export function partslink24Service(vin?: string | null, make?: string | null, mo
     return brand ? SERVICE_NAMES[brand] ?? null : null;
 }
 
-const CATALOG_PICKER = "https://www.partslink24.com/pl24-app/catalog/vehicle";
+// partslink24 runs two catalogue generations (the manufacturers API's "architecture" field):
+// P5 catalogues live in the /pl24-app SPA and take the VIN in the route; P4 ("legacy") catalogues
+// have a per-group entry action that takes the VIN as a query parameter — the API hands out these
+// templates with a trailing "vin=" ready for the VIN. Sending a P4 brand into /pl24-app gives the
+// bare "Error / An error occurred" page (Ford B-Max, 04/09/2026).
+const P4_ENTRY: Record<string, string> = {
+    fordp_parts: "/ford/pl24-entry.action?service=fordp_parts&lang=en&vin=",
+    fordt_parts: "/ford/pl24-entry.action?service=fordt_parts&lang=en&vin=",
+    nissan_parts: "/nissan/pl24-entry.action?service=nissan_parts&lang=en&vin=",
+    infiniti_parts: "/nissan/pl24-entry.action?service=infiniti_parts&lang=en&vin=",
+    hyundai_parts: "/hyundai-kia-automotive-group/pl24-entry.action?service=hyundai_parts&lang=en&vin=",
+    kia_parts: "/hyundai-kia-automotive-group/pl24-entry.action?service=kia_parts&lang=en&vin=",
+    opel_parts: "/opel/pl24-entry.action?service=opel_parts&lang=en&vin=",
+    vauxhall_parts: "/opel/pl24-entry.action?service=vauxhall_parts&lang=en&vin=",
+    iveco_parts: "/iveco/pl24-entry.action?service=iveco_parts&lang=en&vin=",
+};
 
-/** Vehicle page (VIN applied, category tree open) — null when the brand can't be told. */
+const CATALOG_PICKER = "https://www.partslink24.com/portal-ui";
+
+/** Vehicle page with the VIN applied — null when the brand can't be told. */
 export function partslink24VehicleUrl(vin?: string | null, make?: string | null, model?: string | null): string | null {
     const v = cleanVin(vin);
     const service = partslink24Service(v, make, model);
     if (!v || !service) return null;
+    const p4 = P4_ENTRY[service];
+    if (p4) return `https://www.partslink24.com${p4}${encodeURIComponent(v)}`;
     // Exactly what partslink24's own "Chassis number" box builds (pl24-vinsearch-ui): /{service}/{vin}/0/vehicle
     return `https://www.partslink24.com/pl24-app/${service}/${encodeURIComponent(v)}/0/vehicle?lang=en`;
 }
@@ -179,7 +198,7 @@ export function openPartslink24(vin?: string | null, make?: string | null, model
         openPartslink24Popup(url);
     } else if (v) {
         navigator.clipboard?.writeText(v).catch(() => {});
-        toast.success("VIN copied — pick the brand on partslink24 and paste it into the VIN box");
+        toast.success("VIN copied — paste it into partslink24's Chassis number box");
         openPartslink24Popup(CATALOG_PICKER);
     } else {
         toast.info("Opening partslink24 (no VIN on record)");
