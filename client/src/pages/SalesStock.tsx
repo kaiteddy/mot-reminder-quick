@@ -61,11 +61,11 @@ const TONE: Record<string, string> = {
   sky: "border-sky-200 bg-sky-50 text-sky-700",
 };
 
-function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "px-2" }: { label: string; k: string; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void; align?: "left" | "right" | "center"; pad?: string }) {
+function SortHead({ label, k, sortKey, sortDir, onSort, align = "left", pad = "px-2", extra = "" }: { label: string; k: string; sortKey: string; sortDir: "asc" | "desc"; onSort: (k: string) => void; align?: "left" | "right" | "center"; pad?: string; extra?: string }) {
   const active = sortKey === k;
   const justify = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
   return (
-    <th className={`font-semibold py-2 ${pad} text-${align}`}>
+    <th className={`font-semibold py-2 ${pad} text-${align} ${extra}`}>
       <button onClick={() => onSort(k)} className={`inline-flex items-center gap-1 ${justify} hover:text-slate-700 ${active ? "text-violet-700" : ""}`}>
         {label}
         {active ? (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
@@ -312,39 +312,44 @@ export default function SalesStock() {
             <h1 className="text-xl font-semibold flex items-center gap-2"><Car className="w-5 h-5 text-violet-600" /> Sales Cars Stock</h1>
             <p className="text-sm text-slate-500">Forecourt stock with live DVLA MOT &amp; tax status.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden">
+          {/* Wraps as a GROUP. Left to itself the row shrinks each button until every label
+              breaks over two lines, which is what a narrow window used to look like. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden shrink-0">
               <button onClick={() => setViewPersist("grid")} title="Grid view" className={`px-2.5 py-2 ${view === "grid" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><LayoutGrid className="w-4 h-4" /></button>
               <button onClick={() => setViewPersist("list")} title="List view" className={`px-2.5 py-2 border-l border-slate-300 ${view === "list" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}><List className="w-4 h-4" /></button>
             </div>
             <button onClick={startPurchase} disabled={stockForReg.isPending || raiseInvoice.isPending}
               title="Raise a Used Car Purchase Invoice for a car bought from a customer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               <Upload className="w-4 h-4 rotate-180" /> Purchase invoice
             </button>
             <button onClick={() => setLocation("/log-purchase")}
               title="Log a car you've bought by uploading its purchase invoice"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100">
               <Upload className="w-4 h-4" /> Log a purchase
             </button>
             <button onClick={() => syncSite.mutate({})} disabled={syncSite.isPending}
               title="Read elimotors.co.uk and bring the stock list into line — adds cars that went live, updates prices and photos. Never removes a car that isn't advertised."
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
               {syncSite.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Sync website
             </button>
             <button onClick={() => refresh.mutate()} disabled={refresh.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50">
               {refresh.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh MOT/Tax
             </button>
             <button onClick={handlePrint}
               title="Print the stock list for the garage — no sale prices, no buttons"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">
+              className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">
               <Printer className="w-4 h-4" /> Print list
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Six across only once there is genuinely room. The breakpoint is the VIEWPORT, and the
+            sidebar takes ~230px out of it, so at lg the tiles were ~130px wide and every label
+            broke in two. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
           <Stat label="Cars in stock" value={String(stats.count)} />
           <Stat label="Total value" value={`£${money(stats.value)}`} />
           <Stat label="Check alerts" value={String(stats.alerts)} tone={stats.alerts ? "red" : "green"} />
@@ -406,7 +411,8 @@ export default function SalesStock() {
               <table className="w-full text-[13px] min-w-[760px]">
                 <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
                   <tr>
-                    <SortHead label="Vehicle" k="vehicle" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} pad="px-3" />
+                    <SortHead label="Vehicle" k="vehicle" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} pad="px-3"
+                      extra="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 print:static print:border-r-0" />
                     <SortHead label="Reg" k="reg" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
                     <SortHead label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
                     <SortHead label="Mileage" k="mileage" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} align="right" />
@@ -427,8 +433,13 @@ export default function SalesStock() {
                     const mot = motStatus(c.motExpiryDate);
                     return (
                       <tr key={c.id} onClick={() => setLocation(`/view-vehicle/${encodeURIComponent(c.registration)}`)}
-                        className={`cursor-pointer hover:bg-slate-50 ${c.checkIssues ? "bg-red-50/50" : ""}`}>
-                        <td className="px-3 py-2">
+                        className={`group cursor-pointer ${c.checkIssues ? "bg-red-50" : "bg-white"} hover:bg-slate-50`}>
+                        {/* Twelve columns don't fit a narrow window, so the table scrolls sideways —
+                            and the make, model and photo were the first thing to disappear, leaving
+                            rows you couldn't identify. Pinned, with the row's own background repeated
+                            on it (a sticky cell doesn't inherit the row's) so it doesn't read as a
+                            floating tile as the rest slides underneath. */}
+                        <td className={`sticky left-0 z-10 px-3 py-2 ${c.checkIssues ? "bg-red-50" : "bg-white"} group-hover:bg-slate-50 border-r border-slate-200 print:static print:border-r-0`}>
                           <div className="flex items-center gap-2.5">
                             {c.imageUrl
                               ? <img src={c.imageUrl} alt="" loading="lazy" className="w-12 h-9 object-cover rounded shrink-0 print:hidden" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />
