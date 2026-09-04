@@ -551,8 +551,14 @@ export default function SalesStock() {
                             that undoes it. Same cell now — a column saved, and the sale reads as
                             one thing. */}
                         <td className="px-2 py-2 text-right print:hidden" onClick={(e) => e.stopPropagation()}>
+                          {/* One flex row, so the badge and the buttons are spaced by the gap
+                              instead of sitting flush against each other — two inline-flex boxes
+                              side by side had nothing between them at all. It wraps rather than
+                              squeezing, so on a narrow column the badge drops above the buttons
+                              and the same gap becomes the space between the lines. */}
+                          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
                           {isSold(c) && (
-                            <div className="mb-1 inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap">
                               SOLD{c.soldPrice ? ` £${money(c.soldPrice)}` : ""}
                             </div>
                           )}
@@ -569,6 +575,7 @@ export default function SalesStock() {
                               pending={raiseInvoice.isPending && raiseInvoice.variables?.salesStockId === c.id}
                               onChoose={() => setInvoiceFor(c)}
                             />
+                          </div>
                           </div>
                         </td>
                       </tr>
