@@ -4,17 +4,18 @@ import { toast } from "sonner";
 // Paid login lives in the user's own browser session, so plain links are the whole
 // integration, exactly like 7zap (see sevenZap.ts).
 //
-// URL scheme (captured from Adam's live session on 03/09/2026, VW Golf WVWZZZ1JZ3W073551):
-//   https://www.partslink24.com/pl24-app/{service}/{VIN}/{state}/vehicle
-// where {state} is an OPTIONAL base64url JSON blob such as
-//   {"path":"/p5vwag/extern/graphnav/bom/vin?category=03950&illustration=971-060
-//            &illustrationNormalized=971060&lang=en&serviceName=vw_parts&vin=…",
-//    "wid":"bomlist","auto":true}
-// that auto-opens one exploded diagram's parts list. Category/illustration IDs are
-// partslink24's own, so we can't build them from our data — we link to the vehicle page
-// (VIN pre-applied, full category tree) and let the user pick the diagram.
-// The state-less form /pl24-app/{service}/{VIN}/vehicle is what partslink24 itself puts in
-// its login redirect, so it survives the login round-trip.
+// URL scheme, read out of partslink24's own SPA router (pl24-app bundle, 04/09/2026):
+//   /pl24-app/:catalogId/:vin/:pathObject[/:companion]?lang=en
+// - catalogId  = "{brand}_parts" (validServiceNameRegex /^[a-z]+(_[a-z]+)*_parts$/)
+// - vin        = the VIN, or "0" for none. A VIN here makes the app's Vehicle stage call the
+//                catalogue's direct-access VIN lookup and land on that car (it even logs a
+//                "startedSearchWithVINUrl" event), so this is a supported entry point.
+// - pathObject = "0" for none, else a base64 JSON blob {path, wid, auto} that re-opens one
+//                exploded diagram (the link Adam captured had one). Its IDs are partslink24's
+//                own, so we always send "0" and let the user pick the diagram.
+// - companion  = optional trailing page such as "vehicle" or "search".
+// v1 of this module put "vehicle" in the pathObject slot ("/vw_parts/{VIN}/vehicle") — that is
+// not valid JSON, the app discards it, and Adam got an error page. Always send the "0".
 //
 // Catalogue ("service") names are the brand slug + "_parts": vw_parts was captured from the
 // session, and the public demo tiles on partslink24.com open bmw_parts and mercedes_parts
@@ -132,7 +133,7 @@ export function partslink24VehicleUrl(vin?: string | null, make?: string | null)
     const v = cleanVin(vin);
     const service = partslink24Service(v, make);
     if (!v || !service) return null;
-    return `https://www.partslink24.com/pl24-app/${service}/${encodeURIComponent(v)}/vehicle`;
+    return `https://www.partslink24.com/pl24-app/${service}/${encodeURIComponent(v)}/0?lang=en`;
 }
 
 // partslink24 sends frame-blocking headers like 7zap, so it can't be embedded in-app.
