@@ -14,29 +14,39 @@ import { toast } from "sonner";
 //                exploded diagram (the link Adam captured had one). Its IDs are partslink24's
 //                own, so we always send "0" and let the user pick the diagram.
 // - companion  = optional trailing page such as "vehicle" or "search".
+// partslink24's own "Chassis number" box (pl24-vinsearch-ui) builds exactly
+//   /pl24-app/{service}/{VIN}/0/vehicle
+// after decoding the VIN with its private /pl24-wmi/ext/api/2.0/decode (403 without a login),
+// which is why we decode the WMI ourselves below.
 // v1 of this module put "vehicle" in the pathObject slot ("/vw_parts/{VIN}/vehicle") — that is
 // not valid JSON, the app discards it, and Adam got an error page. Always send the "0".
 //
-// Catalogue ("service") names are the brand slug + "_parts": vw_parts was captured from the
-// session, and the public demo tiles on partslink24.com open bmw_parts and mercedes_parts
-// the same way (checked 03/09/2026). BRAND_SLUGS is every brand tile on that page. The
-// /{service}/{VIN}/vehicle route is only proven for vw_parts — the pl24-app front end is
-// shared across brands, so the rest are expected to behave the same.
-const BRAND_SLUGS = new Set([
-    "abarth", "alfa", "alpine", "audi", "bentley", "bmw", "bmw_classic", "bmw_motorrad",
-    "bmw_motorrad_classic", "citroen", "citroen_ds", "cupra", "dacia", "fiat", "fiat_professional",
-    "ford", "ford_commercial", "hyundai", "infiniti", "iveco", "jaguar", "jeep", "kia", "lancia",
-    "landrover", "lexus", "man", "mercedes", "mercedes_benz_classic", "mercedes_trucks",
-    "mercedes_unimog", "mercedes_vans", "mini", "mini_classic", "mitsubishi", "nissan", "opel",
-    "opel_legacy", "peugeot", "polestar", "porsche", "porsche_classic", "renault", "seat", "skoda",
-    "smart", "suzuki", "toyota", "vauxhall", "vauxhall_legacy", "vw", "vw_classic",
-    "vw_nutzfahrzeuge", "volvo",
-]);
+// Catalogue ("service") names come from partslink24's own manufacturer list
+// (GET /pl24-manufacturer/ext/api/1.0/manufacturers/?country=gb&lang=en, public, read 04/09/2026).
+// They are NOT always "{brand}_parts": Ford is split into fordp (cars) / fordt (Transit), Fiat into
+// fiatp / fiatt, Mitsubishi is mmc_parts, VW Commercial is vn_parts, DS is citroenDs_parts, and
+// PSA-era Vauxhall/Opel have their own psa_* catalogues. Keys are our internal brand slugs.
+const SERVICE_NAMES: Record<string, string> = {
+    vw: "vw_parts", vw_commercial: "vn_parts", audi: "audi_parts", seat: "seat_parts", cupra: "cupra_parts",
+    skoda: "skoda_parts", porsche: "porsche_parts", bentley: "bentley_parts",
+    bmw: "bmw_parts", mini: "mini_parts",
+    mercedes: "mercedes_parts", mercedes_vans: "mercedesvans_parts", smart: "smart_parts",
+    ford: "fordp_parts", ford_commercial: "fordt_parts",
+    vauxhall: "vauxhall_parts", psa_vauxhall: "psa_vauxhall_parts", opel: "opel_parts", psa_opel: "psa_opel_parts",
+    peugeot: "peugeot_parts", citroen: "citroen_parts", citroen_ds: "citroenDs_parts",
+    fiat: "fiatp_parts", fiat_professional: "fiatt_parts", abarth: "abarth_parts", alfa: "alfa_parts",
+    lancia: "lancia_parts", jeep: "jeep_parts",
+    renault: "renault_parts", dacia: "dacia_parts", alpine: "alpine_parts",
+    nissan: "nissan_parts", infiniti: "infiniti_parts", toyota: "toyota_parts", lexus: "lexus_parts",
+    hyundai: "hyundai_parts", kia: "kia_parts", jaguar: "jaguar_parts", landrover: "landrover_parts",
+    volvo: "volvo_parts", polestar: "polestar_parts", suzuki: "suzuki_parts", mitsubishi: "mmc_parts",
+    iveco: "iveco_parts", man: "man_parts",
+};
 
-// Free-text make (DVLA / GA4 spelling) → partslink24 slug. Keys are lower-case, single-spaced.
+// Free-text make (DVLA / GA4 spelling) → internal slug. Keys are lower-case, single-spaced.
 const MAKE_ALIASES: Record<string, string> = {
-    volkswagen: "vw", "volkswagen commercial": "vw_nutzfahrzeuge", "vw commercial": "vw_nutzfahrzeuge",
-    "volkswagen commercial vehicles": "vw_nutzfahrzeuge",
+    volkswagen: "vw", "volkswagen commercial": "vw_commercial", "vw commercial": "vw_commercial",
+    "volkswagen commercial vehicles": "vw_commercial",
     "mercedes-benz": "mercedes", "mercedes benz": "mercedes", merc: "mercedes", "mercedes vans": "mercedes_vans",
     "land rover": "landrover", "range rover": "landrover",
     "alfa romeo": "alfa", ds: "citroen_ds", "citroen ds": "citroen_ds", "ds automobiles": "citroen_ds",
@@ -44,15 +54,14 @@ const MAKE_ALIASES: Record<string, string> = {
     porche: "porsche",
 };
 
-// World Manufacturer Identifier (VIN chars 1-3) → slug, or a list of candidates where two
-// catalogues share a prefix (SEAT/Cupra, Fiat/Abarth, Opel/Vauxhall, Mercedes cars/vans …).
-// Every car is unique and its VIN says who built it, so this beats the free-text make
-// (GA4 holds "VW", "VOLKSWAGEN POLO", "Porche" …). The first candidate is the default; the
-// make text picks another only when it names one.
+// World Manufacturer Identifier (VIN chars 1-3) → slug, or a list of candidates where several
+// catalogues share a prefix. Every car is unique and its VIN says who built it, so this beats
+// the free-text make (GA4 holds "VW", "VOLKSWAGEN POLO", "Porche" …). The first candidate is the
+// default; the make text or the model text (see COMMERCIAL_MODELS) picks another.
 const WMI_BRANDS: Record<string, string | string[]> = {
     // VW group
     WVW: "vw", WVG: "vw", "1VW": "vw", "3VW": "vw", "9BW": "vw", AAV: "vw", XW8: "vw",
-    WV1: ["vw_nutzfahrzeuge", "vw"], WV2: ["vw_nutzfahrzeuge", "vw"], WV3: ["vw_nutzfahrzeuge", "vw"],
+    WV1: ["vw_commercial", "vw"], WV2: ["vw_commercial", "vw"], WV3: ["vw_commercial", "vw"],
     WAU: "audi", WA1: "audi", WUA: "audi", TRU: "audi",
     VSS: ["seat", "cupra"], VSZ: ["seat", "cupra"],
     TMB: "skoda", TMP: "skoda",
@@ -66,12 +75,13 @@ const WMI_BRANDS: Record<string, string | string[]> = {
     "4JG": "mercedes", "55S": "mercedes",
     WDF: ["mercedes_vans", "mercedes"], W1V: ["mercedes_vans", "mercedes"],
     WME: "smart",
-    // Ford
+    // Ford (cars and Transits share WF0 — the model text decides)
     WF0: ["ford", "ford_commercial"], WF1: "ford", "1FA": "ford", "1FM": "ford", "1FT": "ford_commercial",
-    // Stellantis
-    W0L: ["vauxhall", "opel"], W0V: ["vauxhall", "opel"], VXK: ["vauxhall", "opel"],
+    // Vauxhall / Opel: W0L = GM era, VXK = PSA era, W0V = either
+    W0L: ["vauxhall", "opel"], W0V: ["vauxhall", "psa_vauxhall", "opel", "psa_opel"], VXK: ["psa_vauxhall", "psa_opel"],
+    // Other Stellantis
     VF3: "peugeot", VR3: "peugeot", VF7: "citroen", VR7: "citroen", VR1: "citroen_ds",
-    ZFA: ["fiat", "abarth", "fiat_professional"], ZAR: "alfa", ZLA: "lancia",
+    ZFA: ["fiat", "fiat_professional", "abarth"], ZAR: "alfa", ZLA: "lancia",
     "1C4": "jeep", "1J4": "jeep", ZAC: "jeep",
     // Renault group
     VF1: "renault", UU1: "dacia", VFA: "alpine",
@@ -92,8 +102,16 @@ const WMI_BRANDS: Record<string, string | string[]> = {
     ZCF: "iveco", WMA: "man",
 };
 
-// Longest match first so "mercedes vans" beats "mercedes" and "land rover" beats nothing.
-const MAKE_KEYS = [...Object.keys(MAKE_ALIASES), ...Array.from(BRAND_SLUGS)].sort((a, b) => b.length - a.length);
+// Where one WMI covers both a car and a van catalogue, the model name settles it.
+const COMMERCIAL_MODELS: Record<string, RegExp> = {
+    ford_commercial: /\b(transit|tourneo|ranger|courier|connect|custom)\b/i,
+    fiat_professional: /\b(ducato|doblo|dobl[oò] cargo|fiorino|scudo|talento|qubo)\b/i,
+    vw_commercial: /\b(transporter|caravelle|multivan|crafter|caddy|amarok|california|\bt[456]\b|\bid\.? ?buzz)\b/i,
+    mercedes_vans: /\b(sprinter|vito|viano|citan|v-class|v class|eqv|x-class)\b/i,
+};
+
+// Longest match first so "mercedes vans" beats "mercedes".
+const MAKE_KEYS = [...Object.keys(MAKE_ALIASES), ...Object.keys(SERVICE_NAMES)].sort((a, b) => b.length - a.length);
 
 function makeSlug(make?: string | null): string | null {
     const text = (make || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -109,31 +127,36 @@ function cleanVin(vin?: string | null): string {
     return (vin || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
-/** partslink24 brand slug for this car: VIN manufacturer code first, make text to break ties or as fallback. */
-export function partslink24Brand(vin?: string | null, make?: string | null): string | null {
+/** Internal brand slug for this car: VIN manufacturer code first; make/model text to break ties or as fallback. */
+export function partslink24Brand(vin?: string | null, make?: string | null, model?: string | null): string | null {
     const v = cleanVin(vin);
     const fromMake = makeSlug(make);
     const wmi = v.length >= 3 ? WMI_BRANDS[v.slice(0, 3)] : undefined;
-    if (wmi) {
-        const candidates = Array.isArray(wmi) ? wmi : [wmi];
-        return fromMake && candidates.includes(fromMake) ? fromMake : candidates[0];
-    }
-    return fromMake;
+    if (!wmi) return fromMake;
+    const candidates = Array.isArray(wmi) ? wmi : [wmi];
+    // 1. A van model name (Transit, Ducato, Transporter, Vito …) picks the commercial catalogue.
+    const text = `${make || ""} ${model || ""}`;
+    for (const c of candidates) if (COMMERCIAL_MODELS[c]?.test(text)) return c;
+    // 2. A make that names one candidate outright (CUPRA vs SEAT, OPEL vs VAUXHALL) wins.
+    if (fromMake && candidates.includes(fromMake)) return fromMake;
+    // 3. Otherwise the car catalogue; a van slug only wins on evidence above.
+    return candidates.find((c) => !COMMERCIAL_MODELS[c]) ?? candidates[0];
 }
 
-export function partslink24Service(vin?: string | null, make?: string | null): string | null {
-    const brand = partslink24Brand(vin, make);
-    return brand ? `${brand}_parts` : null;
+export function partslink24Service(vin?: string | null, make?: string | null, model?: string | null): string | null {
+    const brand = partslink24Brand(vin, make, model);
+    return brand ? SERVICE_NAMES[brand] ?? null : null;
 }
 
 const CATALOG_PICKER = "https://www.partslink24.com/pl24-app/catalog/vehicle";
 
 /** Vehicle page (VIN applied, category tree open) — null when the brand can't be told. */
-export function partslink24VehicleUrl(vin?: string | null, make?: string | null): string | null {
+export function partslink24VehicleUrl(vin?: string | null, make?: string | null, model?: string | null): string | null {
     const v = cleanVin(vin);
-    const service = partslink24Service(v, make);
+    const service = partslink24Service(v, make, model);
     if (!v || !service) return null;
-    return `https://www.partslink24.com/pl24-app/${service}/${encodeURIComponent(v)}/0?lang=en`;
+    // Exactly what partslink24's own "Chassis number" box builds (pl24-vinsearch-ui): /{service}/{vin}/0/vehicle
+    return `https://www.partslink24.com/pl24-app/${service}/${encodeURIComponent(v)}/0/vehicle?lang=en`;
 }
 
 // partslink24 sends frame-blocking headers like 7zap, so it can't be embedded in-app.
@@ -148,8 +171,8 @@ export function openPartslink24Popup(url: string) {
 }
 
 /** Open the most useful partslink24 page for this vehicle in a floating popup. */
-export function openPartslink24(vin?: string | null, make?: string | null) {
-    const url = partslink24VehicleUrl(vin, make);
+export function openPartslink24(vin?: string | null, make?: string | null, model?: string | null) {
+    const url = partslink24VehicleUrl(vin, make, model);
     const v = cleanVin(vin);
     if (url) {
         toast.success(`Opening partslink24 for ${v}…`);

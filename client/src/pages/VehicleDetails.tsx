@@ -1005,8 +1005,8 @@ export default function VehicleDetails() {
                         <Button
                             variant="outline"
                             className="bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100"
-                            onClick={() => openPartslink24(vehicle.vin, vehicle.make)}
-                            title={partslink24Service(vehicle.vin, vehicle.make)
+                            onClick={() => openPartslink24(vehicle.vin, vehicle.make, vehicle.model)}
+                            title={partslink24Service(vehicle.vin, vehicle.make, vehicle.model)
                                 ? "Opens this VIN's dealer catalogue on partslink24 (needs your partslink24 login)"
                                 : "Copies the VIN and opens the partslink24 catalogue picker"}
                         >
@@ -1413,7 +1413,7 @@ export default function VehicleDetails() {
                                                                 <Wrench className="w-3 h-3" />
                                                             </button>
                                                             <button
-                                                                onClick={() => openPartslink24(vehicle.vin, vehicle.make)}
+                                                                onClick={() => openPartslink24(vehicle.vin, vehicle.make, vehicle.model)}
                                                                 className="p-1 hover:bg-muted rounded text-sky-500 hover:text-sky-700 transition-colors opacity-0 group-hover:opacity-100"
                                                                 title="Dealer catalogue on partslink24"
                                                             >

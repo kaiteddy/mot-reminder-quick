@@ -1577,7 +1577,7 @@ export default function DocumentDetails() {
                       <ExternalLink className="w-3.5 h-3.5" /> 7zap
                     </button>
                     <button type="button" title="Opens this VIN's dealer catalogue on partslink24 (needs your partslink24 login)"
-                      onClick={() => openPartslink24(form.vin, form.make)}
+                      onClick={() => openPartslink24(form.vin, form.make, form.model)}
                       className="shrink-0 h-[26px] inline-flex items-center gap-1 border border-sky-200 bg-sky-50 rounded-sm px-2 text-[11px] font-medium text-sky-600 hover:bg-sky-100">
                       <ExternalLink className="w-3.5 h-3.5" /> partslink24
                     </button>
