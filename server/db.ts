@@ -2072,6 +2072,8 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     SELECT
       COUNT(*) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS'))::int AS inv_count,
       COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS inv_gross,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalNet)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS inv_net,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalTax)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS inv_tax,
       COUNT(*) FILTER (WHERE ${serviceHistory.docType} = 'CR')::int AS cr_count,
       COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (WHERE ${serviceHistory.docType} = 'CR'), 0) AS cr_gross,
       COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountNet)}), 0) AS disc_net,
@@ -2132,6 +2134,10 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
                           ELSE COALESCE(fx.${sql.raw(`"${alias}"`)}, 0) END), 0)`;
   const fixedRow: any = (await db.execute(sql`
     SELECT
+      ${_prefer(serviceHistory.subLabourNet, "labour_net")} AS labour_net,
+      ${_prefer(serviceHistory.subLabourTax, "labour_tax", serviceHistory.subLabourNet)} AS labour_tax,
+      ${_prefer(serviceHistory.subPartsNet, "parts_net")} AS parts_net,
+      ${_prefer(serviceHistory.subPartsTax, "parts_tax", serviceHistory.subPartsNet)} AS parts_tax,
       ${_prefer(serviceHistory.fixedItem1Net, "sundries_net")} AS sundries_net,
       ${_prefer(serviceHistory.fixedItem1Tax, "sundries_tax", serviceHistory.fixedItem1Net)} AS sundries_tax,
       ${_prefer(serviceHistory.fixedItem2Net, "lubricants_net")} AS lubricants_net,
@@ -2143,6 +2149,10 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     FROM ${serviceHistory}
     LEFT JOIN (
       SELECT "documentId",
+        SUM(CASE WHEN "itemType"='Labour'    THEN COALESCE("subNet",0)     ELSE 0 END) AS "labour_net",
+        SUM(CASE WHEN "itemType"='Labour'    THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "labour_tax",
+        SUM(CASE WHEN "itemType"='Part'      THEN COALESCE("subNet",0)     ELSE 0 END) AS "parts_net",
+        SUM(CASE WHEN "itemType"='Part'      THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "parts_tax",
         SUM(CASE WHEN "itemType"='Sundries'  THEN COALESCE("subNet",0)     ELSE 0 END) AS "sundries_net",
         SUM(CASE WHEN "itemType"='Sundries'  THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "sundries_tax",
         SUM(CASE WHEN "itemType"='Lubricant' THEN COALESCE("subNet",0)     ELSE 0 END) AS "lubricants_net",
@@ -2155,8 +2165,12 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     ) fx ON fx."documentId" = ${serviceHistory.id}
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows?.[0] ?? {};
 
-  // ── Category split, from line items. 'Other'/untyped fall into Surcharge so the rows always
-  //    add up to the documents' own totals rather than quietly dropping money.
+  // ── Line items, for the Labour quantity and as the fallback the block above leans on.
+  //
+  // Labour and Parts take the same treatment as the rest: GA4 stopped tagging its exported lines
+  // around June 2026, and 348 of them Jan-Aug carry no itemType at all — tyres, filters, belts,
+  // diagnostics — so reading the lines alone dropped £5,816 of July's parts and £1,422 of its
+  // labour into the Surcharge row. GA4's own sub-total still knows the split, so prefer it.
   const catRows: any[] = (await db.execute(sql`
     SELECT CASE li."itemType"
              WHEN 'Labour' THEN 'Labour' WHEN 'Part' THEN 'Parts'
@@ -2176,20 +2190,35 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
   const ORDER = ["Labour", "Parts", "Sundries", "Lubricants", "Paint & Mat.", "MOT", "Surcharge", "Excess"];
   const breakdown = ORDER.map((label) => {
     const r: any = byLabel.get(label);
-    // MOT, and the four GA4 keeps in its own sub-totals, come from the blocks above rather than
-    // from line items — most invoices hold those figures with no matching line at all, and
-    // reading only the lines showed £135 of a real £2,070 of MOT and nothing of the sundries.
-    const FIXED: Record<string, [any, any]> = {
+    // Every category but Surcharge comes from the blocks above rather than straight off the line
+    // items — most invoices hold these figures in GA4's own sub-totals with no matching line at
+    // all, and reading only the lines showed £135 of a real £2,070 of MOT and nothing whatever of
+    // the sundries. Surcharge is filled in below, as the remainder.
+    const SRC: Record<string, [any, any]> = {
+      "Labour":       [fixedRow.labour_net, fixedRow.labour_tax],
+      "Parts":        [fixedRow.parts_net, fixedRow.parts_tax],
       "Sundries":     [fixedRow.sundries_net, fixedRow.sundries_tax],
       "Lubricants":   [fixedRow.lubricants_net, fixedRow.lubricants_tax],
       "Paint & Mat.": [fixedRow.paint_net, fixedRow.paint_tax],
+      "MOT":          [motRow.net, motRow.tax],
       "Excess":       [fixedRow.excess_net, fixedRow.excess_tax],
     };
-    const net = label === "MOT" ? n(motRow.net) : FIXED[label] ? n(FIXED[label][0]) : n(r?.net);
-    const tax = label === "MOT" ? n(motRow.tax) : FIXED[label] ? n(FIXED[label][1]) : n(r?.tax);
+    const net = SRC[label] ? n(SRC[label][0]) : n(r?.net);
+    const tax = SRC[label] ? n(SRC[label][1]) : n(r?.tax);
     return { label, ...(label === "Labour" ? { qty: n(r?.qty) } : {}), net, tax, gross: round2(net + tax) };
   });
   const excessDisc = n(head.excess_disc);
+  // Surcharge is what the categories above don't explain, so the breakdown always adds up to the
+  // invoices' own Net and Tax rather than quietly dropping money — which is what GA4 prints, and
+  // what the rest of this function has always claimed to do. Taking it as a remainder rather than
+  // as "untyped line items" also keeps duplicated lines out: 11 invoices Jan-Aug carry their lines
+  // twice (£2,676.29), and counting those pushed £668.06 of one May invoice into Surcharge.
+  const sur = breakdown.find((b) => b.label === "Surcharge")!;
+  const rest = breakdown.reduce((a, b) => b === sur ? a
+    : { net: a.net + b.net, tax: a.tax + b.tax }, { net: 0, tax: 0 });
+  sur.net = round2(n(head.inv_net) - rest.net + excessDisc);
+  sur.tax = round2(n(head.inv_tax) - rest.tax);
+  sur.gross = round2(sur.net + sur.tax);
   breakdown.push({ label: "Minus Excess", net: -excessDisc, tax: 0, gross: -excessDisc });
   const totals = breakdown.reduce((a, r) => ({
     net: round2(a.net + r.net), tax: round2(a.tax + r.tax), gross: round2(a.gross + r.gross),
