@@ -310,51 +310,71 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
     const PORTRAIT = { w: 718, h: 1047 };
     const LANDSCAPE = { w: 1047, h: 718 };
 
-    const prevWidth = el.style.width, prevPad = el.style.padding;
-    // Measure in the box the print rule builds: the sheet's width, and no padding.
-    el.style.width = `${PORTRAIT.w}px`;
-    el.style.padding = "0";
+    const periodEls = Array.from(el.querySelectorAll<HTMLElement>(".report-period"));
+    const prevDisplay = periodEls.map((p) => p.style.display);
+    periodEls.forEach((p) => { p.style.zoom = ""; });
+
+    // Measure inside the box the print rules build — the sheet's width, no padding, no on-screen
+    // width cap. react-to-print prints a CLONE in an iframe of its own, so measuring the report
+    // as it sits on screen measures a layout that never reaches paper.
+    el.style.setProperty("--print-page-w", `${PORTRAIT.w}px`);
+    el.classList.add("report-measuring");
+
     // A ledger with a dozen columns is wider than a portrait sheet. Measure what the widest table
     // actually needs: squeezing it onto portrait would either clip it (overflow-x scrolls on
     // screen but is simply cut off on paper) or shrink the whole report to fit the width.
     const tables = Array.from(el.querySelectorAll<HTMLElement>("table"));
     const widest = tables.length ? Math.max(...tables.map((t) => t.scrollWidth)) : 0;
-    // Each month is its own sheet, so each gets its OWN scale, measured from its own height.
-    // One shared factor meant the densest month decided the size of every other one — four
-    // months where August needed 0.6 printed May at 0.6 too, half a sheet of white space under
-    // a report that would have fitted at full size.
-    const periodEls = Array.from(el.querySelectorAll<HTMLElement>(".report-period"));
-    const heights = periodEls.map((p) => p.scrollHeight);
-    el.style.width = prevWidth;
-    el.style.padding = prevPad;
-
     const landscape = widest > PORTRAIT.w;
     const page = landscape ? LANDSCAPE : PORTRAIT;
+    el.style.setProperty("--print-page-w", `${page.w}px`);
 
     // Width must fit — anything wider is guillotined off the sheet. This one is shared, because
     // @page carries one orientation for the whole print job.
-    const wScale = widest ? Math.min(1, page.w / widest) : 1;
+    const wFit = Math.floor(Math.min(1, widest ? page.w / widest : 1) * 1000) / 1000;
     // Real headroom, not the sheet to the millimetre. Measured at exactly the page height, a
     // 46-row report scaled to 1036px against 1035px usable — one pixel over — and because the
     // table carries break-inside: avoid the WHOLE table jumped to a second sheet, leaving a page
     // bearing nothing but the heading. 3% covers the print engine's own rounding.
     const usable = (page.h - 12) * 0.97;
-    const scaleFor = (h: number) => {
-      // Shrinking only earns anything if it gets the report onto ONE sheet. Below 0.45 the 13px
-      // body type prints under 4.5pt — a 61-row ledger is better paginated at full size than
-      // squeezed onto one unreadable sheet. Same floor the server PDF uses.
-      const hFit = usable / Math.max(h, 1);
-      // FLOOR, never round: rounding a scale up puts the printed height back over the page.
-      return Math.floor(Math.min(wScale, 1, hFit >= 0.45 ? hFit : 1) * 1000) / 1000;
-    };
+    // Below this the 13px body type prints under 4.5pt. A 61-row ledger is better paginated at
+    // full size than squeezed onto one unreadable sheet. Same floor the server PDF uses.
+    const FLOOR = 0.45;
 
-    periodEls.forEach((p, i) => {
-      p.style.setProperty("--print-scale", String(scaleFor(heights[i])));
+    // Each month is its own sheet, so each gets its OWN scale, measured from its own height. One
+    // shared factor meant the densest month decided the size of every other one — four months
+    // where August needed 0.6 printed May at 0.6 too, half a sheet of white space under a report
+    // that would have fitted at full size.
+    const scales = periodEls.map((p, i) => {
+      // One report showing at a time. The container is never zoomed, so its height is exactly the
+      // printed height of whatever is inside it — the one measurement that means the same thing
+      // in every engine, where a zoomed element's own box does not (Safari reports it unzoomed).
+      periodEls.forEach((q, j) => { q.style.display = j === i ? "" : "none"; });
+      let s = wFit;
+      p.style.zoom = s < 1 ? String(s) : "";
+      // zoom REFLOWS, and reflowing changes the height that has to fit: zoomed, the report lays
+      // out wider and Safari comes back about a tenth taller, so one pass off the unzoomed height
+      // undershoots and the last block still lands on a second sheet. Measure again after each
+      // attempt instead of trusting the first ratio.
+      for (let k = 0; k < 6; k++) {
+        const painted = el.scrollHeight;
+        if (painted <= usable) break;
+        const next = Math.floor(s * (usable / painted) * 1000) / 1000;
+        // FLOOR, never round: rounding a scale up puts the printed height back over the page.
+        if (next < FLOOR || next >= s) { s = wFit; break; }   // won't fit — print it full size
+        s = next;
+        p.style.zoom = String(s);
+      }
+      p.style.zoom = "";
+      return s;
     });
-    // The sheet's own width, so the print layout is the one that was just measured.
-    el.style.setProperty("--print-page-w", `${page.w}px`);
+
+    periodEls.forEach((p, i) => { p.style.display = prevDisplay[i]; });
+    el.classList.remove("report-measuring");
+
+    periodEls.forEach((p, i) => p.style.setProperty("--print-scale", String(scales[i])));
     // The container keeps a scale of its own only when there are no period blocks to carry one.
-    el.style.setProperty("--print-scale", periodEls.length ? "1" : String(scaleFor(el.scrollHeight)));
+    el.style.setProperty("--print-scale", "1");
     // @page can't be toggled by class, so the rule itself is rewritten before the dialog opens.
     const sizeEl = document.getElementById("report-page-size");
     if (sizeEl) sizeEl.textContent = `@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }`;
@@ -384,11 +404,29 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
           {/* Rewritten by fitToOnePage() — a wide ledger prints landscape rather than clipped. */}
           <style id="report-page-size">{`@page { size: A4 portrait; margin: 10mm; }`}</style>
           <style>{`
+            /* On paper the summary sets tight, the way GA4's own printout does. This matters more
+               than it looks: WebKit will not let zoom render text below about 9px, so a report
+               that needs shrinking past that point stops getting shorter and simply lays itself
+               out wider — Safari printed a second sheet no matter what scale it was given. Set
+               tight enough to very nearly fit on its own and the zoom left to do is small. */
+            .report-print .ga4-row > div { padding-top: var(--row-pad, 4px); padding-bottom: var(--row-pad, 4px); font-size: var(--row-font, 13px); }
+            .report-print .ga4-block > div:first-child { padding-bottom: var(--row-pad, 4px); }
+            .report-print .report-wide > * + * { margin-top: var(--block-gap, 12px); }
+
+            /* Held for the moment fitToOnePage() measures, so the box being measured is the box
+               that gets printed. Mirrors the @media print rules below. */
+            .report-print.report-measuring { width: var(--print-page-w, 718px); padding: 0; }
+            .report-print.report-measuring .report-wide { max-width: none; }
+            .report-print.report-measuring { --row-pad: 1px; --row-font: 10.5px; --block-gap: 6px; }
             @media print {
               /* Pin the print layout to the sheet's own width. react-to-print clones the report
                  into an iframe sized to the BROWSER WINDOW, so without this the printed layout is
                  not the one fitToOnePage() measured and the scale it worked out is wrong for it. */
               .report-print { width: var(--print-page-w, 718px); padding: 0 !important; }
+              /* zoom widens the layout by the same factor it shrinks it, so the on-screen width
+                 cap would hold the report back and leave a gutter down the right of the sheet. */
+              .report-print .report-wide { max-width: none; }
+              .report-print { --row-pad: 1px; --row-font: 10.5px; --block-gap: 6px; }
               /* Scale set by fitToOnePage() just before the dialog opens — per report, so a short
                  month prints full size next to a dense one that had to shrink. Applied to the
                  period rather than the container for that reason. zoom rather than transform:
@@ -489,7 +527,7 @@ function GA4Summary({ sections }: { sections: any[] }) {
   // The width cap is for reading on screen. On paper the sheet is the cap, and the print scale
   // widens the report by the same factor it shrinks it, so keeping the cap would leave a gutter.
   return (
-    <div className="max-w-3xl mx-auto space-y-3 print:max-w-none">
+    <div className="max-w-3xl mx-auto space-y-3 report-wide">
       {sections.map((sec, si) => (
         <div key={si} className="ga4-block">
           <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))] items-end pb-1">
