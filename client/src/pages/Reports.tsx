@@ -203,11 +203,21 @@ export default function Reports() {
                   className="h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-[12px] hover:bg-slate-50 disabled:opacity-40">Clear</button>
               </div>
             </Field>
+            {/* Say what ticking several months actually DOES. It reads "May–Aug 2026" beside a
+                From/To of 01/05–31/08, which looks exactly like one merged range — so the feature
+                that gives you a separate report per month was invisible, and the old note about
+                the range "spanning the gaps" was wrong as well: a gapped selection produces a
+                report per ticked month, it doesn't span anything. */}
             {months.length > 1 && (
-              <span className="text-[11px] text-slate-500 pb-2">
-                {MONTHS[Math.min(...months)]}–{MONTHS[Math.max(...months)]} {year}
-                {months.length !== Math.max(...months) - Math.min(...months) + 1 && " (range spans the gaps)"}
+              <span className="pb-2 text-[11px] font-medium text-violet-700">
+                {months.length} separate reports — {months.map((m) => MONTHS[m]).join(", ")} {year}
+                <span className="block font-normal text-slate-400">
+                  one per month, in a single view · From/To above is ignored while months are ticked
+                </span>
               </span>
+            )}
+            {months.length === 1 && (
+              <span className="pb-2 text-[11px] text-slate-500">{MONTHS[months[0]]} {year}</span>
             )}
           </div>
         </div>
