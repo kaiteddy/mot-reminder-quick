@@ -2358,18 +2358,23 @@ export async function getSalesSummary(opts: { from: string; to: string; basedOn?
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
   const from = new Date(opts.from + "T00:00:00");
   const to = new Date(opts.to + "T23:59:59.999");
-  const conds: any[] = [gte(dateCol, from), lte(dateCol, to)];
+  // Voided documents excluded, as everywhere else. This function builds its own conditions and
+  // so never saw runReport's inRange — it was the last report still adding voided invoices up.
+  const conds: any[] = [gte(dateCol, from), lte(dateCol, to),
+    sql`COALESCE(${serviceHistory.docStatus}, '') <> '3'`];
   if (opts.department) conds.push(eq(serviceHistory.department, opts.department));
 
+  // Deliberately no per-category sub-totals here. There were three — parts, labour and MOT —
+  // read straight off subPartsNet/subLabourNet/subMotNet, which GA4 stopped writing in June 2026;
+  // any caller wiring them up would have inherited exactly the fault that made the MOT reports
+  // disagree. Nothing read them. Categories come from the ledger report, which reads the
+  // sub-total OR the line items.
   const rows = await db.select({
     docType: serviceHistory.docType,
     count: sql<number>`COUNT(*)`,
     net: _moneySum(serviceHistory.totalNet),
     tax: _moneySum(serviceHistory.totalTax),
     gross: _moneySum(serviceHistory.totalGross),
-    partsNet: _moneySum(serviceHistory.subPartsNet),
-    labourNet: _moneySum(serviceHistory.subLabourNet),
-    motNet: _moneySum(serviceHistory.subMotNet),
   })
     .from(serviceHistory)
     .where(and(...conds))
@@ -2384,7 +2389,6 @@ export async function getSalesSummary(opts: { from: string; to: string; basedOn?
       docType: r.docType,
       count: Number(r.count),
       net: Number(r.net), tax: Number(r.tax), gross: Number(r.gross),
-      partsNet: Number(r.partsNet), labourNet: Number(r.labourNet), motNet: Number(r.motNet),
     })),
     departments: deptRows.map((d) => d.d!).filter(Boolean),
   };
