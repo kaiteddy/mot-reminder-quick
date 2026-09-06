@@ -1347,10 +1347,14 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
   const LABEL_W = 190;                  // width of the left-hand label cell
   const COL_W = (RIGHT - PM - LABEL_W) / 3;
   const X0 = PM, X1 = PM + LABEL_W, X2 = X1 + COL_W, X3 = X2 + COL_W;
-  // Sized so the whole summary lands on a single page, as GA4's does.
-  const ROW_H = 18;
-  const CAP_H = 17;   // caption strip above each block
-  const GAP = 8;      // space between blocks
+  // Full-size metrics. A report taller than one sheet is squeezed to fit (see fitPeriod), so
+  // every report lands on a single page the way GA4's does.
+  const ROW_H0 = 18;
+  const CAP_H0 = 17;  // caption strip above each block
+  const GAP0 = 8;     // space between blocks
+  const HEADER_H = 56;    // company name + date range + rule, measured down from the top margin
+  const FOOTNOTE_H = 34;  // the receipt-breakdown note that follows the last block
+  let ROW_H = ROW_H0, CAP_H = CAP_H0, GAP = GAP0, hs = 1, fs = 1;
   const INK = '#000000';
   const LINE = '#b0b0b0';
 
@@ -1387,8 +1391,24 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
 
   const BOTTOM_LIMIT = PH - 80;   // leave room for the footer note and "Created:" line
 
+  // Squeeze one report onto one sheet. The padding gives way before the type does — an 18pt row
+  // around a 9pt line is mostly air — so the heights take the whole squeeze and the font only
+  // follows once the rows get genuinely tight. Each period is measured on its own, so a fat
+  // month never shrinks a thin one.
+  const fitPeriod = (period: any) => {
+    const need = (period.sections || []).reduce(
+      (a: number, sec: any) => a + CAP_H0 + sec.rows.length * ROW_H0 + GAP0, 0);
+    const avail = BOTTOM_LIMIT - (PM + HEADER_H) - FOOTNOTE_H;
+    // 0.45 puts the body type at 6pt. Past that a report is better spilling onto a second sheet
+    // (the block-fit check below does that) than printed too small to read.
+    hs = Math.max(0.45, Math.min(1, avail / Math.max(need, 1)));
+    ROW_H = ROW_H0 * hs; CAP_H = CAP_H0 * hs; GAP = GAP0 * hs;
+    fs = Math.min(1, Math.max(hs, 0.78), ROW_H / (9 * 1.35));
+  };
+
   periods.forEach((period: any, pi: number) => {
   cur = period;
+  fitPeriod(period);
   if (pi > 0) { doc.addPage(); doc.page.margins.bottom = 0; }
   header();
 
@@ -1400,12 +1420,12 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
       header();
     }
     // Section title (left) and this block's three column captions
-    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
-    if (sec.title) doc.text(sec.title, X0, y + 4, { lineBreak: false });
-    doc.font('Helvetica').fontSize(9).fillColor('#333333');
+    doc.font('Helvetica-Bold').fontSize(9.5 * fs).fillColor(INK);
+    if (sec.title) doc.text(sec.title, X0, y + 4 * hs, { lineBreak: false });
+    doc.font('Helvetica').fontSize(9 * fs).fillColor('#333333');
     sec.captions.forEach((c: string | null, i: number) => {
       if (!c) return;
-      doc.text(c, [X1, X2, X3][i], y + 4, { width: COL_W, align: 'center', lineBreak: false });
+      doc.text(c, [X1, X2, X3][i], y + 4 * hs, { width: COL_W, align: 'center', lineBreak: false });
     });
     y += CAP_H;
 
@@ -1424,26 +1444,26 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
       });
       doc.restore();
 
-      doc.font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(INK);
+      doc.font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9 * fs).fillColor(INK);
       if (r.total) {
         // GA4 right-aligns its "Total" caption hard against the first value column
-        doc.text(r.label, X0, y + 6, { width: LABEL_W - 10, align: 'right', lineBreak: false });
+        doc.text(r.label, X0, y + 6 * hs, { width: LABEL_W - 10, align: 'right', lineBreak: false });
       } else if (r.label) {
-        doc.text(r.label, X0 + 8, y + 6, { lineBreak: false });
+        doc.text(r.label, X0 + 8, y + 6 * hs, { lineBreak: false });
       }
       if (r.qty !== undefined) {
-        doc.font('Helvetica').fontSize(7).fillColor('#555555');
-        doc.text('Qty', X0 + 78, y + 8, { lineBreak: false });
-        doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(INK);
+        doc.font('Helvetica').fontSize(7 * fs).fillColor('#555555');
+        doc.text('Qty', X0 + 78, y + 8 * hs, { lineBreak: false });
+        doc.font('Helvetica-Oblique').fontSize(8.5 * fs).fillColor(INK);
         // Counts print whole (13 MOTs); labour hours keep their decimals (52.25).
         const q = Number(r.qty);
-        doc.text(Number.isInteger(q) ? String(q) : money(q), X0 + 96, y + 6, { width: 60, align: 'right', lineBreak: false });
+        doc.text(Number.isInteger(q) ? String(q) : money(q), X0 + 96, y + 6 * hs, { width: 60, align: 'right', lineBreak: false });
       }
-      doc.font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(INK);
+      doc.font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9 * fs).fillColor(INK);
       [X1, X2, X3].forEach((x, i) => {
         const v = r.v[i];
         if (v === null || v === undefined) return;
-        doc.text(fmt(v, r.kind), x, y + 6, { width: COL_W - 8, align: 'right', lineBreak: false });
+        doc.text(fmt(v, r.kind), x, y + 6 * hs, { width: COL_W - 8, align: 'right', lineBreak: false });
       });
       y += ROW_H;
     }
