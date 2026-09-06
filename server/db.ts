@@ -2158,6 +2158,18 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     const net = n(t.net), tax = n(t.tax);
     return { code: rate === 0 ? "T0" : "T1", rate, net, tax, gross: round2(net + tax) };
   });
+  // An MOT is ALWAYS zero-rated — there is no VAT on any MOT, ever. But this breakdown is built
+  // from line items, and a GA4 invoice keeps the fee in its own sub-total with no MOT line, so
+  // T0 was reporting only the handful of web-app MOTs that had one: £135 of May's £2,070, and
+  // £18,450 short across Jan–Jul. T0 is the zero-rated figure a VAT return is read off, so the
+  // MOT money that lives outside the line items is added here, with no tax against it.
+  const motInLines = n(byLabel.get("MOT")?.net);
+  const motOutsideLines = round2(n(motRow.net) - motInLines);
+  if (motOutsideLines !== 0) {
+    const t0 = taxBreakdown.find((t) => t.rate === 0);
+    if (t0) { t0.net = round2(t0.net + motOutsideLines); t0.gross = round2(t0.gross + motOutsideLines); }
+    else taxBreakdown.unshift({ code: "T0", rate: 0, net: motOutsideLines, tax: 0, gross: motOutsideLines });
+  }
 
   // ── Receipts against those documents, mapped onto GA4's Cash / Cheque / Digital buckets
   const payRows: any[] = (await db.execute(sql`
