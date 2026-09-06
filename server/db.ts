@@ -2113,6 +2113,48 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
                         AND description ~* '^\\s*dup\\s+mot' LIMIT 1) dup ON TRUE
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows?.[0] ?? {};
 
+  // ── Sundries, Lubricants, Paint & Mat. and Excess, by the rule the Daily Takings report uses.
+  //
+  // GA4 keeps these in its own sub-totals — "Fixed Item 1/2/3" and the excess charge — and writes
+  // no line item for them, so reading the lines alone showed 0.00 in the Sales Breakdown for most
+  // of the year while the money sat in the columns. May 2026 printed "Sundries 0.00, Paint & Mat.
+  // 0.00" against a real £108.00 and £1,250.00. Jan-Aug it left £4,016.80 of net out of the
+  // breakdown, which is why its Total never reached the Summary's own Total Gross.
+  //
+  // GA4 stopped writing the columns in June 2026 and the web app writes line items instead, so
+  // both eras have to be read: prefer the column per document, fall back to that document's
+  // lines. August 2026 comes entirely from lines and is unaffected either way.
+  // Prefer GA4's own sub-total for a document, fall back to that document's line items. Tax has
+  // to follow the same per-document choice as the net, or a document read from its column would
+  // take its tax from a line that isn't being counted — hence the separate key column.
+  const _prefer = (col: any, alias: string, keyCol: any = col) =>
+    sql`COALESCE(SUM(CASE WHEN ${_numExpr(keyCol)} <> 0 THEN ${_numExpr(col)}
+                          ELSE COALESCE(fx.${sql.raw(`"${alias}"`)}, 0) END), 0)`;
+  const fixedRow: any = (await db.execute(sql`
+    SELECT
+      ${_prefer(serviceHistory.fixedItem1Net, "sundries_net")} AS sundries_net,
+      ${_prefer(serviceHistory.fixedItem1Tax, "sundries_tax", serviceHistory.fixedItem1Net)} AS sundries_tax,
+      ${_prefer(serviceHistory.fixedItem2Net, "lubricants_net")} AS lubricants_net,
+      ${_prefer(serviceHistory.fixedItem2Tax, "lubricants_tax", serviceHistory.fixedItem2Net)} AS lubricants_tax,
+      ${_prefer(serviceHistory.fixedItem3Net, "paint_net")} AS paint_net,
+      ${_prefer(serviceHistory.fixedItem3Tax, "paint_tax", serviceHistory.fixedItem3Net)} AS paint_tax,
+      ${_prefer(serviceHistory.excessNet, "excess_net")} AS excess_net,
+      ${_prefer(serviceHistory.excessTax, "excess_tax", serviceHistory.excessNet)} AS excess_tax
+    FROM ${serviceHistory}
+    LEFT JOIN (
+      SELECT "documentId",
+        SUM(CASE WHEN "itemType"='Sundries'  THEN COALESCE("subNet",0)     ELSE 0 END) AS "sundries_net",
+        SUM(CASE WHEN "itemType"='Sundries'  THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "sundries_tax",
+        SUM(CASE WHEN "itemType"='Lubricant' THEN COALESCE("subNet",0)     ELSE 0 END) AS "lubricants_net",
+        SUM(CASE WHEN "itemType"='Lubricant' THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "lubricants_tax",
+        SUM(CASE WHEN "itemType"='Paint'     THEN COALESCE("subNet",0)     ELSE 0 END) AS "paint_net",
+        SUM(CASE WHEN "itemType"='Paint'     THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "paint_tax",
+        SUM(CASE WHEN "itemType"='Excess'    THEN COALESCE("subNet",0)     ELSE 0 END) AS "excess_net",
+        SUM(CASE WHEN "itemType"='Excess'    THEN COALESCE("taxAmount",0)  ELSE 0 END) AS "excess_tax"
+      FROM "serviceLineItems" GROUP BY "documentId"
+    ) fx ON fx."documentId" = ${serviceHistory.id}
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows?.[0] ?? {};
+
   // ── Category split, from line items. 'Other'/untyped fall into Surcharge so the rows always
   //    add up to the documents' own totals rather than quietly dropping money.
   const catRows: any[] = (await db.execute(sql`
@@ -2134,10 +2176,17 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
   const ORDER = ["Labour", "Parts", "Sundries", "Lubricants", "Paint & Mat.", "MOT", "Surcharge", "Excess"];
   const breakdown = ORDER.map((label) => {
     const r: any = byLabel.get(label);
-    // MOT comes from the block above, not from line items — most invoices hold the fee in GA4's
-    // sub-total with no MOT line at all, and reading only the lines showed £135 of a real £2,070.
-    const net = label === "MOT" ? n(motRow.net) : n(r?.net);
-    const tax = label === "MOT" ? n(motRow.tax) : n(r?.tax);
+    // MOT, and the four GA4 keeps in its own sub-totals, come from the blocks above rather than
+    // from line items — most invoices hold those figures with no matching line at all, and
+    // reading only the lines showed £135 of a real £2,070 of MOT and nothing of the sundries.
+    const FIXED: Record<string, [any, any]> = {
+      "Sundries":     [fixedRow.sundries_net, fixedRow.sundries_tax],
+      "Lubricants":   [fixedRow.lubricants_net, fixedRow.lubricants_tax],
+      "Paint & Mat.": [fixedRow.paint_net, fixedRow.paint_tax],
+      "Excess":       [fixedRow.excess_net, fixedRow.excess_tax],
+    };
+    const net = label === "MOT" ? n(motRow.net) : FIXED[label] ? n(FIXED[label][0]) : n(r?.net);
+    const tax = label === "MOT" ? n(motRow.tax) : FIXED[label] ? n(FIXED[label][1]) : n(r?.tax);
     return { label, ...(label === "Labour" ? { qty: n(r?.qty) } : {}), net, tax, gross: round2(net + tax) };
   });
   const excessDisc = n(head.excess_disc);
