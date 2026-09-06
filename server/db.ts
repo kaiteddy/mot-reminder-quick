@@ -2081,17 +2081,34 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     FROM ${serviceHistory}
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}`)).rows?.[0] ?? {};
 
-  // ── MOT counts. motStatus is what the MOT option sets; a document with only an MOT line item
-  //    (web app) still counts as a full test. Duplicates are billed as a "DUP MOT" item.
+  // ── MOT counts AND MOT money, by the same rule the dedicated MOT report uses.
+  //
+  // "MOT done" is recorded three ways depending on where the invoice came from: GA4's own
+  // sub-totals (subMot*), the motStatus field, or an itemType 'MOT' line the web app writes.
+  // This block used to count only motStatus/line-item and take its MONEY from line items alone —
+  // and GA4 invoices carry neither. In May 2026 that read 35 MOTs worth £135 next to the MOT
+  // report's 53 worth £2,070, because 43 of the 53 had their fee in subMotNet and no line item.
+  // Jan–Jul it hid £18,450 of MOT revenue. Same precedence as the MOT report (subMot wins where
+  // both exist) so the two reports can no longer disagree.
+  const motNetExpr = sql`CASE WHEN ${_numExpr(serviceHistory.subMotNet)} > 0
+                              THEN ${_numExpr(serviceHistory.subMotNet)} ELSE COALESCE(li.net, 0) END`;
+  const motTaxExpr = sql`CASE WHEN ${_numExpr(serviceHistory.subMotNet)} > 0
+                              THEN ${_numExpr(serviceHistory.subMotTax)} ELSE COALESCE(li.tax, 0) END`;
+  // subMotGross is 0 on some documents whose subMotNet is set, so key on either.
+  const anyMot = sql`(${_numExpr(serviceHistory.subMotNet)} > 0 OR ${_numExpr(serviceHistory.subMotGross)} > 0
+                      OR li."documentId" IS NOT NULL OR NULLIF(TRIM(${serviceHistory.motStatus}), '') IS NOT NULL)`;
   const motRow: any = (await db.execute(sql`
     SELECT
-      COUNT(*) FILTER (WHERE ${serviceHistory.motStatus} IN ('Pass','Fail')
-                          OR (NULLIF(TRIM(${serviceHistory.motStatus}), '') IS NULL AND li.id IS NOT NULL))::int AS full,
-      COUNT(*) FILTER (WHERE ${serviceHistory.motStatus} IN ('Pass Retest','Fail Retest'))::int AS retest,
-      COUNT(*) FILTER (WHERE dup.id IS NOT NULL)::int AS duplicate
+      COUNT(*) FILTER (WHERE ${anyMot} AND COALESCE(${serviceHistory.motStatus}, '') !~* 'retest')::int AS full,
+      COUNT(*) FILTER (WHERE ${anyMot} AND ${serviceHistory.motStatus} ~* 'retest')::int AS retest,
+      COUNT(*) FILTER (WHERE dup.id IS NOT NULL)::int AS duplicate,
+      COALESCE(SUM(${motNetExpr}) FILTER (WHERE ${anyMot}), 0) AS net,
+      COALESCE(SUM(${motTaxExpr}) FILTER (WHERE ${anyMot}), 0) AS tax
     FROM ${serviceHistory}
-    LEFT JOIN LATERAL (SELECT id FROM "serviceLineItems" WHERE "documentId" = ${serviceHistory.id}
-                        AND "itemType" = 'MOT' LIMIT 1) li ON TRUE
+    LEFT JOIN (
+      SELECT "documentId", SUM(COALESCE("subNet", 0)) AS net, SUM(COALESCE("taxAmount", 0)) AS tax
+      FROM "serviceLineItems" WHERE "itemType" = 'MOT' GROUP BY "documentId"
+    ) li ON li."documentId" = ${serviceHistory.id}
     LEFT JOIN LATERAL (SELECT id FROM "serviceLineItems" WHERE "documentId" = ${serviceHistory.id}
                         AND description ~* '^\\s*dup\\s+mot' LIMIT 1) dup ON TRUE
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows?.[0] ?? {};
@@ -2117,7 +2134,10 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
   const ORDER = ["Labour", "Parts", "Sundries", "Lubricants", "Paint & Mat.", "MOT", "Surcharge", "Excess"];
   const breakdown = ORDER.map((label) => {
     const r: any = byLabel.get(label);
-    const net = n(r?.net), tax = n(r?.tax);
+    // MOT comes from the block above, not from line items — most invoices hold the fee in GA4's
+    // sub-total with no MOT line at all, and reading only the lines showed £135 of a real £2,070.
+    const net = label === "MOT" ? n(motRow.net) : n(r?.net);
+    const tax = label === "MOT" ? n(motRow.tax) : n(r?.tax);
     return { label, ...(label === "Labour" ? { qty: n(r?.qty) } : {}), net, tax, gross: round2(net + tax) };
   });
   const excessDisc = n(head.excess_disc);
@@ -2417,7 +2437,12 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
   const from = new Date(opts.from + "T00:00:00");
   const to = new Date(opts.to + "T23:59:59.999");
-  const inRange = and(gte(dateCol, from), lte(dateCol, to), ...(opts.department ? [eq(serviceHistory.department, opts.department)] : []));
+  // Voided documents (GA4 docStatus 3) are excluded here for the same reason the sales summary
+  // excludes them — GA4's own reports and statements leave them out, and the web app has no void
+  // of its own so nothing else filters them. Adam's call, 2026-08-24.
+  const inRange = and(gte(dateCol, from), lte(dateCol, to),
+    sql`COALESCE(${serviceHistory.docStatus}, '') <> '3'`,
+    ...(opts.department ? [eq(serviceHistory.department, opts.department)] : []));
   const DOC_LABEL: Record<string, string> = { SI: "Invoices", ES: "Estimates", JS: "Job Sheets", CR: "Credit Notes", XS: "Excess", PA: "Purchases", VS: "Vehicle Sales", VP: "Vehicle Purchases" };
 
   switch (opts.reportId) {
@@ -2629,14 +2654,20 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       //   line item  — itemType 'MOT', how the web app records it (DocumentDetails Extras)
       // Count a document if ANY of them is present, or MOTs go missing: July 2026 has 71
       // documents with motStatus but 0 with subMot*, and only 41 with a line item.
-      const hasSubMot = sql`${_numExpr(serviceHistory.subMotGross)} > 0`;
+      // Keyed on EITHER sub-total: some documents carry a subMotNet with subMotGross left at 0,
+      // and keying on gross alone dropped them to the line-item branch, which for a GA4 invoice
+      // holds nothing — £1,575 of July's MOT fees read as £990.
+      const hasSubMot = sql`(${_numExpr(serviceHistory.subMotNet)} > 0 OR ${_numExpr(serviceHistory.subMotGross)} > 0)`;
       const hasStatus = sql`NULLIF(TRIM(${serviceHistory.motStatus}), '') IS NOT NULL`;
       const res: any = await db.execute(sql`
         WITH mot AS (
           SELECT
             CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotNet)}   ELSE COALESCE(li.net, 0) END AS net,
             CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotTax)}   ELSE COALESCE(li.tax, 0) END AS tax,
-            CASE WHEN ${hasSubMot} THEN ${_numExpr(serviceHistory.subMotGross)} ELSE COALESCE(li.net, 0) + COALESCE(li.tax, 0) END AS gross,
+            CASE WHEN ${hasSubMot}
+                 THEN GREATEST(${_numExpr(serviceHistory.subMotGross)},
+                               ${_numExpr(serviceHistory.subMotNet)} + ${_numExpr(serviceHistory.subMotTax)})
+                 ELSE COALESCE(li.net, 0) + COALESCE(li.tax, 0) END AS gross,
             (${hasSubMot} OR li."documentId" IS NOT NULL) AS priced,
             ${serviceHistory.motStatus} AS status,
             ${serviceHistory.motClass} AS class,
@@ -2666,8 +2697,11 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
       const exempt = rows.filter((r) => !r.taxable);
       const taxable = rows.filter((r) => r.taxable);
 
+      // Priced rows only. The quantity column sits beside the money, so counting MOTs the report
+      // has just said it is excluding made "qty 50 · £1,935" — 50 tests at £38.70 each, which is
+      // not a price anyone charges. The head count stays in the MOT Counts block above.
       const byClass = new Map<string, { qty: number; net: number; tax: number }>();
-      for (const r of rows) {
+      for (const r of rows.filter((x) => x.priced)) {
         const raw = String(r.class || "").trim();
         // We store the bare MOT class ("4"); GA4 spells its own out ("TYPE A - RETAIL"). Label a
         // bare number so the column reads as something rather than a stray digit.
