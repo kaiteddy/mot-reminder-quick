@@ -310,8 +310,10 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
     const PORTRAIT = { w: 718, h: 1047 };
     const LANDSCAPE = { w: 1047, h: 718 };
 
-    const prevWidth = el.style.width;
+    const prevWidth = el.style.width, prevPad = el.style.padding;
+    // Measure in the box the print rule builds: the sheet's width, and no padding.
     el.style.width = `${PORTRAIT.w}px`;
+    el.style.padding = "0";
     // A ledger with a dozen columns is wider than a portrait sheet. Measure what the widest table
     // actually needs: squeezing it onto portrait would either clip it (overflow-x scrolls on
     // screen but is simply cut off on paper) or shrink the whole report to fit the width.
@@ -324,6 +326,7 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
     const periodEls = Array.from(el.querySelectorAll<HTMLElement>(".report-period"));
     const heights = periodEls.map((p) => p.scrollHeight);
     el.style.width = prevWidth;
+    el.style.padding = prevPad;
 
     const landscape = widest > PORTRAIT.w;
     const page = landscape ? LANDSCAPE : PORTRAIT;
@@ -337,15 +340,19 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
     // bearing nothing but the heading. 3% covers the print engine's own rounding.
     const usable = (page.h - 12) * 0.97;
     const scaleFor = (h: number) => {
-      // Shrinking only earns anything if it gets the report onto ONE sheet. A 61-row ledger
-      // cannot, however small it goes — shrinking that just makes it unreadable across the same
-      // number of sheets, so print it full size and let it paginate.
+      // Shrinking only earns anything if it gets the report onto ONE sheet. Below 0.45 the 13px
+      // body type prints under 4.5pt — a 61-row ledger is better paginated at full size than
+      // squeezed onto one unreadable sheet. Same floor the server PDF uses.
       const hFit = usable / Math.max(h, 1);
       // FLOOR, never round: rounding a scale up puts the printed height back over the page.
-      return Math.floor(Math.min(wScale, 1, hFit >= 0.5 ? hFit : 1) * 1000) / 1000;
+      return Math.floor(Math.min(wScale, 1, hFit >= 0.45 ? hFit : 1) * 1000) / 1000;
     };
 
-    periodEls.forEach((p, i) => p.style.setProperty("--print-scale", String(scaleFor(heights[i]))));
+    periodEls.forEach((p, i) => {
+      p.style.setProperty("--print-scale", String(scaleFor(heights[i])));
+    });
+    // The sheet's own width, so the print layout is the one that was just measured.
+    el.style.setProperty("--print-page-w", `${page.w}px`);
     // The container keeps a scale of its own only when there are no period blocks to carry one.
     el.style.setProperty("--print-scale", periodEls.length ? "1" : String(scaleFor(el.scrollHeight)));
     // @page can't be toggled by class, so the rule itself is rewritten before the dialog opens.
@@ -378,12 +385,16 @@ function ReportModal({ reportId, params, autoPrint, periods, onClose }: { report
           <style id="report-page-size">{`@page { size: A4 portrait; margin: 10mm; }`}</style>
           <style>{`
             @media print {
-              /* Scale set by fitToOnePage() just before the dialog opens — per report, so a
-                 short month prints full size next to a dense one that had to shrink. Applied to
-                 the period rather than the container for that reason. zoom is used rather than
-                 transform: scale() because it actually reduces layout height, where a transform
-                 leaves the original height behind and the page still breaks in two. */
-              .report-print { zoom: var(--print-scale, 1); padding: 0 !important; }
+              /* Pin the print layout to the sheet's own width. react-to-print clones the report
+                 into an iframe sized to the BROWSER WINDOW, so without this the printed layout is
+                 not the one fitToOnePage() measured and the scale it worked out is wrong for it. */
+              .report-print { width: var(--print-page-w, 718px); padding: 0 !important; }
+              /* Scale set by fitToOnePage() just before the dialog opens — per report, so a short
+                 month prints full size next to a dense one that had to shrink. Applied to the
+                 period rather than the container for that reason. zoom rather than transform:
+                 scale() because zoom reflows — it reduces the layout height the paginator reads,
+                 and the report still fills the width. A transform leaves the original height in
+                 the flow, so the page breaks where it always did. */
               .report-print .report-period { zoom: var(--print-scale, 1); }
               /* On screen the table scrolls sideways; on paper that would guillotine the
                  right-hand columns, so let it lay out in full at the scaled size. */
@@ -475,8 +486,10 @@ function GA4Summary({ sections }: { sections: any[] }) {
   };
   const cellBase = "px-2 py-1 text-[13px] tabular-nums text-right align-middle";
 
+  // The width cap is for reading on screen. On paper the sheet is the cap, and the print scale
+  // widens the report by the same factor it shrinks it, so keeping the cap would leave a gutter.
   return (
-    <div className="max-w-3xl mx-auto space-y-3">
+    <div className="max-w-3xl mx-auto space-y-3 print:max-w-none">
       {sections.map((sec, si) => (
         <div key={si} className="ga4-block">
           <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))] items-end pb-1">
