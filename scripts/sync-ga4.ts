@@ -275,8 +275,14 @@ const lineItems = load("LineItems.csv");
 const { mapGA4LineItem } = await import("../server/services/csv-import");
 // Docs the user has edited in the web replaced their GA4 line items with WEB-LI rows. Don't sync
 // GA4 line items back into those — the web is authoritative there, and re-inserting would duplicate.
+// GA4EXP- rows count too: they are the web's own lines under an older prefix, and because the
+// guard only looked for WEB- they were left unprotected. On 21/08/2026 the sync re-imported GA4's
+// copy of four such invoices (90779, 90780, 90781, 90790) alongside the originals, so the work was
+// listed twice on each. Match every prefix the web has ever minted, not just the current one.
 const webEditedDocs = new Set<number>();
-for (const r of await q(`SELECT DISTINCT "documentId" FROM "serviceLineItems" WHERE "externalId" LIKE 'WEB-%' AND "documentId" IS NOT NULL`)) webEditedDocs.add(r.documentId);
+for (const r of await q(`SELECT DISTINCT "documentId" FROM "serviceLineItems"
+                         WHERE ("externalId" LIKE 'WEB-%' OR "externalId" LIKE 'GA4EXP-%')
+                           AND "documentId" IS NOT NULL`)) webEditedDocs.add(r.documentId);
 if (webEditedDocs.size) console.log(`(skipping GA4 line items for ${webEditedDocs.size} web-edited docs)`);
 const LI_COLS = ["documentId", "documentExternalId", "description", "quantity", "unitPrice", "subNet", "taxAmount", "vatRate", "partNumber", "nominalCode", "itemType"];
 await syncTable({
