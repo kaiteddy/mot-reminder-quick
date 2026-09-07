@@ -2079,7 +2079,9 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
       COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountNet)}), 0) AS disc_net,
       COALESCE(SUM(${_numExpr(serviceHistory.totalDiscountGross)}), 0) AS disc_gross,
       COALESCE(SUM(${_numExpr(serviceHistory.excessDiscount)}), 0) AS excess_disc,
-      COALESCE(SUM(${_numExpr(serviceHistory.balance)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS outstanding
+      COALESCE(SUM(${_numExpr(serviceHistory.balance)}) FILTER (WHERE ${serviceHistory.docType} IN ('SI','XS')), 0) AS balance_owing,
+      COALESCE(SUM(${_numExpr(serviceHistory.totalGross)}) FILTER (
+        WHERE ${serviceHistory.docType} IN ('SI','XS') AND COALESCE(${serviceHistory.accountsUnpaid}, 0) = 1), 0) AS outstanding
     FROM ${serviceHistory}
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}`)).rows?.[0] ?? {};
 
@@ -2256,6 +2258,10 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS", "CR"])}
     GROUP BY 1`)).rows ?? [];
 
+  // GA4 registers no receipts and never maintained the balance column, so reading it called 5,657
+  // invoices unpaid — £1.69m, essentially the whole book. Adam's rule, 07/09/2026: an invoice is
+  // settled on the day unless somebody says otherwise, which is exactly what accountsUnpaid
+  // already means to the Sage export. One rule now, in both places.
   const receipts = { cash: 0, cheque: 0, digital: 0, total: 0, credited: 0, outstanding: n(head.outstanding) };
   for (const p of payRows) {
     const m = String(p.method).toLowerCase();
@@ -2266,6 +2272,10 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     receipts.total = round2(receipts.total + amt);
   }
   receipts.credited = n(head.cr_gross);
+  // What was actually taken: everything invoiced, less whatever is still flagged as owing. Not the
+  // sum of the three rows above — a method is recorded against only a handful of payments (£306.66
+  // of July's £49,889), so totalling those called a full month's takings three hundred pounds.
+  receipts.total = round2(n(head.inv_gross) - receipts.outstanding);
 
   const labour = breakdown.find((b) => b.label === "Labour")!;
   const parts = breakdown.find((b) => b.label === "Parts")!;

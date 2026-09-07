@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { GitMerge, Loader2, AlertTriangle, Car, FileText, Search } from "lucide-react";
 import { toast } from "sonner";
+import { isOurNumber } from "@shared/const";
 
 type Row = {
   id: number; name: string; phone: string | null; email: string | null;
@@ -73,6 +74,9 @@ export default function MergeCustomersDialog({
     }
     const seen = new Set<string>();
     return out.filter((o) => {
+      // Never offer one of the garage's own numbers as a customer's — they get typed onto job
+      // sheets, and this dialog was a click away from writing Adam's mobile onto Doneo's record.
+      if (kind === "phone" && isOurNumber(o.value)) return false;
       const k = o.value.replace(/\s+/g, "").toLowerCase();
       if (seen.has(k)) return false;
       seen.add(k); return true;
