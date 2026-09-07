@@ -42,6 +42,12 @@ describe("splitAddress", () => {
     expect(splitAddress("30 Green Walk, Hendon, London, NW4 2AJ", "NW4 2AJ")).toMatchObject({ town: "London", county: "", postcode: "NW4 2AJ" });
   });
 
+  it("a building followed by its street stays on the address line", () => {
+    expect(splitAddress("Winsford Court, Tenterden Grove")).toMatchObject({ houseNo: "", road: "Winsford Court, Tenterden Grove", town: "" });
+    expect(splitAddress("Vincent Court, Bell Lane, Hendon, London")).toMatchObject({ road: "Vincent Court, Bell Lane", locality: "Hendon", town: "London" });
+    expect(splitAddress("Flat 3 Winsford Court, 11 Tenterden Grove, London")).toMatchObject({ houseNo: "Flat 3 Winsford Court", road: "11 Tenterden Grove", town: "London" });
+  });
+
   it("no house number: the first segment is the road", () => {
     expect(splitAddress("Lathom Lodge   Sandy Lane, Northwood")).toMatchObject({ houseNo: "", road: "Lathom Lodge Sandy Lane", town: "Northwood" });
   });

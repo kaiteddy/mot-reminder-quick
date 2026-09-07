@@ -42,6 +42,13 @@ const HOUSE_NO = /^((?:flat|apartment|apt|unit|suite|room)\s+\S+|\d+[a-z]?(?:\s*
 /** "Leicester, Leicestershire" is town + county, not locality + town. */
 const isCounty = (s: string) => /shire$|^(?:greater london|middlesex|essex|kent|surrey|sussex|east sussex|west sussex|norfolk|suffolk|devon|cornwall|dorset|somerset|cumbria|durham|county durham|merseyside|tyne and wear|west midlands|greater manchester|isle of wight|rutland|northumberland)$/i.test(s.trim());
 
+/** "Tenterden Grove", "Bell Lane", "47 Finchley Lane" — a street, so never a town line. */
+const looksLikeStreet = (s: string) =>
+  /^(?:flat|apartment|apt|unit|suite|room)?\s*\d/i.test(s.trim())
+  // Deliberately NOT hill/green/park/end/vale: Mill Hill, Golders Green, Finsbury Park, Crouch End
+  // and Maida Vale are localities, and a locality must stay a locality.
+  || /\b(?:road|rd|street|st|lane|ln|avenue|ave|grove|drive|dr|way|close|crescent|cres|gardens|gdns|place|pl|terrace|square|sq|walk|mews|row|rise|parade|approach|broadway|court|house|lodge|mansions|villas|cottage|chambers|heights|tower)\.?$/i.test(s.trim());
+
 /** Title-case a part that arrived fully upper- or lower-case; leave mixed case alone. */
 function niceCase(s: string): string {
   if (!s || s !== s.toUpperCase() && s !== s.toLowerCase()) return s;
@@ -95,6 +102,9 @@ export function splitAddress(address: string | null | undefined, knownPostcode?:
   // always the town when there are exactly two, since "Finchley Road, London" is far more
   // common than a road with a locality and no town.
   out.road = parts.shift() || "";
+  // A building followed by its street ("Winsford Court, Tenterden Grove") is ONE address line:
+  // keep the street with the road rather than promoting it to the town.
+  while (parts.length && looksLikeStreet(parts[0]) && !isCounty(parts[0])) out.road += `, ${parts.shift()}`;
   if (parts.length === 1) out.town = parts[0];
   else if (parts.length === 2) { if (isCounty(parts[1])) [out.town, out.county] = parts; else [out.locality, out.town] = parts; }
   else if (parts.length >= 3) { out.locality = parts.slice(0, parts.length - 2).join(", "); out.town = parts[parts.length - 2]; out.county = parts[parts.length - 1]; }
