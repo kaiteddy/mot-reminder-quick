@@ -293,6 +293,9 @@ export default function DocumentDetails() {
   // lines that job added and nothing staff typed by hand.
   const JOB_TEXT: Record<string, string> = { mot: "Carry out MOT Test", small: "Carry out Small Service", major: "Carry out Major Service", aircon: "Carry out Air Con Re-Gas" };
   const [jobLineKeys, setJobLineKeys] = useState<Record<string, string[]>>({});
+  // Sundries a job set filled in (only when the box was empty), so an untick can clear it again
+  // — but only if it still holds that figure, never a value staff typed over it.
+  const [jobSundries, setJobSundries] = useState<Record<string, number>>({});
   const descHasLine = (t: string) => String(form.description ?? "").split("\n").some((l) => l.trim().replace(/^-\s*/, "").toLowerCase() === t.toLowerCase());
   const addDescLine = (t: string) => { if (!descHasLine(t)) set("description", (form.description ? form.description.trimEnd() + "\n" : "") + t); };
   const rmDescLine = (t: string) => set("description", String(form.description ?? "").split("\n").filter((l) => l.trim().replace(/^-\s*/, "").toLowerCase() !== t.toLowerCase()).join("\n"));
@@ -327,6 +330,9 @@ export default function DocumentDetails() {
     const keys = jobLineKeys[kind] || [];
     if (keys.length) setItemsDirty((p) => p.filter((it: any) => !keys.includes(it._k)));
     setJobLineKeys((k) => { const n = { ...k }; delete n[kind]; return n; });
+    const applied = jobSundries[kind];
+    if (applied != null && num(form.sundriesAmount) === applied) set("sundriesAmount", "");
+    setJobSundries((k) => { const n = { ...k }; delete n[kind]; return n; });
   };
   const removeJobSet = (kind: string) => {
     removeJobLines(kind);
@@ -348,7 +354,7 @@ export default function DocumentDetails() {
     desc = withoutLine(withoutLine(desc, jobSet.label), JOB_TEXT[kind]);
     set("description", (desc.trim() ? desc.trimEnd() + "\n" : "") + JOB_TEXT[kind]);
     // Don't clobber a sundries amount staff already typed in.
-    if (jobSet.sundries && !num(form.sundriesAmount)) set("sundriesAmount", jobSet.sundries);
+    if (jobSet.sundries && !num(form.sundriesAmount)) { set("sundriesAmount", jobSet.sundries); setJobSundries((k) => ({ ...k, [kind]: jobSet.sundries as number })); }
     const unpriced = jobSet.parts.filter((pt) => pt.unitPrice == null).length;
     toast.success(`${jobSet.label} added — ${jobSet.parts.length} part${jobSet.parts.length === 1 ? "" : "s"}${jobSet.labour ? " + labour" : ""}` + (unpriced ? `; ${unpriced} need a price in the Parts tab` : ""));
   };
