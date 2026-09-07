@@ -1554,7 +1554,7 @@ export async function generateServiceRecordPDF(data: any): Promise<{ content: st
     [`Never done here${mileage ? ` — this car is on ${projected ? 'about ' : ''}${num(mileage)} miles` : ''}`, '#c2410c', by('noRecord')],
     ['Due soon', '#b45309', by('soon')],
     ['Up to date', '#166534', by('ok')],
-    ['Replaced when worn — no set interval', '#374151', by('unscheduled').filter((i) => i.times > 0)],
+    ['No set interval — done when worn or when asked for', '#374151', by('unscheduled').filter((i) => i.times > 0)],
   ];
 
   for (const [title, colour, rows] of SECTIONS) {

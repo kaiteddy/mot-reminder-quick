@@ -49,7 +49,11 @@ export const SERVICE_ITEMS: ServiceItem[] = [
   { key: "clutch", label: "Clutch", group: "Wear", test: /\bclutch\b/ },
   { key: "exhaust", label: "Exhaust", group: "Wear", test: /\bexhaust\b|\bcat(alytic)?\b|\bdpf\b/ },
 
-  { key: "airCon", label: "Air con re-gas", group: "Other", test: /air\s*con|a\/?c\s*(re-?gas|regas|service)|re-?gas/, everyMonths: 24 },
+  // No interval on purpose. A re-gas happens when the air-con stops blowing cold or a customer
+  // asks for it, not on a schedule, so calling it "62 months over" is noise in the one section
+  // that should only hold real work. Knowing when it was last gassed is still worth having, so it
+  // keeps its line under "no set interval".
+  { key: "airCon", label: "Air con re-gas", group: "Other", test: /air\s*con|a\/?c\s*(re-?gas|regas|service)|re-?gas/ },
   { key: "geometry", label: "Wheel alignment", group: "Other", test: /align|track\w*|geometry|four\s*wheel/ },
 ];
 

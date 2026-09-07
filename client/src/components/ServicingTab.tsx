@@ -167,7 +167,7 @@ export default function ServicingTab({ vehicleId, registration, excludeDocumentI
       {wear.length > 0 && (
         <div className="rounded border border-slate-200 bg-slate-50">
           <div className="px-3 py-2 font-semibold text-[13px]">
-            Replaced when worn <span className="font-normal text-muted-foreground">— no set interval</span>
+            No set interval <span className="font-normal text-muted-foreground">— done when worn or when asked for; here for reference</span>
           </div>
           <div className="px-3 py-1 bg-white/70">
             {wear.map((i) => <Row key={i.key} i={i} mileage={mileage} />)}
