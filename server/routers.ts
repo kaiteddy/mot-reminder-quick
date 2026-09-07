@@ -3417,7 +3417,7 @@ export const appRouter = router({
   serviceHistory: router({
     // When each serviceable item was last done on this car — servicing, not the job list.
     serviceRecord: protectedProcedure
-      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional() }))
+      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional(), excludeDocumentId: z.number().optional() }))
       .query(async ({ input }) => {
         const { getVehicleServiceRecord } = await import("./db");
         return getVehicleServiceRecord(input);
@@ -3425,7 +3425,7 @@ export const appRouter = router({
     // The same thing on paper. Built here rather than printed from the browser because Safari
     // will not shrink text far enough to fit a dense list, as the sales summary found out.
     serviceRecordPDF: protectedProcedure
-      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional() }))
+      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional(), excludeDocumentId: z.number().optional() }))
       .query(async ({ input }) => {
         const { getVehicleServiceRecord, getDb } = await import("./db");
         const { generateServiceRecordPDF } = await import("./pdf-templates");

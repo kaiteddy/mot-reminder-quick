@@ -88,9 +88,9 @@ function Section({ tone, icon, title, items, mileage }: {
  *  this car — including the one nothing else could: 65,000 miles on the clock and no spark plugs
  *  on any job we ever raised.
  */
-export default function ServicingTab({ vehicleId, registration }: { vehicleId?: number; registration?: string }) {
+export default function ServicingTab({ vehicleId, registration, excludeDocumentId }: { vehicleId?: number; registration?: string; excludeDocumentId?: number }) {
   const { data, isLoading } = trpc.serviceHistory.serviceRecord.useQuery(
-    { vehicleId, registration }, { enabled: !!(vehicleId || registration) });
+    { vehicleId, registration, excludeDocumentId }, { enabled: !!(vehicleId || registration) });
 
   // Built on the server rather than printed from the browser: Safari will not shrink text far
   // enough to fit a list this dense, which is the same wall the sales summary hit this morning.
@@ -99,7 +99,7 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
   const savePdf = async () => {
     setSaving(true);
     try {
-      const res: any = await utils.serviceHistory.serviceRecordPDF.fetch({ vehicleId, registration });
+      const res: any = await utils.serviceHistory.serviceRecordPDF.fetch({ vehicleId, registration, excludeDocumentId });
       const bin = atob(res.content);
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -137,8 +137,8 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
     <div className="space-y-3 text-[13px]">
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-muted-foreground">
-          Read off this car's own jobs and its MOT readings. Intervals are a general guide — the
-          manufacturer's schedule wins.
+          Read off this car's own jobs and its MOT readings{excludeDocumentId ? ", not counting the one you're on" : ""}.
+          Intervals are a general guide — the manufacturer's schedule wins.
         </p>
         <span className="shrink-0 flex items-baseline gap-3">
         {mileage ? (

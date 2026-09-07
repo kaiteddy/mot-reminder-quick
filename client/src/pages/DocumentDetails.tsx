@@ -1798,7 +1798,7 @@ export default function DocumentDetails() {
                   <TabsContent value="servicing" className="mt-0">
                     {/* Keyed on the plate as well as the vehicleId: a job sheet still being typed has no vehicle
                         linked yet, and the car's servicing is exactly what you want to see while typing it. */}
-                    <ServicingTab vehicleId={(data as any)?.vehicleId ?? undefined} registration={regForHistory || undefined} />
+                    <ServicingTab vehicleId={(data as any)?.vehicleId ?? undefined} registration={regForHistory || undefined} excludeDocumentId={id || undefined} />
                   </TabsContent>
                   <TabsContent value="description" className="mt-0">
                     {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}

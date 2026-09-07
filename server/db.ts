@@ -4281,7 +4281,13 @@ export async function dismissDuplicateGroup(phone: string) {
  *  changed", which otherwise means opening jobs from three years ago one at a time. Reads the
  *  line descriptions and the job's own description of every invoice and job sheet on the car.
  */
-export async function getVehicleServiceRecord(input: { vehicleId?: number; registration?: string }) {
+export async function getVehicleServiceRecord(input: {
+  vehicleId?: number; registration?: string;
+  /** The job being looked at. Left out of the record: a job sheet still being typed has not been
+   *  done yet, and counting it made the tab report this morning's oil change as history — which
+   *  is exactly the question the tab is being asked. */
+  excludeDocumentId?: number;
+}) {
   const db = await getDb();
   if (!db) return { items: [], latestMileage: null as number | null };
   const { SERVICE_ITEMS, itemsIn } = await import("../shared/serviceItems");
@@ -4302,6 +4308,7 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
     FROM "serviceHistory" sh
     LEFT JOIN "serviceLineItems" li ON li."documentId" = sh.id
     WHERE ${where} AND COALESCE(sh."docStatus", '') <> '3'
+      ${input.excludeDocumentId ? sql`AND sh.id <> ${input.excludeDocumentId}` : sql``}
     GROUP BY sh.id, sh."docNo", sh."docType", sh.registration, sh."dateIssued", sh."dateCreated", sh.mileage, sh.description
     ORDER BY COALESCE(sh."dateIssued", sh."dateCreated") DESC NULLS LAST`)).rows as any;
 
