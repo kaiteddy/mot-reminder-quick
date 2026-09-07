@@ -332,7 +332,8 @@ export default function DocumentDetails() {
     } else {
       setForm((f) => ({
         ...f, motAmount: "",
-        description: String(f.description ?? "").split("\n").filter((l) => l.trim().replace(/^-\s*/, "").toLowerCase() !== JOB_TEXT.mot.toLowerCase()).join("\n"),
+        // Also drops the older mobile wording "Carry out MOT" so a job started on the phone unticks cleanly.
+        description: String(f.description ?? "").split("\n").filter((l) => !["carry out mot test", "carry out mot"].includes(l.trim().replace(/^-\s*/, "").toLowerCase())).join("\n"),
       }));
       markDirty();
     }
@@ -1865,12 +1866,13 @@ export default function DocumentDetails() {
             )}
           </div>
 
-          {/* vehicle info cards (pulled from MOT/SWS lookup). Always ONE row that fits the view:
-              the cards share the width equally and never wrap or scroll — InfoCard steps its
-              padding and type down when the strip is narrow, and long values truncate with the
-              full text on hover. */}
+          {/* vehicle info cards (pulled from MOT/SWS lookup). From tablet up, ONE row that fits the
+              view: the cards share the width equally and never wrap or scroll — InfoCard steps its
+              padding and type down when the strip is narrow, and long values truncate with the full
+              text on hover. On a phone (below sm) seven cards in a row are unreadable, so it becomes
+              a two-column grid instead, still with no scrolling. */}
           {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
-            <div className="@container px-3 pt-1 pb-4 flex flex-nowrap gap-1.5 @4xl:gap-2 [&>*]:flex-1 [&>*]:basis-0 [&>*]:min-w-0 overflow-hidden">
+            <div className="@container px-3 pt-1 pb-4 grid grid-cols-2 gap-1.5 sm:flex sm:flex-nowrap sm:gap-1.5 @4xl:gap-2 sm:[&>*]:flex-1 sm:[&>*]:basis-0 [&>*]:min-w-0 overflow-hidden">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
                 sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />

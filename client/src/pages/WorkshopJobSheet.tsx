@@ -165,8 +165,9 @@ function WorkshopJobSheetInner() {
   const rmDescLine = (t: string) => setNotes((n) => n.split("\n").filter((l) => l.trim() !== t).join("\n"));
 
   const toggleMot = () => {
-    if (ticks.mot) { setMotFee(""); rmDescLine("Carry out MOT"); setTicks({ ...ticks, mot: false }); }
-    else { setMotFee(String(motPrice)); addDescLine("Carry out MOT"); setTicks({ ...ticks, mot: true }); }
+    // Same wording as the desktop job sheet's "Jobs to be carried out" chip.
+    if (ticks.mot) { setMotFee(""); rmDescLine("Carry out MOT Test"); setTicks({ ...ticks, mot: false }); }
+    else { setMotFee(String(motPrice)); addDescLine("Carry out MOT Test"); setTicks({ ...ticks, mot: true }); }
   };
 
   const toggleService = (kind: "small" | "major") => {
