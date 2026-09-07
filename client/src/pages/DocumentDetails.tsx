@@ -1690,7 +1690,9 @@ export default function DocumentDetails() {
                 {/* Post Code and its Find button are one unit: the button sits at the end of the
                     postcode box whatever the width, never dropping to a row of its own. */}
                 <div className="flex items-end gap-2 sm:items-center @sm/customer:flex-1 min-w-0">
-                  <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
+                  {/* Standard label width while stacked (so the box lines up with the column above);
+                      the narrower label only when it shares a row with House No. */}
+                  <EF label="Post Code" field="custPostcode" w="w-24 @sm/customer:w-20" grow {...{ form, set, editing }} />
                   {!base && editing && (
                     <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
                       className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
