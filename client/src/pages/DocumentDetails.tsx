@@ -1687,13 +1687,17 @@ export default function DocumentDetails() {
               </div>
               <div className="flex flex-col gap-2 @sm/customer:flex-row @sm/customer:items-center">
                 <EF label="House No" field="custHouseNo" grow {...{ form, set, editing }} />
-                <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
-                {!base && editing && (
-                  <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
-                    className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
-                    {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
-                  </button>
-                )}
+                {/* Post Code and its Find button are one unit: the button sits at the end of the
+                    postcode box whatever the width, never dropping to a row of its own. */}
+                <div className="flex items-end gap-2 sm:items-center @sm/customer:flex-1 min-w-0">
+                  <EF label="Post Code" field="custPostcode" w="w-20" grow {...{ form, set, editing }} />
+                  {!base && editing && (
+                    <button type="button" onClick={findAddress} disabled={addr.loading} title="Find address from postcode"
+                      className="shrink-0 h-[44px] sm:h-[32px] inline-flex items-center justify-center gap-1 bg-violet-700 text-white rounded px-3 sm:px-2 text-sm sm:text-xs disabled:opacity-50 hover:bg-violet-800">
+                      {addr.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Find
+                    </button>
+                  )}
+                </div>
               </div>
               {!base && addr.open && (
                 <div className="border border-slate-300 rounded-sm bg-white shadow-sm overflow-hidden text-[13px]">
