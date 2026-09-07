@@ -89,9 +89,11 @@ export default function MergeCustomersDialog({
   // off the paperwork is a judgement — one of them may well be the garage's own — so it is left to
   // whoever is doing the merge rather than guessed at.
   useEffect(() => {
-    setPhone(String(keep?.phone || "").trim());
-    setEmail(String(keep?.email || "").trim());
-  }, [keepId, data]);
+    const ownPhone = String(keep?.phone || "").trim();
+    const ownEmail = String(keep?.email || "").trim();
+    setPhone(ownPhone || (phoneOpts.length === 1 ? phoneOpts[0].value : ""));
+    setEmail(ownEmail || (emailOpts.length === 1 ? emailOpts[0].value : ""));
+  }, [keepId, fold, data]);
 
   // mergeCustomerRecords refuses to cross GA4 account numbers unless forced, and rightly — two
   // different account numbers usually mean two different customers. Here they usually mean one
@@ -262,7 +264,10 @@ export default function MergeCustomersDialog({
 
             <DialogFooter className="gap-2 sm:justify-between">
               <div className="text-[12px] text-muted-foreground self-center">
-                {chosen.length === 0 ? "Tick the records to fold in." : (
+                {chosen.length === 0 ? "Tick the records to fold in."
+                  : crossesAccounts && !confirmed ? (
+                    <span className="text-amber-700 font-medium">Tick “I've checked these are the same customer” above to enable the merge.</span>
+                  ) : (
                   <span className="flex items-center gap-3">
                     <span className="inline-flex items-center gap-1"><Car className="w-3.5 h-3.5" /> {plural(chosen.reduce((a, r) => a + r.vehicles, 0), "vehicle")}</span>
                     <span className="inline-flex items-center gap-1"><FileText className="w-3.5 h-3.5" /> {plural(chosen.reduce((a, r) => a + r.documents, 0), "invoice")}</span>
