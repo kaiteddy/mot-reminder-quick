@@ -1746,9 +1746,11 @@ export default function DocumentDetails() {
             )}
           </div>
 
-          {/* vehicle info cards (pulled from MOT/SWS lookup) */}
+          {/* vehicle info cards (pulled from MOT/SWS lookup). Always ONE row: the cards share the
+              width and truncate (each has a title tooltip); on a screen too narrow for all of them
+              the row scrolls sideways rather than wrapping into a second line. */}
           {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
-            <div className="px-3 pt-1 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+            <div className="px-3 pt-1 pb-4 flex flex-nowrap gap-2 overflow-x-auto [&>*]:flex-1 [&>*]:min-w-[150px] [&>*]:shrink-0">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
                 sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
