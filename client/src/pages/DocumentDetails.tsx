@@ -1606,7 +1606,7 @@ export default function DocumentDetails() {
               {/* The VIN must read in full (17 characters); the catalogue links wrap underneath
                   when the column is too narrow for all of them beside it. */}
               <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                <EF label="Chassis" field="vin" upper locked={!specUnlocked} inputCls="sm:min-w-[13rem] font-mono tracking-tight" {...{ form, set, editing }} grow />
+                <EF label="Chassis" field="vin" upper locked={!specUnlocked} inputCls="sm:min-w-[13rem] font-mono tracking-tight" wrapCls="sm:min-w-[20rem]" {...{ form, set, editing }} grow />
                 {!base && form.vin && (
                   <>
                     <button type="button" title="Search this VIN on PartSouq"
@@ -2584,7 +2584,7 @@ function MileageField({ form, set, editing, isInvoice, classicCue = false }: { f
   );
 }
 
-function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required, locked, inputCls = "" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean; /** Read-only + grey while it holds a value (lookup-filled data); an empty field stays editable so gaps can be filled. */ locked?: boolean; inputCls?: string }) {
+function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required, locked, inputCls = "", wrapCls = "" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean; /** Read-only + grey while it holds a value (lookup-filled data); an empty field stays editable so gaps can be filled. */ locked?: boolean; inputCls?: string; /** Extra classes on the wrapper, e.g. a min-width so a flex row wraps rather than overlapping. */ wrapCls?: string }) {
   const base = useClassicBase();
   const empty = !String(form[field] ?? "").trim();
   const isLocked = !!locked && editing && !base && !empty;
@@ -2599,7 +2599,7 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
     );
   }
   return (
-    <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
+    <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""} ${wrapCls}`}>
       <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
       <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing || isLocked}
         placeholder={required ? "Required" : undefined}
