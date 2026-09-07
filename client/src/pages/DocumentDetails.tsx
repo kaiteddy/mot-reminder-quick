@@ -924,7 +924,7 @@ export default function DocumentDetails() {
     };
   }
 
-  async function autoSave() {
+  async function autoSave(explicit = false) {
     // a brand-new doc only gets created once there's something worth saving
     if (isNew && !(String(form.registration ?? "").trim() || form.customerName || form.custSurname || items.length)) return;
     // …and a half-typed plate is not something worth saving. The debounce fires a second after
@@ -938,7 +938,7 @@ export default function DocumentDetails() {
     const seq = editSeq.current;
     setSaveStatus("saving");
     try {
-      const res = await save.mutateAsync(buildPayload());
+      const res = await save.mutateAsync({ ...buildPayload(), auto: !explicit });
       if (editSeq.current === seq) setDirty(false); // nothing changed during the save
       setSaveStatus("saved");
       // Capture the resolved/created customer (and any GA4-style account number just
@@ -984,7 +984,7 @@ export default function DocumentDetails() {
   }, [dirty, form, items]);
 
   // Save any pending edits immediately before a server-side action (print/email/convert/issue/leave).
-  async function flushPending() { if (dirty) await autoSave(); }
+  async function flushPending() { if (dirty) await autoSave(true); }
   async function goBack() { await flushPending(); setLocation(`${base}/documents`); }
 
   // Open-document "tabs" — keep several docs on the go and jump between them.
@@ -1410,7 +1410,7 @@ export default function DocumentDetails() {
               the real record toolbar exactly (Save/Print/Email/Extras/Convert … Delete). */}
           {base && (
             <nav className="js-primary-actions">
-              <button className="js-action-button" onClick={() => { if (dirty) autoSave(); else toast.success("Already saved"); }}>Save</button>
+              <button className="js-action-button" onClick={() => { if (dirty) autoSave(true); else toast.success("Already saved"); }}>Save</button>
               <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
               {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
               {!isNew && isCollectable && <button className="js-action-button" onClick={openCarReady}>Car ready</button>}

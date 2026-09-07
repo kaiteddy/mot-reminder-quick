@@ -4626,10 +4626,16 @@ export async function saveDocument(input: SaveDocInput) {
       // (e.g. an auto-save firing in the gap between setting the reg and the lookup filling make/model).
       const vfUpd = Object.fromEntries(Object.entries(vf).filter(([, v]) => v !== undefined && v !== null && v !== ""));
       if (Object.keys(vfUpd).length) await db.update(vehicles).set(vfUpd).where(eq(vehicles.id, existing.id));
-    } else {
+    } else if (!(input as any).auto) {
       const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).returning({ id: vehicles.id });
       vehicleId = id;
     }
+    // else: an auto-save, and no car by that plate. It is almost certainly a plate half typed —
+    // 204 vehicles named "KY", "KY6", "KY62" were created exactly this way — so link to an
+    // existing car by all means, but never bring a new one into being from a background write.
+    // The document still saves; the vehicle appears the moment the plate is finished, looked up,
+    // or the job is saved by hand. A length rule was the obvious guard and the wrong one: 466 of
+    // this garage's short plates are real cars, one with 43 invoices against it.
   }
   const vehicleHadOwner = customerId != null; // captured before 1b/1c can reassign customerId
 

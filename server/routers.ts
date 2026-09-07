@@ -469,6 +469,10 @@ export const appRouter = router({
     save: protectedProcedure
       .input(z.object({
         id: z.number().optional(),
+        // Set by the debounced auto-save. The only thing it changes is that a registration with
+        // no vehicle behind it does not mint one — a plate is typed a character at a time and the
+        // debounce fires between the keystrokes.
+        auto: z.boolean().optional(),
         docType: z.string().optional(),
         docNo: z.string().optional(),
         registration: z.string().optional(),
