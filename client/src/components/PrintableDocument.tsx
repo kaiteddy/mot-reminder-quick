@@ -3,6 +3,7 @@
  * replica of the GA4 printed layout, driven from a saved document's data.
  * Rendered off-screen and printed via react-to-print.
  */
+import { tidyAddressLine } from "@shared/address";
 const TYPE_TITLE: Record<string, string> = {
   SI: "Invoice", ES: "Estimate", JS: "Job Sheet", CR: "Credit Note",
   XS: "Excess", PA: "Payment", VS: "Vehicle Sale", VP: "Vehicle Purchase",
@@ -34,7 +35,7 @@ export default function PrintableDocument({ doc, vehicle, customer, lineItems = 
   const sumNet = (rows: any[]) => rows.reduce((a, i) => a + (Number(i.subNet) || 0), 0);
 
   const addressLines = [doc.custHouseNo && doc.custRoad ? `${doc.custHouseNo} ${doc.custRoad}` : doc.custRoad, doc.custLocality, doc.custTown, doc.custCounty]
-    .filter(Boolean);
+    .map((l: any) => tidyAddressLine(l)).filter(Boolean);
   if (addressLines.length === 0 && customer?.address) addressLines.push(...String(customer.address).split(",").map((s: string) => s.trim()).filter(Boolean));
   const postcode = doc.custPostcode || customer?.postcode;
   const phone = doc.custMobile || doc.custTelephone || customer?.phone;

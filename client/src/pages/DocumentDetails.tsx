@@ -19,6 +19,7 @@ import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
+import { splitAddress, tidyAddressLine } from "@shared/address";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
@@ -53,6 +54,18 @@ const fmtGasQty = (q: any): string | undefined => {
 const TITLES = ["MR", "MRS", "MS", "MISS", "DR", "PROF", "REV", "SIR"];
 /** Everything that must change on the document when an owner is attached. Shared so the Classic
  *  and Modern pickers can never drift apart on what "attach" means. */
+/** The customer record's one-line address, split into the document's House No / Road /
+ *  Locality / Town / County boxes (and the postcode, if it was on the end of the text). A record
+ *  with no address leaves whatever the form already holds. */
+function customerAddressPatch(c: any, f: any) {
+  if (!String(c?.address || "").trim()) return { custPostcode: c?.postcode || f.custPostcode };
+  const a = splitAddress(c.address, c.postcode);
+  return {
+    custHouseNo: a.houseNo, custRoad: a.road, custLocality: a.locality, custTown: a.town, custCounty: a.county,
+    custPostcode: c.postcode || a.postcode || f.custPostcode,
+  };
+}
+
 function attachCustomerPatch(f: any, c: any) {
   const sn = splitName(c.name);
   return {
@@ -61,9 +74,8 @@ function attachCustomerPatch(f: any, c: any) {
     customerName: c.name || f.customerName,
     custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname,
     custEmail: c.email || f.custEmail,
-    custPostcode: c.postcode || f.custPostcode,
     custTelephone: c.phone || f.custTelephone,
-    custRoad: c.address || f.custRoad,
+    ...customerAddressPatch(c, f),
     // Re-linking to a different customer must also refresh their account number — otherwise the
     // doc keeps showing whichever customer it was linked to before.
     accountNumber: c.accountNumber || f.accountNumber,
@@ -625,8 +637,8 @@ export default function DocumentDetails() {
       customerName: doc.customerName || customer?.name || "",
       custTitle: doc.custTitle || nm.title, custForename: doc.custForename || nm.forename, custSurname: doc.custSurname || nm.surname,
       company: doc.company || "", accountNumber: doc.accountNumber || "",
-      custHouseNo: doc.custHouseNo || "", custRoad: doc.custRoad || "", custLocality: doc.custLocality || "",
-      custTown: doc.custTown || "", custCounty: doc.custCounty || "", custPostcode: doc.custPostcode || customer?.postcode || "",
+      custHouseNo: tidyAddressLine(doc.custHouseNo), custRoad: tidyAddressLine(doc.custRoad), custLocality: tidyAddressLine(doc.custLocality),
+      custTown: tidyAddressLine(doc.custTown), custCounty: tidyAddressLine(doc.custCounty), custPostcode: doc.custPostcode || customer?.postcode || "",
       custTelephone: doc.custTelephone || customer?.phone || "", custMobile: doc.custMobile || "", custEmail: doc.custEmail || customer?.email || "",
       docStatus: doc.docStatus || "", orderRef: doc.orderRef || "", department: doc.department || "", terms: doc.terms || "",
       dateCreated: dateInput(doc.dateCreated), dateIssued: dateInput(doc.dateIssued), description: doc.description || "",
@@ -679,7 +691,7 @@ export default function DocumentDetails() {
           const c = res?.customer;
           if (c) {
             const sn = splitName(c.name);
-            setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || "", custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || "", custPostcode: c.postcode || "", custTelephone: c.phone || "", custRoad: c.address || "" }));
+            setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || "", custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || "", custTelephone: c.phone || "", custHouseNo: "", custRoad: "", custLocality: "", custTown: "", custCounty: "", ...customerAddressPatch(c, f) }));
           }
         } catch { /* customer prefill is best-effort */ }
       })();
@@ -790,7 +802,7 @@ export default function DocumentDetails() {
         // An explicit "new customer" choice (typed while this lookup was in flight) wins over
         // the vehicle's linked owner — restoring the old owner here is how a sold car's invoice
         // once ended up billed to the previous keeper.
-        ...(newCustRef.current ? {} : c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, custRoad: c.address || f.custRoad }
+        ...(newCustRef.current ? {} : c ? { customerId: c.id, customerName: c.name || f.customerName, custTitle: sn!.title, custForename: sn!.forename, custSurname: sn!.surname, custTelephone: c.phone || f.custTelephone, custEmail: c.email || f.custEmail, ...customerAddressPatch(c, f) }
           // No linked owner, but this vehicle has a previous document — carry that customer's
           // details forward (unlinked, so saving creates + links a real customer record).
           : last ? {
@@ -1818,7 +1830,7 @@ export default function DocumentDetails() {
               <EF label="Telephone" field="custTelephone" {...{ form, set, editing }} />
               <EF label="Mobile" field="custMobile" required={form.docType === "JS" && !String(form.custTelephone ?? "").trim()} {...{ form, set, editing }} />
               {!base && editing && <PhoneMatchHint phone={form.custMobile || form.custTelephone} currentCustomerId={form.customerId}
-                onLink={(c) => { setNewCust(false); transferRef.current = null; const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custPostcode: c.postcode || f.custPostcode, custTelephone: c.phone || f.custTelephone, custRoad: c.address || f.custRoad })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
+                onLink={(c) => { setNewCust(false); transferRef.current = null; const sn = splitName(c.name); setForm((f) => ({ ...f, customerId: c.id, customerName: c.name || f.customerName, custTitle: sn.title, custForename: sn.forename, custSurname: sn.surname, custEmail: c.email || f.custEmail, custTelephone: c.phone || f.custTelephone, ...customerAddressPatch(c, f) })); markDirty(); toast.success(`Linked to ${c.name}`); }} />}
               <EF label="Email" field="custEmail" {...{ form, set, editing }} />
               {!base && <OtherNumbers customerId={form.customerId} editing={editing} />}
               {base && (

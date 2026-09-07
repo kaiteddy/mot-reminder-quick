@@ -1,3 +1,4 @@
+import { joinAddress, tidyAddressLine } from "../shared/address";
 import { eq, or, inArray, and, sql, desc, asc, isNotNull, isNull, ilike, gte, lte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -4668,7 +4669,8 @@ export async function saveDocument(input: SaveDocInput) {
   let accountNumber = input.accountNumber;
   if (!input.customerId && input.createCustomer && input.customerName) {
     const hadOwner = customerId != null;
-    const address = [input.custHouseNo, input.custRoad, input.custLocality, input.custTown, input.custCounty].filter(Boolean).join(", ");
+    // "12 Finchley Road, Hendon, London" — house and road on one line, like every GA4 record.
+    const address = joinAddress({ houseNo: input.custHouseNo, road: input.custRoad, locality: input.custLocality, town: input.custTown, county: input.custCounty });
     if (!accountNumber) accountNumber = await generateAccountNumber(db, input.customerName, input.custSurname);
     const [{ id }] = await db.insert(customers).values({
       name: input.customerName,
@@ -4686,7 +4688,7 @@ export async function saveDocument(input: SaveDocInput) {
   // 1c) push edited customer details back to the linked customer record
   if (input.updateCustomerRecord && (input.customerId ?? customerId)) {
     const cid = (input.customerId ?? customerId)!;
-    const address = [input.custHouseNo, input.custRoad, input.custLocality, input.custTown, input.custCounty].filter(Boolean).join(", ");
+    const address = joinAddress({ houseNo: input.custHouseNo, road: input.custRoad, locality: input.custLocality, town: input.custTown, county: input.custCounty });
     const cu = undef({
       name: input.customerName || undefined,
       email: input.custEmail || undefined,
@@ -5317,8 +5319,8 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
   // House number + road are ONE address line ("19 Grosvenor Gardens") — join them with a space
   // first, or the comma-join below (needed to separate locality/town/county) gets split back
   // apart a few lines down and prints "19" and "Grosvenor Gardens" as two separate lines.
-  const houseAndRoad = [d2.custHouseNo, d2.custRoad].filter(Boolean).join(" ");
-  const docStreet = [houseAndRoad, d2.custLocality, d2.custTown, d2.custCounty].filter(Boolean).join(", ");
+  const houseAndRoad = tidyAddressLine([d2.custHouseNo, d2.custRoad].filter(Boolean).join(" "));
+  const docStreet = tidyAddressLine([houseAndRoad, d2.custLocality, d2.custTown, d2.custCounty].map(tidyAddressLine).filter(Boolean).join(", "));
   const docPostcode = String(d2.custPostcode || customer?.postcode || "").trim();
   // Some imported records have the whole address (town, postcode and all) crammed into a single
   // free-text field like custRoad — splitting that on commas can repeat the town or the postcode
