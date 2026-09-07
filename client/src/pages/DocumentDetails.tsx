@@ -122,12 +122,20 @@ const TONES: Record<InfoTone, string> = {
   green: "border-green-200 bg-green-50 text-green-700",
   red: "border-red-200 bg-red-50 text-red-700",
 };
+/**
+ * One tile of the vehicle info strip. Sized by its CONTAINER (the strip is a @container), so
+ * when seven tiles have to share a narrow strip the padding and type step down instead of the
+ * row wrapping or scrolling — every value is still there, truncated with the full text on hover.
+ */
 function InfoCard({ icon, label, main, sub, tone }: { icon: ReactNode; label: string; main: string; sub?: string; tone: InfoTone }) {
   return (
-    <div className={`rounded-md border px-2.5 py-1.5 ${TONES[tone]}`}>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80">{icon}{label}</div>
-      <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5 truncate" title={main}>{main}</div>
-      {sub && <div className="text-[10.5px] text-slate-500 truncate" title={sub}>{sub}</div>}
+    <div className={`rounded-md border px-1.5 py-1 @4xl:px-2.5 @4xl:py-1.5 min-w-0 ${TONES[tone]}`}>
+      <div className="flex items-center gap-1 @4xl:gap-1.5 text-[9px] @4xl:text-[10px] font-semibold uppercase tracking-wide opacity-80 min-w-0">
+        <span className="shrink-0 [&>svg]:w-3 [&>svg]:h-3 @4xl:[&>svg]:w-4 @4xl:[&>svg]:h-4">{icon}</span>
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="text-[11px] @4xl:text-[13px] font-semibold text-slate-800 leading-tight mt-0.5 truncate" title={main}>{main}</div>
+      {sub && <div className="text-[9.5px] @4xl:text-[10.5px] text-slate-500 truncate" title={sub}>{sub}</div>}
     </div>
   );
 }
@@ -1746,11 +1754,12 @@ export default function DocumentDetails() {
             )}
           </div>
 
-          {/* vehicle info cards (pulled from MOT/SWS lookup). Always ONE row: the cards share the
-              width and truncate (each has a title tooltip); on a screen too narrow for all of them
-              the row scrolls sideways rather than wrapping into a second line. */}
+          {/* vehicle info cards (pulled from MOT/SWS lookup). Always ONE row that fits the view:
+              the cards share the width equally and never wrap or scroll — InfoCard steps its
+              padding and type down when the strip is narrow, and long values truncate with the
+              full text on hover. */}
           {!base && (vehInfo.oilSpec || vehInfo.airconType || form.mileage || vehInfo.motExpiry || vehInfo.taxStatus || vehInfo.transmission?.type) && (
-            <div className="px-3 pt-1 pb-4 flex flex-nowrap gap-2 overflow-x-auto [&>*]:flex-1 [&>*]:min-w-[150px] [&>*]:shrink-0">
+            <div className="@container px-3 pt-1 pb-4 flex flex-nowrap gap-1.5 @4xl:gap-2 [&>*]:flex-1 [&>*]:basis-0 [&>*]:min-w-0 overflow-hidden">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
                 sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
@@ -1775,10 +1784,10 @@ export default function DocumentDetails() {
                   onClick={() => fetchTyresDoc.mutate({ registration: String(form.registration || "") })}
                   disabled={fetchTyresDoc.isPending || !String(form.registration || "").trim()}
                   title="One technical-data call fetches this car's factory tyre pressures; they then print on the job sheet"
-                  className="rounded-md border px-2.5 py-1.5 text-left bg-slate-50 border-slate-200 hover:bg-slate-100 disabled:opacity-50">
-                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-80"><Gauge className="w-4 h-4" />Tyre Pressures</div>
-                  <div className="text-[13px] font-semibold text-slate-800 leading-tight mt-0.5">{fetchTyresDoc.isPending ? "Fetching…" : (fetchTyresDoc.isError ? "Unavailable" : "Not on file")}</div>
-                  <div className="text-[10.5px] text-slate-500">{fetchTyresDoc.isError ? "no tyre data for this car — tap to retry" : "click to fetch — will print on the sheet"}</div>
+                  className="rounded-md border px-1.5 py-1 @4xl:px-2.5 @4xl:py-1.5 min-w-0 text-left bg-slate-50 border-slate-200 hover:bg-slate-100 disabled:opacity-50">
+                  <div className="flex items-center gap-1 @4xl:gap-1.5 text-[9px] @4xl:text-[10px] font-semibold uppercase tracking-wide opacity-80 min-w-0"><Gauge className="w-3 h-3 @4xl:w-4 @4xl:h-4 shrink-0" /><span className="truncate">Tyre Pressures</span></div>
+                  <div className="text-[11px] @4xl:text-[13px] font-semibold text-slate-800 leading-tight mt-0.5 truncate">{fetchTyresDoc.isPending ? "Fetching…" : (fetchTyresDoc.isError ? "Unavailable" : "Not on file")}</div>
+                  <div className="text-[9.5px] @4xl:text-[10.5px] text-slate-500 truncate">{fetchTyresDoc.isError ? "no tyre data for this car — tap to retry" : "click to fetch — will print on the sheet"}</div>
                 </button>
               )}
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
