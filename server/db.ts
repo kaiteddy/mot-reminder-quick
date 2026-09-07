@@ -2027,6 +2027,26 @@ export async function getDocumentStats() {
 // blanks as 0, then SUM. (GA4-imported totals are text.)
 const _moneySum = (c: any) => sql<string>`COALESCE(SUM(COALESCE(NULLIF(regexp_replace(${c}::text, '[^0-9.\-]', '', 'g'), '')::numeric, 0)), 0)`;
 
+/** The instant at which a UK wall-clock time occurs, wherever the server's own clock is set.
+ *
+ *  Every date on a document is a UK date: GA4's date-only values were imported as London
+ *  midnight, and the web app stamps real instants. A report's range therefore has to start at
+ *  London midnight too. Building it with `new Date("2026-06-01T00:00:00")` gives London midnight
+ *  on a Mac in London and UTC midnight on Vercel — an hour apart in summer — so the four invoices
+ *  GA4 dated 1 June (stored as "31 May 23:00") fell into May on the live site and into June on
+ *  the desk copy, and the two printed different monthly totals. */
+export function ukInstant(wall: string): Date {
+  // Read the wall time as if it were UTC, then shift by London's offset from UTC at that moment.
+  const naive = new Date(wall + "Z");
+  const parts: Record<string, number> = {};
+  for (const p of new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(naive)) if (p.type !== "literal") parts[p.type] = Number(p.value);
+  const asLondon = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, naive.getUTCMilliseconds());
+  return new Date(naive.getTime() - (asLondon - naive.getTime()));
+}
+
 /** Every section of GA4's printed "Summary of Sales Issued", computed from our own documents.
  *
  *  GA4's own copy of this report only covers invoices that reached GA4 — for 01-15 Aug 2026 that
@@ -2039,8 +2059,8 @@ const _moneySum = (c: any) => sql<string>`COALESCE(SUM(COALESCE(NULLIF(regexp_re
  */
 export async function getSalesSummaryIssued(opts: { from: string; to: string; basedOn?: "issue" | "created"; department?: string }) {
   const db = await getDb();
-  const from = new Date(opts.from + "T00:00:00");
-  const to = new Date(opts.to + "T23:59:59.999");
+  const from = ukInstant(opts.from + "T00:00:00");
+  const to = ukInstant(opts.to + "T23:59:59.999");
   const blank = {
     from: opts.from, to: opts.to,
     invoices: { count: 0, gross: 0 }, credits: { count: 0, gross: 0 }, totalGross: 0,
@@ -2448,8 +2468,8 @@ export async function getSalesSummary(opts: { from: string; to: string; basedOn?
   const empty = { rows: [] as any[], departments: [] as string[] };
   if (!db) return empty;
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
-  const from = new Date(opts.from + "T00:00:00");
-  const to = new Date(opts.to + "T23:59:59.999");
+  const from = ukInstant(opts.from + "T00:00:00");
+  const to = ukInstant(opts.to + "T23:59:59.999");
   // Voided documents excluded, as everywhere else. This function builds its own conditions and
   // so never saw runReport's inRange — it was the last report still adding voided invoices up.
   const conds: any[] = [gte(dateCol, from), lte(dateCol, to),
@@ -2492,8 +2512,8 @@ export async function getSalesListing(opts: { from: string; to: string; basedOn?
   const db = await getDb();
   if (!db) return { rows: [] as any[] };
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
-  const from = new Date(opts.from + "T00:00:00");
-  const to = new Date(opts.to + "T23:59:59.999");
+  const from = ukInstant(opts.from + "T00:00:00");
+  const to = ukInstant(opts.to + "T23:59:59.999");
   // Prefer the DOCUMENT's own customer snapshot (what was actually invoiced) over the linked
   // customer record — the link can be wrong when two customers share a phone (duplicate-phone
   // hazard), which showed e.g. "Mrs Paris" on Ruth Ehreich's invoice. Falls back to the link.
@@ -2543,8 +2563,8 @@ export async function runReport(opts: { reportId: string; from: string; to: stri
   const db = await getDb();
   if (!db) return { title: "Unavailable", columns: [], rows: [] };
   const dateCol = opts.basedOn === "created" ? serviceHistory.dateCreated : serviceHistory.dateIssued;
-  const from = new Date(opts.from + "T00:00:00");
-  const to = new Date(opts.to + "T23:59:59.999");
+  const from = ukInstant(opts.from + "T00:00:00");
+  const to = ukInstant(opts.to + "T23:59:59.999");
   // Voided documents (GA4 docStatus 3) are excluded here for the same reason the sales summary
   // excludes them — GA4's own reports and statements leave them out, and the web app has no void
   // of its own so nothing else filters them. Adam's call, 2026-08-24.

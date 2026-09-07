@@ -15,7 +15,7 @@
  * NOTE: matched to the documented Sage 50 import layout, not a captured GA4 sample. Test-import one
  * file into the accounts package before relying on it; column order is centralised here for tweaks.
  */
-import { getDb, getAppSetting, saveAppSetting } from "../db";
+import { getDb, getAppSetting, saveAppSetting, ukInstant } from "../db";
 import { serviceHistory, customers, payments } from "../../drizzle/schema";
 import { and, eq, inArray, isNull, lte, gte, sql, desc } from "drizzle-orm";
 
@@ -145,8 +145,8 @@ export async function generateSalesExport(opts: {
 
   const conds: any[] = [inArray(serviceHistory.docType, SALES_DOC_TYPES)];
   // export on issue date up to the period end
-  conds.push(lte(serviceHistory.dateIssued, new Date(opts.toDate + "T23:59:59.999")));
-  if (opts.fromDate) conds.push(gte(serviceHistory.dateIssued, new Date(opts.fromDate + "T00:00:00")));
+  conds.push(lte(serviceHistory.dateIssued, ukInstant(opts.toDate + "T23:59:59.999")));
+  if (opts.fromDate) conds.push(gte(serviceHistory.dateIssued, ukInstant(opts.fromDate + "T00:00:00")));
   if (opts.onlyUnexported !== false) conds.push(isNull((serviceHistory as any).accountsExportedAt));
   if (cfg.sales.paidInFullOnly) conds.push(sql`COALESCE(${serviceHistory.balance}::numeric,0) <= 0.005`);
 
@@ -381,7 +381,7 @@ export async function markSalesExported(toDate: string): Promise<{ marked: numbe
   const db = await getDb();
   if (!db) throw new Error("no db");
   const rows: any[] = await db.select({ id: serviceHistory.id }).from(serviceHistory).where(
-    and(inArray(serviceHistory.docType, SALES_DOC_TYPES), lte(serviceHistory.dateIssued, new Date(toDate + "T23:59:59.999")), isNull((serviceHistory as any).accountsExportedAt)),
+    and(inArray(serviceHistory.docType, SALES_DOC_TYPES), lte(serviceHistory.dateIssued, ukInstant(toDate + "T23:59:59.999")), isNull((serviceHistory as any).accountsExportedAt)),
   );
   const ids = rows.map((r) => r.id);
   for (let i = 0; i < ids.length; i += 500) await db.update(serviceHistory).set({ accountsExportedAt: new Date() } as any).where(inArray(serviceHistory.id, ids.slice(i, i + 500)));
