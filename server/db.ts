@@ -3678,6 +3678,38 @@ export async function searchCustomers(query: string, limit = 10) {
     .limit(limit);
 }
 
+/** The same match as searchCustomers, but every hit and enough weight to judge a merge by.
+ *  The dropdown shows ten names and no more; deciding which of four "Mr Richard Doneo" records
+ *  is the real one needs the account number, the address, and how much history hangs off each. */
+export async function searchCustomersForMerge(query: string, limit = 50) {
+  const db = await getDb();
+  if (!db || !query || query.trim().length < 2) return [];
+  const q = query.trim();
+  const s = `%${q}%`;
+  const conds: any[] = [ilike(customers.name, s), ilike(customers.phone, s), ilike(customers.email, s), ilike(customers.postcode, s)];
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length > 1) conds.push(and(...words.map((w) => ilike(customers.name, `%${w}%`))));
+  let core = q.replace(/\D/g, "");
+  if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
+  if (core.length >= 6) conds.push(ilike(customers.phone, `%${core}%`));
+  return db.select({
+    id: customers.id, name: customers.name, phone: customers.phone, email: customers.email,
+    postcode: customers.postcode, address: customers.address, accountNumber: customers.accountNumber,
+    optedOut: customers.optedOut,
+    // Written out rather than built from the table objects: interpolating those into a correlated
+    // sub-select renders an uncorrelated one, which counted every customer as owning one vehicle
+    // and no invoices at all.
+    vehicles: sql<number>`(SELECT COUNT(*)::int FROM vehicles vv WHERE vv."customerId" = "customers"."id")`,
+    documents: sql<number>`(SELECT COUNT(*)::int FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
+    lastSeen: sql<string | null>`(SELECT MAX(COALESCE(ss."dateIssued", ss."dateCreated"))
+                                  FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
+  })
+    .from(customers)
+    .where(or(...conds))
+    .orderBy(sql`${customerSubstanceSql("customers")} DESC, ${customers.name} ASC`)
+    .limit(limit);
+}
+
 // Universal omni-search across customers, vehicles and jobs (documents). Used by the popup
 // search on the Live Jobs page — matches name/surname, phone, email, address/postcode,
 // registration, make/model, doc number and account number.

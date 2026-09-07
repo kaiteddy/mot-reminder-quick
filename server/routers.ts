@@ -222,6 +222,13 @@ export const appRouter = router({
         const { searchCustomers } = await import("./db");
         return searchCustomers(input.query);
       }),
+    // Every match for a term, with enough weight on each row to decide a merge by.
+    searchForMerge: protectedProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input }) => {
+        const { searchCustomersForMerge } = await import("./db");
+        return searchCustomersForMerge(input.query);
+      }),
     byPhone: protectedProcedure
       .input(z.object({ phone: z.string() }))
       .query(async ({ input }) => {

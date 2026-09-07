@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDebouncedValue, looksLikeCompleteReg } from "@/hooks/useDebouncedValue";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
+import MergeCustomersDialog from "@/components/MergeCustomersDialog";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { cn, round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
@@ -2746,6 +2747,7 @@ function FindCustomerDialog({ onSelect, onClose }: { onSelect: (c: any) => void;
 
 function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
   const [q, setQ] = useState("");
+  const [mergeOpen, setMergeOpen] = useState(false);
   const { data: results } = trpc.customers.search.useQuery({ query: q }, { enabled: q.trim().length >= 2 });
   return (
     <div className="relative">
@@ -2764,10 +2766,24 @@ function CustomerSearch({ onSelect }: { onSelect: (c: any) => void }) {
               className="block w-full text-left px-3 py-1.5 text-[13px] hover:bg-violet-50 border-b last:border-0">
               <span className="font-medium">{c.name}</span>
               <span className="text-muted-foreground ml-2">{[c.phone, c.postcode].filter(Boolean).join(" · ")}</span>
+              {c.accountNumber ? <span className="text-muted-foreground/70 ml-2 font-mono text-[11px]">{c.accountNumber}</span> : null}
             </button>
           ))}
+          {/* Several rows reading the same name is the signal that one customer has been entered
+              more than once. The list alone can't tell you which to pick, so offer the way out. */}
+          {results.length > 1 && (
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setMergeOpen(true)}
+              className="sticky bottom-0 flex w-full items-center gap-1.5 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-left text-[12px] font-medium text-violet-700 hover:bg-violet-50">
+              <GitMerge className="w-3.5 h-3.5" />
+              See all {results.length}{results.length >= 10 ? "+" : ""} matches — review &amp; merge duplicates
+            </button>
+          )}
         </div>
       )}
+      <MergeCustomersDialog
+        open={mergeOpen} term={q} onOpenChange={setMergeOpen}
+        onMerged={(survivor) => { onSelect(survivor); setQ(""); }}
+      />
     </div>
   );
 }
