@@ -33,7 +33,7 @@ export type VatDoc = {
   lineCount: number; lineTax: number;
   net: number; tax: number; gross: number; motNet: number; motTax: number;
 };
-export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess"; expectedTax: number; reason: string };
+export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess" | "duplicate"; expectedTax: number; reason: string };
 export type VatDraft = { id: number; docNo: string | null; docType: string; status: string | null; created: string | null; ageDays: number; customer: string | null; registration: string | null; gross: number; tax: number; source: "web" | "ga4" };
 
 function monthsBetween(from: string, to: string): string[] {
@@ -243,6 +243,16 @@ export async function getVatPeriod(opts: { from: string; to: string }) {
   const excessByReg = new Map<string, VatDoc[]>();
   for (const x of docs) if (x.docType === "XS") { const k = String(x.registration || "").replace(/\s+/g, "").toUpperCase(); excessByReg.set(k, [...(excessByReg.get(k) || []), x]); }
   const exceptions = docs.map((d) => judge(d, excessByReg)).filter((x): x is VatException => !!x);
+  // A web invoice and GA4's copy of it, both issued inside the period, are the same sale counted
+  // twice. The nightly retire step clears a matched pair; a pair whose totals differ stays, so it
+  // has to be visible here rather than quietly doubling the month.
+  const ga4ByNo = new Map(docs.filter((d) => d.source === "ga4" && d.docNo).map((d) => [d.docNo!, d]));
+  for (const w of docs) {
+    if (w.source !== "web" || !w.ga4Number) continue;
+    const twin = ga4ByNo.get(w.ga4Number);
+    if (!twin || twin.id === w.id) continue;
+    exceptions.push({ ...w, kind: "duplicate", expectedTax: 0, reason: `Counted twice — GA4's copy ${twin.docNo} (${twin.gross === w.gross ? "same total" : `£${twin.gross.toFixed(2)} vs £${w.gross.toFixed(2)} here`}) is issued in this period too. Retire one.` });
+  }
   const notInGa4 = docs.filter((d) => d.source === "web" && !d.inGa4);
 
   // Filed? Then what has moved since.

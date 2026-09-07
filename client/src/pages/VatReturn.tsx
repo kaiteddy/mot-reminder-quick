@@ -66,7 +66,7 @@ export default function VatReturn() {
     record.mutate({ from: q.from, to: q.to, boxes: { box1: num("box1"), box4: num("box4"), box6: num("box6"), box7: num("box7") }, notes: notes.trim() || undefined });
   };
   const filedBox = (k: string): number | null => (filed?.boxes && filed.boxes[k] != null ? Number(filed.boxes[k]) : null);
-  const kindLabel: Record<string, string> = { motVat: "MOT taxed", high: "VAT high", low: "VAT low", excess: "Insurance excess" };
+  const kindLabel: Record<string, string> = { motVat: "MOT taxed", high: "VAT high", low: "VAT low", excess: "Insurance excess", duplicate: "Counted twice" };
 
   return (
     <DashboardLayout>
