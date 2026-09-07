@@ -15,6 +15,13 @@
  * The clock runs in the garage's working hours: a message that lands at 9pm is due for an
  * answer `afterMinutes` after opening time, not at 9:30pm, and nothing is sent outside hours.
  *
+ * The real deadline, though, is WhatsApp's: a free-form reply is only accepted within 24 hours
+ * of the customer's LAST message (after that Twilio refuses with 63016 and the app falls back to
+ * a paid text). Staff replying does not extend it. So every alert says how long is left on the
+ * window, and a separate "window closing" warning fires `windowWarnMinutes` before it shuts —
+ * ignoring the repeat timer and the alert ceiling, and placed at the last working moment before
+ * the close when the window would shut overnight or on a Sunday.
+ *
  * Settings live in appSettings under "unanswered_alerts" so they change without a redeploy.
  */
 
@@ -37,7 +44,12 @@ export type UnansweredAlertSettings = {
   email: string;
   /** Only look this far back — older threads are history, not a queue. */
   lookbackDays: number;
+  /** Warn this many minutes before the 24-hour WhatsApp reply window closes. 0 = off. */
+  windowWarnMinutes: number;
 };
+
+/** Meta's customer-service window: free-form WhatsApp replies are accepted this long after the customer's last message. */
+export const WHATSAPP_WINDOW_MS = 24 * 3600_000;
 
 export const DEFAULT_SETTINGS: UnansweredAlertSettings = {
   enabled: true,
@@ -50,6 +62,7 @@ export const DEFAULT_SETTINGS: UnansweredAlertSettings = {
   phone: "",
   email: "",
   lookbackDays: 7,
+  windowWarnMinutes: 120,
 };
 
 const SETTINGS_KEY = "unanswered_alerts";
@@ -141,6 +154,21 @@ export function nextOpening(t: Date, clock: Clock): Date {
   return t;
 }
 
+/** The last working instant at or before `t` — `t` itself if within hours, else the previous close of business. */
+export function previousClose(t: Date, clock: Clock): Date {
+  if (isWithinHours(t, clock)) return t;
+  const open = hm(clock.openTime), close = hm(clock.closeTime);
+  if (Number.isNaN(open) || Number.isNaN(close) || !clock.days.length) return t;
+  const wall = ukWall(t);
+  for (let i = 0; i < 15; i++) {
+    const day = new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() - i, 0, 0, 0));
+    if (!clock.days.includes(isoDay(day))) continue;
+    const candidate = new Date(day.getTime() + close * 60_000);
+    if (candidate.getTime() <= wall.getTime()) return fromUkWall(candidate, t);
+  }
+  return t;
+}
+
 /**
  * Working minutes elapsed between two instants — walks day by day, only counting the open
  * stretch of each. Good enough at the minute level, which is all the alerting needs.
@@ -181,6 +209,8 @@ export type WaitingRow = {
   handledAt: Date | null;
   escalatedAt: Date | null;
   escalationCount: number;
+  /** When the "WhatsApp window closing" warning went out for this message. */
+  windowWarnedAt: Date | null;
 };
 
 export type Verdict = {
@@ -188,30 +218,59 @@ export type Verdict = {
   waiting: boolean;
   /** An alert should go out on this run. */
   alertNow: boolean;
+  /** Why it is going out: overdue on the working-hours clock, or the WhatsApp window is about to shut. */
+  alertKind: "due" | "window" | null;
   /** Working minutes the customer has been waiting. */
   waitingMinutes: number;
+  /** When the 24-hour WhatsApp reply window shuts (last inbound + 24h). */
+  windowClosesAt: Date;
+  /** Minutes left on that window; 0 once it has closed. */
+  windowMinutesLeft: number;
   reason: string;
 };
 
 export function evaluate(row: WaitingRow, s: UnansweredAlertSettings, now: Date): Verdict {
-  const none = (reason: string): Verdict => ({ waiting: false, alertNow: false, waitingMinutes: 0, reason });
+  const windowClosesAt = new Date(row.receivedAt.getTime() + WHATSAPP_WINDOW_MS);
+  const windowMinutesLeft = Math.max(0, Math.floor((windowClosesAt.getTime() - now.getTime()) / 60_000));
+  const none = (reason: string): Verdict =>
+    ({ waiting: false, alertNow: false, alertKind: null, waitingMinutes: 0, windowClosesAt, windowMinutesLeft, reason });
   if (row.repliedAt && row.repliedAt > row.receivedAt) return none("replied");
   if (row.handledAt && row.handledAt >= row.receivedAt) return none("marked handled");
   if (isAutoHandledBody(row.body, row.hasMedia)) return none("auto-handled keyword");
 
   const clock = { openTime: s.openTime, closeTime: s.closeTime, days: s.days };
   const waitingMinutes = workingMinutesBetween(row.receivedAt, now, clock);
-  const waiting: Verdict = { waiting: true, alertNow: false, waitingMinutes, reason: "" };
+  const waiting: Verdict = { waiting: true, alertNow: false, alertKind: null, waitingMinutes, windowClosesAt, windowMinutesLeft, reason: "" };
 
   if (!s.enabled) return { ...waiting, reason: "alerts off" };
-  if (waitingMinutes < s.afterMinutes) return { ...waiting, reason: `only ${waitingMinutes}m so far` };
   if (!isWithinHours(now, clock)) return { ...waiting, reason: "outside working hours" };
+
+  // The WhatsApp window shutting is a harder deadline than the working-hours clock, so it gets
+  // its own warning that ignores the grace period, the repeat timer and the ceiling. If the
+  // window closes overnight or on a Sunday, the warning is placed before the last close of
+  // business instead — after that there is no working moment left to answer on WhatsApp.
+  if (s.windowWarnMinutes > 0 && !row.windowWarnedAt && windowMinutesLeft > 0) {
+    const lastChance = previousClose(windowClosesAt, clock);
+    const warnAt = lastChance.getTime() - s.windowWarnMinutes * 60_000;
+    if (now.getTime() >= warnAt) {
+      return { ...waiting, alertNow: true, alertKind: "window", reason: `WhatsApp window closes in ${formatWait(windowMinutesLeft)}` };
+    }
+  }
+
+  if (waitingMinutes < s.afterMinutes) return { ...waiting, reason: `only ${waitingMinutes}m so far` };
   if (row.escalationCount >= s.maxAlerts) return { ...waiting, reason: `already alerted ${row.escalationCount}×` };
   if (row.escalatedAt) {
     const sinceLast = (now.getTime() - row.escalatedAt.getTime()) / 60_000;
     if (sinceLast < s.repeatMinutes) return { ...waiting, reason: `alerted ${Math.floor(sinceLast)}m ago` };
   }
-  return { ...waiting, alertNow: true, reason: row.escalationCount ? `repeat #${row.escalationCount + 1}` : "first alert" };
+  return { ...waiting, alertNow: true, alertKind: "due", reason: row.escalationCount ? `repeat #${row.escalationCount + 1}` : "first alert" };
+}
+
+/** "WhatsApp window closes in 2h 5m (17:12)" or "WhatsApp window closed — reply goes by text". */
+export function windowStatus(v: Pick<Verdict, "windowClosesAt" | "windowMinutesLeft">): string {
+  if (v.windowMinutesLeft <= 0) return "WhatsApp window closed — reply goes by text";
+  const at = v.windowClosesAt.toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+  return `WhatsApp window closes in ${formatWait(v.windowMinutesLeft)} (${at})`;
 }
 
 export function formatWait(minutes: number): string {
@@ -239,7 +298,7 @@ export async function loadLatestInbound(lookbackDays: number): Promise<WaitingRo
     WITH latest AS (
       SELECT DISTINCT ON (m."customerId")
              m.id, m."customerId", m."receivedAt", m."messageBody", m."mediaUrls",
-             m."handledAt", m."escalatedAt", m."escalationCount",
+             m."handledAt", m."escalatedAt", m."escalationCount", m."windowWarnedAt",
              c.name AS "customerName", c.phone AS "customerPhone"
         FROM "customerMessages" m
         JOIN customers c ON c.id = m."customerId"
@@ -273,6 +332,7 @@ export async function loadLatestInbound(lookbackDays: number): Promise<WaitingRo
     handledAt: asDate(r.handledAt),
     escalatedAt: asDate(r.escalatedAt),
     escalationCount: Number(r.escalationCount || 0),
+    windowWarnedAt: asDate(r.windowWarnedAt),
   }));
 }
 
@@ -308,7 +368,7 @@ function oneLine(t: WaitingThread): string {
   const body = (t.body || (t.hasMedia ? "[Photo]" : "")).replace(/\s+/g, " ").trim();
   const reg = t.registration ? ` (${t.registration})` : "";
   const snippet = body.length > 60 ? `${body.slice(0, 59)}…` : body;
-  return `${t.customerName}${reg}: "${snippet}" — waiting ${formatWait(t.verdict.waitingMinutes)}`;
+  return `${t.customerName}${reg}: "${snippet}" — waiting ${formatWait(t.verdict.waitingMinutes)}; ${windowStatus(t.verdict)}`;
 }
 
 export type Dispatch = { push: number; sms: boolean; email: boolean; errors: string[] };
@@ -321,9 +381,14 @@ export async function dispatchAlert(due: WaitingThread[], s: UnansweredAlertSett
   const base = appBaseUrl();
   const first = due[0];
   const link = due.length === 1 ? `${base}/conversations?customer=${first.customerId}` : `${base}/conversations`;
-  const title = due.length === 1
-    ? `Unanswered: ${first.customerName}${first.registration ? ` (${first.registration})` : ""}`
-    : `${due.length} customers waiting for a reply`;
+  const closing = due.filter((t) => t.verdict.alertKind === "window");
+  const title = closing.length && due.length === 1
+    ? `WhatsApp window closing: ${first.customerName}${first.registration ? ` (${first.registration})` : ""}`
+    : due.length === 1
+      ? `Unanswered: ${first.customerName}${first.registration ? ` (${first.registration})` : ""}`
+      : closing.length
+        ? `${due.length} customers waiting — ${closing.length} WhatsApp window${closing.length === 1 ? "" : "s"} closing`
+        : `${due.length} customers waiting for a reply`;
   const lines = due.map(oneLine);
   const prefix = opts?.test ? "[TEST] " : "";
 
@@ -333,7 +398,7 @@ export async function dispatchAlert(due: WaitingThread[], s: UnansweredAlertSett
     const r = await pushToAll({
       title: prefix + title,
       body: due.length === 1
-        ? `"${(first.body || "[Photo]").slice(0, 120)}" — no reply for ${formatWait(first.verdict.waitingMinutes)}`
+        ? `"${(first.body || "[Photo]").slice(0, 100)}" — no reply for ${formatWait(first.verdict.waitingMinutes)}. ${windowStatus(first.verdict)}`
         : lines.slice(0, 3).join("\n"),
       url: link.replace(base, ""),
       tag: "unanswered-messages",
@@ -375,7 +440,7 @@ export async function dispatchAlert(due: WaitingThread[], s: UnansweredAlertSett
     try {
       const { sendPlainEmail } = await import("./email");
       const html = `<p>${due.length === 1 ? "A customer message has" : `${due.length} customer messages have`} had no reply${opts?.test ? " (this is a test)" : ""}:</p>
-<ul>${due.map((t) => `<li><a href="${base}/conversations?customer=${t.customerId}">${escapeHtml(t.customerName)}${t.registration ? ` (${escapeHtml(t.registration)})` : ""}</a> — <em>${escapeHtml((t.body || (t.hasMedia ? "[Photo]" : "")).slice(0, 200))}</em><br><small>received ${t.receivedAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}, waiting ${formatWait(t.verdict.waitingMinutes)} of working time</small></li>`).join("")}</ul>
+<ul>${due.map((t) => `<li><a href="${base}/conversations?customer=${t.customerId}">${escapeHtml(t.customerName)}${t.registration ? ` (${escapeHtml(t.registration)})` : ""}</a> — <em>${escapeHtml((t.body || (t.hasMedia ? "[Photo]" : "")).slice(0, 200))}</em><br><small>received ${t.receivedAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}, waiting ${formatWait(t.verdict.waitingMinutes)} of working time — <strong>${escapeHtml(windowStatus(t.verdict))}</strong></small></li>`).join("")}</ul>
 <p>Reply in the app, or open the thread and press <strong>No reply needed</strong> if it has been dealt with by phone. These alerts repeat every ${s.repeatMinutes} minutes until then.</p>`;
       await sendPlainEmail({
         to: s.email,
@@ -400,7 +465,7 @@ function escapeHtml(s: string): string {
  * to int[] (the first live run sent the push, then died here and would have re-alerted every
  * ten minutes).
  */
-export async function stampEscalated(messageIds: number[], now = new Date()): Promise<void> {
+export async function stampEscalated(messageIds: number[], now = new Date(), windowWarnedIds: number[] = []): Promise<void> {
   if (!messageIds.length) return;
   const { getDb } = await import("../db");
   const { customerMessages } = await import("../../drizzle/schema");
@@ -410,13 +475,16 @@ export async function stampEscalated(messageIds: number[], now = new Date()): Pr
   await db.update(customerMessages)
     .set({ escalatedAt: now, escalationCount: sql`${customerMessages.escalationCount} + 1` })
     .where(inArray(customerMessages.id, messageIds));
+  if (windowWarnedIds.length) {
+    await db.update(customerMessages).set({ windowWarnedAt: now }).where(inArray(customerMessages.id, windowWarnedIds));
+  }
 }
 
 export type RunSummary = {
   ranAt: string;
   enabled: boolean;
   withinHours: boolean;
-  waiting: Array<{ customerId: number; customerName: string; registration: string | null; waitingMinutes: number; alertNow: boolean; reason: string }>;
+  waiting: Array<{ customerId: number; customerName: string; registration: string | null; waitingMinutes: number; alertNow: boolean; reason: string; windowMinutesLeft: number; windowClosesAt: string }>;
   alerted: number;
   dispatch: Dispatch | null;
   dryRun: boolean;
@@ -441,6 +509,7 @@ export async function runUnansweredCheck(opts?: { dryRun?: boolean; now?: Date }
     waiting: evaluated.map((r) => ({
       customerId: r.customerId, customerName: r.customerName, registration: r.registration,
       waitingMinutes: r.verdict.waitingMinutes, alertNow: r.verdict.alertNow, reason: r.verdict.reason,
+      windowMinutesLeft: r.verdict.windowMinutesLeft, windowClosesAt: r.verdict.windowClosesAt.toISOString(),
     })),
     alerted: 0,
     dispatch: null,
@@ -456,7 +525,7 @@ export async function runUnansweredCheck(opts?: { dryRun?: boolean; now?: Date }
     return summary;
   }
 
-  await stampEscalated(due.map((r) => r.messageId), now);
+  await stampEscalated(due.map((r) => r.messageId), now, due.filter((r) => r.verdict.alertKind === "window").map((r) => r.messageId));
   summary.alerted = due.length;
   console.log(`[Unanswered] alerted about ${due.length}: ${due.map(oneLine).join(" | ")} (push ${d.push}, sms ${d.sms}, email ${d.email})`);
   return summary;

@@ -4,20 +4,22 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  evaluate, isWithinHours, nextOpening, workingMinutesBetween, isAutoHandledBody,
-  DEFAULT_SETTINGS, type WaitingRow,
+  evaluate, isWithinHours, nextOpening, previousClose, workingMinutesBetween, isAutoHandledBody,
+  windowStatus, DEFAULT_SETTINGS, type WaitingRow,
 } from "./services/unansweredAlerts";
 
 // September 2026 is British Summer Time (UTC+1): 14:00Z = 15:00 UK.
 const clock = { openTime: "08:00", closeTime: "18:00", days: [1, 2, 3, 4, 5, 6] };
-const S = { ...DEFAULT_SETTINGS, enabled: true, afterMinutes: 30, repeatMinutes: 60, maxAlerts: 6 };
+// Window warning off in the base settings so the working-hours cases stay about working hours.
+const S = { ...DEFAULT_SETTINGS, enabled: true, afterMinutes: 30, repeatMinutes: 60, maxAlerts: 6, windowWarnMinutes: 0 };
+const W = { ...S, windowWarnMinutes: 120 };
 
 function row(over: Partial<WaitingRow> = {}): WaitingRow {
   return {
     messageId: 1, customerId: 7088, customerName: "Ms Eva", customerPhone: "+447475104187",
     registration: "YL67KWC", body: "Monday morning", hasMedia: false,
     receivedAt: new Date("2026-09-03T15:12:30Z"), // Thu 16:12 UK
-    repliedAt: null, handledAt: null, escalatedAt: null, escalationCount: 0,
+    repliedAt: null, handledAt: null, escalatedAt: null, escalationCount: 0, windowWarnedAt: null,
     ...over,
   };
 }
@@ -110,5 +112,50 @@ describe("evaluate", () => {
   it("still reports waiting when alerts are switched off, but does not fire", () => {
     const v = evaluate(row(), { ...S, enabled: false }, new Date("2026-09-04T09:00:00Z"));
     expect(v).toMatchObject({ waiting: true, alertNow: false, reason: "alerts off" });
+  });
+});
+
+describe("WhatsApp 24-hour reply window", () => {
+  it("reports the window on every verdict", () => {
+    const v = evaluate(row(), S, new Date("2026-09-04T09:00:00Z")); // Fri 10:00 UK, 17h48m after 16:12 Thu
+    expect(v.windowClosesAt.toISOString()).toBe("2026-09-04T15:12:30.000Z");
+    expect(v.windowMinutesLeft).toBe(372);
+    expect(windowStatus(v)).toBe("WhatsApp window closes in 6h 12m (16:12)");
+    const closed = evaluate(row(), S, new Date("2026-09-07T09:00:00Z"));
+    expect(closed.windowMinutesLeft).toBe(0);
+    expect(windowStatus(closed)).toBe("WhatsApp window closed — reply goes by text");
+  });
+
+  it("previousClose walks back to the last close of business", () => {
+    // Sun 15:00 UK -> Sat 18:00 UK (17:00Z)
+    expect(previousClose(new Date("2026-09-06T14:00:00Z"), clock).toISOString()).toBe("2026-09-05T17:00:00.000Z");
+    // Fri 20:00 UK -> Fri 18:00 UK
+    expect(previousClose(new Date("2026-09-04T19:00:00Z"), clock).toISOString()).toBe("2026-09-04T17:00:00.000Z");
+  });
+
+  it("warns before the window closes even if the repeat timer says wait", () => {
+    // Window closes Fri 16:12 UK; warn from 14:12 UK. Alerted 20 minutes ago, ceiling reached — still warns.
+    const r = row({ escalatedAt: new Date("2026-09-04T12:55:00Z"), escalationCount: 6 });
+    expect(evaluate(r, W, new Date("2026-09-04T13:00:00Z"))).toMatchObject({ alertNow: false });             // 14:00 UK, not yet
+    expect(evaluate(r, W, new Date("2026-09-04T13:15:00Z"))).toMatchObject({ alertNow: true, alertKind: "window" }); // 14:15 UK
+  });
+
+  it("warns only once, then falls back to the normal clock", () => {
+    const r = row({ windowWarnedAt: new Date("2026-09-04T13:15:00Z"), escalatedAt: new Date("2026-09-04T13:15:00Z"), escalationCount: 1 });
+    const v = evaluate(r, W, new Date("2026-09-04T13:30:00Z"));
+    expect(v.alertNow).toBe(false);
+    expect(v.reason).toMatch(/alerted 15m ago/);
+  });
+
+  it("moves the warning before close of business when the window shuts overnight", () => {
+    // Message Sat 15:00 UK; window closes Sun 15:00 UK (closed day). Last chance = Sat 18:00, warn from 16:00.
+    const r = row({ receivedAt: new Date("2026-09-05T14:00:00Z") });
+    expect(evaluate(r, W, new Date("2026-09-05T14:20:00Z"))).toMatchObject({ alertNow: false, reason: "only 20m so far" }); // 15:20 UK: normal clock
+    expect(evaluate(r, W, new Date("2026-09-05T15:05:00Z"))).toMatchObject({ alertNow: true, alertKind: "window" });     // 16:05 UK
+  });
+
+  it("does not warn about a window that has already closed", () => {
+    const v = evaluate(row(), W, new Date("2026-09-07T09:00:00Z"));
+    expect(v.alertKind).toBe("due");
   });
 });

@@ -199,7 +199,7 @@ function UnansweredAlertsCard() {
   const [f, setF] = useState({
     enabled: true, afterMinutes: 30, repeatMinutes: 60, maxAlerts: 6,
     openTime: "08:00", closeTime: "18:00", days: [1, 2, 3, 4, 5, 6] as number[],
-    phone: "", email: "", lookbackDays: 7,
+    phone: "", email: "", lookbackDays: 7, windowWarnMinutes: 120,
   });
 
   useEffect(() => { if (data) setF({ ...data }); }, [data]);
@@ -210,6 +210,7 @@ function UnansweredAlertsCard() {
     repeatMinutes: Number(next.repeatMinutes) || 60,
     maxAlerts: Number(next.maxAlerts) || 6,
     lookbackDays: Number(next.lookbackDays) || 7,
+    windowWarnMinutes: Math.max(0, Number(next.windowWarnMinutes) || 0),
   });
 
   async function onSave() {
@@ -260,6 +261,18 @@ function UnansweredAlertsCard() {
         <Field label="Repeat every (mins)" value={f.repeatMinutes} onChange={(v) => setF((p) => ({ ...p, repeatMinutes: Number(v) }))} type="number" placeholder="60" />
         <Field label="Stop after (alerts)" value={f.maxAlerts} onChange={(v) => setF((p) => ({ ...p, maxAlerts: Number(v) }))} type="number" placeholder="6" />
 
+        <div className="grid grid-cols-3 gap-3 items-start">
+          <label className="text-sm text-muted-foreground pt-1">WhatsApp window warning (mins before)</label>
+          <div className="col-span-2">
+            <input className="w-full border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" type="number" value={f.windowWarnMinutes ?? ""} onChange={(e) => setF((p) => ({ ...p, windowWarnMinutes: Number(e.target.value) }))} placeholder="120" />
+            <p className="text-xs text-slate-500 mt-1.5">
+              WhatsApp only accepts a free reply within 24 hours of the customer's last message; after
+              that it goes by text. This warns before that window shuts, regardless of the repeat timer —
+              and before close of business if the window would shut overnight. 0 turns it off.
+            </p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-3 gap-3 items-center">
           <label className="text-sm text-muted-foreground">Working hours</label>
           <div className="col-span-2 flex items-center gap-2 text-sm">
@@ -301,6 +314,9 @@ function UnansweredAlertsCard() {
                       {w.customerName}{w.registration ? ` (${w.registration})` : ""}
                     </a>
                     <span>— waiting {w.waitingMinutes < 60 ? `${w.waitingMinutes}m` : `${Math.floor(w.waitingMinutes / 60)}h`} of working time</span>
+                    <span className={w.windowMinutesLeft > 0 ? "text-amber-700" : "text-red-700"}>
+                      · {w.windowMinutesLeft > 0 ? `WhatsApp closes in ${w.windowMinutesLeft < 60 ? `${w.windowMinutesLeft}m` : `${Math.floor(w.windowMinutesLeft / 60)}h`}` : "WhatsApp closed"}
+                    </span>
                     <span className={w.alertNow ? "text-amber-700 font-medium" : "text-slate-400"}>· {w.alertNow ? "alert due" : w.reason}</span>
                   </li>
                 ))}

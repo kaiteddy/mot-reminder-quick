@@ -25,6 +25,8 @@ export interface ConversationThread {
   awaitingReply: boolean;
   /** Working minutes they have been waiting (0 when not awaiting). */
   waitingMinutes: number;
+  /** Minutes left on the 24-hour WhatsApp reply window (0 = closed, replies go by text). */
+  windowMinutesLeft: number;
 }
 
 export interface ConversationMessage {
@@ -143,6 +145,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         lastInboundAt: null,
         awaitingReply: false,
         waitingMinutes: 0,
+        windowMinutesLeft: 0,
       });
     } else if (existing) {
       // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
@@ -189,6 +192,7 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         lastInboundAt: msg.lastMessageAt,
         awaitingReply: false,
         waitingMinutes: 0,
+        windowMinutesLeft: 0,
       });
     }
   });
@@ -199,10 +203,10 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
 
   // Flag threads whose latest customer message has had no reply — the thing the unanswered-
   // message alerts nag about — so the list shows it even once the thread has been "read".
-  const waitingMap = new Map<number, number>();
+  const waitingMap = new Map<number, { waitingMinutes: number; windowMinutesLeft: number }>();
   try {
     const { listWaiting } = await import("./services/unansweredAlerts");
-    for (const w of await listWaiting()) waitingMap.set(w.customerId, w.verdict.waitingMinutes);
+    for (const w of await listWaiting()) waitingMap.set(w.customerId, { waitingMinutes: w.verdict.waitingMinutes, windowMinutesLeft: w.verdict.windowMinutesLeft });
   } catch (e: any) {
     console.warn("[Conversations] awaiting-reply flags unavailable:", e?.message);
   }
@@ -215,7 +219,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
       ...t,
       optedOut: optedOutSet.has(t.customerId),
       awaitingReply: waitingMap.has(t.customerId),
-      waitingMinutes: waitingMap.get(t.customerId) ?? 0,
+      waitingMinutes: waitingMap.get(t.customerId)?.waitingMinutes ?? 0,
+      windowMinutesLeft: waitingMap.get(t.customerId)?.windowMinutesLeft ?? 0,
     }))
     .sort((a, b) => {
       // First sort by unread count (any unread comes before no unread)

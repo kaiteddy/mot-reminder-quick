@@ -196,6 +196,8 @@ export const customerMessages = pgTable("customerMessages", {
   handledAt: timestamp("handledAt", { mode: "date" }),
   escalatedAt: timestamp("escalatedAt", { mode: "date" }),
   escalationCount: integer("escalationCount").default(0).notNull(),
+  //   windowWarnedAt  the "WhatsApp 24-hour reply window is about to close" warning went out
+  windowWarnedAt: timestamp("windowWarnedAt", { mode: "date" }),
 }, (table) => ({
   customerIdIdx: index("customer_messages_customer_id_idx").on(table.customerId),
   receivedAtIdx: index("customer_messages_received_at_idx").on(table.receivedAt),

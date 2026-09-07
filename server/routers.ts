@@ -896,6 +896,7 @@ export const appRouter = router({
         phone: z.string().trim(),
         email: z.string().trim(),
         lookbackDays: z.number().int().min(1).max(60),
+        windowWarnMinutes: z.number().int().min(0).max(1440),
       }))
       .mutation(async ({ input }) => {
         const { saveUnansweredAlertSettings } = await import("./services/unansweredAlerts");
@@ -916,8 +917,11 @@ export const appRouter = router({
         messageId: 0, customerId: 0, customerName: "Test customer", customerPhone: "",
         registration: "AB12 CDE", body: "Hi, can I book my car in for Monday morning?", hasMedia: false,
         receivedAt: new Date(now.getTime() - 45 * 60_000), repliedAt: null, handledAt: null,
-        escalatedAt: null, escalationCount: 0,
-        verdict: { waiting: true, alertNow: true, waitingMinutes: 45, reason: "test" },
+        escalatedAt: null, escalationCount: 0, windowWarnedAt: null,
+        verdict: {
+          waiting: true, alertNow: true, alertKind: "due", waitingMinutes: 45, reason: "test",
+          windowClosesAt: new Date(now.getTime() + 23 * 3600_000 + 15 * 60_000), windowMinutesLeft: 23 * 60 + 15,
+        },
       }], s, { test: true });
     }),
     /** Run the real check now (same as the cron), for when you don't want to wait 10 minutes. */

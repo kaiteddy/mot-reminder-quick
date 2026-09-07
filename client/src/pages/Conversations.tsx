@@ -274,6 +274,9 @@ export default function Conversations() {
                               title="The customer's latest message has had no reply"
                             >
                               <Hourglass className="w-3 h-3" /> {formatWaiting(thread.waitingMinutes)}
+                              {thread.windowMinutesLeft > 0
+                                ? <span className="font-normal text-amber-700">· WA {formatWaiting(thread.windowMinutesLeft)} left</span>
+                                : <span className="font-normal text-red-700">· WA closed</span>}
                             </span>
                           )}
                         </div>
@@ -331,6 +334,9 @@ export default function Conversations() {
                       {selectedThread.awaitingReply && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
                           <Hourglass className="w-3 h-3" /> Awaiting reply · {formatWaiting(selectedThread.waitingMinutes)}
+                          <span className={cn("ml-1 font-normal", selectedThread.windowMinutesLeft > 0 ? "text-amber-700" : "text-red-700")}>
+                            · {selectedThread.windowMinutesLeft > 0 ? `WhatsApp closes in ${formatWaiting(selectedThread.windowMinutesLeft)}` : "WhatsApp closed — text only"}
+                          </span>
                         </span>
                       )}
                     </h2>
