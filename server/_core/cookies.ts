@@ -39,10 +39,14 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  // Must match what the login route sets, attribute for attribute, or clearCookie doesn't match
+  // the cookie it is trying to clear. SameSite=None is also invalid without Secure — browsers
+  // reject that combination outright — so over plain http the logout clear did nothing at all and
+  // the dead session stayed in the browser.
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
+    sameSite: "lax",
     secure: isSecureRequest(req),
   };
 }

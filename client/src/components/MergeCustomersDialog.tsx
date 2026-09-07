@@ -77,7 +77,7 @@ export default function MergeCustomersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Search className="w-5 h-5" /> Every customer matching “{term}”
@@ -109,7 +109,7 @@ export default function MergeCustomersDialog({
                     <th className="px-2 py-1.5">Address</th>
                     <th className="px-2 py-1.5 text-right">Vehicles</th>
                     <th className="px-2 py-1.5 text-right">Invoices</th>
-                    <th className="px-2 py-1.5">Last seen</th>
+                    <th className="px-2 py-1.5 whitespace-nowrap">Last seen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,7 +125,7 @@ export default function MergeCustomersDialog({
                           <input type="checkbox" disabled={isKeep} checked={!isKeep && fold.has(r.id)} onChange={() => toggle(r.id)} />
                         </td>
                         <td className="px-2 py-1.5">
-                          <div className="font-medium">{r.name}</div>
+                          <div className="font-medium whitespace-nowrap">{r.name}</div>
                           <div className="text-[11px] text-muted-foreground">
                             {[r.phone, r.email].filter(Boolean).join(" · ") || "no phone or email"}
                             {r.optedOut ? <Badge variant="outline" className="ml-1 text-[10px] border-red-300 text-red-700">opted out</Badge> : null}
@@ -133,11 +133,13 @@ export default function MergeCustomersDialog({
                         </td>
                         <td className="px-2 py-1.5 font-mono text-[12px]">{r.accountNumber || "—"}</td>
                         <td className="px-2 py-1.5 text-[12px] text-muted-foreground">
-                          {[r.address, r.postcode].filter(Boolean).join(", ") || "—"}
+                          <span className="block max-w-[19rem] truncate" title={[r.address, r.postcode].filter(Boolean).join(", ")}>
+                            {[r.address, r.postcode].filter(Boolean).join(", ") || "—"}
+                          </span>
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.vehicles}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{r.documents}</td>
-                        <td className="px-2 py-1.5 text-[12px] text-muted-foreground">{when(r.lastSeen)}</td>
+                        <td className="px-2 py-1.5 text-[12px] text-muted-foreground whitespace-nowrap">{when(r.lastSeen)}</td>
                       </tr>
                     );
                   })}

@@ -1,6 +1,8 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
+import { getSessionCookieOptions } from "./cookies";
+import { COOKIE_NAME } from "../../shared/const";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -36,6 +38,13 @@ export async function createContext(
     } catch (error) {
       // Authentication is optional for public procedures.
       user = null;
+      // A session cookie that won't verify — nearly always one signed with a previous
+      // JWT_SECRET — otherwise sits in the browser failing every request for a year, and the
+      // login screen just bounces back with nothing to show for it. Drop it here so the next
+      // sign-in starts from a clean slate instead of needing the site data cleared by hand.
+      if (opts.req.headers.cookie?.includes(`${COOKIE_NAME}=`)) {
+        try { opts.res.clearCookie(COOKIE_NAME, getSessionCookieOptions(opts.req)); } catch { /* headers already sent */ }
+      }
     }
   }
 
