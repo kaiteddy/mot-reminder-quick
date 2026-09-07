@@ -1617,7 +1617,7 @@ export default function DocumentDetails() {
                   real app. That is a visual cue only - what 0 means, and which docs default to it,
                   is driven by isInvoice. */}
               <MileageField {...{ form, set, editing }} isInvoice={isInvoice} classicCue={!!base} />
-              <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" w="w-20" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
               {base && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
