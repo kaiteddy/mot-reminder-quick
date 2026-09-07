@@ -4274,24 +4274,66 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
     }
   }
 
+  const now = new Date();
   const items = SERVICE_ITEMS.map((def) => {
     const done = (byKey.get(def.key) ?? []).sort((a, b) => b.date.getTime() - a.date.getTime());
     const last = done[0] ?? null;
     const prev = done[1] ?? null;
+    const milesSince = last?.mileage && latestMileage && latestMileage > last.mileage
+      ? latestMileage - last.mileage : null;
+    const monthsSince = last
+      ? Math.floor((now.getTime() - last.date.getTime()) / (1000 * 60 * 60 * 24 * 30.44)) : null;
+
+    // Where it stands against the guide interval. A never-recorded item only counts as overdue
+    // once the car has covered the interval itself — that is the whole question being asked of
+    // this view: 65,000 miles on the clock and no spark plugs on any job we ever raised.
+    const overBy: string[] = [];
+    const nearly: string[] = [];
+    const check = (used: number | null, every: number | undefined, unit: "miles" | "months") => {
+      if (!every || used == null) return;
+      if (used >= every) overBy.push(unit === "miles" ? `${(used - every).toLocaleString()} miles over` : `${used - every} months over`);
+      else if (used >= every * 0.9) nearly.push(unit === "miles" ? `${(every - used).toLocaleString()} miles to go` : `${every - used} months to go`);
+    };
+    let status: "overdue" | "soon" | "ok" | "noRecord" | "never" | "unscheduled" = "ok";
+    if (!def.everyMiles && !def.everyMonths) status = "unscheduled";
+    else if (!last) {
+      // Nothing on record. Kept apart from a genuine overdue: "we did this and it is now due
+      // again" and "we have never touched it on a car with 80,000 miles up" are different
+      // conversations, and lumping them together buried both.
+      status = (def.everyMiles && latestMileage && latestMileage >= def.everyMiles) ? "noRecord" : "never";
+    } else {
+      check(milesSince, def.everyMiles, "miles");
+      check(monthsSince, def.everyMonths, "months");
+      status = overBy.length ? "overdue" : nearly.length ? "soon" : "ok";
+    }
+
     return {
       key: def.key, label: def.label, group: def.group,
+      everyMiles: def.everyMiles ?? null, everyMonths: def.everyMonths ?? null,
       times: done.length,
       lastDate: last ? last.date.toISOString().slice(0, 10) : null,
       lastDocNo: last?.docNo ?? null,
       lastMileage: last?.mileage ?? null,
       prevDate: prev ? prev.date.toISOString().slice(0, 10) : null,
-      // How far the car has run since, when both readings exist — the number that actually decides
-      // whether something is due.
-      milesSince: last?.mileage && latestMileage && latestMileage > last.mileage
-        ? latestMileage - last.mileage : null,
+      milesSince, monthsSince, status,
+      why: overBy.concat(nearly)[0] ?? null,
     };
   });
-  return { items, latestMileage };
+  // A small service, a major service and a bare "service" are one line on the schedule, not three.
+  // Left separate, a car showed "small service — up to date" beside "service — 21 months over" and
+  // "major service — never recorded", all describing the same car.
+  const svcKeys = ["majorService", "smallService", "service"];
+  const svc = items.filter((i) => svcKeys.includes(i.key) && i.lastDate)
+    .sort((a, b) => String(b.lastDate).localeCompare(String(a.lastDate)));
+  const merged = items.filter((i) => !svcKeys.includes(i.key));
+  const anySvc = svc[0] ?? items.find((i) => i.key === "smallService")!;
+  merged.unshift({
+    ...anySvc, key: "service", label: "Service",
+    times: items.filter((i) => svcKeys.includes(i.key)).reduce((a, i) => a + i.times, 0),
+    kind: svc[0]?.label ?? null,
+  } as any);
+
+  return { items: merged, latestMileage };
 }
 
 /** Pre-set description snippets (GA4 parity). */
