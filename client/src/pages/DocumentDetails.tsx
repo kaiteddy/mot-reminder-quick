@@ -1603,11 +1603,12 @@ export default function DocumentDetails() {
                   className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase" + (editing && !specUnlocked && String(form.model ?? "").trim() ? " !bg-slate-100 text-slate-700 cursor-not-allowed focus:!border-slate-300" : "")} />
               </div>
               <EF label="Derivative" field="derivative" upper locked={!specUnlocked} {...{ form, set, editing }} grow />
-              {/* The VIN must read in full (17 characters); the catalogue links wrap underneath
-                  when the column is too narrow for all of them beside it. */}
-              <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                <EF label="Chassis" field="vin" upper locked={!specUnlocked} inputCls="sm:min-w-[13rem] font-mono tracking-tight" wrapCls="sm:min-w-[20rem]" {...{ form, set, editing }} grow />
-                {!base && form.vin && (
+              {/* The VIN gets the whole row so all 17 characters read; the catalogue links sit on
+                  their own row beneath, indented to the field column (label width + gap) so they
+                  line up with the boxes and never split. */}
+              <EF label="Chassis" field="vin" upper locked={!specUnlocked} inputCls="font-mono tracking-tight" {...{ form, set, editing }} grow />
+              {!base && form.vin && (
+                <div className="flex flex-wrap items-center gap-2 sm:pl-[6.5rem] -mt-0.5">
                   <>
                     <button type="button" title="Search this VIN on PartSouq"
                       onClick={() => { navigator.clipboard?.writeText(form.vin).catch(() => {}); window.open(`https://partsouq.com/en/search/all?q=${encodeURIComponent(form.vin)}`, "_blank", "noopener"); }}
@@ -1625,8 +1626,8 @@ export default function DocumentDetails() {
                       <ExternalLink className="w-3.5 h-3.5" /> partslink24
                     </button>
                   </>
-                )}
-              </div>
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
