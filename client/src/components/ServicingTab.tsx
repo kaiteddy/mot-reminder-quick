@@ -33,36 +33,46 @@ function every(i: Item) {
   return bits.length ? `every ${bits.join(" or ")}` : null;
 }
 
-/** One line per item: what it is, when it was last done, and why it is flagged. */
+/** How long ago, short enough for a column. */
+function agoShort(months: number | null) {
+  if (months == null) return null;
+  if (months < 1) return "this month";
+  if (months < 12) return `${months} mo`;
+  const y = Math.floor(months / 12), m = months % 12;
+  return `${y} yr${m ? ` ${m} mo` : ""}`;
+}
+
+const TH = "font-normal text-[11px] text-slate-400 pb-1";
+const TD = "py-1.5 align-baseline";
+/** Shared by every block. Five separate tables sized their own columns, so "Last done" sat at
+ *  a different x in each and the eye couldn't run down the page. */
+const COLS = (
+  <colgroup>
+    <col style={{ width: "22%" }} /><col style={{ width: "11%" }} /><col style={{ width: "10%" }} />
+    <col style={{ width: "10%" }} /><col style={{ width: "10%" }} /><col style={{ width: "8%" }} /><col />
+  </colgroup>
+);
+
+/** One row per item. Columns rather than a sentence, so a column can be read down: when it was
+ *  done, at what mileage, how long ago, and how far the car has run since. */
 function Row({ i, mileage }: { i: Item; mileage: number | null }) {
-  const last = i.lastDate
-    ? `${ukDate(i.lastDate)}${i.lastMileage ? ` at ${num(i.lastMileage)} miles` : ""}`
-    : null;
-  const since = i.lastDate
-    ? [ago(i.monthsSince), i.milesSince ? `${num(i.milesSince)} miles` : null].filter(Boolean).join(" · ")
-    : null;
   return (
-    <div className="flex items-baseline gap-3 py-1.5 border-t border-slate-100 first:border-0">
-      <div className="w-48 shrink-0 font-medium">
+    <tr className="border-t border-slate-100">
+      <td className={`${TD} pr-3 font-medium`}>
         {i.label}
         {i.kind && i.kind !== i.label ? <span className="ml-1.5 font-normal text-[11px] text-muted-foreground">{i.kind.toLowerCase()}</span> : null}
-      </div>
-      <div className="flex-1 min-w-0">
-        {last ? (
-          <span>Last done <b className="tabular-nums">{last}</b>{i.lastDocNo ? <span className="text-muted-foreground"> on job {i.lastDocNo}</span> : null}
-            {since ? <span className="text-muted-foreground"> — {since}</span> : null}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">
-            Nothing on any job we've raised{mileage ? <> — this car is on <b className="tabular-nums text-slate-700">{num(mileage)} miles</b></> : null}
-          </span>
-        )}
-      </div>
-      <div className="w-52 shrink-0 text-right text-[12px] text-muted-foreground">
+      </td>
+      <td className={`${TD} pr-3 tabular-nums whitespace-nowrap`}>{ukDate(i.lastDate) ?? <span className="text-muted-foreground">never</span>}</td>
+      <td className={`${TD} pr-3 text-right tabular-nums`}>{num(i.lastMileage) ?? <span className="text-muted-foreground">—</span>}</td>
+      <td className={`${TD} pr-3 whitespace-nowrap text-muted-foreground`}>{agoShort(i.monthsSince) ?? "—"}</td>
+      <td className={`${TD} pr-3 text-right tabular-nums text-muted-foreground`}>{num(i.milesSince) ?? "—"}</td>
+      <td className={`${TD} pr-3 text-muted-foreground tabular-nums`}>{i.lastDocNo ?? "—"}</td>
+      <td className={`${TD} text-right whitespace-nowrap`}>
         {i.why ? <span className="font-medium text-slate-700">{i.why}</span> : null}
-        {every(i) ? <span className="ml-2">{every(i)}</span> : null}
-      </div>
-    </div>
+        {i.why && every(i) ? <span className="text-muted-foreground"> · </span> : null}
+        {every(i) ? <span className="text-[11px] text-muted-foreground">{every(i)}</span> : null}
+      </td>
+    </tr>
   );
 }
 
@@ -75,8 +85,22 @@ function Section({ tone, icon, title, items, mileage }: {
       <div className="flex items-center gap-2 px-3 py-2 font-semibold text-[13px]">
         {icon}{title}<span className="font-normal opacity-70">({items.length})</span>
       </div>
-      <div className="px-3 py-1 bg-white/70">
-        {items.map((i) => <Row key={i.key} i={i} mileage={mileage} />)}
+      <div className="px-3 pb-2 bg-white/70">
+        <table className="w-full table-fixed">
+          {COLS}
+          <thead>
+            <tr className="text-left">
+              <th className={`${TH} pr-3`}>Item</th>
+              <th className={`${TH} pr-3`}>Last done</th>
+              <th className={`${TH} pr-3 text-right`}>At mileage</th>
+              <th className={`${TH} pr-3`}>Ago</th>
+              <th className={`${TH} pr-3 text-right`}>Miles since</th>
+              <th className={`${TH} pr-3`}>Job</th>
+              <th className={`${TH} text-right`}>Interval</th>
+            </tr>
+          </thead>
+          <tbody>{items.map((i) => <Row key={i.key} i={i} mileage={mileage} />)}</tbody>
+        </table>
       </div>
     </div>
   );
@@ -169,8 +193,22 @@ export default function ServicingTab({ vehicleId, registration, excludeDocumentI
           <div className="px-3 py-2 font-semibold text-[13px]">
             No set interval <span className="font-normal text-muted-foreground">— done when worn or when asked for; here for reference</span>
           </div>
-          <div className="px-3 py-1 bg-white/70">
-            {wear.map((i) => <Row key={i.key} i={i} mileage={mileage} />)}
+          <div className="px-3 pb-2 bg-white/70">
+            <table className="w-full table-fixed">
+              {COLS}
+              <thead>
+                <tr className="text-left">
+                  <th className={`${TH} pr-3`}>Item</th>
+                  <th className={`${TH} pr-3`}>Last done</th>
+                  <th className={`${TH} pr-3 text-right`}>At mileage</th>
+                  <th className={`${TH} pr-3`}>Ago</th>
+                  <th className={`${TH} pr-3 text-right`}>Miles since</th>
+                  <th className={`${TH} pr-3`}>Job</th>
+                  <th className={`${TH} text-right`}></th>
+                </tr>
+              </thead>
+              <tbody>{wear.map((i) => <Row key={i.key} i={i} mileage={mileage} />)}</tbody>
+            </table>
           </div>
         </div>
       )}

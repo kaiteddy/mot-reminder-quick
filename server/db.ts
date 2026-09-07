@@ -4397,8 +4397,9 @@ export async function getVehicleServiceRecord(input: {
     const nearly: string[] = [];
     const check = (used: number | null, every: number | undefined, unit: "miles" | "months") => {
       if (!every || used == null) return;
-      if (used >= every) overBy.push(unit === "miles" ? `${(used - every).toLocaleString()} miles over` : `${used - every} months over`);
-      else if (used >= every * 0.9) nearly.push(unit === "miles" ? `${(every - used).toLocaleString()} miles to go` : `${every - used} months to go`);
+      const months = (n: number) => `${n} month${n === 1 ? "" : "s"}`;
+      if (used >= every) overBy.push(unit === "miles" ? `${(used - every).toLocaleString()} miles over` : `${months(used - every)} over`);
+      else if (used >= every * 0.9) nearly.push(unit === "miles" ? `${(every - used).toLocaleString()} miles to go` : `${months(every - used)} to go`);
     };
     let status: "overdue" | "soon" | "ok" | "noRecord" | "never" | "unscheduled" = "ok";
     if (!def.everyMiles && !def.everyMonths) status = "unscheduled";
