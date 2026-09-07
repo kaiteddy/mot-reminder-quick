@@ -261,7 +261,12 @@ await syncTable({
   // early, written up later), and without this the row is judged "unchanged" so
   // the description never propagates and stays null in the webapp forever
   // (e.g. SI 90692 / GY06 HXS). It updates the full row, so description lands.
-  changed: (g, w) => !numEq(g.totalGross, w.totalGross) || !numEq(g.totalReceipts, w.totalReceipts) || !numEq(g.balance, w.balance)
+  // Net and tax are compared as well as gross. Comparing gross alone let a wrong SPLIT live for
+  // ever: 21 of July 2026's invoices sat in the app as £37.50 + £7.50 VAT for a £45 MOT while GA4
+  // held £45 + £0 — same gross to the penny, so the sync saw nothing to repair, and the app's VAT
+  // ran £157.50 over the filed return for that month. GA4 is right on every one of them.
+  changed: (g, w) => !numEq(g.totalGross, w.totalGross) || !numEq(g.totalNet, w.totalNet) || !numEq(g.totalTax, w.totalTax)
+    || !numEq(g.totalReceipts, w.totalReceipts) || !numEq(g.balance, w.balance)
     || !eq(g.docStatus, w.docStatus) || !eq(g.docNo, w.docNo) || !eq(dt2(w.dateIssued), g.dateIssued) || !eq(dt2(w.datePaid), g.datePaid)
     || Number(g.mileage || 0) !== Number(w.mileage || 0) || (g.customerId && g.customerId !== w.customerId) || (g.vehicleId && g.vehicleId !== w.vehicleId)
     || !eq(g.description, w.description),
