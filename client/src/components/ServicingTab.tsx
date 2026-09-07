@@ -137,8 +137,8 @@ export default function ServicingTab({ vehicleId, registration, excludeDocumentI
     <div className="space-y-3 text-[13px]">
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-muted-foreground">
-          Read off this car's own jobs and its MOT readings{excludeDocumentId ? ", not counting the one you're on" : ""}.
-          Intervals are a general guide — the manufacturer's schedule wins.
+          Read off this car's own invoices and its MOT readings — job sheets and estimates don't
+          count as done. Intervals are a general guide; the manufacturer's schedule wins.
         </p>
         <span className="shrink-0 flex items-baseline gap-3">
         {mileage ? (

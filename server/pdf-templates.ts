@@ -1582,7 +1582,7 @@ export async function generateServiceRecordPDF(data: any): Promise<{ content: st
   }
 
   doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(MUTED);
-  doc.text('Read off this vehicle’s own jobs and its MOT odometer readings. Intervals are a general guide — the manufacturer’s schedule takes precedence. "Never done here" means no job of ours names the item, which is not the same as it never having been done.',
+  doc.text('Read off this vehicle’s own invoices and its MOT odometer readings — job sheets and estimates do not count as work done. Intervals are a general guide; the manufacturer’s schedule takes precedence. "Never done here" means no invoice of ours names the item, which is not the same as it never having been done.',
     PM, Math.min(y + 4, PH - 62), { width: RIGHT - PM });
   const now = new Date();
   doc.font('Helvetica').fontSize(8).fillColor(MUTED);

@@ -4361,8 +4361,14 @@ export async function getVehicleServiceRecord(input: {
   const lastReadOn = lastRead ? lastRead.date.toISOString().slice(0, 10) : null;
   const lastReadFrom = lastRead?.from ?? null;
 
+  // Only INVOICED work counts as done. A job sheet is what somebody intends to do and an estimate
+  // is what they were quoted; neither is evidence the brake fluid was changed. Adam's rule,
+  // 07/09/2026. Mileage is different and still read off everything below — an odometer reading is
+  // an observation, not work, and a job sheet carries the freshest one there is.
+  const INVOICED = new Set(["SI", "XS"]);
   const byKey = new Map<string, { date: Date; docNo: string | null; mileage: number | null }[]>();
   for (const r of rows) {
+    if (!INVOICED.has(String(r.docType || "").toUpperCase())) continue;
     // Array rather than a Set: this file's tsconfig target won't iterate one.
     const keys = itemsIn(r.description).concat(itemsIn(r.lines)).filter((k, i, a) => a.indexOf(k) === i);
     if (!keys.length) continue;
