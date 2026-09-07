@@ -30,10 +30,10 @@ export type VatDoc = {
   /** Issued here and present in the old system too — a filled pool entry, or a GA4-sourced copy under the same number. */
   inGa4: boolean;
   /** What the invoice's own lines add up to in VAT, when it has lines. */
-  lineCount: number; lineTax: number;
+  lineCount: number; lineNet: number; lineTax: number;
   net: number; tax: number; gross: number; motNet: number; motTax: number;
 };
-export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess" | "duplicate" | "totals"; expectedTax: number; reason: string };
+export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess" | "duplicate" | "totals" | "lines"; expectedTax: number; reason: string };
 export type VatDraft = { id: number; docNo: string | null; docType: string; status: string | null; created: string | null; ageDays: number; customer: string | null; registration: string | null; gross: number; tax: number; source: "web" | "ga4" };
 
 function monthsBetween(from: string, to: string): string[] {
@@ -59,13 +59,13 @@ async function loadDocs(db: any, from: string, to: string): Promise<VatDoc[]> {
       CASE WHEN COALESCE(sh."subMotNet", 0) > 0 THEN sh."subMotNet" ELSE COALESCE(li.net, 0) END AS mot_net,
       CASE WHEN COALESCE(sh."subMotNet", 0) > 0 THEN COALESCE(sh."subMotTax", 0) ELSE COALESCE(li.tax, 0) END AS mot_tax,
       sh.registration, c.name AS customer, p.status AS pool_status, NULLIF(TRIM(COALESCE(sh."motStatus", '')), '') AS mot_status,
-      COALESCE(la.n, 0) AS line_count, COALESCE(la.tax, 0) AS line_tax,
+      COALESCE(la.n, 0) AS line_count, COALESCE(la.net, 0) AS line_net, COALESCE(la.tax, 0) AS line_tax,
       EXISTS (SELECT 1 FROM "serviceHistory" t WHERE t."docNo" = sh."ga4Number" AND t.id <> sh.id
                 AND (t."externalId" IS NULL OR t."externalId" NOT LIKE 'WEB-%')) AS ga4_twin
     FROM "serviceHistory" sh
     LEFT JOIN (SELECT "documentId", SUM(COALESCE("subNet", 0)) AS net, SUM(COALESCE("taxAmount", 0)) AS tax
                FROM "serviceLineItems" WHERE "itemType" = 'MOT' GROUP BY "documentId") li ON li."documentId" = sh.id
-    LEFT JOIN (SELECT "documentId", COUNT(*)::int AS n, SUM(COALESCE("taxAmount", 0)) AS tax
+    LEFT JOIN (SELECT "documentId", COUNT(*)::int AS n, SUM(COALESCE("subNet", 0)) AS net, SUM(COALESCE("taxAmount", 0)) AS tax
                FROM "serviceLineItems" GROUP BY "documentId") la ON la."documentId" = sh.id
     LEFT JOIN customers c ON c.id = sh."customerId"
     LEFT JOIN LATERAL (SELECT status FROM "ga4NumberPool" WHERE "claimedByDocId" = sh.id ORDER BY id DESC LIMIT 1) p ON TRUE
@@ -88,7 +88,7 @@ async function loadDocs(db: any, from: string, to: string): Promise<VatDoc[]> {
       source: String(r.externalId || "").startsWith("WEB-") ? "web" : "ga4",
       ga4Number: r.ga4Number, poolStatus: r.pool_status, motStatus: r.mot_status,
       inGa4: r.pool_status === "filled" || !!r.ga4_twin,
-      lineCount: num(r.line_count), lineTax: sign * num(r.line_tax),
+      lineCount: num(r.line_count), lineNet: sign * num(r.line_net), lineTax: sign * num(r.line_tax),
       net: sign * num(r.net), tax: sign * num(r.tax), gross: sign * num(r.gross), motNet: sign * num(r.mot_net), motTax: sign * num(r.mot_tax),
     };
   });
@@ -172,7 +172,12 @@ function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | nu
   //    (£8.33 at £50), plus that drift.
   //    Negative line VAT on a sales invoice is a data oddity (a discount or adjustment line), never
   //    evidence about the MOT — judge those on their totals alone.
-  if (d.lineCount > 0 && d.lineTax >= 0 && Math.abs(d.tax - d.lineTax) > 2) {
+  //    And the lines only count as evidence when they describe the invoice: when every line is in
+  //    twice they add up to exactly double — the totals are right, the lines need tidying.
+  const linesDoubled = d.lineCount > 1 && Math.abs(d.net) > 0.005 && Math.abs(d.lineNet - 2 * d.net) <= Math.max(0.1, 0.02 * Math.abs(d.net));
+  if (linesDoubled) return { ...d, kind: "lines", expectedTax: d.tax, reason: `Every line is on the invoice twice — the totals are right (£${d.net.toFixed(2)} + VAT £${d.tax.toFixed(2)}), the lines add up to double.` };
+  const linesDescribeIt = d.lineCount > 0 && Math.abs(d.lineNet - d.net) <= Math.max(2, 0.01 * Math.abs(d.net));
+  if (linesDescribeIt && d.lineTax >= 0 && Math.abs(d.tax - d.lineTax) > 2) {
     const diff = round2(d.tax - d.lineTax);
     const motLike = !!d.motStatus && Math.abs(diff) >= 7 && Math.abs(diff) <= 9.5;
     return motLike

@@ -91,6 +91,7 @@ export default function VatReturn() {
 
   const groups = d ? {
     totals: d.exceptions.filter((x) => x.kind === "totals"),
+    lines: d.exceptions.filter((x) => x.kind === "lines"),
     motVat: d.exceptions.filter((x) => x.kind === "motVat"),
     duplicate: d.exceptions.filter((x) => x.kind === "duplicate"),
     high: d.exceptions.filter((x) => x.kind === "high"),
@@ -261,6 +262,9 @@ export default function VatReturn() {
 
               <Problem open title="Totals don't add up" count={groups.totals.length} hint="gross should equal net + VAT; open the invoice and re-save it, or tell me which figure is right">
                 {problemTable(groups.totals, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "Net", cell: (x) => gbp(x.net), right: true }, { head: "VAT", cell: (x) => gbp(x.tax), right: true }, { head: "Gross", cell: (x) => <span className="font-medium">{gbp(x.gross)}</span>, right: true }, { head: "Net + VAT", cell: (x) => gbp(x.net + x.tax), right: true }])}
+              </Problem>
+              <Problem title="Lines on the invoice twice" count={groups.lines.length} hint="the money is right; the invoice prints every line twice — a tidy-up, not a VAT problem">
+                {problemTable(groups.lines, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "Net", cell: (x) => gbp(x.net), right: true }, { head: "VAT", cell: (x) => gbp(x.tax), right: true }, { head: "Lines", cell: (x) => <span className="text-xs text-muted-foreground">{x.lineCount} lines, adding to {gbp(x.lineNet)}</span> }])}
               </Problem>
               <Problem open title="MOT charged with VAT" count={groups.motVat.length} hint="an MOT is always zero-rated; open the invoice and take the VAT off the MOT">
                 {problemTable(groups.motVat, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "VAT charged", cell: (x) => gbp(x.tax), right: true }, { head: "Should be", cell: (x) => <span className="font-medium">{gbp(x.expectedTax)}</span>, right: true }])}
