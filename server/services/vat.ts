@@ -71,6 +71,12 @@ async function loadDocs(db: any, from: string, to: string): Promise<VatDoc[]> {
     LEFT JOIN LATERAL (SELECT status FROM "ga4NumberPool" WHERE "claimedByDocId" = sh.id ORDER BY id DESC LIMIT 1) p ON TRUE
     WHERE sh."docType" IN ('SI', 'XS', 'CR')
       AND COALESCE(sh."docStatus", '') <> '3' AND LOWER(COALESCE(sh."docStatus", '')) <> 'void'
+      -- While an issued web invoice claims a GA4 number, GA4's copy under that number is a mirror
+      -- of the same sale (filled by the pool worker, reconciled by the nightly retire step) — the
+      -- web copy carries the sale here. Once the retire step removes the web copy, GA4's stands.
+      AND NOT (COALESCE(sh."externalId", '') NOT LIKE 'WEB-%' AND sh."docNo" IS NOT NULL
+               AND EXISTS (SELECT 1 FROM "serviceHistory" w WHERE w."externalId" LIKE 'WEB-%' AND w."docType" = 'SI'
+                           AND w."ga4Number" = sh."docNo" AND w."dateIssued" IS NOT NULL))
       AND sh."dateIssued" >= ${naiveUtc(from + "T00:00:00")}::timestamp
       AND sh."dateIssued" <= ${naiveUtc(to + "T23:59:59.999")}::timestamp
     ORDER BY sh."dateIssued", sh.id`);
@@ -141,6 +147,7 @@ function split(doc: { net: number; tax: number }) {
 }
 
 function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | null {
+  if (Math.abs(d.gross) < 0.005) return null; // no money, nothing to judge (a mirror awaiting its totals, or a £0 doc)
   // 0. An insurer's invoice: the repair's VAT is charged on the customer's separate excess invoice,
   //    so its own VAT is nil by design while its lines still carry the full 20%. Point at the excess.
   if (d.docType === "SI" && d.tax === 0 && d.lineCount > 0 && d.lineTax > 2) {
@@ -154,7 +161,9 @@ function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | nu
   //    Lines round VAT per line and the totals round once, so they drift by up to about a pound
   //    on an ordinary invoice; only a bigger gap is a rewrite. A taxed £45 MOT shows as £7.50
   //    (£8.33 at £50), plus that drift.
-  if (d.lineCount > 0 && Math.abs(d.tax - d.lineTax) > 2) {
+  //    Negative line VAT on a sales invoice is a data oddity (a discount or adjustment line), never
+  //    evidence about the MOT — judge those on their totals alone.
+  if (d.lineCount > 0 && d.lineTax >= 0 && Math.abs(d.tax - d.lineTax) > 2) {
     const diff = round2(d.tax - d.lineTax);
     const motLike = !!d.motStatus && Math.abs(diff) >= 7 && Math.abs(diff) <= 9.5;
     return motLike
@@ -253,10 +262,10 @@ export async function getVatPeriod(opts: { from: string; to: string }) {
   // has to be visible here rather than quietly doubling the month.
   const ga4ByNo = new Map(docs.filter((d) => d.source === "ga4" && d.docNo).map((d) => [d.docNo!, d]));
   for (const w of docs) {
-    if (w.source !== "web" || !w.ga4Number) continue;
-    const twin = ga4ByNo.get(w.ga4Number);
+    if (w.source !== "web" || !w.docNo) continue;
+    const twin = ga4ByNo.get(w.docNo);
     if (!twin || twin.id === w.id) continue;
-    exceptions.push({ ...w, kind: "duplicate", expectedTax: 0, reason: `Counted twice — GA4's copy ${twin.docNo} (${twin.gross === w.gross ? "same total" : `£${twin.gross.toFixed(2)} vs £${w.gross.toFixed(2)} here`}) is issued in this period too. Retire one.` });
+    exceptions.push({ ...w, kind: "duplicate", expectedTax: 0, reason: `Number ${w.docNo} is also a GA4 invoice issued in this period (${Math.abs(twin.gross - w.gross) < 0.005 ? "same total — the same sale twice" : `£${twin.gross.toFixed(2)} there vs £${w.gross.toFixed(2)} here — a number clash`}).` });
   }
   const notInGa4 = docs.filter((d) => d.source === "web" && !d.inGa4);
 
