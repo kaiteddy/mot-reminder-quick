@@ -52,7 +52,7 @@ function Row({ i, mileage }: { i: Item; mileage: number | null }) {
           </span>
         ) : (
           <span className="text-muted-foreground">
-            Nothing on any job we've raised{mileage ? <> — this car has covered <b className="tabular-nums text-slate-700">{num(mileage)} miles</b></> : null}
+            Nothing on any job we've raised{mileage ? <> — this car is on <b className="tabular-nums text-slate-700">{num(mileage)} miles</b></> : null}
           </span>
         )}
       </div>
@@ -93,7 +93,12 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
   if (isLoading) return <div className="flex items-center gap-2 py-10 justify-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Reading this car's jobs…</div>;
 
   const items: Item[] = ((data as any)?.items ?? []) as Item[];
-  const mileage = ((data as any)?.latestMileage ?? null) as number | null;
+  const d: any = data ?? {};
+  // What the car is on today, carried forward from the last reading anyone took at the rate this
+  // customer actually drives — not the last figure that happened to get written on a job.
+  const mileage = (d.estimatedMileage ?? d.latestMileage ?? null) as number | null;
+  const rate = (d.milesPerYear ?? null) as number | null;
+  const projected = d.estimatedMileage != null && d.latestMileage != null && d.estimatedMileage > d.latestMileage;
   const by = (s: Item["status"]) => items.filter((i) => i.status === s);
   const overdue = by("overdue"), noRecord = by("noRecord"), soon = by("soon"), ok = by("ok");
   const never = by("never"), wear = by("unscheduled").filter((i) => i.times > 0);
@@ -109,15 +114,21 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
     <div className="space-y-3 text-[13px]">
       <div className="flex items-baseline justify-between gap-4">
         <p className="text-muted-foreground">
-          Read off this car's own jobs. Intervals are a general guide — the manufacturer's schedule wins.
+          Read off this car's own jobs and its MOT readings. Intervals are a general guide — the
+          manufacturer's schedule wins.
         </p>
-        {mileage ? <span className="shrink-0 text-muted-foreground">on <b className="text-slate-800 tabular-nums">{num(mileage)}</b> miles</span> : null}
+        {mileage ? (
+          <span className="shrink-0 text-right text-muted-foreground">
+            on {projected ? "about " : ""}<b className="text-slate-800 tabular-nums">{num(mileage)}</b> miles
+            {rate ? <span className="block text-[11px]">{num(rate)} a year · last read {num(d.latestMileage)} on {ukDate(d.lastReadOn)}{d.lastReadFrom === "MOT" ? " at MOT" : ""}</span> : null}
+          </span>
+        ) : null}
       </div>
 
       <Section tone="border-red-300 bg-red-50" icon={<AlertTriangle className="w-4 h-4 text-red-600" />}
         title="Overdue" items={overdue} mileage={mileage} />
       <Section tone="border-orange-300 bg-orange-50" icon={<AlertTriangle className="w-4 h-4 text-orange-600" />}
-        title={`Never done here${mileage ? ` — and this car is on ${num(mileage)} miles` : ""}`}
+        title={`Never done here${mileage ? ` — and this car is on ${projected ? "about " : ""}${num(mileage)} miles` : ""}`}
         items={noRecord} mileage={mileage} />
       <Section tone="border-amber-300 bg-amber-50" icon={<Clock className="w-4 h-4 text-amber-600" />}
         title="Due soon" items={soon} mileage={mileage} />

@@ -4246,19 +4246,64 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
   if (!input.vehicleId && !reg) return { items: [], latestMileage: null };
 
   const rows: any[] = (await db.execute(sql`
-    SELECT sh.id, sh."docNo", sh."docType",
+    SELECT sh.id, sh."docNo", sh."docType", sh.registration,
            COALESCE(sh."dateIssued", sh."dateCreated") AS on_date,
            sh.mileage, sh.description,
            COALESCE(string_agg(li.description, ' | '), '') AS lines
     FROM "serviceHistory" sh
     LEFT JOIN "serviceLineItems" li ON li."documentId" = sh.id
     WHERE ${where} AND COALESCE(sh."docStatus", '') <> '3'
-    GROUP BY sh.id, sh."docNo", sh."docType", sh."dateIssued", sh."dateCreated", sh.mileage, sh.description
+    GROUP BY sh.id, sh."docNo", sh."docType", sh.registration, sh."dateIssued", sh."dateCreated", sh.mileage, sh.description
     ORDER BY COALESCE(sh."dateIssued", sh."dateCreated") DESC NULLS LAST`)).rows as any;
 
-  // Mileage is often left off a job, so carry the highest reading seen as the car's current one.
-  const mileages = rows.map((r: any) => Number(r.mileage) || 0).filter((m) => m > 0);
-  const latestMileage = mileages.length ? Math.max(...mileages) : null;
+  // What the car is on TODAY, which is what decides whether anything is due — and it is never the
+  // last reading we happened to write down. Every MOT records an odometer reading, so the two
+  // sources together give both a rate and a recent anchor: our own jobs, plus the test history.
+  type Reading = { date: Date; miles: number; from: "job" | "MOT" };
+  const readings: Reading[] = [];
+  for (const r of rows as any[]) {
+    const m = Number(r.mileage) || 0;
+    const d = r.on_date ? new Date(r.on_date) : null;
+    if (m > 0 && d && !isNaN(d.getTime())) readings.push({ date: d, miles: m, from: "job" });
+  }
+  const plate = String(input.registration || (rows as any[])[0]?.registration || "").replace(/\s+/g, "");
+  if (plate) {
+    try {
+      const { getMOTHistory } = await import("./motApi");
+      const mot: any = await getMOTHistory(plate);
+      for (const t of (mot?.motTests ?? [])) {
+        const raw = Number(t.odometerValue);
+        const d = t.completedDate ? new Date(t.completedDate) : null;
+        if (!(raw > 0) || !d || isNaN(d.getTime())) continue;
+        const km = String(t.odometerUnit || "mi").toLowerCase().startsWith("k");
+        readings.push({ date: d, miles: Math.round(km ? raw * 0.621371 : raw), from: "MOT" });
+      }
+    } catch { /* DVSA unavailable or the plate is unknown to it — our own jobs still stand */ }
+  }
+  readings.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const now = new Date();
+  const YEAR = 1000 * 60 * 60 * 24 * 365.25;
+  const first = readings[0] ?? null;
+  const lastRead = readings[readings.length - 1] ?? null;
+  // Miles a year, over the whole span we can see. Needs a year of separation to mean anything, and
+  // is held to something a car could plausibly do — a mis-keyed reading otherwise sets the rate.
+  let milesPerYear: number | null = null;
+  if (first && lastRead && lastRead.miles > first.miles) {
+    const years = (lastRead.date.getTime() - first.date.getTime()) / YEAR;
+    if (years >= 1) {
+      const rate = Math.round((lastRead.miles - first.miles) / years);
+      if (rate >= 500 && rate <= 40000) milesPerYear = rate;
+    }
+  }
+  const latestMileage = lastRead?.miles ?? null;
+  // Carried forward at that rate from the last time anyone actually looked.
+  const estimatedMileage = lastRead
+    ? Math.round(lastRead.miles + (milesPerYear ?? 0) * Math.max(0, (now.getTime() - lastRead.date.getTime()) / YEAR))
+    : null;
+  const mileageNow = estimatedMileage ?? latestMileage;
+  const lastReadOn = lastRead ? lastRead.date.toISOString().slice(0, 10) : null;
+  const lastReadFrom = lastRead?.from ?? null;
 
   const byKey = new Map<string, { date: Date; docNo: string | null; mileage: number | null }[]>();
   for (const r of rows) {
@@ -4274,13 +4319,12 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
     }
   }
 
-  const now = new Date();
   const items = SERVICE_ITEMS.map((def) => {
     const done = (byKey.get(def.key) ?? []).sort((a, b) => b.date.getTime() - a.date.getTime());
     const last = done[0] ?? null;
     const prev = done[1] ?? null;
-    const milesSince = last?.mileage && latestMileage && latestMileage > last.mileage
-      ? latestMileage - last.mileage : null;
+    const milesSince = last?.mileage && mileageNow && mileageNow > last.mileage
+      ? mileageNow - last.mileage : null;
     const monthsSince = last
       ? Math.floor((now.getTime() - last.date.getTime()) / (1000 * 60 * 60 * 24 * 30.44)) : null;
 
@@ -4300,7 +4344,7 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
       // Nothing on record. Kept apart from a genuine overdue: "we did this and it is now due
       // again" and "we have never touched it on a car with 80,000 miles up" are different
       // conversations, and lumping them together buried both.
-      status = (def.everyMiles && latestMileage && latestMileage >= def.everyMiles) ? "noRecord" : "never";
+      status = (def.everyMiles && mileageNow && mileageNow >= def.everyMiles) ? "noRecord" : "never";
     } else {
       check(milesSince, def.everyMiles, "miles");
       check(monthsSince, def.everyMonths, "months");
@@ -4333,7 +4377,7 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
     kind: svc[0]?.label ?? null,
   } as any);
 
-  return { items: merged, latestMileage };
+  return { items: merged, latestMileage, estimatedMileage, milesPerYear, lastReadOn, lastReadFrom, readings: readings.length };
 }
 
 /** Pre-set description snippets (GA4 parity). */
