@@ -98,7 +98,7 @@ export default function VatReturn() {
     low: d.exceptions.filter((x) => x.kind === "low"),
     excess: d.exceptions.filter((x) => x.kind === "excess"),
   } : null;
-  const toSort = d ? d.exceptions.length + d.drafts.length + d.notInGa4.length : 0;
+  const toSort = d ? d.exceptions.length + d.drafts.length + d.notInGa4.length + d.purchases.missing.length + (d.purchases.unlabelled ? 1 : 0) : 0;
   const moved = filed ? (filed.drift.added.length + filed.drift.removed.length + filed.drift.changed.length + filed.drift.carsAdded.length + filed.drift.carsRemoved.length + filed.drift.carsChanged.length) : 0;
 
   const problemTable = (rows: any[], cols: { head: string; cell: (x: any) => React.ReactNode; right?: boolean }[]) => (
@@ -177,7 +177,7 @@ export default function VatReturn() {
                   <TableBody>
                     {[
                       { box: "1", what: "VAT on sales", sub: `workshop ${gbp(d.totals.vat)} + cars ${gbp(d.cars.vat)}`, app: d.boxes.box1, was: filedBox("box1") },
-                      { box: "4", what: "VAT to claim back", sub: "from the bank and card feed, as labelled", app: d.boxes.box4, was: filedBox("box4") },
+                      { box: "4", what: "VAT to claim back", sub: d.purchases.missing.length ? `no statements loaded yet for ${d.purchases.missing.join(", ")} — short until they are` : "from the bank and card statements, as labelled on Profit & Cashbook", app: d.boxes.box4, was: filedBox("box4") },
                       { box: "5", what: d.boxes.box5 != null && d.boxes.box5 < 0 ? "To reclaim" : "To pay", sub: "Box 1 − Box 4", app: d.boxes.box5, was: filedBox5 },
                       { box: "6", what: "Sales, before VAT", sub: `Ravi also adds the car margin, making ${gbp(d.boxes.box6WithMargin)}`, app: d.boxes.box6, was: filedBox("box6") },
                     ].map((r) => {
@@ -231,6 +231,43 @@ export default function VatReturn() {
               </CardContent>
             </Card>
 
+            {/* The purchases side — what Box 4 is built from */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-base">VAT to claim back, month by month</CardTitle></CardHeader>
+              <CardContent className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Month</TableHead><TableHead className="text-right">Bank lines</TableHead><TableHead className="text-right">Card lines</TableHead>
+                    <TableHead className="text-right">Not labelled</TableHead><TableHead className="text-right">VAT to claim</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {d.purchases.months.map((m) => {
+                      const none = !m.bank && !m.card;
+                      return (
+                        <TableRow key={m.month}>
+                          <TableCell className="font-medium">{m.label}</TableCell>
+                          <TableCell className="text-right tabular-nums">{none ? <span className="text-amber-700">no statement</span> : m.bank}</TableCell>
+                          <TableCell className="text-right tabular-nums">{none ? "" : m.card}</TableCell>
+                          <TableCell className={`text-right tabular-nums ${m.unlabelled ? "text-amber-700" : "text-muted-foreground"}`}>{none ? "" : m.unlabelled || "—"}</TableCell>
+                          <TableCell className="text-right tabular-nums font-semibold">{none ? "—" : gbp(m.reclaim)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    <TableRow className="font-semibold bg-muted/40">
+                      <TableCell>Quarter</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.purchases.months.reduce((n, m) => n + m.bank, 0)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.purchases.months.reduce((n, m) => n + m.card, 0)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.purchases.unlabelled || "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{gbp(d.boxes.box4)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+                <div className="text-sm text-muted-foreground mt-3">
+                  Built from the bank and card statements on <Link href="/reconciliation" className="text-primary hover:underline">Profit &amp; Cashbook</Link>: each line's category decides the VAT rate. A month with no statement claims nothing; a line with no label claims 20%.
+                </div>
+              </CardContent>
+            </Card>
+
             {/* What has moved since it was filed */}
             {filed && moved > 0 && (
               <Card className="border-amber-300">
@@ -258,8 +295,24 @@ export default function VatReturn() {
                 {toSort ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
                 Things to sort{toSort ? ` — ${toSort}` : ""}
               </h2>
-              {toSort === 0 && <div className="text-sm text-emerald-700">Nothing. Every invoice fits the rules, nothing is sitting as a draft, and the old system has a copy of everything.</div>}
+              {toSort === 0 && <div className="text-sm text-emerald-700">Nothing. Every invoice fits the rules, nothing is sitting as a draft, every month's statements are in and labelled, and the old system has a copy of everything.</div>}
 
+              {d.purchases.missing.length > 0 && (
+                <div className="rounded-lg border bg-card px-4 py-3 flex items-center gap-3">
+                  <span className="inline-flex h-6 min-w-6 px-1.5 items-center justify-center rounded-full bg-amber-100 text-amber-900 text-sm font-semibold">{d.purchases.missing.length}</span>
+                  <span className="font-medium">No bank or card statement loaded for {d.purchases.missing.join(", ")}</span>
+                  <span className="text-sm text-muted-foreground hidden md:inline">— until it is, nothing is claimed back for {d.purchases.missing.length === 1 ? "that month" : "those months"}.</span>
+                  <Link href="/reconciliation" className="ml-auto text-sm text-primary hover:underline whitespace-nowrap">Load it on Profit &amp; Cashbook</Link>
+                </div>
+              )}
+              {d.purchases.unlabelled > 0 && (
+                <div className="rounded-lg border bg-card px-4 py-3 flex items-center gap-3">
+                  <span className="inline-flex h-6 min-w-6 px-1.5 items-center justify-center rounded-full bg-amber-100 text-amber-900 text-sm font-semibold">{d.purchases.unlabelled}</span>
+                  <span className="font-medium">{plural(d.purchases.unlabelled, "purchase")} not labelled</span>
+                  <span className="text-sm text-muted-foreground hidden md:inline">— each claims 20% until you say what it was.</span>
+                  <Link href="/reconciliation" className="ml-auto text-sm text-primary hover:underline whitespace-nowrap">Label them on Profit &amp; Cashbook</Link>
+                </div>
+              )}
               <Problem open title="Totals don't add up" count={groups.totals.length} hint="gross should equal net + VAT; open the invoice and re-save it, or tell me which figure is right">
                 {problemTable(groups.totals, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "Net", cell: (x) => gbp(x.net), right: true }, { head: "VAT", cell: (x) => gbp(x.tax), right: true }, { head: "Gross", cell: (x) => <span className="font-medium">{gbp(x.gross)}</span>, right: true }, { head: "Net + VAT", cell: (x) => gbp(x.net + x.tax), right: true }])}
               </Problem>

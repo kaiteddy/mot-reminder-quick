@@ -118,6 +118,24 @@ async function loadDrafts(db: any, from: string, to: string): Promise<VatDraft[]
   }));
 }
 
+/** The purchases side: what the bank and card statements hold for each month, and the VAT the
+ *  Profit & Cashbook labels say can be claimed. A month with no lines at all has no statement
+ *  loaded yet — Box 4 is silently short until it is — and an unlabelled line claims at 20% by
+ *  default, which is only right if that is what it was. */
+async function loadPurchases(db: any, from: string, to: string) {
+  const rows: any = await db.execute(sql`
+    SELECT to_char(t."txnDate", 'YYYY-MM') AS month,
+      COUNT(*) FILTER (WHERE t.source = 'bank')::int AS bank, COUNT(*) FILTER (WHERE t.source = 'card')::int AS card,
+      COUNT(*) FILTER (WHERE COALESCE(t."categoryOverride", l.category) IS NULL AND t.amount::numeric < 0)::int AS unlabelled,
+      MAX(t."txnDate")::date::text AS latest
+    FROM "bankTransactions" t
+    LEFT JOIN "transactionLabels" l ON l.source = t.source AND l."counterpartyKey" = t."counterpartyKey"
+    WHERE t."txnDate" >= ${from}::date AND t."txnDate" <= ${to}::date
+    GROUP BY 1 ORDER BY 1`);
+  const byMonth = Object.fromEntries((rows.rows || []).map((r: any) => [r.month, { bank: num(r.bank), card: num(r.card), unlabelled: num(r.unlabelled), latest: r.latest }]));
+  return byMonth as Record<string, { bank: number; card: number; unlabelled: number; latest: string }>;
+}
+
 /** Sold cars by sale date. Margin scheme: output VAT is a sixth of the vehicle margin; the full
  *  selling price still counts as a zero-rated sale for Box 6. A deal flagged stdRated pays VAT
  *  on the whole price instead. Same arithmetic as the Profit & Cashbook page. */
@@ -267,10 +285,20 @@ export async function getVatPeriod(opts: { from: string; to: string }) {
 
   // Purchases side, from the bank/card feed as labelled on the Profit & Cashbook page.
   let box4: number | null = null;
+  let reclaimByMonth: Record<string, number> = {};
   try {
     const rec: any = await getReconciliation({ from, to });
     box4 = round2((rec?.vat?.reclaimed || []).reduce((s: number, v: number) => s + (v || 0), 0));
+    (rec?.months || []).forEach((m: string, i: number) => { reclaimByMonth[m] = round2(rec.vat.reclaimed[i] || 0); });
   } catch { box4 = null; }
+  const cover = await loadPurchases(db, from, to);
+  const today = new Date().toISOString().slice(0, 7);
+  const purchases = {
+    months: months.map((m) => ({ month: m.month, label: m.label, bank: cover[m.month]?.bank || 0, card: cover[m.month]?.card || 0, unlabelled: cover[m.month]?.unlabelled || 0, latest: cover[m.month]?.latest || null, reclaim: reclaimByMonth[m.month] ?? 0 })),
+    // a month with nothing loaded, up to and including the current month
+    missing: months.filter((m) => !cover[m.month] && m.month <= today).map((m) => m.label),
+    unlabelled: Object.values(cover).reduce((n, c) => n + c.unlabelled, 0),
+  };
 
   const box1 = round2(totals.vat + carsInfo.vat);
   const box6 = round2(totals.stdNet + totals.zeroNet + carsInfo.sales);
@@ -320,7 +348,7 @@ export async function getVatPeriod(opts: { from: string; to: string }) {
     };
   }
 
-  return { from, to, months, totals, cars: carsInfo, boxes, exceptions, notInGa4, drafts, filing, docCount: docs.length };
+  return { from, to, months, totals, cars: carsInfo, boxes, purchases, exceptions, notInGa4, drafts, filing, docCount: docs.length };
 }
 
 export async function recordVatFiling(opts: { from: string; to: string; boxes?: Record<string, number | null>; notes?: string }) {
