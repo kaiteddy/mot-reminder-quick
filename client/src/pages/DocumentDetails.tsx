@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge, Lock, Unlock } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge, Lock, Unlock, CheckSquare, Square, ClipboardList } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
@@ -284,6 +284,74 @@ export default function DocumentDetails() {
     markDirty();
   };
   const setItemsDirty = (fn: (p: Item[]) => Item[]) => { setItems(fn); markDirty(); };
+
+  // "Jobs to be carried out" — the one-tap chips at the top of the Description tab (the same
+  // model as the mobile job sheet). Ticking a job writes its "Carry out …" line into the
+  // description and, for a service, drops the priced parts + labour on the job; unticking takes
+  // them back out. MOT is read straight off the Extras MOT amount so the chip and the Extras
+  // tick can never disagree. Line keys are remembered per job so an untick removes exactly the
+  // lines that job added and nothing staff typed by hand.
+  const JOB_TEXT: Record<string, string> = { mot: "Carry out MOT Test", small: "Carry out Small Service", major: "Carry out Major Service", aircon: "Carry out Air Con Re-Gas" };
+  const [jobLineKeys, setJobLineKeys] = useState<Record<string, string[]>>({});
+  const descHasLine = (t: string) => String(form.description ?? "").split("\n").some((l) => l.trim().replace(/^-\s*/, "").toLowerCase() === t.toLowerCase());
+  const addDescLine = (t: string) => { if (!descHasLine(t)) set("description", (form.description ? form.description.trimEnd() + "\n" : "") + t); };
+  const rmDescLine = (t: string) => set("description", String(form.description ?? "").split("\n").filter((l) => l.trim().replace(/^-\s*/, "").toLowerCase() !== t.toLowerCase()).join("\n"));
+  const jobTicked: Record<string, boolean> = {
+    mot: (num(form.motAmount) || 0) > 0,
+    small: !!jobLineKeys.small || descHasLine(JOB_TEXT.small),
+    major: !!jobLineKeys.major || descHasLine(JOB_TEXT.major),
+    aircon: !!jobLineKeys.aircon || descHasLine(JOB_TEXT.aircon),
+  };
+  const toggleMotJob = (on: boolean) => {
+    if (on) {
+      setForm((f) => ({
+        ...f,
+        motAmount: num(f.motAmount) ? f.motAmount : motDefault,
+        motClass: f.motClass || "4",
+        motStatus: f.motStatus || "Pass",
+        staffMotTester: f.staffMotTester || "Dec Buckley",
+        description: String(f.description ?? "").split("\n").some((l) => l.trim().replace(/^-\s*/, "").toLowerCase() === JOB_TEXT.mot.toLowerCase())
+          ? f.description : (f.description ? f.description.trimEnd() + "\n" : "") + JOB_TEXT.mot,
+      }));
+      markDirty();
+    } else {
+      setForm((f) => ({
+        ...f, motAmount: "",
+        description: String(f.description ?? "").split("\n").filter((l) => l.trim().replace(/^-\s*/, "").toLowerCase() !== JOB_TEXT.mot.toLowerCase()).join("\n"),
+      }));
+      markDirty();
+    }
+  };
+  const withoutLine = (text: string, t: string) => text.split("\n").filter((l) => l.trim().replace(/^-\s*/, "").toLowerCase() !== t.toLowerCase()).join("\n");
+  const removeJobLines = (kind: string) => {
+    const keys = jobLineKeys[kind] || [];
+    if (keys.length) setItemsDirty((p) => p.filter((it: any) => !keys.includes(it._k)));
+    setJobLineKeys((k) => { const n = { ...k }; delete n[kind]; return n; });
+  };
+  const removeJobSet = (kind: string) => {
+    removeJobLines(kind);
+    rmDescLine(JOB_TEXT[kind]);
+  };
+  const addJobSet = (kind: string, jobSet: { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number; labour?: { description: string; unitPrice: number } }) => {
+    // A car gets a Small OR a Major service, not both. The description is rebuilt ONCE from the
+    // current text (removing the other service's line, any older "- Small Service" style line
+    // and this job's own line) so two successive set() calls can't overwrite each other.
+    let desc = String(form.description ?? "");
+    const other = kind === "small" ? "major" : kind === "major" ? "small" : null;
+    if (other && jobTicked[other]) { removeJobLines(other); desc = withoutLine(desc, JOB_TEXT[other]); }
+    const newItems = [
+      ...jobSet.parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() })),
+      ...(jobSet.labour ? [recalc({ itemType: "Labour", description: jobSet.labour.description, quantity: 1, unitPrice: jobSet.labour.unitPrice, vatRate: 20, _k: nextItemKey() })] : []),
+    ];
+    setItemsDirty((p) => [...p, ...newItems]);
+    setJobLineKeys((k) => ({ ...k, [kind]: newItems.map((it: any) => it._k) }));
+    desc = withoutLine(withoutLine(desc, jobSet.label), JOB_TEXT[kind]);
+    set("description", (desc.trim() ? desc.trimEnd() + "\n" : "") + JOB_TEXT[kind]);
+    // Don't clobber a sundries amount staff already typed in.
+    if (jobSet.sundries && !num(form.sundriesAmount)) set("sundriesAmount", jobSet.sundries);
+    const unpriced = jobSet.parts.filter((pt) => pt.unitPrice == null).length;
+    toast.success(`${jobSet.label} added — ${jobSet.parts.length} part${jobSet.parts.length === 1 ? "" : "s"}${jobSet.labour ? " + labour" : ""}` + (unpriced ? `; ${unpriced} need a price in the Parts tab` : ""));
+  };
   const [printing, setPrinting] = useState(false);
   // An invoice must have the customer name + vehicle mileage before it goes to the customer.
   // A job sheet must have a mobile number — it's how we reach the customer once the car's in.
@@ -1852,41 +1920,19 @@ export default function DocumentDetails() {
                     <ServicingTab vehicleId={(data as any)?.vehicleId ?? undefined} registration={regForHistory || undefined} excludeDocumentId={id || undefined} />
                   </TabsContent>
                   <TabsContent value="description" className="mt-0">
-                    {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
+                    {/* 1. What the car is in for — one tap per job. */}
                     {!base && editing && (
-                      <ServicePartsPicker
+                      <JobsToDoPicker
                         vehInfo={vehInfo}
                         engineCC={form.engineCC}
                         registration={form.registration}
-                        onAdd={(label, parts, sundries, labour) => {
-                          setItemsDirty((p) => [
-                            ...p,
-                            ...parts.map((pt) => recalc({ itemType: "Part", description: pt.description, quantity: pt.quantity || 1, unitPrice: pt.unitPrice ?? 0, vatRate: pt.vatRate ?? 20, _k: nextItemKey() })),
-                            ...(labour ? [recalc({ itemType: "Labour", description: labour.description, quantity: 1, unitPrice: labour.unitPrice, vatRate: 20, _k: nextItemKey() })] : []),
-                          ]);
-                          set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${label}`);
-                          // Don't clobber a sundries amount staff already typed in.
-                          if (sundries && !num(form.sundriesAmount)) set("sundriesAmount", sundries);
-                          const unpriced = parts.filter((pt) => pt.unitPrice == null).length;
-                          toast.success(`Added ${label}: ${parts.length} part${parts.length === 1 ? "" : "s"}` + (unpriced ? ` — ${unpriced} need a price set in the Parts tab` : ""));
-                        }}
+                        ticked={jobTicked}
+                        onToggleMot={toggleMotJob}
+                        onAddSet={addJobSet}
+                        onRemoveSet={removeJobSet}
                       />
                     )}
-                    {!base && editing && (
-                      <div className="flex items-center gap-3 mb-2">
-                        <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
-                        <RepairTimeEstimator
-                          registration={form.registration}
-                          techData={techData}
-                          onEstimate={({ description, minutes }) => {
-                            set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${description} — SWS est. ${minutes} min`);
-                            const hours = round2(minutes / 60);
-                            setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description, quantity: hours || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]);
-                            toast.success(`Added "${description}" (${minutes} min) to Description and as a Labour line — set the rate in the Labour tab`);
-                          }}
-                        />
-                      </div>
-                    )}
+                    {/* 2. The description itself. */}
                     {editing ? (
                       <>
                         {base && <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
@@ -1894,6 +1940,26 @@ export default function DocumentDetails() {
                         <textarea ref={descRef} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} rows={10}
                           placeholder="Describe the work to be carried out…"
                           className="w-full text-[13px] leading-relaxed border border-slate-200 rounded p-2 outline-none focus:border-violet-400 resize-y" />
+                        {/* 3. Write-up helpers, once the work is done or for anything beyond the standard jobs. */}
+                        {!base && (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 space-y-2">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Write-up helpers — for work beyond the jobs above</div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <PresetPicker currentBody={form.description} onPick={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
+                              <RepairTimeEstimator
+                                registration={form.registration}
+                                techData={techData}
+                                onEstimate={({ description, minutes }) => {
+                                  set("description", (form.description ? form.description.trimEnd() + "\n" : "") + `- ${description} — SWS est. ${minutes} min`);
+                                  const hours = round2(minutes / 60);
+                                  setItemsDirty((p) => [...p, recalc({ itemType: "Labour", description, quantity: hours || 1, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]);
+                                  toast.success(`Added "${description}" (${minutes} min) to Description and as a Labour line — set the rate in the Labour tab`);
+                                }}
+                              />
+                            </div>
+                            <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />
+                          </div>
+                        )}
                       </>
                     ) : <DescriptionView text={form.description ?? ""} />}
                     {!base && !isNew && (
@@ -3182,9 +3248,9 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
     } catch (e: any) { toast.error(e.message || "AI generation failed"); }
   }
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50/60 p-2">
+    <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50/60 p-2">
       <Sparkles className="w-4 h-4 text-violet-600 shrink-0" />
-      <input value={job} onChange={(e) => setJob(e.target.value)} placeholder="Describe the job done — e.g. replaced front brake discs & pads — and let AI write the spec"
+      <input value={job} onChange={(e) => setJob(e.target.value)} placeholder="Other work done — e.g. replaced front brake discs & pads — and let AI write it up"
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); generate(); } }}
         className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500" />
       <button type="button" onClick={generate} disabled={gen.isPending} className="inline-flex items-center gap-1.5 bg-violet-700 text-white rounded px-3 py-1 text-[13px] disabled:opacity-50 shrink-0 hover:bg-violet-800">
@@ -3194,14 +3260,17 @@ function AiJobSpec({ form, onInsert }: { form: Record<string, any>; onInsert: (t
   );
 }
 
-// Pick a service type and it drops the right PARTS straight onto the job (not labour),
-// pulling the engine-oil grade + capacity and aircon gas from the vehicle's tech data so the
-// oil quantity matches the engine. Multiple services can be added (pick each in turn).
-// The set definitions live in lib/serviceParts — shared with the mobile job sheet's job chips,
-// so the two pickers cannot drift.
-function ServicePartsPicker({ vehInfo, engineCC, registration, onAdd }: {
+// "Jobs to be carried out": one tap per job. MOT ticks the Extras MOT (fee, class, status,
+// tester) and writes "Carry out MOT Test"; a service drops its priced parts + labour on the job
+// and writes "Carry out Small/Major Service"; Air Con Re-Gas is offered when the tech data says
+// the car has aircon. Untick to take it all back out. Same model as the mobile job sheet's chips;
+// the set definitions live in lib/serviceParts so the two cannot drift.
+function JobsToDoPicker({ vehInfo, engineCC, registration, ticked, onToggleMot, onAddSet, onRemoveSet }: {
   vehInfo: any; engineCC?: any; registration?: string;
-  onAdd: (label: string, parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[], sundries?: number, labour?: { description: string; unitPrice: number }) => void;
+  ticked: Record<string, boolean>;
+  onToggleMot: (on: boolean) => void;
+  onAddSet: (kind: string, set: { label: string; parts: { description: string; quantity: number; unitPrice?: number; vatRate?: number }[]; sundries?: number; labour?: { description: string; unitPrice: number } }) => void;
+  onRemoveSet: (kind: string) => void;
 }) {
   const grades: string[] = vehInfo?.oilGrades || [];
   const [grade, setGrade] = useState<string>(grades[0] || "");
@@ -3216,26 +3285,39 @@ function ServicePartsPicker({ vehInfo, engineCC, registration, onAdd }: {
   // Major Service labour: the Price Guide's per-band median of what we actually charged.
   const { data: guideData } = trpc.priceGuide.forRegistration.useQuery(
     { registration: registration || "" }, { enabled: !!registration, staleTime: 5 * 60_000 });
-  // Sundries workshop consumables (rags, degreaser, disposal…) charged per service size — not a
-  // priced "part", so it bumps the document's Sundries total rather than adding a line item.
   const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade, majorLabourNet: (guideData as any)?.fullServiceLabour?.net });
 
+  const toggleSet = (kind: "small" | "major" | "aircon") => {
+    if (ticked[kind]) { onRemoveSet(kind); return; }
+    // Ticking before the price list has answered builds the set with everything at £0.
+    if (!priceListData) { toast.message("Prices still loading — try again in a second"); return; }
+    const set = (SETS as any)[kind];
+    if (set) onAddSet(kind, set);
+  };
+
+  const Chip = ({ on, label, sub, onClick }: { on: boolean; label: string; sub?: string; onClick: () => void }) => (
+    <button type="button" onClick={onClick}
+      className={`min-h-[44px] rounded-md border-2 px-2.5 py-1 flex flex-col items-start justify-center gap-0 text-left transition-colors ${on ? "border-violet-600 bg-violet-50 text-violet-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+      <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight">
+        {on ? <CheckSquare className="w-4 h-4 shrink-0" /> : <Square className="w-4 h-4 shrink-0 text-slate-300" />}
+        {label}
+      </span>
+      {sub && <span className="text-[10.5px] opacity-70 pl-[22px]">{sub}</span>}
+    </button>
+  );
+
   return (
-    <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-      <div className="flex items-center gap-2">
-        <Cog className="w-4 h-4 text-slate-500 shrink-0" />
-        <span className="text-[12px] text-slate-600 shrink-0">Add service parts</span>
-        <select
-          className="flex-1 bg-white border border-slate-300 rounded-sm px-2 py-1 text-[13px] outline-none focus:border-violet-500 disabled:opacity-60"
-          value=""
-          disabled={!priceListData}
-          onChange={(e) => { const s = SETS[e.target.value]; if (s) onAdd(s.label, s.parts, s.sundries, s.labour); e.currentTarget.value = ""; }}
-        >
-          <option value="">{priceListData ? "Select a service to add its parts…" : "Loading prices…"}</option>
-          <option value="small">Small Service — oil, oil filter + sump plug seal</option>
-          <option value="major">Major Service — oil, oil/air/cabin filters, sump plug</option>
-          {hasAircon && <option value="aircon">Air Con Re-Gas — {vehInfo.airconType}</option>}
-        </select>
+    <div className="mb-2 rounded-md border border-violet-200 bg-violet-50/40 p-2">
+      <div className="flex items-center gap-2 mb-1.5">
+        <ClipboardList className="w-4 h-4 text-violet-700 shrink-0" />
+        <span className="text-[12px] font-semibold text-slate-700">Jobs to be carried out</span>
+        <span className="text-[11px] text-slate-500">— tick what the car is in for; each one writes its line and adds its parts</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Chip on={!!ticked.mot} label="MOT" sub="ticks MOT in Extras" onClick={() => onToggleMot(!ticked.mot)} />
+        <Chip on={!!ticked.small} label="Small Service" sub="oil, oil filter, sump plug seal" onClick={() => toggleSet("small")} />
+        <Chip on={!!ticked.major} label="Major Service" sub="oil, oil/air/cabin filters, sump plug" onClick={() => toggleSet("major")} />
+        {hasAircon && <Chip on={!!ticked.aircon} label="Air Con Re-Gas" sub={String(vehInfo.airconType)} onClick={() => toggleSet("aircon")} />}
       </div>
       {grades.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
@@ -3282,7 +3364,7 @@ function PresetPicker({ onPick, currentBody }: { onPick: (body: string) => void;
     );
   }
   return (
-    <div className="flex items-center gap-3 mb-2">
+    <div className="flex items-center gap-3">
       <select className="border border-slate-300 rounded-sm px-2 py-1 text-[13px] bg-white" value=""
         onChange={(e) => { const p = (presets as any[])?.find((x) => String(x.id) === e.target.value); if (p) onPick(p.body); }}>
         <option value="">Pre-set descriptions…</option>
