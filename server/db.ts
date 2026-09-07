@@ -4377,6 +4377,27 @@ export async function getVehicleServiceRecord(input: { vehicleId?: number; regis
     kind: svc[0]?.label ?? null,
   } as any);
 
+  // Order within each block, since the declaration order in serviceItems.ts means nothing to a
+  // reader: AdBlue from 2023 was sitting above three items done this June. Things that were DONE
+  // read most recent first; things that are OWING read worst first, so the longest overdue is the
+  // line your eye lands on.
+  const RANK: Record<string, number> = { overdue: 0, noRecord: 1, soon: 2, ok: 3, unscheduled: 4, never: 5 };
+  const dateKey = (v: any) => String(v.lastDate ?? "");
+  merged.sort((a: any, b: any) => {
+    const r = (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9);
+    if (r) return r;
+    if (a.status === "overdue" || a.status === "soon") {
+      // Oldest done = furthest past due.
+      return dateKey(a).localeCompare(dateKey(b));
+    }
+    if (a.status === "noRecord") {
+      // Shortest interval first — what should have come round soonest.
+      return (a.everyMiles ?? 1e9) - (b.everyMiles ?? 1e9) || a.label.localeCompare(b.label);
+    }
+    // Done, and not owing: most recent first.
+    return dateKey(b).localeCompare(dateKey(a)) || a.label.localeCompare(b.label);
+  });
+
   return { items: merged, latestMileage, estimatedMileage, milesPerYear, lastReadOn, lastReadFrom, readings: readings.length };
 }
 
