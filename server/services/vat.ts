@@ -172,6 +172,12 @@ function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | nu
   }
   // 2. Otherwise judge the split itself: everything but the MOT at 20%, on the gross the customer
   //    actually paid (gross is the invariant whichever way the totals were built).
+  // An MOT-only invoice (a £45 or £50 test, nothing else) may carry no MOT line or sub-total at
+  // all — the fee is the whole invoice. Zero VAT on it is right; any VAT on it is the fault.
+  const motOnly = !!d.motStatus && d.motNet === 0 && d.docType === "SI" && (Math.abs(d.gross - 45) < 0.01 || Math.abs(d.gross - 50) < 0.01);
+  if (motOnly) return d.tax > 0.005
+    ? { ...d, kind: "motVat", expectedTax: 0, reason: `An MOT on its own, carrying £${d.tax.toFixed(2)} VAT — an MOT is always zero-rated.` }
+    : null;
   const motGross = d.motNet > 0 ? round2(d.motNet + d.motTax) : 0;
   const expected = round2((d.gross - motGross) / 6);
   const gap = round2(d.tax - expected);
@@ -254,8 +260,12 @@ export async function getVatPeriod(opts: { from: string; to: string }) {
   const box6 = round2(totals.stdNet + totals.zeroNet + carsInfo.sales);
   const boxes = { box1, box4, box5: box4 == null ? null : round2(box1 - box4), box6, box6WithMargin: round2(box6 + carsInfo.base) };
 
+  // An insurer's invoice often lands a month or two after the customer's excess — the Harris job
+  // had the excess in July and the insurer's invoice in August — so look back six months for it.
+  const lookback = new Date(from + "T12:00:00"); lookback.setDate(lookback.getDate() - 183);
+  const earlierExcess = (await loadDocs(db, lookback.toISOString().slice(0, 10), from)).filter((x) => x.docType === "XS");
   const excessByReg = new Map<string, VatDoc[]>();
-  for (const x of docs) if (x.docType === "XS") { const k = String(x.registration || "").replace(/\s+/g, "").toUpperCase(); excessByReg.set(k, [...(excessByReg.get(k) || []), x]); }
+  for (const x of [...earlierExcess, ...docs]) if (x.docType === "XS") { const k = String(x.registration || "").replace(/\s+/g, "").toUpperCase(); excessByReg.set(k, [...(excessByReg.get(k) || []), x]); }
   const exceptions = docs.map((d) => judge(d, excessByReg)).filter((x): x is VatException => !!x);
   // A web invoice and GA4's copy of it, both issued inside the period, are the same sale counted
   // twice. The nightly retire step clears a matched pair; a pair whose totals differ stays, so it
