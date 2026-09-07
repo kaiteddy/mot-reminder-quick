@@ -4139,6 +4139,10 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   // (otherwise folding an opted-out duplicate into an opted-in record would silently
   // re-enable reminders for someone who sent STOP). Keep the earliest opt-out timestamp.
   const optedOut = all.some((r: any) => r.optedOut) ? 1 : 0;
+  // Sticky for the same reason opt-out is: folding a trade account into a normal one would put
+  // its whole fleet back into the reminder stream, and the first anyone would know is the
+  // customer getting texts about 165 cars that aren't theirs.
+  const noVehicleReminders = all.some((r: any) => r.noVehicleReminders) ? 1 : 0;
   const optedOutAt = optedOut
     ? (all.map((r: any) => r.optedOutAt).filter(Boolean).map((d: any) => new Date(d)).sort((a: any, b: any) => a.getTime() - b.getTime())[0] ?? new Date())
     : null;
@@ -4168,7 +4172,7 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   }
   const aliases = new Set<string>(parse(primary.mergedExternalIds));
   for (const s of secs) { for (const a of parse(s.mergedExternalIds)) aliases.add(a); if (s.externalId && !String(s.externalId).startsWith("WEB-")) aliases.add(s.externalId); }
-  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null }).where(eq(customers.id, primaryId));
+  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, noVehicleReminders, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null } as any).where(eq(customers.id, primaryId));
   await db.delete(customers).where(inArray(customers.id, secondaryIds));
   return { moved, primaryId, merged: secondaryIds.length, name };
 }
