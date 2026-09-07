@@ -187,6 +187,15 @@ export const customerMessages = pgTable("customerMessages", {
   receivedAt: timestamp("receivedAt", { mode: "date" }).defaultNow().notNull(),
   read: integer("read").default(0).notNull(), // 0 = unread, 1 = read
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  // Unanswered-message escalation (server/services/unansweredAlerts.ts). "Read" is not
+  // "dealt with" — a thread can be marked read by simply being opened — so this tracks the
+  // thing that matters: has anyone actually got back to the customer?
+  //   handledAt       staff pressed "No reply needed" (or otherwise closed it off without replying)
+  //   escalatedAt     when the last "still unanswered" alert went out for this message
+  //   escalationCount how many alerts have gone out, so the nagging stops at a ceiling
+  handledAt: timestamp("handledAt", { mode: "date" }),
+  escalatedAt: timestamp("escalatedAt", { mode: "date" }),
+  escalationCount: integer("escalationCount").default(0).notNull(),
 }, (table) => ({
   customerIdIdx: index("customer_messages_customer_id_idx").on(table.customerId),
   receivedAtIdx: index("customer_messages_received_at_idx").on(table.receivedAt),

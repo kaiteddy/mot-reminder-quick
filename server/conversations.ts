@@ -21,6 +21,10 @@ export interface ConversationThread {
   optedOut: boolean;
   /** Last time this customer messaged us — WhatsApp only allows freeform replies within 24h of this. */
   lastInboundAt: Date | null;
+  /** Their latest message has had no staff reply and hasn't been marked "No reply needed". */
+  awaitingReply: boolean;
+  /** Working minutes they have been waiting (0 when not awaiting). */
+  waitingMinutes: number;
 }
 
 export interface ConversationMessage {
@@ -137,6 +141,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         deliveryStatus: log.deliveryStatus,
         optedOut: false,
         lastInboundAt: null,
+        awaitingReply: false,
+        waitingMinutes: 0,
       });
     } else if (existing) {
       // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
@@ -181,6 +187,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         deliveryStatus: null,
         optedOut: false,
         lastInboundAt: msg.lastMessageAt,
+        awaitingReply: false,
+        waitingMinutes: 0,
       });
     }
   });
@@ -189,11 +197,26 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
   const optedOutRows = await db.select({ id: customers.id }).from(customers).where(eq(customers.optedOut, 1));
   const optedOutSet = new Set(optedOutRows.map((r) => r.id));
 
+  // Flag threads whose latest customer message has had no reply — the thing the unanswered-
+  // message alerts nag about — so the list shows it even once the thread has been "read".
+  const waitingMap = new Map<number, number>();
+  try {
+    const { listWaiting } = await import("./services/unansweredAlerts");
+    for (const w of await listWaiting()) waitingMap.set(w.customerId, w.verdict.waitingMinutes);
+  } catch (e: any) {
+    console.warn("[Conversations] awaiting-reply flags unavailable:", e?.message);
+  }
+
   // Convert to array and sort by:
   // 1. Unread status (unread first)
   // 2. Last message time (descending)
   return Array.from(conversationMap.values())
-    .map((t) => ({ ...t, optedOut: optedOutSet.has(t.customerId) }))
+    .map((t) => ({
+      ...t,
+      optedOut: optedOutSet.has(t.customerId),
+      awaitingReply: waitingMap.has(t.customerId),
+      waitingMinutes: waitingMap.get(t.customerId) ?? 0,
+    }))
     .sort((a, b) => {
       // First sort by unread count (any unread comes before no unread)
       if (a.unreadCount > 0 && b.unreadCount === 0) return -1;

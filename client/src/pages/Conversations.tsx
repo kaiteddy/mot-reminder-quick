@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle, ChevronLeft, Loader2 } from "lucide-react";
+import { Send, CheckCircle2, Clock, Eye, XCircle, Search, BellOff, Bell, CalendarPlus, Car, Wrench, ExternalLink, ShieldCheck, CalendarClock, AlertTriangle, ChevronLeft, Loader2, CheckCheck, Hourglass } from "lucide-react";
 import { usePushNotifications } from "@/lib/usePushNotifications";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,14 @@ const DOC_TYPE_COLOR: Record<string, string> = {
 };
 const money = (v: any) => (v == null ? "—" : `£${Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
+
+/** "45m", "3h 10m", "26h" — working-hours wait shown on the awaiting-reply chips. */
+function formatWaiting(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  if (h < 10) return `${h}h${minutes % 60 ? ` ${minutes % 60}m` : ""}`;
+  return `${h}h`;
+}
 
 export default function Conversations() {
   const [, setLocation] = useLocation();
@@ -70,6 +78,12 @@ export default function Conversations() {
     onError: (error) => {
       toast.error(`Failed to send message: ${error.message}`);
     },
+  });
+
+  // "No reply needed": stops the unanswered-message alerts for a thread dealt with off-app.
+  const markHandledMutation = trpc.conversations.markHandled.useMutation({
+    onSuccess: () => { toast.success("Marked as dealt with — no more alerts for this message"); refetchThreads(); },
+    onError: (e) => toast.error(e.message || "Couldn't mark as handled"),
   });
 
   const optOutMutation = trpc.customers.setOptOut.useMutation({
@@ -254,6 +268,14 @@ export default function Conversations() {
                               {thread.unreadCount}
                             </Badge>
                           )}
+                          {thread.awaitingReply && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
+                              title="The customer's latest message has had no reply"
+                            >
+                              <Hourglass className="w-3 h-3" /> {formatWaiting(thread.waitingMinutes)}
+                            </span>
+                          )}
                         </div>
                         {thread.vehicleRegistration && (
                           <div className="text-xs text-slate-600 font-mono truncate max-w-[180px]">
@@ -306,6 +328,11 @@ export default function Conversations() {
                           <BellOff className="w-3 h-3" /> Reminders stopped
                         </span>
                       )}
+                      {selectedThread.awaitingReply && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
+                          <Hourglass className="w-3 h-3" /> Awaiting reply · {formatWaiting(selectedThread.waitingMinutes)}
+                        </span>
+                      )}
                     </h2>
                     <div className="flex items-center gap-2 text-xs md:text-sm text-slate-600 mt-1 min-w-0">
                       <span className="shrink-0">{selectedThread.customerPhone}</span>
@@ -326,6 +353,18 @@ export default function Conversations() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+                    {selectedThread.awaitingReply && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={markHandledMutation.isPending}
+                        onClick={() => markHandledMutation.mutate({ customerId: selectedThread.customerId })}
+                        className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                        title="Dealt with by phone or in person — stop the unanswered-message alerts for this thread"
+                      >
+                        <CheckCheck className="w-4 h-4 @6xl:mr-1.5" /> <span className="hidden @6xl:inline">No reply needed</span>
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

@@ -176,3 +176,27 @@ cronRouter.get("/website-stock-sync", async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+/**
+ * Unanswered customer messages. Runs every 10 minutes (vercel.json). Finds inbound messages
+ * nobody has replied to within the configured working-hours wait and sends ONE combined
+ * push + text + email, repeating on a timer until the thread is answered or marked handled.
+ * See server/services/unansweredAlerts.ts. `?dry=1` reports without sending or stamping.
+ *
+ * Auth: same CRON_SECRET bearer as the other crons.
+ */
+cronRouter.get("/unanswered-messages", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { runUnansweredCheck } = await import("../services/unansweredAlerts");
+    const summary = await runUnansweredCheck({ dryRun: String(req.query.dry || "") === "1" });
+    if (summary.alerted) console.log(`[CRON unanswered-messages] alerted about ${summary.alerted} thread(s)`);
+    res.json({ ok: true, ...summary });
+  } catch (e: any) {
+    console.error("[CRON unanswered-messages] failed:", e?.message || e);
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});

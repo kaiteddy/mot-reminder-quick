@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Mail, Loader2, MessageSquare } from "lucide-react";
+import { Mail, Loader2, MessageSquare, Hourglass } from "lucide-react";
 
 const COMMON = [
   { name: "Gmail", host: "smtp.gmail.com", port: 587 },
@@ -90,6 +90,7 @@ export default function EmailSettings() {
         </Card>
 
         <StaffAlertsCard />
+        <UnansweredAlertsCard />
       </div>
     </DashboardLayout>
   );
@@ -135,7 +136,7 @@ function StaffAlertsCard() {
       <CardContent className="space-y-4">
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            WhatsApp can\'t always reach a customer — some don\'t use it, and it refuses a free-form
+            WhatsApp can't always reach a customer — some don't use it, and it refuses a free-form
             reply more than 24 hours after their last message. When that happens the app sends a
             normal text instead, so your reply still gets there. This is the number it sends from.
           </p>
@@ -154,7 +155,7 @@ function StaffAlertsCard() {
               </div>
               <p className="text-xs text-slate-500 mt-1.5">
                 Off is usually right. The notification on your phone is what tells you a customer has
-                messaged — tap it and you land in the conversation ready to reply. A text can\'t do that.
+                messaged — tap it and you land in the conversation ready to reply. A text can't do that.
                 Turn this on only if you want a belt-and-braces nudge as well.
               </p>
             </div>
@@ -174,6 +175,148 @@ function StaffAlertsCard() {
               {test.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Send test text
             </Button>
           )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const DAY_LABELS: Array<[number, string]> = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]];
+
+/**
+ * Unanswered-message escalation. A customer reply that nobody answers is the thing that loses
+ * bookings — the phone banner is missed, the thread is opened and thereby "read", and the
+ * customer waits. This nags (push + text + email) after a working-hours wait, repeating until
+ * someone replies in Conversations or presses "No reply needed" on the thread.
+ */
+function UnansweredAlertsCard() {
+  const { data } = trpc.unansweredAlerts.get.useQuery();
+  const { data: preview, refetch: refetchPreview } = trpc.unansweredAlerts.preview.useQuery();
+  const save = trpc.unansweredAlerts.save.useMutation();
+  const test = trpc.unansweredAlerts.test.useMutation();
+  const runNow = trpc.unansweredAlerts.runNow.useMutation();
+  const utils = trpc.useUtils();
+  const [f, setF] = useState({
+    enabled: true, afterMinutes: 30, repeatMinutes: 60, maxAlerts: 6,
+    openTime: "08:00", closeTime: "18:00", days: [1, 2, 3, 4, 5, 6] as number[],
+    phone: "", email: "", lookbackDays: 7,
+  });
+
+  useEffect(() => { if (data) setF({ ...data }); }, [data]);
+
+  const persist = (next: typeof f) => save.mutateAsync({
+    ...next,
+    afterMinutes: Number(next.afterMinutes) || 30,
+    repeatMinutes: Number(next.repeatMinutes) || 60,
+    maxAlerts: Number(next.maxAlerts) || 6,
+    lookbackDays: Number(next.lookbackDays) || 7,
+  });
+
+  async function onSave() {
+    try { await persist(f); await utils.unansweredAlerts.get.invalidate(); await refetchPreview(); toast.success("Saved"); }
+    catch (e: any) { toast.error(e.message); }
+  }
+  async function onTest() {
+    try {
+      await persist(f);
+      const r: any = await test.mutateAsync();
+      const got = [r.push ? `push ×${r.push}` : null, r.sms ? "text" : null, r.email ? "email" : null].filter(Boolean).join(", ");
+      if (got) toast.success(`Test alert sent by ${got}`);
+      if (r.errors?.length) toast.error(r.errors.join(" · "));
+      if (!got && !r.errors?.length) toast.error("Nothing to send to — add a phone or email, or install the app on a phone for push");
+    } catch (e: any) { toast.error(e.message); }
+  }
+  async function onRunNow() {
+    try {
+      const r: any = await runNow.mutateAsync();
+      await refetchPreview();
+      toast.success(r.alerted ? `Alerted about ${r.alerted} thread${r.alerted === 1 ? "" : "s"}` : "Nothing due right now");
+    } catch (e: any) { toast.error(e.message); }
+  }
+  const toggleDay = (d: number) => setF((p) => ({ ...p, days: p.days.includes(d) ? p.days.filter((x) => x !== d) : [...p.days, d].sort() }));
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Hourglass className="w-5 h-5" /> Unanswered messages</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          If a customer messages and nobody has replied after the wait below, you get a nudge — a
+          notification on the phone, a text and an email — and it repeats until someone answers in
+          Conversations or presses <strong>No reply needed</strong> on the thread. The clock only
+          runs during working hours.
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 items-start">
+          <label className="text-sm text-muted-foreground pt-1">Alerts</label>
+          <div className="col-span-2 flex gap-2">
+            <button type="button" onClick={() => setF((p) => ({ ...p, enabled: true }))}
+              className={`px-4 py-1 rounded text-sm ${f.enabled ? "bg-violet-700 text-white" : "border"}`}>On</button>
+            <button type="button" onClick={() => setF((p) => ({ ...p, enabled: false }))}
+              className={`px-4 py-1 rounded text-sm ${!f.enabled ? "bg-violet-700 text-white" : "border"}`}>Off</button>
+          </div>
+        </div>
+
+        <Field label="Alert after (mins)" value={f.afterMinutes} onChange={(v) => setF((p) => ({ ...p, afterMinutes: Number(v) }))} type="number" placeholder="30" />
+        <Field label="Repeat every (mins)" value={f.repeatMinutes} onChange={(v) => setF((p) => ({ ...p, repeatMinutes: Number(v) }))} type="number" placeholder="60" />
+        <Field label="Stop after (alerts)" value={f.maxAlerts} onChange={(v) => setF((p) => ({ ...p, maxAlerts: Number(v) }))} type="number" placeholder="6" />
+
+        <div className="grid grid-cols-3 gap-3 items-center">
+          <label className="text-sm text-muted-foreground">Working hours</label>
+          <div className="col-span-2 flex items-center gap-2 text-sm">
+            <input type="time" className="border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" value={f.openTime} onChange={(e) => setF((p) => ({ ...p, openTime: e.target.value }))} />
+            <span className="text-slate-500">to</span>
+            <input type="time" className="border rounded px-2 py-1.5 text-sm outline-none focus:border-violet-500" value={f.closeTime} onChange={(e) => setF((p) => ({ ...p, closeTime: e.target.value }))} />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 items-center">
+          <label className="text-sm text-muted-foreground">Working days</label>
+          <div className="col-span-2 flex flex-wrap gap-1.5">
+            {DAY_LABELS.map(([d, label]) => (
+              <button key={d} type="button" onClick={() => toggleDay(d)}
+                className={`px-2.5 py-1 rounded text-xs ${f.days.includes(d) ? "bg-violet-700 text-white" : "border text-slate-600"}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t pt-3 space-y-3">
+          <Field label="Text me on" value={f.phone} onChange={(v) => setF((p) => ({ ...p, phone: String(v) }))} placeholder="+447700900123 (blank = no text)" />
+          <Field label="Email me at" value={f.email} onChange={(v) => setF((p) => ({ ...p, email: String(v) }))} placeholder="you@elimotors.co.uk (blank = no email)" />
+          <p className="text-xs text-slate-500">
+            Texts go from the number under Text messages above. Emails use the SMTP settings on this
+            page. The phone notification goes to every phone that has installed the app and allowed
+            notifications — nothing to set up here.
+          </p>
+        </div>
+
+        {preview && (
+          <div className="border-t pt-3">
+            <div className="text-sm font-medium text-slate-800 mb-1.5">
+              Waiting for a reply right now: {preview.waiting.length === 0 ? "nobody" : preview.waiting.length}
+            </div>
+            {preview.waiting.length > 0 && (
+              <ul className="text-xs text-slate-600 space-y-1">
+                {preview.waiting.map((w) => (
+                  <li key={w.customerId} className="flex items-center gap-2">
+                    <a className="text-violet-700 hover:underline" href={`/conversations?customer=${w.customerId}`}>
+                      {w.customerName}{w.registration ? ` (${w.registration})` : ""}
+                    </a>
+                    <span>— waiting {w.waitingMinutes < 60 ? `${w.waitingMinutes}m` : `${Math.floor(w.waitingMinutes / 60)}h`} of working time</span>
+                    <span className={w.alertNow ? "text-amber-700 font-medium" : "text-slate-400"}>· {w.alertNow ? "alert due" : w.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button onClick={onSave} disabled={save.isPending}>{save.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Save</Button>
+          <Button variant="outline" onClick={onTest} disabled={test.isPending || save.isPending}>
+            {test.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Send test alert
+          </Button>
+          <Button variant="outline" onClick={onRunNow} disabled={runNow.isPending || !f.enabled} title="Run the check now instead of waiting for the next scheduled pass">
+            {runNow.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Check now
+          </Button>
         </div>
       </CardContent>
     </Card>

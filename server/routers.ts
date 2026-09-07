@@ -868,6 +868,55 @@ export const appRouter = router({
     }),
   }),
 
+  // Escalate customer messages nobody has answered: push + text + email, repeating until dealt with.
+  unansweredAlerts: router({
+    get: protectedProcedure.query(async () => {
+      const { getUnansweredAlertSettings } = await import("./services/unansweredAlerts");
+      return getUnansweredAlertSettings();
+    }),
+    save: protectedProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        afterMinutes: z.number().int().min(1).max(1440),
+        repeatMinutes: z.number().int().min(5).max(1440),
+        maxAlerts: z.number().int().min(1).max(50),
+        openTime: z.string().regex(/^\d{1,2}:\d{2}$/),
+        closeTime: z.string().regex(/^\d{1,2}:\d{2}$/),
+        days: z.array(z.number().int().min(1).max(7)).min(1),
+        phone: z.string().trim(),
+        email: z.string().trim(),
+        lookbackDays: z.number().int().min(1).max(60),
+      }))
+      .mutation(async ({ input }) => {
+        const { saveUnansweredAlertSettings } = await import("./services/unansweredAlerts");
+        await saveUnansweredAlertSettings(input);
+        return { ok: true };
+      }),
+    /** What is waiting right now, and what the next scheduled run would do. Never sends. */
+    preview: protectedProcedure.query(async () => {
+      const { runUnansweredCheck } = await import("./services/unansweredAlerts");
+      return runUnansweredCheck({ dryRun: true });
+    }),
+    /** Push a sample alert through every configured channel so it can be proven end to end. */
+    test: protectedProcedure.mutation(async () => {
+      const { getUnansweredAlertSettings, dispatchAlert } = await import("./services/unansweredAlerts");
+      const s = await getUnansweredAlertSettings();
+      const now = new Date();
+      return dispatchAlert([{
+        messageId: 0, customerId: 0, customerName: "Test customer", customerPhone: "",
+        registration: "AB12 CDE", body: "Hi, can I book my car in for Monday morning?", hasMedia: false,
+        receivedAt: new Date(now.getTime() - 45 * 60_000), repliedAt: null, handledAt: null,
+        escalatedAt: null, escalationCount: 0,
+        verdict: { waiting: true, alertNow: true, waitingMinutes: 45, reason: "test" },
+      }], s, { test: true });
+    }),
+    /** Run the real check now (same as the cron), for when you don't want to wait 10 minutes. */
+    runNow: protectedProcedure.mutation(async () => {
+      const { runUnansweredCheck } = await import("./services/unansweredAlerts");
+      return runUnansweredCheck();
+    }),
+  }),
+
   /** Tell a customer their car is ready to collect. */
   carReady: router({
     /** Everything the confirm dialog needs: who it's going to, and the wording to send. */
@@ -3329,6 +3378,16 @@ export const appRouter = router({
         const { markConversationAsRead } = await import("./conversations");
         await markConversationAsRead(input.customerId);
         return { success: true };
+      }),
+
+    // "No reply needed": the customer was dealt with off-app (phoned, seen in person), so stop
+    // the unanswered-message alerts for this thread. Distinct from read — read just means opened.
+    markHandled: adminProcedure
+      .input(z.object({ customerId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { markCustomerHandled } = await import("./services/unansweredAlerts");
+        const updated = await markCustomerHandled(input.customerId);
+        return { success: true, updated };
       }),
 
     // Send reply in conversation

@@ -24,6 +24,8 @@ export async function createContext(
         openId: "mock_dev_user",
         name: "Developer",
         email: "dev@example.com",
+        // Admin, so the owner-only pages (Conversations, settings, reports) can be verified too.
+        role: "admin",
         loginMethod: "mock",
         lastSignedIn: new Date(),
         createdAt: new Date(),

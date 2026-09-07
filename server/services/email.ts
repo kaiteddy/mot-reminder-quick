@@ -51,6 +51,23 @@ export async function testEmailConnection() {
   return { success: true };
 }
 
+/** A plain text/HTML email with no attachment — staff notifications and the like. */
+export async function sendPlainEmail(opts: { to: string; subject: string; text: string; html?: string; cc?: string }) {
+  const s = await getEmailSettings();
+  if (!s.host || !s.user) throw new Error("Email is not set up. Configure SMTP in Email Settings first.");
+  if (!opts.to || !opts.to.includes("@")) throw new Error("A valid recipient email address is required.");
+  const from = s.fromName ? `"${s.fromName}" <${s.fromAddress || s.user}>` : (s.fromAddress || s.user);
+  const info = await buildTransport(s).sendMail({
+    from,
+    to: opts.to,
+    cc: opts.cc || undefined,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html || `<p>${opts.text.replace(/\n/g, "<br>")}</p>`,
+  });
+  return { success: true, messageId: info.messageId };
+}
+
 /** Email a document (PDF attached) to a recipient via the configured SMTP server. */
 export async function sendDocumentEmail(opts: { docId: number; to: string; cc?: string; subject?: string; message?: string }) {
   const s = await getEmailSettings();
