@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge } from "lucide-react";
+import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge, Lock, Unlock } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
 import { useReactToPrint } from "react-to-print";
@@ -233,6 +233,10 @@ export default function DocumentDetails() {
   const transferRef = useRef<{ vehicleId: number; reg: string } | null>(null);
   const assignVeh = trpc.reminders.assignVehicle.useMutation();
   const [findCustOpen, setFindCustOpen] = useState(false);   // Classic view "find customer" dialog
+  // Vehicle spec fields (make, model, VIN, engine, colour, date reg…) come from the DVLA/lookup
+  // and are locked once filled, so a correct record can't be nudged by a stray keystroke. "Edit
+  // vehicle details" unlocks them for this visit; a fresh lookup locks them again.
+  const [specUnlocked, setSpecUnlocked] = useState(false);
   const [looking, setLooking] = useState(false);
   const [regFocused, setRegFocused] = useState(false);
   const [lookupTech, setLookupTech] = useState<any>(null);
@@ -702,6 +706,7 @@ export default function DocumentDetails() {
       // on a forced (reg-changed) lookup, take the looked-up value outright (clearing stale fields);
       // otherwise fall back to the existing form value when the lookup has no data for a field.
       const pick = (val: any, cur: any) => (force ? (val ?? "") : (val ?? cur));
+      setSpecUnlocked(false);
       setForm((f) => ({
         ...f, registration: v.registration || reg,
         make: pick(v.make, f.make), model: pick(v.model, f.model), derivative: pick(v.derivative, f.derivative), colour: pick(v.colour, f.colour), fuelType: pick(v.fuelType, f.fuelType),
@@ -1582,13 +1587,26 @@ export default function DocumentDetails() {
                   />
                 </div>
               )}
+              {!base && editing && (
+                <div className="flex justify-end -mt-0.5">
+                  <button type="button" onClick={() => setSpecUnlocked((u) => !u)}
+                    title={specUnlocked ? "Lock the lookup-filled vehicle details again" : "The vehicle details below came from the lookup and are locked. Unlock them to correct one by hand."}
+                    className="text-[11px] text-slate-500 hover:text-violet-700 hover:underline inline-flex items-center gap-1">
+                    {specUnlocked ? <><Lock className="w-3 h-3" /> Lock vehicle details</> : <><Unlock className="w-3 h-3" /> Edit vehicle details</>}
+                  </button>
+                </div>
+              )}
               <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
-                <EF label="Make / Model" field="make" upper {...{ form, set, editing }} />
-                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing} placeholder="Model" className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase"} />
+                <EF label="Make / Model" field="make" upper locked={!specUnlocked} {...{ form, set, editing }} />
+                <input value={form.model ?? ""} onChange={(e) => set("model", e.target.value)} readOnly={!editing || (!base && !specUnlocked && !!String(form.model ?? "").trim())} placeholder="Model"
+                  title={!base && editing && !specUnlocked && String(form.model ?? "").trim() ? "Filled from the vehicle lookup — use \"Edit vehicle details\" to change it" : undefined}
+                  className={base ? "" : boxCls(editing) + " w-full sm:flex-1 sm:self-end uppercase" + (editing && !specUnlocked && String(form.model ?? "").trim() ? " !bg-slate-100 text-slate-700 cursor-not-allowed focus:!border-slate-300" : "")} />
               </div>
-              <EF label="Derivative" field="derivative" upper {...{ form, set, editing }} grow />
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-                <EF label="Chassis" field="vin" upper {...{ form, set, editing }} grow />
+              <EF label="Derivative" field="derivative" upper locked={!specUnlocked} {...{ form, set, editing }} grow />
+              {/* The VIN must read in full (17 characters); the catalogue links wrap underneath
+                  when the column is too narrow for all of them beside it. */}
+              <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <EF label="Chassis" field="vin" upper locked={!specUnlocked} inputCls="sm:min-w-[13rem] font-mono tracking-tight" {...{ form, set, editing }} grow />
                 {!base && form.vin && (
                   <>
                     <button type="button" title="Search this VIN on PartSouq"
@@ -1609,15 +1627,15 @@ export default function DocumentDetails() {
                   </>
                 )}
               </div>
-              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper {...{ form, set, editing }} /></div>
-              <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine CC" field="engineCC" locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Fuel Type" field="fuelType" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Engine Code" field="engineCode" upper locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Engine No" field="engineNo" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Colour" field="colour" upper locked={!specUnlocked} {...{ form, set, editing }} /><EF label="Paint Code" field="paintCode" w="w-20" upper locked={!specUnlocked} {...{ form, set, editing }} /></div>
               <div className="flex flex-col sm:flex-row gap-2"><EF label="Key Code" field="keyCode" upper {...{ form, set, editing }} /><EF label="Radio Code" field="radioCode" w="w-20" upper {...{ form, set, editing }} /></div>
               {/* GA4 Classic shows the required cue on Mileage for every doc type, matching the
                   real app. That is a visual cue only - what 0 means, and which docs default to it,
                   is driven by isInvoice. */}
               <MileageField {...{ form, set, editing }} isInvoice={isInvoice} classicCue={!!base} />
-              <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" type="date" {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
+              <div className="flex flex-col sm:flex-row gap-2"><EF label="Date Reg" field="dateOfRegistration" type="date" locked={!specUnlocked} {...{ form, set, editing }} /><div className="hidden sm:block flex-1" /></div>
               {editing && <MotMileageHint registration={form.registration} current={form.mileage} onUse={(v) => set("mileage", v)} />}
               {base && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2566,9 +2584,10 @@ function MileageField({ form, set, editing, isInvoice, classicCue = false }: { f
   );
 }
 
-function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean }) {
+function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text", upper, required, locked, inputCls = "" }: { label: string; field: string; form: Record<string, any>; set: (k: string, v: any) => void; editing: boolean; w?: string; grow?: boolean; type?: string; upper?: boolean; required?: boolean; /** Read-only + grey while it holds a value (lookup-filled data); an empty field stays editable so gaps can be filled. */ locked?: boolean; inputCls?: string }) {
   const base = useClassicBase();
   const empty = !String(form[field] ?? "").trim();
+  const isLocked = !!locked && editing && !base && !empty;
   if (base) {
     return (
       <label className={`js-field ${grow ? "wide" : ""}`}>
@@ -2582,9 +2601,11 @@ function EF({ label, field, form, set, editing, w = "w-24", grow, type = "text",
   return (
     <div className={`flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 ${grow ? "sm:flex-1" : ""}`}>
       <span className={`${w} shrink-0 text-[13px] font-medium text-slate-600 sm:text-[12px] sm:font-normal sm:text-right`}>{label}</span>
-      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing}
+      <input type={type} value={form[field] ?? ""} onChange={(e) => set(field, e.target.value)} readOnly={!editing || isLocked}
         placeholder={required ? "Required" : undefined}
-        className={boxCls(editing) + " w-full sm:flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")} />
+        title={isLocked ? "Filled from the vehicle lookup — use \"Edit vehicle details\" to change it" : undefined}
+        className={boxCls(editing) + " w-full sm:flex-1" + (upper ? " uppercase" : "") + (required && empty ? " placeholder:text-red-600 placeholder:font-semibold ring-1 ring-red-400" : "")
+          + (isLocked ? " !bg-slate-100 text-slate-700 cursor-not-allowed focus:!border-slate-300" : "") + (inputCls ? ` ${inputCls}` : "")} />
     </div>
   );
 }
