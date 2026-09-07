@@ -3422,6 +3422,30 @@ export const appRouter = router({
         const { getVehicleServiceRecord } = await import("./db");
         return getVehicleServiceRecord(input);
       }),
+    // The same thing on paper. Built here rather than printed from the browser because Safari
+    // will not shrink text far enough to fit a dense list, as the sales summary found out.
+    serviceRecordPDF: protectedProcedure
+      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { getVehicleServiceRecord, getDb } = await import("./db");
+        const { generateServiceRecordPDF } = await import("./pdf-templates");
+        const record = await getVehicleServiceRecord(input);
+        let veh: any = null;
+        const db = await getDb();
+        if (db) {
+          const reg = String(input.registration ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+          const rows: any = await db.execute(sql`
+            SELECT registration, make, model FROM vehicles
+            WHERE ${input.vehicleId ? sql`id = ${input.vehicleId}` : sql`REPLACE(UPPER(registration), ' ', '') = ${reg}`}
+            LIMIT 1`);
+          veh = (rows.rows ?? rows)[0] ?? null;
+        }
+        return generateServiceRecordPDF({
+          ...record,
+          registration: veh?.registration ?? input.registration ?? "",
+          make: veh?.make ?? null, model: veh?.model ?? null,
+        });
+      }),
     /** History for a plate, for a document that has no vehicle link yet — a job sheet still being
      *  typed, where the reg has just been looked up but nothing is saved. Resolves the plate to a
      *  vehicle and then reuses getServiceHistoryByVehicleId, so it inherits that function's care

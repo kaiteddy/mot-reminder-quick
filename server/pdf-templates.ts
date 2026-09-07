@@ -1494,3 +1494,101 @@ export async function generateSalesSummaryPDF(data: any): Promise<{ content: str
     : `${data.from} to ${data.to}`;
   return { content: buf.toString('base64'), filename: `Summary ${span}.pdf` };
 }
+
+/** The Servicing tab, on paper.
+ *
+ *  Rendered here rather than printed from the browser on purpose: WebKit will not shrink text
+ *  below about 9px, so a browser print of a dense list either overflows or comes out unreadable —
+ *  the same wall the sales summary hit. A PDF built here lands the same on every machine.
+ */
+export async function generateServiceRecordPDF(data: any): Promise<{ content: string; filename: string }> {
+  const { doc, finish } = makePDF();
+  doc.page.margins.bottom = 0;
+
+  const PM = 45, RIGHT = PW - PM;
+  const INK = '#111111', MUTED = '#6b7280', RULE = '#d1d5db';
+  const num = (n: any) => (n == null ? null : Number(n).toLocaleString('en-GB'));
+  const ukDate = (s: string | null) => (s ? String(s).split('-').reverse().join('/') : null);
+  const ago = (m: number | null) => {
+    if (m == null) return null;
+    if (m < 1) return 'this month';
+    if (m < 12) return `${m} month${m === 1 ? '' : 's'} ago`;
+    const y = Math.floor(m / 12), r = m % 12;
+    return `${y} year${y === 1 ? '' : 's'}${r ? ` ${r} month${r === 1 ? '' : 's'}` : ''} ago`;
+  };
+  const every = (i: any) => {
+    const b: string[] = [];
+    if (i.everyMiles) b.push(`${num(i.everyMiles)} miles`);
+    if (i.everyMonths) b.push(i.everyMonths % 12 === 0 ? `${i.everyMonths / 12} year${i.everyMonths === 12 ? '' : 's'}` : `${i.everyMonths} months`);
+    return b.length ? `every ${b.join(' or ')}` : '';
+  };
+
+  let y = PM;
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(INK);
+  doc.text((data.company || 'ELI MOTORS LIMITED').toUpperCase(), PM, y, { lineBreak: false });
+  y += 23;
+  doc.font('Helvetica-Bold').fontSize(12);
+  doc.text(`Service record — ${data.registration || ''}`, PM, y, { lineBreak: false });
+  const sub = [data.make, data.model].filter(Boolean).join(' ');
+  if (sub) { doc.font('Helvetica').fontSize(9.5).fillColor(MUTED); doc.text(sub, PM + 200, y + 2, { lineBreak: false }); }
+  y += 17;
+
+  // The mileage the whole page is judged against, with its working shown.
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED);
+  const projected = data.estimatedMileage != null && data.latestMileage != null && data.estimatedMileage > data.latestMileage;
+  const mileage = data.estimatedMileage ?? data.latestMileage ?? null;
+  const bits = [
+    mileage ? `On ${projected ? 'about ' : ''}${num(mileage)} miles` : 'No mileage recorded',
+    data.milesPerYear ? `${num(data.milesPerYear)} miles a year` : null,
+    data.latestMileage ? `last read ${num(data.latestMileage)} on ${ukDate(data.lastReadOn)}${data.lastReadFrom === 'MOT' ? ' at MOT' : ''}` : null,
+  ].filter(Boolean);
+  doc.text(bits.join('  ·  '), PM, y, { lineBreak: false });
+  y += 14;
+  doc.save().strokeColor(RULE).lineWidth(0.5).moveTo(PM, y).lineTo(RIGHT, y).stroke().restore();
+  y += 12;
+
+  const items: any[] = data.items || [];
+  const by = (s: string) => items.filter((i) => i.status === s);
+  const SECTIONS: [string, string, any[]][] = [
+    ['Overdue', '#b91c1c', by('overdue')],
+    [`Never done here${mileage ? ` — this car is on ${projected ? 'about ' : ''}${num(mileage)} miles` : ''}`, '#c2410c', by('noRecord')],
+    ['Due soon', '#b45309', by('soon')],
+    ['Up to date', '#166534', by('ok')],
+    ['Replaced when worn — no set interval', '#374151', by('unscheduled').filter((i) => i.times > 0)],
+  ];
+
+  for (const [title, colour, rows] of SECTIONS) {
+    if (!rows.length) continue;
+    if (y > PH - 120) { doc.addPage(); doc.page.margins.bottom = 0; y = PM; }
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(colour);
+    doc.text(`${title}  (${rows.length})`, PM, y, { lineBreak: false });
+    y += 15;
+    for (const i of rows) {
+      if (y > PH - 60) { doc.addPage(); doc.page.margins.bottom = 0; y = PM; }
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
+      doc.text(i.label, PM, y, { width: 130, lineBreak: false });
+      doc.font('Helvetica').fontSize(9).fillColor(INK);
+      const detail = i.lastDate
+        ? `Last done ${ukDate(i.lastDate)}${i.lastMileage ? ` at ${num(i.lastMileage)} miles` : ''}${i.lastDocNo ? ` (job ${i.lastDocNo})` : ''}`
+        : "Nothing on any job we've raised";
+      doc.text(detail, PM + 134, y, { width: 250, lineBreak: false });
+      const since = i.lastDate ? [ago(i.monthsSince), i.milesSince ? `${num(i.milesSince)} miles` : null].filter(Boolean).join(' · ') : '';
+      if (since) { doc.font('Helvetica').fontSize(8).fillColor(MUTED); doc.text(since, PM + 134, y + 10, { width: 250, lineBreak: false }); }
+      doc.font('Helvetica').fontSize(8).fillColor(i.why ? colour : MUTED);
+      doc.text([i.why, every(i)].filter(Boolean).join('  ·  '), RIGHT - 175, y + (since ? 2 : 0), { width: 175, align: 'right' });
+      y += since ? 22 : 15;
+    }
+    y += 8;
+  }
+
+  doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(MUTED);
+  doc.text('Read off this vehicle’s own jobs and its MOT odometer readings. Intervals are a general guide — the manufacturer’s schedule takes precedence. "Never done here" means no job of ours names the item, which is not the same as it never having been done.',
+    PM, Math.min(y + 4, PH - 62), { width: RIGHT - PM });
+  const now = new Date();
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+  doc.text(`Created: ${now.toLocaleDateString('en-GB')} at ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`,
+    PM, PH - 40, { width: RIGHT - PM, align: 'center' });
+
+  const buf = await finish();
+  return { content: buf.toString('base64'), filename: `Service record ${String(data.registration || '').replace(/\s+/g, '')}.pdf` };
+}

@@ -1,5 +1,7 @@
 import { trpc } from "@/lib/trpc";
-import { Loader2, Wrench, AlertTriangle, Clock, Check } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Wrench, AlertTriangle, Clock, Check, FileDown } from "lucide-react";
+import { toast } from "sonner";
 
 type Item = {
   key: string; label: string; group: string;
@@ -90,6 +92,27 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
   const { data, isLoading } = trpc.serviceHistory.serviceRecord.useQuery(
     { vehicleId, registration }, { enabled: !!(vehicleId || registration) });
 
+  // Built on the server rather than printed from the browser: Safari will not shrink text far
+  // enough to fit a list this dense, which is the same wall the sales summary hit this morning.
+  const utils = trpc.useUtils();
+  const [saving, setSaving] = useState(false);
+  const savePdf = async () => {
+    setSaving(true);
+    try {
+      const res: any = await utils.serviceHistory.serviceRecordPDF.fetch({ vehicleId, registration });
+      const bin = atob(res.content);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = res.filename || "Service record.pdf";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't build the PDF");
+    } finally { setSaving(false); }
+  };
+
   if (isLoading) return <div className="flex items-center gap-2 py-10 justify-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Reading this car's jobs…</div>;
 
   const items: Item[] = ((data as any)?.items ?? []) as Item[];
@@ -117,12 +140,18 @@ export default function ServicingTab({ vehicleId, registration }: { vehicleId?: 
           Read off this car's own jobs and its MOT readings. Intervals are a general guide — the
           manufacturer's schedule wins.
         </p>
+        <span className="shrink-0 flex items-baseline gap-3">
         {mileage ? (
-          <span className="shrink-0 text-right text-muted-foreground">
+          <span className="text-right text-muted-foreground">
             on {projected ? "about " : ""}<b className="text-slate-800 tabular-nums">{num(mileage)}</b> miles
             {rate ? <span className="block text-[11px]">{num(rate)} a year · last read {num(d.latestMileage)} on {ukDate(d.lastReadOn)}{d.lastReadFrom === "MOT" ? " at MOT" : ""}</span> : null}
           </span>
         ) : null}
+        <button type="button" onClick={savePdf} disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2.5 py-1 text-[12px] text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
+        </button>
+        </span>
       </div>
 
       <Section tone="border-red-300 bg-red-50" icon={<AlertTriangle className="w-4 h-4 text-red-600" />}
