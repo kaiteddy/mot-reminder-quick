@@ -14,6 +14,7 @@ import { purchaseInvoiceRouter } from "./routers/purchaseInvoice";
 
 import { desc, eq, ne, or, and, sql, inArray, isNotNull, lt, gt } from "drizzle-orm";
 import { reminders, reminderLogs, customerMessages, vehicles, customers } from "../drizzle/schema";
+import { getVatPeriod, recordVatFiling, listVatFilings, deleteVatFiling } from "./services/vat";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -645,6 +646,15 @@ export const appRouter = router({
       }),
   }),
 
+  /** The quarter the way the VAT return is filed, what breaks the rules, and what moved after filing. */
+  vat: router({
+    period: adminProcedure.input(z.object({ from: z.string(), to: z.string() })).query(({ input }) => getVatPeriod(input)),
+    filings: adminProcedure.query(() => listVatFilings()),
+    recordFiling: adminProcedure
+      .input(z.object({ from: z.string(), to: z.string(), boxes: z.record(z.string(), z.number().nullable()).optional(), notes: z.string().optional() }))
+      .mutation(({ input }) => recordVatFiling(input)),
+    deleteFiling: adminProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => deleteVatFiling(input.id)),
+  }),
   reports: router({
     run: adminProcedure
       .input(z.object({

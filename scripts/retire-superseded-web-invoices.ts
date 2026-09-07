@@ -82,6 +82,17 @@ export async function retireSupersededWebInvoices(c: pg.Client, apply: boolean, 
     fs.writeFileSync(file, JSON.stringify(backup, null, 2));
     const ph = ids.map((_, i) => `$${i + 1}`).join(",");
     await c.query("BEGIN");
+    // The web copy is the one the customer was invoiced from, so its issue date is the tax point.
+    // GA4's copy carries the date the pool worker FILLED it — days or weeks later, sometimes in
+    // the next VAT quarter — or no date at all when it was imported as a blank and issued after.
+    // Hand the web date across before the web copy goes, or the sale moves quarter or vanishes
+    // from the sales reports (43 issued invoices sat undated that way on 2026-09-07).
+    for (const m of toDelete) {
+      if (m.web.dateIssued) await c.query(
+        `UPDATE "serviceHistory" SET "dateIssued" = $2, "dateCreated" = COALESCE("dateCreated", $3) WHERE id = $1`,
+        [m.ga4.id, m.web.dateIssued, m.web.dateCreated],
+      );
+    }
     await c.query(`DELETE FROM "serviceLineItems" WHERE "documentId" IN (${ph})`, ids);
     await c.query(`UPDATE "serviceHistory" SET "relatedDocId"=NULL, "relatedDocNo"=NULL WHERE "relatedDocId" IN (${ph})`, ids);
     await c.query(`DELETE FROM "serviceHistory" WHERE id IN (${ph})`, ids);

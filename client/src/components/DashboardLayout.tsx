@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginRoute } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Archive, AlertCircle, MessageSquare, Database as DatabaseIcon, Car, UserCheck, Search, FileText, FileSpreadsheet, Mail, Settings, ShieldCheck, Smartphone, BarChart, ScanLine, History, Calendar as CalendarIcon, Wrench, Brain, PoundSterling, Tag, GitMerge, ShieldAlert, Package, Tags } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Archive, AlertCircle, MessageSquare, Database as DatabaseIcon, Car, UserCheck, Search, FileText, FileSpreadsheet, Mail, Settings, ShieldCheck, Smartphone, BarChart, ScanLine, History, Calendar as CalendarIcon, Wrench, Brain, PoundSterling, Tag, GitMerge, ShieldAlert, Package, Tags , Percent} from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -70,6 +70,7 @@ const menuGroups = [
   ] },
   { section: "Finance", items: [
     { icon: PoundSterling, label: "Profit & Cashbook", path: "/reconciliation" },
+    { icon: Percent, label: "VAT", path: "/vat" },
   ] },
   { section: "System", items: [
     { icon: ShieldCheck, label: "System Status", path: "/system-status" },
