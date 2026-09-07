@@ -33,7 +33,7 @@ export type VatDoc = {
   lineCount: number; lineTax: number;
   net: number; tax: number; gross: number; motNet: number; motTax: number;
 };
-export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess" | "duplicate"; expectedTax: number; reason: string };
+export type VatException = VatDoc & { kind: "motVat" | "high" | "low" | "excess" | "duplicate" | "totals"; expectedTax: number; reason: string };
 export type VatDraft = { id: number; docNo: string | null; docType: string; status: string | null; created: string | null; ageDays: number; customer: string | null; registration: string | null; gross: number; tax: number; source: "web" | "ga4" };
 
 function monthsBetween(from: string, to: string): string[] {
@@ -148,6 +148,11 @@ function split(doc: { net: number; tax: number }) {
 
 function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | null {
   if (Math.abs(d.gross) < 0.005) return null; // no money, nothing to judge (a mirror awaiting its totals, or a £0 doc)
+  // The three totals must agree with each other before the VAT can be judged at all. Thirteen
+  // May–July 2026 invoices carried a gross of exactly twice net + VAT.
+  if (Math.abs(d.gross - (d.net + d.tax)) > 0.05) {
+    return { ...d, kind: "totals", expectedTax: round2(d.gross - d.net), reason: `Gross £${d.gross.toFixed(2)} doesn't equal net £${d.net.toFixed(2)} + VAT £${d.tax.toFixed(2)} (= £${round2(d.net + d.tax).toFixed(2)}).` };
+  }
   // 0. An insurer's invoice: the repair's VAT is charged on the customer's separate excess invoice,
   //    so its own VAT is nil by design while its lines still carry the full 20%. Point at the excess.
   //    The insurer pays the repair net of the excess, so the VAT on the customer's excess invoice

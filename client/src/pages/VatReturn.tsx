@@ -90,6 +90,7 @@ export default function VatReturn() {
   const filedBox5 = filedBox("box1") != null && filedBox("box4") != null ? Math.round((filedBox("box1")! - filedBox("box4")!) * 100) / 100 : null;
 
   const groups = d ? {
+    totals: d.exceptions.filter((x) => x.kind === "totals"),
     motVat: d.exceptions.filter((x) => x.kind === "motVat"),
     duplicate: d.exceptions.filter((x) => x.kind === "duplicate"),
     high: d.exceptions.filter((x) => x.kind === "high"),
@@ -258,6 +259,9 @@ export default function VatReturn() {
               </h2>
               {toSort === 0 && <div className="text-sm text-emerald-700">Nothing. Every invoice fits the rules, nothing is sitting as a draft, and the old system has a copy of everything.</div>}
 
+              <Problem open title="Totals don't add up" count={groups.totals.length} hint="gross should equal net + VAT; open the invoice and re-save it, or tell me which figure is right">
+                {problemTable(groups.totals, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "Net", cell: (x) => gbp(x.net), right: true }, { head: "VAT", cell: (x) => gbp(x.tax), right: true }, { head: "Gross", cell: (x) => <span className="font-medium">{gbp(x.gross)}</span>, right: true }, { head: "Net + VAT", cell: (x) => gbp(x.net + x.tax), right: true }])}
+              </Problem>
               <Problem open title="MOT charged with VAT" count={groups.motVat.length} hint="an MOT is always zero-rated; open the invoice and take the VAT off the MOT">
                 {problemTable(groups.motVat, [{ head: "Invoice", cell: (x) => <DocLink id={x.id} docNo={x.docNo} /> }, { head: "Date", cell: (x) => shortDate(x.date) }, { head: "Customer", cell: who }, { head: "VAT charged", cell: (x) => gbp(x.tax), right: true }, { head: "Should be", cell: (x) => <span className="font-medium">{gbp(x.expectedTax)}</span>, right: true }])}
               </Problem>
