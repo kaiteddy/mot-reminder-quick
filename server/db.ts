@@ -3703,18 +3703,28 @@ export async function searchCustomersForMerge(query: string, limit = 50) {
     documents: sql<number>`(SELECT COUNT(*)::int FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
     lastSeen: sql<string | null>`(SELECT MAX(COALESCE(ss."dateIssued", ss."dateCreated"))
                                   FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
-    // GA4 keeps a copy of the contact details on every invoice as well as on the customer, and
-    // for some accounts only the invoice copy was ever filled in — Doneo's mobile is on 110 of
-    // his invoices and nowhere on his record. Surface the most recent one so the merge can adopt
-    // it rather than carrying the blank forward.
-    docPhone: sql<string | null>`(SELECT COALESCE(NULLIF(TRIM(ss."custMobile"), ''), NULLIF(TRIM(ss."custTelephone"), ''))
-                                  FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id"
-                                    AND (NULLIF(TRIM(ss."custMobile"), '') IS NOT NULL OR NULLIF(TRIM(ss."custTelephone"), '') IS NOT NULL)
-                                  ORDER BY COALESCE(ss."dateIssued", ss."dateCreated") DESC NULLS LAST LIMIT 1)`,
-    docEmail: sql<string | null>`(SELECT NULLIF(TRIM(ss."custEmail"), '')
-                                  FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id"
-                                    AND NULLIF(TRIM(ss."custEmail"), '') IS NOT NULL
-                                  ORDER BY COALESCE(ss."dateIssued", ss."dateCreated") DESC NULLS LAST LIMIT 1)`,
+    // GA4 snapshots the contact details onto every invoice as well as onto the customer record,
+    // and for some accounts only the invoice copy was ever filled in. Return EVERY distinct one
+    // with how many invoices carry it and over what dates — not just the most recent, which on
+    // Doneo's account was the garage's own mobile off a 2024 job rather than the customer's.
+    // Anything with fewer than 7 digits is a placeholder ("0" sits on 79 of his invoices).
+    docPhones: sql<any>`(
+      SELECT COALESCE(json_agg(row_to_json(t) ORDER BY t.docs DESC), '[]'::json) FROM (
+        SELECT v AS value, COUNT(*)::int AS docs, MIN(d)::date AS first, MAX(d)::date AS last
+        FROM (SELECT COALESCE(NULLIF(TRIM(ss."custMobile"), ''), NULLIF(TRIM(ss."custTelephone"), '')) AS v,
+                     COALESCE(ss."dateIssued", ss."dateCreated") AS d
+              FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id") x
+        WHERE v IS NOT NULL AND LENGTH(REGEXP_REPLACE(v, '[^0-9]', '', 'g')) >= 7
+        GROUP BY v ORDER BY COUNT(*) DESC LIMIT 6
+      ) t)`,
+    docEmails: sql<any>`(
+      SELECT COALESCE(json_agg(row_to_json(t) ORDER BY t.docs DESC), '[]'::json) FROM (
+        SELECT v AS value, COUNT(*)::int AS docs, MIN(d)::date AS first, MAX(d)::date AS last
+        FROM (SELECT NULLIF(TRIM(ss."custEmail"), '') AS v, COALESCE(ss."dateIssued", ss."dateCreated") AS d
+              FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id") x
+        WHERE v IS NOT NULL AND v LIKE '%@%'
+        GROUP BY v ORDER BY COUNT(*) DESC LIMIT 6
+      ) t)`,
   })
     .from(customers)
     .where(or(...conds))

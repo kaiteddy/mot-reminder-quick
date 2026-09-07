@@ -10,9 +10,10 @@ type Row = {
   id: number; name: string; phone: string | null; email: string | null;
   postcode: string | null; address: string | null; accountNumber: string | null;
   optedOut: number | null; vehicles: number; documents: number; lastSeen: string | null;
-  // Found on the customer's own invoices rather than on the record — see searchCustomersForMerge.
-  docPhone: string | null; docEmail: string | null;
+  // Every contact found on the customer's own invoices — see searchCustomersForMerge.
+  docPhones: Found[]; docEmails: Found[];
 };
+type Found = { value: string; docs: number; first: string; last: string };
 
 const acct = (r: Row) => String(r.accountNumber || "").trim().toUpperCase();
 const when = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
@@ -57,28 +58,36 @@ export default function MergeCustomersDialog({
   const keep = rows.find((r) => r.id === keepId) || null;
   const chosen = useMemo(() => rows.filter((r) => fold.has(r.id) && r.id !== keepId), [rows, fold, keepId]);
 
-  // Every number and address going into this merge, wherever it was found. A record with nothing
-  // on it can still have a mobile sitting on its invoices, and without offering it here the merge
-  // would produce a survivor nobody can reach.
-  const opts = (field: "phone" | "docPhone" | "email" | "docEmail", from: "record" | "invoices") =>
-    [keep, ...chosen].filter(Boolean).map((r) => ({ value: String((r as Row)[field] || "").trim(), from }))
-      .filter((o) => o.value);
-  const dedupe = (list: { value: string; from: string }[]) => {
+  // Every number and address going into this merge, wherever it was found — including the ones
+  // that only exist on the paperwork. Each carries its evidence, because "most recent" is not the
+  // same as "right": the latest number on Doneo's invoices is the garage's own mobile off a 2024
+  // job, while the customer's sits on nineteen invoices from 2021.
+  type Opt = { value: string; from: "record" | "invoices"; docs?: number; first?: string; last?: string };
+  const gather = (kind: "phone" | "email"): Opt[] => {
+    const out: Opt[] = [];
+    for (const r of [keep, ...chosen].filter(Boolean) as Row[]) {
+      const own = String((kind === "phone" ? r.phone : r.email) || "").trim();
+      if (own) out.push({ value: own, from: "record" });
+      for (const f of ((kind === "phone" ? r.docPhones : r.docEmails) || []))
+        out.push({ value: f.value, from: "invoices", docs: f.docs, first: f.first, last: f.last });
+    }
     const seen = new Set<string>();
-    return list.filter((o) => {
+    return out.filter((o) => {
       const k = o.value.replace(/\s+/g, "").toLowerCase();
       if (seen.has(k)) return false;
       seen.add(k); return true;
     });
   };
-  const phoneOpts = dedupe([...opts("phone", "record"), ...opts("docPhone", "invoices")]);
-  const emailOpts = dedupe([...opts("email", "record"), ...opts("docEmail", "invoices")]);
+  const phoneOpts = gather("phone");
+  const emailOpts = gather("email");
 
-  // Default to whatever is available, preferring what's already on a record over the paperwork.
+  // Default to what is already ON the surviving record, and to nothing otherwise. Picking a number
+  // off the paperwork is a judgement — one of them may well be the garage's own — so it is left to
+  // whoever is doing the merge rather than guessed at.
   useEffect(() => {
-    setPhone((p) => (phoneOpts.some((o) => o.value === p) ? p : phoneOpts[0]?.value ?? ""));
-    setEmail((e) => (emailOpts.some((o) => o.value === e) ? e : emailOpts[0]?.value ?? ""));
-  }, [keepId, fold, data]);
+    setPhone(String(keep?.phone || "").trim());
+    setEmail(String(keep?.email || "").trim());
+  }, [keepId, data]);
 
   // mergeCustomerRecords refuses to cross GA4 account numbers unless forced, and rightly — two
   // different account numbers usually mean two different customers. Here they usually mean one
@@ -156,8 +165,10 @@ export default function MergeCustomersDialog({
                           <div className="font-medium whitespace-nowrap">{r.name}</div>
                           <div className="text-[11px] text-muted-foreground">
                             {[r.phone, r.email].filter(Boolean).join(" · ")
-                              || (r.docPhone || r.docEmail
-                                ? <span className="text-amber-700">{[r.docPhone, r.docEmail].filter(Boolean).join(" · ")} <span className="text-muted-foreground">— from invoices, not on the record</span></span>
+                              || ((r.docPhones || []).length || (r.docEmails || []).length
+                                ? <span className="text-amber-700">
+                                    nothing on the record — {(r.docPhones || []).length + (r.docEmails || []).length} found on their invoices
+                                  </span>
                                 : "no phone or email anywhere")}
                             {r.optedOut ? <Badge variant="outline" className="ml-1 text-[10px] border-red-300 text-red-700">opted out</Badge> : null}
                           </div>
@@ -188,7 +199,10 @@ export default function MergeCustomersDialog({
                       <label key={o.value} className="inline-flex items-center gap-1.5">
                         <input type="radio" name="mphone" checked={phone === o.value} onChange={() => setPhone(o.value)} />
                         <span className="font-mono">{o.value}</span>
-                        <span className="text-[11px] text-muted-foreground">({o.from === "invoices" ? "from invoices" : "on the record"})</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {o.from === "record" ? "(on the record)"
+                            : `(on ${o.docs} invoice${o.docs === 1 ? "" : "s"}, ${String(o.first).slice(0, 4)}${String(o.last).slice(0, 4) !== String(o.first).slice(0, 4) ? `–${String(o.last).slice(0, 4)}` : ""})`}
+                        </span>
                       </label>
                     ))}
                     <label className="inline-flex items-center gap-1.5">
@@ -204,7 +218,9 @@ export default function MergeCustomersDialog({
                       <label key={o.value} className="inline-flex items-center gap-1.5">
                         <input type="radio" name="memail" checked={email === o.value} onChange={() => setEmail(o.value)} />
                         <span>{o.value}</span>
-                        <span className="text-[11px] text-muted-foreground">({o.from === "invoices" ? "from invoices" : "on the record"})</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {o.from === "record" ? "(on the record)" : `(on ${o.docs} invoice${o.docs === 1 ? "" : "s"})`}
+                        </span>
                       </label>
                     ))}
                     <label className="inline-flex items-center gap-1.5">
@@ -214,7 +230,9 @@ export default function MergeCustomersDialog({
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Whatever isn't chosen is still kept on the survivor as an alternative contact — nothing is thrown away.
+                  Numbers taken from invoices are whatever was typed on the job at the time — one of them may be
+                  the garage's own, so check before picking. Whatever isn't chosen is still kept on the survivor
+                  as an alternative contact; nothing is thrown away.
                 </p>
               </div>
             )}
