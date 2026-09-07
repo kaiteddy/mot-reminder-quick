@@ -150,9 +150,13 @@ function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | nu
   if (Math.abs(d.gross) < 0.005) return null; // no money, nothing to judge (a mirror awaiting its totals, or a £0 doc)
   // 0. An insurer's invoice: the repair's VAT is charged on the customer's separate excess invoice,
   //    so its own VAT is nil by design while its lines still carry the full 20%. Point at the excess.
-  if (d.docType === "SI" && d.tax === 0 && d.lineCount > 0 && d.lineTax > 2) {
+  //    The insurer pays the repair net of the excess, so the VAT on the customer's excess invoice
+  //    is 20% of (insurer's invoice + excess) — that is the test, with the lines' own VAT as a
+  //    second way in when the invoice has lines.
+  if (d.docType === "SI" && d.tax === 0 && d.gross > 0) {
     const reg = String(d.registration || "").replace(/\s+/g, "").toUpperCase();
-    const twin = (excessByReg.get(reg) || []).find((x) => Math.abs(x.tax - d.lineTax) <= 2);
+    const twin = (excessByReg.get(reg) || []).find((x) =>
+      Math.abs(x.tax - round2(0.2 * (d.gross + x.net))) <= 2 || (d.lineCount > 0 && Math.abs(x.tax - d.lineTax) <= 2));
     if (twin) return null;
   }
   // 1. The invoice's own lines are the evidence. When the stored totals disagree with them, the
@@ -174,7 +178,9 @@ function judge(d: VatDoc, excessByReg: Map<string, VatDoc[]>): VatException | nu
   //    actually paid (gross is the invariant whichever way the totals were built).
   // An MOT-only invoice (a £45 or £50 test, nothing else) may carry no MOT line or sub-total at
   // all — the fee is the whole invoice. Zero VAT on it is right; any VAT on it is the fault.
-  const motOnly = !!d.motStatus && d.motNet === 0 && d.docType === "SI" && (Math.abs(d.gross - 45) < 0.01 || Math.abs(d.gross - 50) < 0.01);
+  //    (The MOT line may still say £45 on a £50 invoice — the fee rose in 2026 — so judge by the
+  //    size of the invoice, not the line.)
+  const motOnly = !!d.motStatus && d.docType === "SI" && d.gross > 0 && d.gross <= 50.01;
   if (motOnly) return d.tax > 0.005
     ? { ...d, kind: "motVat", expectedTax: 0, reason: `An MOT on its own, carrying £${d.tax.toFixed(2)} VAT — an MOT is always zero-rated.` }
     : null;
