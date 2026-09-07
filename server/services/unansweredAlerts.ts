@@ -394,6 +394,24 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
+/**
+ * Record that an alert went out for these messages. Uses the query builder's inArray — a JS
+ * array interpolated into sql`` becomes a ($1, $2, …) record, which Postgres refuses to cast
+ * to int[] (the first live run sent the push, then died here and would have re-alerted every
+ * ten minutes).
+ */
+export async function stampEscalated(messageIds: number[], now = new Date()): Promise<void> {
+  if (!messageIds.length) return;
+  const { getDb } = await import("../db");
+  const { customerMessages } = await import("../../drizzle/schema");
+  const { inArray, sql } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) return;
+  await db.update(customerMessages)
+    .set({ escalatedAt: now, escalationCount: sql`${customerMessages.escalationCount} + 1` })
+    .where(inArray(customerMessages.id, messageIds));
+}
+
 export type RunSummary = {
   ranAt: string;
   enabled: boolean;
@@ -438,16 +456,7 @@ export async function runUnansweredCheck(opts?: { dryRun?: boolean; now?: Date }
     return summary;
   }
 
-  const { getDb } = await import("../db");
-  const { sql } = await import("drizzle-orm");
-  const db = await getDb();
-  if (db) {
-    const ids = due.map((r) => r.messageId);
-    await db.execute(sql`
-      UPDATE "customerMessages"
-         SET "escalatedAt" = now(), "escalationCount" = "escalationCount" + 1
-       WHERE id = ANY(${ids}::int[])`);
-  }
+  await stampEscalated(due.map((r) => r.messageId), now);
   summary.alerted = due.length;
   console.log(`[Unanswered] alerted about ${due.length}: ${due.map(oneLine).join(" | ")} (push ${d.push}, sms ${d.sms}, email ${d.email})`);
   return summary;
