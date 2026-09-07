@@ -927,6 +927,14 @@ export default function DocumentDetails() {
   async function autoSave() {
     // a brand-new doc only gets created once there's something worth saving
     if (isNew && !(String(form.registration ?? "").trim() || form.customerName || form.custSurname || items.length)) return;
+    // …and a half-typed plate is not something worth saving. The debounce fires a second after
+    // the last keystroke, which lands squarely in the middle of typing a registration: "KY",
+    // "KY6", "KY62" each created their own vehicle. 670 of those are in the table, every one
+    // with no documents against it. Wait until the plate could actually be a plate. The Save
+    // button is unaffected, so a genuinely short private plate can still be entered by hand.
+    const regChars = String(form.registration ?? "").replace(/[^A-Za-z0-9]/g, "");
+    const nothingElseYet = !form.customerName && !form.custSurname && !form.customerId && !items.length;
+    if (isNew && nothingElseYet && regChars.length > 0 && regChars.length < 6) return;
     const seq = editSeq.current;
     setSaveStatus("saving");
     try {
@@ -957,7 +965,14 @@ export default function DocumentDetails() {
         utils.documents.stats.invalidate();
         utils.documents.getById.invalidate({ id });  // refresh server-derived fields (balance, account…)
       }
-    } catch (e: any) { setSaveStatus("error"); toast.error(`Auto-save failed: ${e.message}`); }
+    } catch (e: any) {
+      setSaveStatus("error");
+      // The raw message is a full SQL statement, every column and placeholder in it, thrown up
+      // mid-sentence over a job someone is still typing. Say what it means instead; the statement
+      // goes to the console for whoever actually needs it.
+      console.error("[autosave]", e);
+      toast.error("Couldn't save just yet — your work is still on screen. It'll retry as you type, or press Save.");
+    }
   }
 
   // Debounced auto-save whenever the form / line items change.
