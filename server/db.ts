@@ -4226,6 +4226,74 @@ export async function dismissDuplicateGroup(phone: string) {
   return { dismissed: phone };
 }
 
+/** When each serviceable item was last done on a vehicle, and how far it has run since.
+ *
+ *  The job list answers "what did we invoice"; this answers "when was the brake fluid last
+ *  changed", which otherwise means opening jobs from three years ago one at a time. Reads the
+ *  line descriptions and the job's own description of every invoice and job sheet on the car.
+ */
+export async function getVehicleServiceRecord(input: { vehicleId?: number; registration?: string }) {
+  const db = await getDb();
+  if (!db) return { items: [], latestMileage: null as number | null };
+  const { SERVICE_ITEMS, itemsIn } = await import("../shared/serviceItems");
+
+  // Registration is matched spaced or unspaced — the two halves of the system disagree (see the
+  // reg-format split that bites every join in here).
+  const reg = String(input.registration ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const where = input.vehicleId
+    ? sql`sh."vehicleId" = ${input.vehicleId}`
+    : sql`REPLACE(UPPER(COALESCE(sh.registration, '')), ' ', '') = ${reg}`;
+  if (!input.vehicleId && !reg) return { items: [], latestMileage: null };
+
+  const rows: any[] = (await db.execute(sql`
+    SELECT sh.id, sh."docNo", sh."docType",
+           COALESCE(sh."dateIssued", sh."dateCreated") AS on_date,
+           sh.mileage, sh.description,
+           COALESCE(string_agg(li.description, ' | '), '') AS lines
+    FROM "serviceHistory" sh
+    LEFT JOIN "serviceLineItems" li ON li."documentId" = sh.id
+    WHERE ${where} AND COALESCE(sh."docStatus", '') <> '3'
+    GROUP BY sh.id, sh."docNo", sh."docType", sh."dateIssued", sh."dateCreated", sh.mileage, sh.description
+    ORDER BY COALESCE(sh."dateIssued", sh."dateCreated") DESC NULLS LAST`)).rows as any;
+
+  // Mileage is often left off a job, so carry the highest reading seen as the car's current one.
+  const mileages = rows.map((r: any) => Number(r.mileage) || 0).filter((m) => m > 0);
+  const latestMileage = mileages.length ? Math.max(...mileages) : null;
+
+  const byKey = new Map<string, { date: Date; docNo: string | null; mileage: number | null }[]>();
+  for (const r of rows) {
+    // Array rather than a Set: this file's tsconfig target won't iterate one.
+    const keys = itemsIn(r.description).concat(itemsIn(r.lines)).filter((k, i, a) => a.indexOf(k) === i);
+    if (!keys.length) continue;
+    const when = r.on_date ? new Date(r.on_date) : null;
+    if (!when || isNaN(when.getTime())) continue;
+    for (const k of keys) {
+      const list = byKey.get(k) ?? [];
+      list.push({ date: when, docNo: r.docNo ?? null, mileage: Number(r.mileage) || null });
+      byKey.set(k, list);
+    }
+  }
+
+  const items = SERVICE_ITEMS.map((def) => {
+    const done = (byKey.get(def.key) ?? []).sort((a, b) => b.date.getTime() - a.date.getTime());
+    const last = done[0] ?? null;
+    const prev = done[1] ?? null;
+    return {
+      key: def.key, label: def.label, group: def.group,
+      times: done.length,
+      lastDate: last ? last.date.toISOString().slice(0, 10) : null,
+      lastDocNo: last?.docNo ?? null,
+      lastMileage: last?.mileage ?? null,
+      prevDate: prev ? prev.date.toISOString().slice(0, 10) : null,
+      // How far the car has run since, when both readings exist — the number that actually decides
+      // whether something is due.
+      milesSince: last?.mileage && latestMileage && latestMileage > last.mileage
+        ? latestMileage - last.mileage : null,
+    };
+  });
+  return { items, latestMileage };
+}
+
 /** Pre-set description snippets (GA4 parity). */
 export async function getDescriptionPresets() {
   const db = await getDb();

@@ -3,6 +3,7 @@ import { useDebouncedValue, looksLikeCompleteReg } from "@/hooks/useDebouncedVal
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import MergeCustomersDialog from "@/components/MergeCustomersDialog";
+import ServicingTab from "@/components/ServicingTab";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
 import { cn, round2 } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -1783,13 +1784,19 @@ export default function DocumentDetails() {
               <Tabs defaultValue={base ? "history" : "description"}>
                 <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full justify-start rounded-none bg-slate-700 p-0 h-auto"}>
                   {(base
-                    ? [["history", `History (${history.length})`], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
-                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
+                    ? [["history", `History (${history.length})`], ["servicing", "Servicing"], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
+                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["servicing", "Servicing"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
                   ).map(([v, label]) => (
                     <TabsTrigger key={v} value={v} className={base ? "" : "rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-4 py-2 text-[13px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
                 <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
+                  {/* When each item was last done, as opposed to History, which is the job list. */}
+                  <TabsContent value="servicing" className="mt-0">
+                    {/* Keyed on the plate as well as the vehicleId: a job sheet still being typed has no vehicle
+                        linked yet, and the car's servicing is exactly what you want to see while typing it. */}
+                    <ServicingTab vehicleId={(data as any)?.vehicleId ?? undefined} registration={regForHistory || undefined} />
+                  </TabsContent>
                   <TabsContent value="description" className="mt-0">
                     {!base && editing && <AiJobSpec form={form} onInsert={(body) => set("description", (form.description ? form.description.trimEnd() + "\n\n" : "") + body)} />}
                     {!base && editing && (

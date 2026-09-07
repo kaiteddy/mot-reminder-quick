@@ -3415,6 +3415,13 @@ export const appRouter = router({
   }),
 
   serviceHistory: router({
+    // When each serviceable item was last done on this car — servicing, not the job list.
+    serviceRecord: protectedProcedure
+      .input(z.object({ vehicleId: z.number().optional(), registration: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { getVehicleServiceRecord } = await import("./db");
+        return getVehicleServiceRecord(input);
+      }),
     /** History for a plate, for a document that has no vehicle link yet — a job sheet still being
      *  typed, where the reg has just been looked up but nothing is saved. Resolves the plate to a
      *  vehicle and then reuses getServiceHistoryByVehicleId, so it inherits that function's care
