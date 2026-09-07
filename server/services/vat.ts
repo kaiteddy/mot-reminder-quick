@@ -97,6 +97,11 @@ async function loadDrafts(db: any, from: string, to: string): Promise<VatDraft[]
     FROM "serviceHistory" sh LEFT JOIN customers c ON c.id = sh."customerId"
     WHERE sh."docType" IN ('SI', 'XS', 'CR') AND sh."dateIssued" IS NULL
       AND COALESCE(sh."docStatus", '') <> '3' AND LOWER(COALESCE(sh."docStatus", '')) <> 'void'
+      -- GA4's copy of an invoice the web app has already issued is a mirror, not unbilled work:
+      -- the pool worker fills it days later and the retire step reconciles the pair overnight.
+      AND NOT (COALESCE(sh."externalId", '') NOT LIKE 'WEB-%' AND sh."docNo" IS NOT NULL
+               AND EXISTS (SELECT 1 FROM "serviceHistory" w WHERE w."externalId" LIKE 'WEB-%' AND w."docType" = 'SI'
+                           AND w."ga4Number" = sh."docNo" AND w."dateIssued" IS NOT NULL))
       AND sh."dateCreated" >= ${naiveUtc(from + "T00:00:00")}::timestamp
       AND sh."dateCreated" <= ${naiveUtc(to + "T23:59:59.999")}::timestamp
     ORDER BY sh."dateCreated"`);
