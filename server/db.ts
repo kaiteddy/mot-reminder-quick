@@ -2226,30 +2226,34 @@ export async function getSalesSummaryIssued(opts: { from: string; to: string; ba
     net: round2(a.net + r.net), tax: round2(a.tax + r.tax), gross: round2(a.gross + r.gross),
   }), { net: 0, tax: 0, gross: 0 });
 
-  // ── Tax breakdown by GA4 tax code: T0 is zero-rated (MOT), T1 the 20% standard rate.
-  const taxRows: any[] = (await db.execute(sql`
-    SELECT COALESCE(li."vatRate", 0) AS rate,
-           COALESCE(SUM(li."subNet"), 0) AS net, COALESCE(SUM(li."taxAmount"), 0) AS tax
-    FROM ${serviceHistory} JOIN "serviceLineItems" li ON li."documentId" = ${serviceHistory.id}
-    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}
-    GROUP BY 1 ORDER BY 1`)).rows ?? [];
-  const taxBreakdown = taxRows.map((t: any) => {
-    const rate = Number(t.rate) || 0;
-    const net = n(t.net), tax = n(t.tax);
-    return { code: rate === 0 ? "T0" : "T1", rate, net, tax, gross: round2(net + tax) };
-  });
-  // An MOT is ALWAYS zero-rated — there is no VAT on any MOT, ever. But this breakdown is built
-  // from line items, and a GA4 invoice keeps the fee in its own sub-total with no MOT line, so
-  // T0 was reporting only the handful of web-app MOTs that had one: £135 of May's £2,070, and
-  // £18,450 short across Jan–Jul. T0 is the zero-rated figure a VAT return is read off, so the
-  // MOT money that lives outside the line items is added here, with no tax against it.
-  const motInLines = n(byLabel.get("MOT")?.net);
-  const motOutsideLines = round2(n(motRow.net) - motInLines);
-  if (motOutsideLines !== 0) {
-    const t0 = taxBreakdown.find((t) => t.rate === 0);
-    if (t0) { t0.net = round2(t0.net + motOutsideLines); t0.gross = round2(t0.gross + motOutsideLines); }
-    else taxBreakdown.unshift({ code: "T0", rate: 0, net: motOutsideLines, tax: 0, gross: motOutsideLines });
+  // ── Tax breakdown by GA4 tax code: T0 is zero-rated, T1 the 20% standard rate.
+  //
+  // Built from each document's OWN totals, not from its line items. The line items were never a
+  // complete account of an invoice: GA4 keeps sundries, paint and the excess in sub-total columns
+  // with no line at all, eighteen of July's invoices have no lines whatsoever (£765), and the
+  // insurance-excess invoice carries £877.82 of tax against a line whose rate reads 0. Summing
+  // lines by rate came out £1,629.60 short of May's own invoices and £3,916 short of July's — and
+  // this is the split a VAT return is read off, so short here is short on the return.
+  //
+  // Per document: the standard-rated net is whatever the tax says it must be (tax × 5, capped at
+  // the net — the excess invoice charges the whole job's VAT on £1,500 of net); the remainder is
+  // zero-rated. An MOT-only invoice has no tax and lands entirely in T0 without being told to;
+  // an MOT-plus-parts invoice splits itself. Net and tax therefore sum to the invoices' totals
+  // to the penny, which is the whole point.
+  const splitRows: any[] = (await db.execute(sql`
+    SELECT ${_numExpr(serviceHistory.totalNet)} AS net, ${_numExpr(serviceHistory.totalTax)} AS tax
+    FROM ${serviceHistory}
+    WHERE ${inRange} AND ${inArray(serviceHistory.docType, ["SI", "XS"])}`)).rows ?? [];
+  let t1Net = 0, t1Tax = 0, t0Net = 0;
+  for (const r of splitRows) {
+    const net = n(r.net), tax = n(r.tax);
+    const std = tax > 0 ? Math.min(net, round2(tax * 5)) : 0;
+    t1Net = round2(t1Net + std); t1Tax = round2(t1Tax + tax); t0Net = round2(t0Net + (net - std));
   }
+  const taxBreakdown = [
+    { code: "T0", rate: 0, net: t0Net, tax: 0, gross: t0Net },
+    { code: "T1", rate: 20, net: t1Net, tax: t1Tax, gross: round2(t1Net + t1Tax) },
+  ].filter((t) => t.net !== 0 || t.tax !== 0);
 
   // ── Receipts against those documents, mapped onto GA4's Cash / Cheque / Digital buckets
   const payRows: any[] = (await db.execute(sql`

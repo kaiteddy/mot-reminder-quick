@@ -52,7 +52,10 @@ export async function getReconciliation(opts: { from: string; to: string }) {
         COALESCE(NULLIF(regexp_replace("totalNet"::text,'[^0-9.\-]','','g'),'')::numeric,0) netv,
         COALESCE(NULLIF(regexp_replace("totalTax"::text,'[^0-9.\-]','','g'),'')::numeric,0) taxv
       FROM "serviceHistory"
-      WHERE "docType" IN ('SI','XS','CR') AND "dateIssued" >= ${opts.from}::date AND "dateIssued" < (${opts.to}::date + INTERVAL '1 day')
+      -- Voided documents (GA4 docStatus 3) are out, as they are everywhere else: this was the one
+      -- sales figure still counting them, £172.50 net and £34.50 of VAT across May–Jul 2026.
+      WHERE "docType" IN ('SI','XS','CR') AND COALESCE("docStatus",'') <> '3'
+        AND "dateIssued" >= ${opts.from}::date AND "dateIssued" < (${opts.to}::date + INTERVAL '1 day')
     ) s GROUP BY 1`);
   const sales = months.map(() => 0);
   const vatDue = months.map(() => 0);
