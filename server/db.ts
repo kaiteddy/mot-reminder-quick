@@ -3702,7 +3702,7 @@ export async function searchCustomersForMerge(query: string, limit = 50) {
   let core = q.replace(/\D/g, "");
   if (core.startsWith("44")) core = core.slice(2); else if (core.startsWith("0")) core = core.slice(1);
   if (core.length >= 6) conds.push(ilike(customers.phone, `%${core}%`));
-  return db.select({
+  const sel = {
     id: customers.id, name: customers.name, phone: customers.phone, email: customers.email,
     postcode: customers.postcode, address: customers.address, accountNumber: customers.accountNumber,
     optedOut: customers.optedOut,
@@ -3735,11 +3735,60 @@ export async function searchCustomersForMerge(query: string, limit = 50) {
         WHERE v IS NOT NULL AND v LIKE '%@%'
         GROUP BY v ORDER BY COUNT(*) DESC LIMIT 6
       ) t)`,
-  })
+  };
+  const direct = await db.select(sel)
     .from(customers)
     .where(or(...conds))
     .orderBy(sql`${customerSubstanceSql("customers")} DESC, ${customers.name} ASC`)
     .limit(limit);
+
+  // Also the misspellings, which a name search can never find on its own: "Doneo" does not surface
+  // "Mr Richard Daneo" (21 invoices), and "Hendon" does not surface "Hednon Service Centre".
+  // Candidates are drawn from the same postcode and then held to a near-miss on the NAME — the
+  // address alone is far too loose here, since NW4 2RP is ELI's own and half the trade is on it.
+  const codes = Array.from(new Set(direct.map((r: any) =>
+    String(r.postcode || "").toUpperCase().replace(/[^A-Z0-9]/g, "")).filter((c) => c.length >= 5)));
+  if (!codes.length || direct.length >= limit) return direct;
+  const seen = new Set(direct.map((r: any) => r.id));
+  const nearby = await db.select(sel)
+    .from(customers)
+    .where(and(
+      sql`REPLACE(UPPER(COALESCE(${customers.postcode}, '')), ' ', '') IN (${sql.join(codes.map((c) => sql`${c}`), sql`, `)})`,
+      sql`${customers.id} NOT IN (${sql.join(direct.map((r: any) => sql`${r.id}`), sql`, `)})`,
+    ))
+    .orderBy(sql`${customerSubstanceSql("customers")} DESC, ${customers.name} ASC`)
+    // Cap generously and narrow by NAME below: 47 customers sit on ELI's own postcode, and taking
+    // the "best" 15 first threw away the two misspellings this exists to find.
+    .limit(200);
+  // Levenshtein, small and local — no extension to depend on, and the candidate list is tiny.
+  const dist = (a: string, b: string) => {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (!m || !n) return Math.max(m, n);
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++)
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  };
+  const norm = (v: any) => String(v || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const targets = direct.map((r: any) => norm(r.name)).filter(Boolean);
+  const nearMiss = (name: string) => {
+    const c = norm(name);
+    if (!c) return false;
+    return targets.some((t) => {
+      const d = dist(c, t);
+      // A letter or two out of place on a name of any length — "Daneo" for "Doneo", "Hednon" for
+      // "Hendon". Anything looser starts folding real businesses into each other.
+      return d > 0 && d <= Math.max(2, Math.floor(Math.max(c.length, t.length) * 0.12));
+    });
+  };
+  return direct.concat(
+    nearby.filter((r: any) => !seen.has(r.id) && nearMiss(r.name))
+      .slice(0, 15).map((r: any) => ({ ...r, viaAddress: true })));
 }
 
 // Universal omni-search across customers, vehicles and jobs (documents). Used by the popup

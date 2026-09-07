@@ -13,6 +13,8 @@ type Row = {
   optedOut: number | null; vehicles: number; documents: number; lastSeen: string | null;
   // Every contact found on the customer's own invoices — see searchCustomersForMerge.
   docPhones: Found[]; docEmails: Found[];
+  /** Reached by a near-miss on the name at the same address, not by the search term itself. */
+  viaAddress?: boolean;
 };
 type Found = { value: string; docs: number; first: string; last: string };
 
@@ -179,7 +181,10 @@ export default function MergeCustomersDialog({
                             {r.optedOut ? <Badge variant="outline" className="ml-1 text-[10px] border-red-300 text-red-700">opted out</Badge> : null}
                           </div>
                         </td>
-                        <td className="px-2 py-1.5 font-mono text-[12px]">{r.accountNumber || "—"}</td>
+                        <td className="px-2 py-1.5 font-mono text-[12px]">
+                          {r.accountNumber || "—"}
+                          {r.viaAddress ? <div className="font-sans text-[10px] text-amber-700">spelling near-miss</div> : null}
+                        </td>
                         <td className="px-2 py-1.5 text-[12px] text-muted-foreground">
                           <span className="block max-w-[19rem] truncate" title={[r.address, r.postcode].filter(Boolean).join(", ")}>
                             {[r.address, r.postcode].filter(Boolean).join(", ") || "—"}

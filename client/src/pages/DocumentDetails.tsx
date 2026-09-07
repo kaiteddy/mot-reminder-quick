@@ -1788,9 +1788,9 @@ export default function DocumentDetails() {
                 <TabsList className={base ? "js-main-tabs w-full h-auto" : "w-full flex-wrap justify-start rounded-none bg-slate-700 p-0 h-auto"}>
                   {(base
                     ? [["history", `History (${history.length})`], ["servicing", "Servicing"], ["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["log", "Activity"]]
-                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["servicing", "Servicing"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Advisories"], ["log", "Log"], ["history", `History (${history.length})`]]
+                    : [["description", "Description"], ["labour", "Labour"], ["parts", "Parts"], ["advisories", "Advisories"], ["servicing", "Servicing"], ["partsHistory", "Prev Parts"], ["mileage", "Mileage"], ["motadv", "MOT Adv."], ["log", "Log"], ["history", `History (${history.length})`]]
                   ).map(([v, label]) => (
-                    <TabsTrigger key={v} value={v} className={base ? "" : "flex-none rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-3 py-2 text-[13px]"}>{label}</TabsTrigger>
+                    <TabsTrigger key={v} value={v} className={base ? "" : "flex-none rounded-none text-slate-200 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-900 px-2.5 py-2 text-[12.5px]"}>{label}</TabsTrigger>
                   ))}
                 </TabsList>
                 <div className={base ? "js-workspace-panel" : "border border-slate-300 border-t-0 bg-white p-3 min-h-[260px]"}>
