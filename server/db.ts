@@ -3703,6 +3703,18 @@ export async function searchCustomersForMerge(query: string, limit = 50) {
     documents: sql<number>`(SELECT COUNT(*)::int FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
     lastSeen: sql<string | null>`(SELECT MAX(COALESCE(ss."dateIssued", ss."dateCreated"))
                                   FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id")`,
+    // GA4 keeps a copy of the contact details on every invoice as well as on the customer, and
+    // for some accounts only the invoice copy was ever filled in — Doneo's mobile is on 110 of
+    // his invoices and nowhere on his record. Surface the most recent one so the merge can adopt
+    // it rather than carrying the blank forward.
+    docPhone: sql<string | null>`(SELECT COALESCE(NULLIF(TRIM(ss."custMobile"), ''), NULLIF(TRIM(ss."custTelephone"), ''))
+                                  FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id"
+                                    AND (NULLIF(TRIM(ss."custMobile"), '') IS NOT NULL OR NULLIF(TRIM(ss."custTelephone"), '') IS NOT NULL)
+                                  ORDER BY COALESCE(ss."dateIssued", ss."dateCreated") DESC NULLS LAST LIMIT 1)`,
+    docEmail: sql<string | null>`(SELECT NULLIF(TRIM(ss."custEmail"), '')
+                                  FROM "serviceHistory" ss WHERE ss."customerId" = "customers"."id"
+                                    AND NULLIF(TRIM(ss."custEmail"), '') IS NOT NULL
+                                  ORDER BY COALESCE(ss."dateIssued", ss."dateCreated") DESC NULLS LAST LIMIT 1)`,
   })
     .from(customers)
     .where(or(...conds))
@@ -4107,7 +4119,13 @@ export async function getDuplicateGroups() {
 }
 
 /** Merge secondary customer records into a primary (re-points all refs, unions contacts, records aliases). */
-export async function mergeCustomerRecords(primaryId: number, secondaryIds: number[], force = false) {
+export async function mergeCustomerRecords(
+  primaryId: number, secondaryIds: number[], force = false,
+  // What the surviving record's phone and email should be. Chosen in the merge dialog from every
+  // number on the records AND every one found on their invoices, so a customer whose only mobile
+  // was typed onto a job sheet comes out of the merge reachable.
+  contact?: { phone?: string | null; email?: string | null },
+) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   secondaryIds = secondaryIds.filter((id) => id && id !== primaryId);
@@ -4172,7 +4190,9 @@ export async function mergeCustomerRecords(primaryId: number, secondaryIds: numb
   }
   const aliases = new Set<string>(parse(primary.mergedExternalIds));
   for (const s of secs) { for (const a of parse(s.mergedExternalIds)) aliases.add(a); if (s.externalId && !String(s.externalId).startsWith("WEB-")) aliases.add(s.externalId); }
-  await db.update(customers).set({ name, phone: pick("phone"), email: pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, noVehicleReminders, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null } as any).where(eq(customers.id, primaryId));
+  const chosenPhone = String(contact?.phone ?? "").trim() || null;
+  const chosenEmail = String(contact?.email ?? "").trim() || null;
+  await db.update(customers).set({ name, phone: chosenPhone ?? pick("phone"), email: chosenEmail ?? pick("email"), address: pick("address"), postcode: pick("postcode"), optedOut, optedOutAt, noVehicleReminders, altContacts: alt.length ? alt : null, mergedExternalIds: aliases.size ? Array.from(aliases) : null } as any).where(eq(customers.id, primaryId));
   await db.delete(customers).where(inArray(customers.id, secondaryIds));
   return { moved, primaryId, merged: secondaryIds.length, name };
 }

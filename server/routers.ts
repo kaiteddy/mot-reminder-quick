@@ -260,10 +260,16 @@ export const appRouter = router({
       return getDuplicateGroups();
     }),
     merge: protectedProcedure
-      .input(z.object({ primaryId: z.number(), secondaryIds: z.array(z.number()).min(1), force: z.boolean().optional() }))
+      .input(z.object({
+        primaryId: z.number(), secondaryIds: z.array(z.number()).min(1), force: z.boolean().optional(),
+        // What the survivor's phone/email should end up as — the merge dialog offers every number
+        // on the records and every one found on their invoices.
+        phone: z.string().optional(), email: z.string().optional(),
+      }))
       .mutation(async ({ input }) => {
         const { mergeCustomerRecords } = await import("./db");
-        return mergeCustomerRecords(input.primaryId, input.secondaryIds, input.force);
+        return mergeCustomerRecords(input.primaryId, input.secondaryIds, input.force,
+          { phone: input.phone, email: input.email });
       }),
     dismissDuplicate: protectedProcedure
       .input(z.object({ phone: z.string() }))
