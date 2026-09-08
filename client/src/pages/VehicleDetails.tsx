@@ -932,7 +932,8 @@ export default function VehicleDetails() {
                                 <Link href={`${base}/customers/${customer.id}`}>
                                     <button className="text-xs text-primary font-medium hover:underline">View full customer record →</button>
                                 </Link>
-                                <div className="flex gap-2 pt-1.5">
+                                {/* Wraps: three buttons no longer fit the 300px owner column on one line. */}
+                                <div className="flex flex-wrap gap-2 pt-1.5">
                                     <AssignCustomerDialog
                                         vehicleId={vehicle.id as number}
                                         onAssigned={() => utils.vehicles.getByRegistration.invalidate()}
