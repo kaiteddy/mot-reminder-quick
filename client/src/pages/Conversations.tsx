@@ -25,6 +25,16 @@ const DOC_TYPE_COLOR: Record<string, string> = {
 const money = (v: any) => (v == null ? "—" : `£${Number(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString("en-GB") : "—");
 
+/** What the reply triage decided about the customer's latest message. Shown so a thread that is
+ *  deliberately NOT being chased says why, rather than just going quiet. */
+const TRIAGE_LABEL: Record<string, { text: string; cls: string }> = {
+  thanks: { text: "No reply needed", cls: "text-slate-600 bg-slate-100 border-slate-200" },
+  auto_reply: { text: "Auto-reply", cls: "text-slate-600 bg-slate-100 border-slate-200" },
+  opt_out: { text: "Opted out", cls: "text-red-700 bg-red-50 border-red-200" },
+  button: { text: "Button tap", cls: "text-slate-600 bg-slate-100 border-slate-200" },
+  not_owner: { text: "Says car isn't theirs", cls: "text-amber-800 bg-amber-50 border-amber-300" },
+};
+
 /** "45m", "3h 10m", "26h" — working-hours wait shown on the awaiting-reply chips. */
 function formatWaiting(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -268,6 +278,14 @@ export default function Conversations() {
                               {thread.unreadCount}
                             </Badge>
                           )}
+                          {!thread.awaitingReply && thread.triageKind && TRIAGE_LABEL[thread.triageKind] && (
+                            <span
+                              className={cn("inline-flex items-center text-[10px] font-medium border rounded px-1.5 py-0.5 shrink-0", TRIAGE_LABEL[thread.triageKind].cls)}
+                              title={thread.triageReason || undefined}
+                            >
+                              {TRIAGE_LABEL[thread.triageKind].text}
+                            </span>
+                          )}
                           {thread.awaitingReply && (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
@@ -329,6 +347,12 @@ export default function Conversations() {
                       {selectedThread.optedOut && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 shrink-0">
                           <BellOff className="w-3 h-3" /> Reminders stopped
+                        </span>
+                      )}
+                      {!selectedThread.awaitingReply && selectedThread.triageKind && TRIAGE_LABEL[selectedThread.triageKind] && (
+                        <span className={cn("inline-flex items-center text-[11px] font-medium border rounded px-1.5 py-0.5 shrink-0", TRIAGE_LABEL[selectedThread.triageKind].cls)}
+                          title={selectedThread.triageReason || undefined}>
+                          {TRIAGE_LABEL[selectedThread.triageKind].text}
                         </span>
                       )}
                       {selectedThread.awaitingReply && (

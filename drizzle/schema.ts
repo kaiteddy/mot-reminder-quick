@@ -202,6 +202,12 @@ export const customerMessages = pgTable("customerMessages", {
   //   escalatedAt     when the last "still unanswered" alert went out for this message
   //   escalationCount how many alerts have gone out, so the nagging stops at a ceiling
   handledAt: timestamp("handledAt", { mode: "date" }),
+  // Reply triage (server/services/replyTriage.ts), decided once when the message arrives:
+  // does a person actually have to write back? Alerts chase only the ones that do, so a
+  // "Thank you" or a salon's autoresponder no longer nags. Null = not yet triaged.
+  replyNeeded: integer("replyNeeded"),
+  triageKind: varchar("triageKind", { length: 20 }),
+  triageReason: text("triageReason"),
   escalatedAt: timestamp("escalatedAt", { mode: "date" }),
   escalationCount: integer("escalationCount").default(0).notNull(),
   //   windowWarnedAt  the "WhatsApp 24-hour reply window is about to close" warning went out

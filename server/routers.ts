@@ -918,6 +918,7 @@ export const appRouter = router({
         registration: "AB12 CDE", body: "Hi, can I book my car in for Monday morning?", hasMedia: false,
         receivedAt: new Date(now.getTime() - 45 * 60_000), repliedAt: null, handledAt: null,
         escalatedAt: null, escalationCount: 0, windowWarnedAt: null,
+        replyNeeded: 1, triageKind: "question", triageReason: "Asks a question or wants to book.",
         verdict: {
           waiting: true, alertNow: true, alertKind: "due", waitingMinutes: 45, reason: "test",
           windowClosesAt: new Date(now.getTime() + 23 * 3600_000 + 15 * 60_000), windowMinutesLeft: 23 * 60 + 15,

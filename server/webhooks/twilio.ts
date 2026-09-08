@@ -419,8 +419,28 @@ async function logIncomingMessage(data: {
       console.warn("[Twilio Webhook] Error looking up/creating customer:", error);
     }
 
+    // Does this need a person to write back? Decided once, here, so the unanswered-message
+    // alerts can chase only the messages that do. Never throws; unknown means "needs a reply".
+    // Bounded: Twilio gives a webhook seconds, not minutes, and a retry would double-handle the
+    // message. The rules answer instantly; only a model call can be slow, and losing that race
+    // just leaves the message untriaged — the 10-minute check picks it up, and until then it is
+    // treated as needing a reply, which is the safe direction.
+    let triage: any = null;
+    try {
+      const { triageMessage } = await import("../services/replyTriage");
+      triage = await Promise.race([
+        triageMessage({ body: data.body, hasMedia: !!data.mediaUrls?.length }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
+    } catch (e: any) {
+      console.warn("[Twilio Webhook] triage failed:", e?.message);
+    }
+
     // Store the message
     await createCustomerMessage({
+      replyNeeded: triage ? (triage.needsReply ? 1 : 0) : null,
+      triageKind: triage?.kind ?? null,
+      triageReason: triage?.reason ?? null,
       messageSid: data.messageSid,
       fromNumber,
       toNumber,

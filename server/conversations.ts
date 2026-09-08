@@ -27,6 +27,9 @@ export interface ConversationThread {
   waitingMinutes: number;
   /** Minutes left on the 24-hour WhatsApp reply window (0 = closed, replies go by text). */
   windowMinutesLeft: number;
+  /** Reply triage of their latest message: why it is, or is not, being chased for an answer. */
+  triageKind: string | null;
+  triageReason: string | null;
 }
 
 export interface ConversationMessage {
@@ -90,6 +93,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
       lastMessagePreview: sql<string>`CASE WHEN COALESCE(${customerMessages.messageBody}, '') = ''
         AND ${customerMessages.mediaUrls} IS NOT NULL THEN '[Photo]' ELSE ${customerMessages.messageBody} END`,
       read: customerMessages.read,
+      triageKind: customerMessages.triageKind,
+      triageReason: customerMessages.triageReason,
     })
     .from(customerMessages)
     .leftJoin(customers, eq(customerMessages.customerId, customers.id))
@@ -146,6 +151,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         awaitingReply: false,
         waitingMinutes: 0,
         windowMinutesLeft: 0,
+        triageKind: null,
+        triageReason: null,
       });
     } else if (existing) {
       // If we found an older log that has vehicle info, and existing (newer log) doesn't, update it!
@@ -170,6 +177,9 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
       }
       if (!existing.lastInboundAt || msg.lastMessageAt > existing.lastInboundAt) {
         existing.lastInboundAt = msg.lastMessageAt;
+        // The verdict that matters is the one on their MOST RECENT message.
+        existing.triageKind = msg.triageKind ?? null;
+        existing.triageReason = msg.triageReason ?? null;
       }
       // Count unread messages
       if (msg.read === 0) {
@@ -193,6 +203,8 @@ export async function getConversationThreads(): Promise<ConversationThread[]> {
         awaitingReply: false,
         waitingMinutes: 0,
         windowMinutesLeft: 0,
+        triageKind: msg.triageKind ?? null,
+        triageReason: msg.triageReason ?? null,
       });
     }
   });

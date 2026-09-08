@@ -209,6 +209,10 @@ export type WaitingRow = {
   handledAt: Date | null;
   escalatedAt: Date | null;
   escalationCount: number;
+  /** Reply triage: 1 needs a person, 0 does not, null not yet judged (treated as needing one). */
+  replyNeeded: number | null;
+  triageKind: string | null;
+  triageReason: string | null;
   /** When the "WhatsApp window closing" warning went out for this message. */
   windowWarnedAt: Date | null;
 };
@@ -237,6 +241,14 @@ export function evaluate(row: WaitingRow, s: UnansweredAlertSettings, now: Date)
   if (row.repliedAt && row.repliedAt > row.receivedAt) return none("replied");
   if (row.handledAt && row.handledAt >= row.receivedAt) return none("marked handled");
   if (isAutoHandledBody(row.body, row.hasMedia)) return none("auto-handled keyword");
+  // Triage says nobody has to write back. "They no longer have this car" is the exception: no
+  // reply is owed, but somebody must switch the car's reminders off — so it is chased ONCE and
+  // then let go, rather than nagging or vanishing. Null means not yet judged: chase it.
+  if (row.replyNeeded === 0) {
+    const oneOff = row.triageKind === "not_owner";
+    if (!oneOff) return none(row.triageReason || "no reply needed");
+    if (row.escalationCount >= 1) return none("flagged once — car needs switching off, no reply owed");
+  }
 
   const clock = { openTime: s.openTime, closeTime: s.closeTime, days: s.days };
   const waitingMinutes = workingMinutesBetween(row.receivedAt, now, clock);
@@ -299,6 +311,7 @@ export async function loadLatestInbound(lookbackDays: number): Promise<WaitingRo
       SELECT DISTINCT ON (m."customerId")
              m.id, m."customerId", m."receivedAt", m."messageBody", m."mediaUrls",
              m."handledAt", m."escalatedAt", m."escalationCount", m."windowWarnedAt",
+             m."replyNeeded", m."triageKind", m."triageReason",
              c.name AS "customerName", c.phone AS "customerPhone"
         FROM "customerMessages" m
         JOIN customers c ON c.id = m."customerId"
@@ -333,6 +346,9 @@ export async function loadLatestInbound(lookbackDays: number): Promise<WaitingRo
     escalatedAt: asDate(r.escalatedAt),
     escalationCount: Number(r.escalationCount || 0),
     windowWarnedAt: asDate(r.windowWarnedAt),
+    replyNeeded: r.replyNeeded == null ? null : Number(r.replyNeeded),
+    triageKind: r.triageKind ?? null,
+    triageReason: r.triageReason ?? null,
   }));
 }
 
@@ -495,9 +511,47 @@ export type RunSummary = {
  * Stamps AFTER a successful send on at least one channel, so a dead SMTP/Twilio doesn't
  * silently burn the alert budget.
  */
+/**
+ * Judge any message the webhook could not (it bounds itself so Twilio is never left waiting).
+ * Rules are free; the model is capped per run. Never throws — an untriaged message is simply
+ * chased as though it needs a reply.
+ */
+async function triageStragglers(): Promise<number> {
+  try {
+    const { getDb } = await import("../db");
+    const { sql } = await import("drizzle-orm");
+    const db = await getDb();
+    if (!db) return 0;
+    const res: any = await db.execute(sql`
+      SELECT id, "messageBody", "mediaUrls" FROM "customerMessages"
+       WHERE "replyNeeded" IS NULL AND "receivedAt" > now() - interval '7 days'
+       ORDER BY "receivedAt" DESC LIMIT 25`);
+    const rows: any[] = res?.rows ?? res ?? [];
+    if (!rows.length) return 0;
+    const { triageMessage } = await import("./replyTriage");
+    let done = 0;
+    for (const m of rows) {
+      const hasMedia = Array.isArray(m.mediaUrls) ? m.mediaUrls.length > 0 : !!m.mediaUrls;
+      const t = await triageMessage({ body: m.messageBody, hasMedia });
+      await db.execute(sql`UPDATE "customerMessages"
+                              SET "replyNeeded" = ${t.needsReply ? 1 : 0}, "triageKind" = ${t.kind}, "triageReason" = ${t.reason}
+                            WHERE id = ${m.id}`);
+      done++;
+    }
+    return done;
+  } catch (e: any) {
+    console.warn("[Unanswered] straggler triage skipped:", e?.message);
+    return 0;
+  }
+}
+
 export async function runUnansweredCheck(opts?: { dryRun?: boolean; now?: Date }): Promise<RunSummary> {
   const now = opts?.now ?? new Date();
   const s = await getUnansweredAlertSettings();
+  if (!opts?.dryRun) {
+    const judged = await triageStragglers();
+    if (judged) console.log(`[Unanswered] triaged ${judged} message(s) the webhook could not`);
+  }
   const rows = await loadLatestInbound(s.lookbackDays);
   const evaluated = rows.map((r) => ({ ...r, verdict: evaluate(r, s, now) })).filter((r) => r.verdict.waiting);
   const due = evaluated.filter((r) => r.verdict.alertNow);
