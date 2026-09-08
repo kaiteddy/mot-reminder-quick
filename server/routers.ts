@@ -2209,6 +2209,22 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // Stop / restart reminders for ONE car, leaving the owner and the history alone. Used when
+    // the customer has since been in with a different car, so this one has probably gone.
+    setVehicleReminders: protectedProcedure
+      .input(z.object({ vehicleId: z.number(), off: z.boolean(), reason: z.string().trim().max(300).optional() }))
+      .mutation(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new Error("No database connection");
+        await db.update(vehicles).set({
+          remindersOff: input.off ? 1 : 0,
+          remindersOffAt: input.off ? new Date() : null,
+          remindersOffReason: input.off ? (input.reason || "Switched off by hand") : null,
+        } as any).where(eq(vehicles.id, input.vehicleId));
+        return { off: input.off };
+      }),
+
     assignVehicle: protectedProcedure
       .input(z.object({ vehicleId: z.number(), customerId: z.number() }))
       .mutation(async ({ input }) => {
@@ -2296,6 +2312,14 @@ export const appRouter = router({
         }
         if (customer && (customer as any).noVehicleReminders) {
           throw new Error(`${customer.name} is a trade account - per-vehicle reminders are switched off for them.`);
+        }
+        // …and this particular car may have been switched off on its own.
+        if (input.vehicleId) {
+          const { getDb } = await import("./db");
+          const dbv = await getDb();
+          const [veh]: any = dbv ? await dbv.select({ off: vehicles.remindersOff, reason: vehicles.remindersOffReason, reg: vehicles.registration })
+            .from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1) : [];
+          if (veh?.off) throw new Error(`Reminders are switched off for ${veh.reg}${veh.reason ? ` — ${veh.reason}` : ""}. Turn them back on from the vehicle page to send.`);
         }
 
         // Handle test messages (id = 0)
@@ -3275,6 +3299,11 @@ export const appRouter = router({
           // Never resend to a customer who has opted out since the original (failed) send.
           const recipientCustomer = await findCustomerByPhone(log.recipient);
           if (recipientCustomer && (recipientCustomer.optedOut || (recipientCustomer as any).noVehicleReminders)) { skippedOptOut++; continue; }
+          // Nor resend about a car whose reminders have been switched off since.
+          if (log.vehicleId) {
+            const [veh]: any = await db.select({ off: vehicles.remindersOff }).from(vehicles).where(eq(vehicles.id, log.vehicleId)).limit(1);
+            if (veh?.off) { skippedOptOut++; continue; }
+          }
           try {
             let messageContent = log.messageContent;
 

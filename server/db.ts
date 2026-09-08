@@ -1125,9 +1125,12 @@ export async function getVehiclesWithCustomersForReminders() {
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
-      // Trade accounts' stock fleets never enter the reminder stream (Max Morris got
-      // seven different cars' reminders on his personal mobile before asking us to stop).
-      .where(and(isNotNull(vehicles.motExpiryDate), sql`COALESCE(${customers.noVehicleReminders}, 0) = 0`));
+      // Trade accounts' stock fleets never enter the reminder stream (Max Morris got seven
+      // different cars' reminders on his personal mobile before asking us to stop), and nor
+      // does a car switched off on its own (its owner has since been in with another one).
+      .where(and(isNotNull(vehicles.motExpiryDate),
+        sql`COALESCE(${customers.noVehicleReminders}, 0) = 0`,
+        sql`COALESCE(${vehicles.remindersOff}, 0) = 0`));
 
     return result;
   } catch (error) {

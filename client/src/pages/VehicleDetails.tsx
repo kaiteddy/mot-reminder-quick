@@ -31,7 +31,9 @@ import {
     CalendarClock,
     Cog,
     Hash,
-    ArrowLeftRight
+    ArrowLeftRight,
+    Bell,
+    BellOff
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { useClassicBase } from "@/lib/classicNav";
@@ -488,6 +490,17 @@ export default function VehicleDetails() {
 
     // Detach the current owner from this vehicle (e.g. they've sold it). The vehicle
     // and its history stay on the system; it just becomes ownerless until reassigned.
+    // Stop reminders for THIS car only — the owner and the history stay exactly as they are.
+    // Used when the customer has since been in with a different car, so this one has probably
+    // gone, but we cannot know that for certain.
+    const setVehicleReminders = trpc.reminders.setVehicleReminders.useMutation({
+        onSuccess: (r: any) => {
+            toast.success(r?.off ? "Reminders stopped for this car." : "Reminders switched back on for this car.");
+            utils.vehicles.getByRegistration.invalidate();
+        },
+        onError: (err) => toast.error("Couldn't change reminders: " + err.message),
+    });
+
     const unlinkOwner = trpc.reminders.unlinkVehicle.useMutation({
         onSuccess: () => {
             toast.success("Owner removed from this vehicle.");
@@ -934,6 +947,27 @@ export default function VehicleDetails() {
                                             </Button>
                                         }
                                     />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={setVehicleReminders.isPending}
+                                        className={(vehicle as any).remindersOff
+                                            ? "text-xs text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 hover:text-amber-800"
+                                            : "text-xs text-slate-600 border-slate-200 hover:bg-slate-50"}
+                                        title={(vehicle as any).remindersOff
+                                            ? ((vehicle as any).remindersOffReason || "Reminders are off for this car")
+                                            : "Stop MOT reminders for this car only. The owner and the full history stay as they are."}
+                                        onClick={() => setVehicleReminders.mutate({
+                                            vehicleId: vehicle.id as number,
+                                            off: !(vehicle as any).remindersOff,
+                                            reason: "Switched off by hand from the vehicle page",
+                                        })}
+                                    >
+                                        {setVehicleReminders.isPending
+                                            ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                            : (vehicle as any).remindersOff ? <BellOff className="w-3.5 h-3.5 mr-1.5" /> : <Bell className="w-3.5 h-3.5 mr-1.5" />}
+                                        {(vehicle as any).remindersOff ? "Reminders off" : "Stop reminders"}
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         size="sm"

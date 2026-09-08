@@ -79,6 +79,14 @@ export const vehicles = pgTable("vehicles", {
   motBookedDate: timestamp("motBookedDate", { mode: "date" }),
   bookingRequested: integer("bookingRequested").default(0),
   customerId: integer("customerId"),
+  // Per-CAR reminder switch, distinct from the customer-wide optedOut / noVehicleReminders.
+  // Set when we believe the customer no longer has THIS car — usually because they have since
+  // been in with a different one — but cannot know it. The owner and the whole history stay
+  // put; only the reminders stop. Reversible from the vehicle page, and the reason records
+  // why and when for anyone auditing the record later.
+  remindersOff: integer("remindersOff").default(0).notNull(),
+  remindersOffAt: timestamp("remindersOffAt", { mode: "date" }),
+  remindersOffReason: text("remindersOffReason"),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
   fuelType: varchar("fuelType", { length: 50 }),
