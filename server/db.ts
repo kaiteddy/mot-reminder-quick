@@ -1457,9 +1457,16 @@ export async function saveTechnicalData(registration: string, data: any) {
 export async function getLatestVehicleMileage(vehicleId: number) {
   const db = await getDb();
   if (!db) return 0;
+  // The latest reading we actually HAVE, not the latest document. Plenty of jobs record no
+  // mileage (and 0 means "not obtained", never zero miles), so taking the newest document blindly
+  // reports a car as having no mileage on record when we read it a few visits ago.
   const result = await db.select({ mileage: serviceHistory.mileage })
     .from(serviceHistory)
-    .where(inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)))
+    .where(and(
+      inArray(serviceHistory.vehicleId, await getVehicleIdsForSamePlate(db, vehicleId)),
+      isNotNull(serviceHistory.mileage),
+      sql`${serviceHistory.mileage} > 0`,
+    ))
     .orderBy(desc(serviceHistory.dateCreated))
     .limit(1);
   return result.length > 0 ? result[0].mileage : 0;
