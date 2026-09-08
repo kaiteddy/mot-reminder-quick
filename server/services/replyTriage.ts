@@ -171,6 +171,12 @@ export async function triageMessage(input: { body?: string | null; hasMedia?: bo
       messages: [{ role: "user", content: `Customer message:\n"""${clean(input.body).slice(0, 800)}"""` }],
     });
     const o = object as { needsReply: boolean; kind: TriageKind; reason: string };
+    // Autoresponders are formulaic, so the rules above catch them. If the model claims one
+    // anyway, doubt it: "Car now A123TUC. MOT now done" was called an auto-reply and dropped,
+    // when it was a customer telling the garage his plate had changed.
+    if (o.kind === "auto_reply" && !AUTO_REPLY.some((r) => r.test(clean(input.body)))) {
+      return { needsReply: true, kind: "unclear", reason: "Doesn't read like an autoresponder — worth a look.", by: "ai" };
+    }
     return {
       needsReply: !!o.needsReply,
       kind: o.kind || "unclear",

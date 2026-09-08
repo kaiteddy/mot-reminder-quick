@@ -1082,7 +1082,19 @@ export async function findCustomerByPhone(phone: string) {
   // Fail-safe for duplicate records sharing a phone: if ANY of them is opted out, return that
   // one so the opt-out guard blocks the send. Without this ordering, limit(1) could pick an
   // opted-in duplicate and we'd message someone who sent STOP on their other record.
-  const result = await db.select().from(customers).where(or(...conditions)).orderBy(desc(customers.optedOut)).limit(1);
+  // Then, among duplicates that are equally opted in, prefer the record that actually holds this
+  // person's life: their cars and their invoices. A phone shared by two records is routine (677
+  // numbers are), and picking the empty twin filed Mr Bloom's reply under a bare "Mrs Bloom"
+  // record with no cars and no history, so his thread showed her answer with the reminder it
+  // answered nowhere in sight. Oldest id last, as the final tie-break.
+  const result = await db.select().from(customers).where(or(...conditions))
+    .orderBy(
+      desc(customers.optedOut),
+      sql`((SELECT COUNT(*) FROM vehicles v WHERE v."customerId" = ${customers.id})
+         + (SELECT COUNT(*) FROM "serviceHistory" sh WHERE sh."customerId" = ${customers.id})) DESC`,
+      asc(customers.id),
+    )
+    .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
