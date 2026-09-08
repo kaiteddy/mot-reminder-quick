@@ -4646,14 +4646,25 @@ export async function saveDocument(input: SaveDocInput) {
     // the LL14LDJ corruption (24/08/2026): reg corrected, auto-save fired before the slow
     // lookup replaced the previous car's make/model/VIN in the form.
     const vf = vehicleIdentityForSave(input);
+    // The identity fields that actually hold a value. The form sends the whole block with empty
+    // strings in it while a lookup is still in flight, so "has some keys" is not the same as
+    // "describes a car" — that distinction is what keeps a half-typed plate from minting one.
+    const vfSet = Object.fromEntries(Object.entries(vf).filter(([, v]) => v !== undefined && v !== null && v !== ""));
     if (existing) {
       vehicleId = existing.id; customerId = existing.customerId ?? null;
       // Only overwrite fields with a real value — never blank out an existing vehicle's details
       // (e.g. an auto-save firing in the gap between setting the reg and the lookup filling make/model).
-      const vfUpd = Object.fromEntries(Object.entries(vf).filter(([, v]) => v !== undefined && v !== null && v !== ""));
-      if (Object.keys(vfUpd).length) await db.update(vehicles).set(vfUpd).where(eq(vehicles.id, existing.id));
-    } else if (!(input as any).auto) {
-      const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vf } as any).returning({ id: vehicles.id });
+      if (Object.keys(vfSet).length) await db.update(vehicles).set(vfSet).where(eq(vehicles.id, existing.id));
+    } else if (!(input as any).auto || Object.keys(vfSet).length > 0) {
+      // A car new to the garage is created here. Auto-saves used to be barred outright, which
+      // was right for a half-typed plate but wrong for a real new car: the modern job sheet has
+      // no manual Save, so EVERY save is an auto-save and the vehicle was never created at all
+      // — job sheet 93668 (LS73OCU, a BMW X7 looked up on 08/09/2026) printed with the car
+      // details blank, because the printed sheet reads them off the linked vehicle.
+      // The identity block is the discriminator: the form blanks make/model/VIN the instant the
+      // reg is edited, and only a completed lookup refills them, so "KY"/"KY6"/"KY62" arrive
+      // with nothing attached and still cannot mint a vehicle.
+      const [{ id }] = await db.insert(vehicles).values({ registration: input.registration.toUpperCase(), ...vfSet } as any).returning({ id: vehicles.id });
       vehicleId = id;
     }
     // else: an auto-save, and no car by that plate. It is almost certainly a plate half typed —

@@ -62,3 +62,34 @@ describe("vehicleIdentityForSave", () => {
     expect(vf.engineCC).toBeNull();
   });
 });
+
+// saveDocument creates a car that is new to the garage on an AUTO-save only when this block has
+// something in it (the modern job sheet has no manual Save, so every save is an auto-save).
+// Job sheet 93668, 08/09/2026: a looked-up BMW X7 on LS73OCU never got a vehicle row, so the
+// printed sheet — which reads the car off the linked vehicle — came out blank.
+describe("what an auto-save may create a vehicle from", () => {
+  it("a completed lookup carries the details, so the car can be created", () => {
+    const vf = vehicleIdentityForSave({
+      registration: "LS73 OCU",
+      vehicleReg: "LS73OCU",
+      vehicle: { make: "BMW", model: "X7 M60I XDRIVE MHEV AUTO", vin: "WBA32EM0509T18736", engineCC: "4395", colour: "BLACK" },
+    });
+    expect(vf.make).toBe("BMW");
+    expect(Object.keys(vf).length).toBeGreaterThan(0);
+  });
+
+  it("a half-typed plate carries nothing, so it still cannot mint a vehicle", () => {
+    // The form blanks every identity field the moment the reg is edited, which is why the
+    // 1s auto-save mid-typing once created 204 vehicles named "KY", "KY6", "KY62".
+    const vf = vehicleIdentityForSave({
+      registration: "KY6",
+      vehicleReg: "KY6",
+      vehicle: { make: "", model: "", vin: "", colour: "", engineCC: "" },
+    });
+    expect(Object.keys(vf).filter((k) => (vf as any)[k] !== "" && (vf as any)[k] != null).length).toBe(0);
+  });
+
+  it("details belonging to a different reg are refused, so no car is created from them", () => {
+    expect(vehicleIdentityForSave({ registration: "LL14LDJ", vehicleReg: "YE64XWB", vehicle: peugeot })).toEqual({});
+  });
+});
