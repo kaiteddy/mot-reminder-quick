@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normRegKey, vehicleIdentityStale, vehicleIdentityForSave } from "../shared/vehicleIdentity";
+import { normRegKey, vehicleIdentityStale, vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
 
 // Regression for the 24/08/2026 corruption: staff looked up mistyped LL14YDJ (a Peugeot 3008),
 // corrected the reg to LL14LDJ (a Vauxhall Mokka), and the 1s debounced auto-save fired while
@@ -91,5 +91,21 @@ describe("what an auto-save may create a vehicle from", () => {
 
   it("details belonging to a different reg are refused, so no car is created from them", () => {
     expect(vehicleIdentityForSave({ registration: "LL14LDJ", vehicleReg: "YE64XWB", vehicle: peugeot })).toEqual({});
+  });
+});
+
+// A registration that cannot be a plate must never mint a vehicle. Six records exist for one
+// Jeep because "AVI. LEVY" was typed into the box and a car was created at nearly every keystroke.
+describe("looksLikeRegistration", () => {
+  it("accepts real plates, including the short private ones", () => {
+    for (const r of ["LS17YLX", "A123TUC", "A123 TUC", "1431NE", "FCA12", "R3BAL", "DL07GWN", "KV08NJX", "EU16ZRA"]) {
+      expect(looksLikeRegistration(r), r).toBe(true);
+    }
+  });
+
+  it("rejects what actually gets typed into the box", () => {
+    for (const r of ["A", "AVI", "AVI. L", "AVI. LEV", "AVI. LEVY", "", "   ", "MRS BLOOM", "CASH", "-"]) {
+      expect(looksLikeRegistration(r), r).toBe(false);
+    }
   });
 });

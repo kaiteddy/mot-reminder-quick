@@ -12,7 +12,7 @@ import {
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
-import { vehicleIdentityForSave } from "../shared/vehicleIdentity";
+import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -4677,7 +4677,7 @@ export async function saveDocument(input: SaveDocInput) {
       // Only overwrite fields with a real value — never blank out an existing vehicle's details
       // (e.g. an auto-save firing in the gap between setting the reg and the lookup filling make/model).
       if (Object.keys(vfSet).length) await db.update(vehicles).set(vfSet).where(eq(vehicles.id, existing.id));
-    } else if (!(input as any).auto || Object.keys(vfSet).length > 0) {
+    } else if (looksLikeRegistration(input.registration) && (!(input as any).auto || Object.keys(vfSet).length > 0)) {
       // A car new to the garage is created here. Auto-saves used to be barred outright, which
       // was right for a half-typed plate but wrong for a real new car: the modern job sheet has
       // no manual Save, so EVERY save is an auto-save and the vehicle was never created at all

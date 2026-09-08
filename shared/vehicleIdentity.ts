@@ -12,6 +12,22 @@
 /** Registration comparison key: uppercase, alphanumerics only ("ll14 ldj" → "LL14LDJ"). */
 export const normRegKey = (r?: string) => String(r || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/**
+ * Could this text be a UK registration at all?
+ *
+ * Every UK plate, current, prefix, suffix or dateless, mixes letters and digits: "LS17YLX",
+ * "A123TUC", "1431NE", "FCA12". Nothing that is all letters can be one. That single test is what
+ * separates a plate from what actually gets typed into the box — a customer's name. Six records
+ * exist for one Jeep because somebody typed "AVI. LEVY" and a vehicle was minted at "A", "AVI",
+ * "AVI. L", "AVI. LEV" and again at the full name; 144 vehicles carry a "registration" that
+ * cannot be one. Deliberately NOT a length rule: 466 of this garage's plates are short private
+ * ones, and one of them has 43 invoices against it.
+ */
+export function looksLikeRegistration(reg?: string | null): boolean {
+  const r = String(reg || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return r.length >= 2 && r.length <= 8 && /[A-Z]/.test(r) && /[0-9]/.test(r);
+}
+
 /** True when the payload's vehicle-identity fields provably describe a DIFFERENT reg than the
  *  one being saved. Payloads without `vehicleReg` (older clients, internal copies) are trusted. */
 export const vehicleIdentityStale = (registration?: string, vehicleReg?: string): boolean =>
