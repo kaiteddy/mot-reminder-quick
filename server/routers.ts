@@ -1597,7 +1597,7 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content: "You are a data extraction assistant. Extract all vehicle rows from the provided screenshot table. Look for 'Reg' or 'Registration' columns. Return a JSON array of items. Important: Extract the row even if the MOT Date is 'No data' or missing. Default type to 'MOT' if unsure. Treat 'Reg' column values like '01D68212' as valid registrations.",
+              content: "You are a data extraction assistant. Extract all vehicle rows from the provided screenshot table. Look for 'Reg' or 'Registration' columns. Return a JSON array of items. Important: Extract the row even if the MOT Date is 'No data' or missing. Use null for any field you cannot read — never guess a value. Default type to 'MOT' if unsure. Treat 'Reg' column values like '01D68212' as valid registrations.",
             },
             {
               role: "user",
@@ -1629,15 +1629,17 @@ export const appRouter = router({
                       type: "object",
                       properties: {
                         type: { type: "string", enum: ["MOT", "Service", "Cambelt", "Other"] },
-                        dueDate: { type: "string" },
+                        dueDate: { type: ["string", "null"] },
                         registration: { type: "string" },
-                        customerName: { type: "string" },
-                        customerEmail: { type: "string" },
-                        customerPhone: { type: "string" },
-                        vehicleMake: { type: "string" },
-                        vehicleModel: { type: "string" },
+                        customerName: { type: ["string", "null"] },
+                        customerEmail: { type: ["string", "null"] },
+                        customerPhone: { type: ["string", "null"] },
+                        vehicleMake: { type: ["string", "null"] },
+                        vehicleModel: { type: ["string", "null"] },
                       },
-                      required: ["registration"],
+                      // Strict structured outputs require every property to appear in `required`;
+                      // fields that may be absent from the screenshot are nullable instead.
+                      required: ["type", "dueDate", "registration", "customerName", "customerEmail", "customerPhone", "vehicleMake", "vehicleModel"],
                       additionalProperties: false,
                     },
                   },
@@ -1952,7 +1954,7 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content: "You are a data extraction assistant. Extract MOT and Service reminders from the provided screenshot. Return a JSON array of reminders with fields: type (MOT or Service), dueDate (ISO date), registration, customerName, customerEmail, customerPhone, vehicleMake, vehicleModel. If a field is not visible, omit it.",
+              content: "You are a data extraction assistant. Extract MOT and Service reminders from the provided screenshot. Return a JSON array of reminders with fields: type (MOT or Service), dueDate (ISO date), registration, customerName, customerEmail, customerPhone, vehicleMake, vehicleModel. If a field is not visible, return null for it — never guess a value.",
             },
             {
               role: "user",
@@ -1984,15 +1986,17 @@ export const appRouter = router({
                       type: "object",
                       properties: {
                         type: { type: "string", enum: ["MOT", "Service", "Cambelt", "Other"] },
-                        dueDate: { type: "string" },
+                        dueDate: { type: ["string", "null"] },
                         registration: { type: "string" },
-                        customerName: { type: "string" },
-                        customerEmail: { type: "string" },
-                        customerPhone: { type: "string" },
-                        vehicleMake: { type: "string" },
-                        vehicleModel: { type: "string" },
+                        customerName: { type: ["string", "null"] },
+                        customerEmail: { type: ["string", "null"] },
+                        customerPhone: { type: ["string", "null"] },
+                        vehicleMake: { type: ["string", "null"] },
+                        vehicleModel: { type: ["string", "null"] },
                       },
-                      required: ["type", "dueDate", "registration"],
+                      // Strict structured outputs require every property to appear in `required`;
+                      // fields that may be absent from the screenshot are nullable instead.
+                      required: ["type", "dueDate", "registration", "customerName", "customerEmail", "customerPhone", "vehicleMake", "vehicleModel"],
                       additionalProperties: false,
                     },
                   },
@@ -2046,9 +2050,20 @@ export const appRouter = router({
               console.log(`Could not fetch DVLA data for ${reminder.registration}`);
             }
 
+            // A missing date must never become new Date(null) -> 1970, which would file a
+            // permanently-overdue reminder. Fall back to the real MOT expiry, else skip the row
+            // loudly so it shows up in `errors` instead of disappearing.
+            const scannedDue = reminder.dueDate ? new Date(reminder.dueDate) : null;
+            const dueDate =
+              scannedDue && !isNaN(scannedDue.getTime()) ? scannedDue : motExpiryDate;
+            if (!dueDate) {
+              errors.push(`${reminder.registration}: no due date on the screenshot and none from DVLA/DVSA`);
+              continue;
+            }
+
             await createReminder({
               type: reminder.type as "MOT" | "Service" | "Cambelt" | "Other",
-              dueDate: new Date(reminder.dueDate),
+              dueDate,
               registration: reminder.registration,
               customerName: reminder.customerName ?? null,
               customerEmail: reminder.customerEmail ?? null,
