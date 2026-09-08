@@ -5,7 +5,7 @@
 
 import { getDb } from "./db";
 import { reminderLogs, customerMessages, customers, vehicles } from "../drizzle/schema";
-import { sql, desc, eq, or, and, isNotNull } from "drizzle-orm";
+import { sql, desc, eq, or, and, isNotNull, isNull } from "drizzle-orm";
 
 export interface ConversationThread {
   customerId: number;
@@ -241,6 +241,18 @@ export async function getConversationMessages(customerId: number): Promise<Conve
 
 
 
+  // Reminders sent to this customer. Older logs (and any sent before the write path was fixed
+  // on 08/09/2026) carry no customerId — the reminder screens send by vehicle — so also take
+  // unattributed logs addressed to THIS customer's number, compared on the national core so
+  // "+447885684443" and "07885684443" are the same phone.
+  const [cust]: any = await db.select({ phone: customers.phone }).from(customers).where(eq(customers.id, customerId)).limit(1);
+  let phoneCore = String(cust?.phone ?? "").replace(/\D/g, "");
+  if (phoneCore.startsWith("44")) phoneCore = phoneCore.slice(2); else if (phoneCore.startsWith("0")) phoneCore = phoneCore.slice(1);
+  const byPhone = phoneCore.length >= 7
+    ? and(isNull(reminderLogs.customerId),
+        sql`regexp_replace(regexp_replace(COALESCE(${reminderLogs.recipient}, ''), '[^0-9]', '', 'g'), '^(44|0)', '') = ${phoneCore}`)
+    : undefined;
+
   // Get sent reminders
   const sentLogs = await db
     .select({
@@ -255,7 +267,7 @@ export async function getConversationMessages(customerId: number): Promise<Conve
     })
     .from(reminderLogs)
     .leftJoin(vehicles, eq(reminderLogs.vehicleId, vehicles.id))
-    .where(eq(reminderLogs.customerId, customerId))
+    .where(byPhone ? or(eq(reminderLogs.customerId, customerId), byPhone) : eq(reminderLogs.customerId, customerId))
     .orderBy(reminderLogs.sentAt);
 
   // Get received messages

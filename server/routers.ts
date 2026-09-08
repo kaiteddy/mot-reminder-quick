@@ -2396,9 +2396,31 @@ export const appRouter = router({
           expDate.setHours(0, 0, 0, 0);
           const isExpired = expDate < now;
 
+          // Who this went to. The reminder screens send by VEHICLE and don't pass a customer,
+          // so the log used to be filed against nobody — and a message filed against nobody
+          // never appears in that customer's conversation thread (Mrs Duboff, 08/09/2026: her
+          // MOT reminder was sent and read, but her thread showed only her "STOP" reply).
+          // Resolve it here, once, for every caller: the number we actually texted first, then
+          // the vehicle's owner.
+          let logCustomerId: number | null = input.customerId ?? null;
+          if (logCustomerId == null) {
+            try {
+              const c = await findCustomerByPhone(input.phoneNumber);
+              if (c) logCustomerId = c.id;
+            } catch { /* fall through to the vehicle's owner */ }
+          }
+          if (logCustomerId == null && input.vehicleId) {
+            try {
+              const { getDb } = await import("./db");
+              const dbv = await getDb();
+              const [v]: any = dbv ? await dbv.select({ customerId: vehicles.customerId }).from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1) : [];
+              if (v?.customerId) logCustomerId = v.customerId;
+            } catch { /* leave unattributed rather than fail the send */ }
+          }
+
           await createReminderLog({
             reminderId: null,
-            customerId: input.customerId || null,
+            customerId: logCustomerId,
             vehicleId: input.vehicleId || null,
             messageType: messageType === "UrgentFollowUp" ? "MOT" : messageType as any,
             recipient: input.phoneNumber,
