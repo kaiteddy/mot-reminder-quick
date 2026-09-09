@@ -15,6 +15,7 @@
  *  - Runs locally (where the GA4 exports live) against the production DB.
  */
 import "dotenv/config";
+import { odometerReading } from "../shared/mileage";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -57,6 +58,15 @@ const q = async (sql: string, p?: any[]) => (await c.query(sql, p)).rows as any[
 console.log(`\nGA4 → Web sync ${GO ? "(APPLYING)" : "(DRY RUN — no writes)"}\nexports: ${EXP}\n`);
 
 // generic upsert helper: diff GA4 rows vs web by externalId, INSERT new / UPDATE changed
+/** GA4 _IDs we have deliberately removed here — never re-insert them (see ga4SyncSkips). */
+let ga4Skips: Set<string> = new Set();
+async function loadGa4Skips() {
+  try {
+    ga4Skips = new Set<string>((await q(`SELECT "externalId" FROM "ga4SyncSkips"`)).map((r: any) => String(r.externalId)));
+    if (ga4Skips.size) console.log(`Honouring ${ga4Skips.size} deliberate removal(s) — these GA4 rows will not be re-created.`);
+  } catch { ga4Skips = new Set(); }   // table not there yet: behave exactly as before
+}
+
 async function syncTable(opts: {
   name: string; table: string; rows: any[];
   cols: string[];                         // db columns to write (besides externalId)
@@ -77,6 +87,8 @@ async function syncTable(opts: {
     const m = map(row);
     if (!m || !norm(m.externalId)) { skipped++; continue; }
     const web = existing.get(m.externalId);
+    // Deliberately removed here — putting it back would undo a merge or restore a typo.
+    if (!web && ga4Skips.has(norm(m.externalId))) { skipped++; continue; }
     if (!web) { toInsert.push([m.externalId, ...cols.map((k) => m[k] ?? null)]); }
     else if (!insertOnly && changed && changed(m, web)) { toUpdate.push({ id: web.id, vals: m }); }
     else same++;
@@ -109,6 +121,8 @@ for (const r of await q(`SELECT id, "mergedExternalIds" FROM customers WHERE "me
   for (const ext of arr || []) if (norm(ext)) mergedToPrimary.set(norm(ext), r.id);
 }
 if (mergedToPrimary.size) console.log(`(respecting ${mergedToPrimary.size} intentionally-merged GA4 ids)`);
+
+await loadGa4Skips();
 
 // ---- 1) Customers ----
 const customers = load("Customers.csv");
@@ -249,7 +263,10 @@ await syncTable({
       docType: cap(m.docTypeRaw, 20), docNo: cap(m.docNo, 50),
       dateCreated: dt(m.dateCreated), dateIssued: dt(m.dateIssued), datePaid: dt(m.datePaid),
       totalNet: money(m.totalNet), totalTax: money(m.totalTax), totalGross: money(m.totalGross),
-      totalReceipts: money(m.totalReceipts), balance: money(m.balance), mileage: m.mileage,
+      totalReceipts: money(m.totalReceipts), balance: money(m.balance),
+      // "1" and "10" are what gets typed when the reading could not be taken — import them as
+      // not recorded rather than carrying a fiction into the web app's history.
+      mileage: odometerReading(m.mileage),
       docStatus: cap(m.docStatus, 50), registration: cap(norm(m.registration).toUpperCase(), 20),
       motStatus: cap(m.motStatus, 50), motClass: cap(m.motClass, 50), origJobSheetNo: Number.isFinite(origJS) && origJS > 0 ? origJS : null,
       description: extrasById.get(norm(m.externalId)) || null,

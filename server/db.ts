@@ -13,6 +13,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
+import { odometerReading } from "../shared/mileage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -4763,7 +4764,9 @@ export async function saveDocument(input: SaveDocInput) {
     custHouseNo: input.custHouseNo, custRoad: input.custRoad, custLocality: input.custLocality,
     custTown: input.custTown, custCounty: input.custCounty, custPostcode: input.custPostcode,
     custTelephone: input.custTelephone, custMobile: input.custMobile, custEmail: input.custEmail,
-    mileage: input.mileage, dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
+    // A stand-in reading ("1", "10") is stored as not-recorded, so the history never gains a
+    // figure that makes a car look like it went backwards.
+    mileage: odometerReading(input.mileage), dateCreated: input.dateCreated ? new Date(input.dateCreated) : undefined,
     dateIssued: input.dateIssued ? new Date(input.dateIssued) : undefined,
     docStatus: input.docStatus, orderRef: input.orderRef, department: input.department, terms: input.terms, insuranceCompany: input.insuranceCompany,
     insurerAddress: input.insurerAddress, insurerEmail: input.insurerEmail,

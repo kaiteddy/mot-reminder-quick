@@ -65,6 +65,23 @@ export type InsertCustomer = typeof customers.$inferInsert;
 /**
  * Vehicles table - stores vehicle registration and MOT information
  */
+/**
+ * GA4 rows we have deliberately removed here, so the nightly sync stops putting them back.
+ *
+ * sync-ga4 matches on GA4's own _ID and re-inserts anything it cannot find locally, so a record
+ * merged away on Monday returned that evening — on 08/09/2026 it re-created 21 vehicles an hour
+ * after they were merged, including nine empty duplicates and seven plates that were somebody's
+ * mistyped keystrokes. Deleting cannot win against a source that re-sends; this is how a deletion
+ * is made to stick without having to change anything in GA4 itself.
+ */
+export const ga4SyncSkips = pgTable("ga4SyncSkips", {
+  id: serial("id").primaryKey(),
+  externalId: varchar("externalId", { length: 255 }).notNull().unique(),  // GA4 _ID
+  entity: varchar("entity", { length: 30 }).notNull(),                    // vehicles, customers, …
+  reason: text("reason").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+});
+
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
   // GA4 appends a cherished-plate marker when a plate moves to another car — "AC51 ONE* (12/01/2023)"

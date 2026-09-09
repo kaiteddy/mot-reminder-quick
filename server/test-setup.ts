@@ -17,7 +17,7 @@ import { config } from "dotenv";
 
 config();
 
-const SANDBOX_BEST_BEFORE = "2026-09-08"; // rotate the branch and bump this date together
+const SANDBOX_BEST_BEFORE = "2026-10-09"; // rotate the branch and bump this date together
 
 const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ""; } };
 
