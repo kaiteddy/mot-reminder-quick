@@ -18,8 +18,8 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowLeftRight, Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { Fragment, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -107,6 +107,24 @@ const FormattedDescription = ({ text }: { text: string | null }) => {
         </ul>
     );
 };
+
+/**
+ * A private plate follows its owner, not the car. When they move it onto a different vehicle the
+ * jobs carry on under the same registration, and the join shows up as the one thing an odometer
+ * cannot do: a later job reading far lower than an earlier one. Say so, rather than leave a
+ * history that looks like a mistake. Documents are listed newest first, so the car that came
+ * before is everything BELOW this line.
+ */
+const CarChangedBanner = ({ from, to }: { from: number; to: number }) => (
+    <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border-y border-amber-300 text-[11.5px] leading-relaxed text-amber-900">
+        <ArrowLeftRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <span>
+            The registration moved onto this car here. The mileage drops from{" "}
+            <b>{Number(from).toLocaleString("en-GB")}</b> to <b>{Number(to).toLocaleString("en-GB")}</b>,
+            so everything below is the previous car that wore this plate.
+        </span>
+    </div>
+);
 
 interface ServiceHistoryProps {
     vehicleId: number;
@@ -359,7 +377,8 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 {shown.map((doc: any) => {
                     const { summary } = jobSummary(doc.mainDescription);
                     return (
-                        <div key={doc.id} onClick={() => setLocation(`${base}/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
+                      <Fragment key={doc.id}>
+                        <div onClick={() => setLocation(`${base}/documents/${doc.id}`)} className="bg-white border border-slate-200 rounded-lg p-3 active:bg-slate-50">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docMeta(doc.docType).cls}`}>{docMeta(doc.docType).label}</span>
                                 <span className="text-sm text-slate-600">{(doc.dateCreated || doc.dateIssued) ? format(new Date(doc.dateCreated || doc.dateIssued), "dd/MM/yyyy") : "-"}</span>
@@ -374,6 +393,8 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 </div>
                             </div>
                         </div>
+                        {doc.carChangedHere && <CarChangedBanner from={doc.carChangedHere.from} to={doc.carChangedHere.to} />}
+                      </Fragment>
                     );
                 })}
             </div>
@@ -392,8 +413,8 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                 </TableHeader>
                 <TableBody>
                     {shown.map((doc: any) => (
+                      <Fragment key={doc.id}>
                         <TableRow
-                            key={doc.id}
                             className="cursor-pointer hover:bg-muted/50 transition-colors"
                             onClick={() => setLocation(`${base}/documents/${doc.id}`)}
                         >
@@ -450,6 +471,14 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 </div>
                             </TableCell>
                         </TableRow>
+                        {doc.carChangedHere && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={7} className="p-0">
+                              <CarChangedBanner from={doc.carChangedHere.from} to={doc.carChangedHere.to} />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
                     ))}
                 </TableBody>
             </Table>

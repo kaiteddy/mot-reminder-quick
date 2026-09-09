@@ -13,7 +13,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
-import { odometerReading } from "../shared/mileage";
+import { odometerReading, carChangePoints } from "../shared/mileage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -1714,7 +1714,7 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
   // row whose own registration text normalizes to the same plate, regardless of which
   // vehicleId it happens to be linked to (see "Reg format split matching" — this same
   // DVLA-solid vs GA4-spaced split was already known to affect ~3,743 vehicles).
-  const thisVehicle = (await db.select({ registration: vehicles.registration }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
+  const thisVehicle = (await db.select({ registration: vehicles.registration, vin: vehicles.vin }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1))[0];
   const normReg = thisVehicle?.registration ? thisVehicle.registration.toUpperCase().replace(/\s+/g, "") : null;
   const sameCarIds = await getVehicleIdsForSamePlate(db, vehicleId);
 
@@ -1805,7 +1805,26 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
       deduplicated.push(doc);
     }
   }
-  return deduplicated;
+
+  // A cherished plate outlives the car it is on. Where the odometer starts again, the plate has
+  // gone onto a different vehicle — flag that job so the history can say so rather than look wrong.
+  //
+  // Only ask the question of a record whose chassis number ALSO sits on another record. When a
+  // plate moves, the second car nearly always arrives as its own row (its VIN read from a lookup
+  // or an MOT), and the two rows end up sharing that chassis number — S31STK's own VIN belongs to
+  // the 2013 CR-V that also sits on file as LP63NCX. Without this test the mileage line alone
+  // marks 205 records, and reading them back shows they are mistyped figures, not moved plates.
+  const vinKey = String(thisVehicle?.vin || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let sharedChassis = false;
+  if (vinKey.length >= 11) {
+    const mates = await db.select({ id: vehicles.id }).from(vehicles)
+      .where(sql`UPPER(REGEXP_REPLACE(COALESCE(${vehicles.vin}, ''), '[^A-Za-z0-9]', '', 'g')) = ${vinKey}`).limit(2);
+    sharedChassis = mates.length > 1;
+  }
+  const carChanges = sharedChassis
+    ? carChangePoints(deduplicated, (d: any) => ({ id: d.id, date: d.dateIssued ?? d.dateCreated, miles: d.mileage }))
+    : new Map<string | number, { from: number; to: number }>();
+  return deduplicated.map((d: any) => ({ ...d, carChangedHere: carChanges.get(d.id) ?? null }));
 }
 
 export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {

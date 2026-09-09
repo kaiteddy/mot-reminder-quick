@@ -1,3 +1,4 @@
+import React from "react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { displayDocNo } from "@/lib/docType";
 import { trpc } from "@/lib/trpc";
@@ -794,7 +795,8 @@ export default function VehicleDetails() {
                                         <span>Date</span><span>Doc No</span><span>Acc Number</span><span>Customer</span><span>Description</span><span>Mileage</span><span>Total</span><span>Receipts</span><span>Balance</span><span></span>
                                     </div>
                                     {history.map((d: any) => (
-                                        <button key={d.id} type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
+                                      <React.Fragment key={d.id}>
+                                        <button type="button" className="vd-doc-row" onClick={() => setLocation(`${base}/documents/${d.id}`)}>
                                             <span>{formatDate(d.dateCreated || d.dateIssued)}</span>
                                             <span>{d.docType} {displayDocNo(d)}</span>
                                             <span>{d.accountNumber || ""}</span>
@@ -806,6 +808,24 @@ export default function VehicleDetails() {
                                             <span className="vd-num">{money(d.balance)}</span>
                                             <span className="vd-open-btn">Open</span>
                                         </button>
+                                        {/* A private plate outlives the car. Where the odometer starts again, the plate
+                                            moved onto this car and everything below belongs to the one before it. */}
+                                        {d.carChangedHere && (
+                                          <div style={{
+                                            display: "flex", alignItems: "center", gap: 10, padding: "7px 10px",
+                                            background: "#fdf6e7", borderTop: "1px solid #e6c98a", borderBottom: "1px solid #e6c98a",
+                                            fontSize: 11.5, color: "#7a5b13",
+                                          }}>
+                                            <ArrowLeftRight className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                                            <span>
+                                              <b>{vehicle.registration}</b> moved onto this car here. The mileage drops from{" "}
+                                              <b>{Number(d.carChangedHere.from).toLocaleString("en-GB")}</b> to{" "}
+                                              <b>{Number(d.carChangedHere.to).toLocaleString("en-GB")}</b>, so everything below is
+                                              the previous car that wore this plate.
+                                            </span>
+                                          </div>
+                                        )}
+                                      </React.Fragment>
                                     ))}
                                 </>
                             )
