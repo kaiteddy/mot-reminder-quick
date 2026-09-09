@@ -96,3 +96,76 @@ export function carChangePoints<T>(
   }
   return out;
 }
+
+/**
+ * Readings that cannot be true, given the rest of the car's own history.
+ *
+ * An odometer only climbs, so a history is a rising line. Where one figure sits off that line —
+ * an Abarth reading 45,611 between 25,173 and 31,092, a Mini reading 22,156 twice between 51,022
+ * and 54,954, a Mazda3 written up at 20,000 before it starts again at 11,900 — the figure was
+ * typed wrong. Around 390 records carry one. They drag down the mileage a job sheet prints and
+ * make a car's history look like a mistake, so say which figure is the odd one.
+ *
+ * Which figure? The one whose removal leaves the longest rising line. That is what picks the lone
+ * 45,611 rather than blaming the two ordinary readings either side of it. Small falls are left
+ * alone: 1,500 miles is inside what a mis-read trip meter or a rounded figure explains, and the
+ * real ones in this data were 622 and 949.
+ *
+ * Genuine changes of car are NOT outliers — the line legitimately restarts there — so pass the
+ * ids from carChangePoints as `restartsAt` and each car is measured against its own line.
+ */
+export function mileageOutliers<T>(
+  docs: T[],
+  read: (d: T) => { id: string | number; date: string | number | Date | null; miles: unknown },
+  restartsAt: Set<string | number> = new Set(),
+  noise = 1500,
+): Map<string | number, { reading: number; before: number | null; after: number | null }> {
+  const out = new Map<string | number, { reading: number; before: number | null; after: number | null }>();
+  const points = docs
+    .map((d) => { const r = read(d); return { id: r.id, at: r.date ? new Date(r.date).getTime() : 0, miles: odometerReading(r.miles) }; })
+    .filter((p) => p.miles !== null && p.at > 0)
+    .sort((a, b) => a.at - b.at) as { id: string | number; at: number; miles: number }[];
+
+  // One segment per car: a confirmed changeover starts a fresh line.
+  const segments: typeof points[] = [];
+  for (const p of points) {
+    if (!segments.length || restartsAt.has(p.id)) segments.push([]);
+    segments[segments.length - 1].push(p);
+  }
+
+  for (const seg of segments) {
+    if (seg.length < 3) continue;              // two readings cannot say which of them is wrong
+    // Longest rising run through the readings, allowing a fall of up to `noise`.
+    const best = seg.map(() => 1), prev = seg.map(() => -1);
+    let endIdx = 0;
+    for (let i = 1; i < seg.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (seg[i].miles >= seg[j].miles - noise && best[j] + 1 > best[i]) { best[i] = best[j] + 1; prev[i] = j; }
+      }
+      if (best[i] > best[endIdx]) endIdx = i;
+    }
+    const online = new Set<number>();
+    for (let i = endIdx; i >= 0; i = prev[i]) { online.add(i); if (prev[i] < 0) break; }
+
+    for (let i = 0; i < seg.length; i++) {
+      if (online.has(i)) continue;
+      // A typo is a lone figure. Where several jobs in a row sit off the line they are not
+      // mistakes, they are another car's readings that this record has not been told about —
+      // one Mercedes carries six consecutive jobs from 31,254 to 41,041 under a 116,150 line.
+      // Saying "typed wrong" about those would be a lie, so only isolated figures are named.
+      let run = 1;
+      for (let j = i - 1; j >= 0 && !online.has(j); j--) run++;
+      for (let j = i + 1; j < seg.length && !online.has(j); j++) run++;
+      if (run > 2) continue;
+      // And the line has to close around it: readings on the line both before AND after, or
+      // there is no second opinion, only a history that stops.
+      let b: number | null = null, a: number | null = null;
+      for (let j = i - 1; j >= 0; j--) if (online.has(j)) { b = seg[j].miles; break; }
+      for (let j = i + 1; j < seg.length; j++) if (online.has(j)) { a = seg[j].miles; break; }
+      if (b === null || a === null) continue;
+      // Only worth saying when the figure is properly off the line, not a rounding.
+      if (Math.max(b - seg[i].miles, seg[i].miles - a) > noise) out.set(seg[i].id, { reading: seg[i].miles, before: b, after: a });
+    }
+  }
+  return out;
+}

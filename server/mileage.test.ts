@@ -4,7 +4,7 @@
  * could not be taken.
  */
 import { describe, it, expect } from "vitest";
-import { odometerReading, isPlaceholderReading, carChangePoints } from "../shared/mileage";
+import { odometerReading, isPlaceholderReading, carChangePoints, mileageOutliers } from "../shared/mileage";
 
 describe("odometerReading", () => {
   it("keeps real readings, however they are typed", () => {
@@ -85,5 +85,77 @@ describe("carChangePoints", () => {
     // Nothing follows it, so nothing confirms it — a low final figure is more often a typo.
     const docs = [doc(1, "2024-01-01", 40000), doc(2, "2025-01-01", 44000), doc(3, "2026-01-01", 12000)];
     expect(carChangePoints(docs, (d) => d).size).toBe(0);
+  });
+});
+
+describe("mileageOutliers", () => {
+  const doc = (id: number, date: string, miles: number | null) => ({ id, date, miles });
+
+  it("names the one figure that cannot be true", () => {
+    // KD19GWU: 45,611 sits between 25,173 and 31,092. An odometer does not do that.
+    const docs = [
+      doc(1, "2021-11-01", 15924), doc(2, "2022-06-01", 20827), doc(3, "2023-01-01", 25173),
+      doc(4, "2023-06-01", 45611), doc(5, "2023-12-01", 31092), doc(6, "2025-11-01", 42000),
+    ];
+    const bad = mileageOutliers(docs, (d) => d);
+    expect([...bad.keys()]).toEqual([4]);
+    expect(bad.get(4)).toEqual({ reading: 45611, before: 25173, after: 31092 });
+  });
+
+  it("blames the odd figure, not the ordinary ones either side of it", () => {
+    // EO14BLF: 86,385 between 46,835 and 49,662 — the spike is wrong, the neighbours are fine.
+    const docs = [
+      doc(1, "2020-01-01", 40000), doc(2, "2021-01-01", 46835),
+      doc(3, "2021-06-01", 86385), doc(4, "2022-01-01", 49662), doc(5, "2023-01-01", 55000),
+    ];
+    expect([...mileageOutliers(docs, (d) => d).keys()]).toEqual([3]);
+  });
+
+  it("catches the same wrong figure entered twice", () => {
+    // EU16ZRA: 22,156 on two June 2023 jobs, between 51,022 and 54,954.
+    const docs = [
+      doc(1, "2023-01-01", 48886), doc(2, "2023-06-01", 51022), doc(3, "2023-06-10", 22156),
+      doc(4, "2023-06-11", 22156), doc(5, "2024-03-01", 54954), doc(6, "2025-08-01", 62192),
+    ];
+    expect([...mileageOutliers(docs, (d) => d).keys()].sort()).toEqual([3, 4]);
+  });
+
+  it("leaves a clean history alone", () => {
+    const docs = [doc(1, "2024-01-01", 40000), doc(2, "2025-01-01", 44000), doc(3, "2026-01-01", 48000)];
+    expect(mileageOutliers(docs, (d) => d).size).toBe(0);
+  });
+
+  it("lets a small fall pass — a rounded figure is not a mistake worth chasing", () => {
+    const docs = [doc(1, "2024-01-01", 40000), doc(2, "2025-01-01", 44000), doc(3, "2025-06-01", 43378), doc(4, "2026-01-01", 48000)];
+    expect(mileageOutliers(docs, (d) => d).size).toBe(0);
+  });
+
+  it("will not call a run of jobs typing mistakes — that is another car", () => {
+    // M17MEA: six jobs from 31,254 to 41,041 sitting under a 116,150 line. Those are readings,
+    // not errors; the record has simply not been told it holds two cars.
+    const docs = [
+      doc(1, "2015-01-01", 74539), doc(2, "2016-01-01", 74741), doc(3, "2017-01-01", 116150),
+      doc(4, "2018-01-01", 31254), doc(5, "2019-01-01", 34251), doc(6, "2020-01-01", 36137),
+      doc(7, "2021-01-01", 38253), doc(8, "2022-01-01", 41041),
+    ];
+    expect(mileageOutliers(docs, (d) => d).size).toBe(0);
+  });
+
+  it("says nothing about a figure the history does not close around", () => {
+    // Nothing on the line after it, so there is no second opinion — only a history that stops.
+    const docs = [doc(1, "2024-01-01", 40000), doc(2, "2025-01-01", 44000), doc(3, "2026-01-01", 12000)];
+    expect(mileageOutliers(docs, (d) => d).size).toBe(0);
+  });
+
+  it("measures each car against its own line where the plate moved", () => {
+    // Mr Kass's record: the 2017 restart is a different car, not a wrong figure.
+    const docs = [
+      doc(1, "2011-07-17", 30000), doc(2, "2013-06-02", 33000), doc(3, "2016-12-19", 45221),
+      doc(4, "2017-08-08", 24435), doc(5, "2018-08-06", 29534), doc(6, "2019-08-04", 34430),
+      doc(7, "2026-08-12", 67688),
+    ];
+    const changes = carChangePoints(docs, (d) => d);
+    expect([...changes.keys()]).toEqual([4]);
+    expect(mileageOutliers(docs, (d) => d, new Set(changes.keys())).size).toBe(0);
   });
 });

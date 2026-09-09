@@ -18,7 +18,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowLeftRight, Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Download, Edit, ExternalLink, FileText, Loader2, Mail, Printer, Trash2 } from "lucide-react";
 import { Fragment, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
@@ -125,6 +125,16 @@ const CarChangedBanner = ({ from, to }: { from: number; to: number }) => (
         </span>
     </div>
 );
+
+/**
+ * An odometer only climbs, so one figure sitting off the line was typed wrong — 86,385 between
+ * 46,835 and 49,662. Say so beside the figure rather than silently letting it drag the car's
+ * history down. Only a lone figure enclosed by the line is ever named; see mileageOutliers.
+ */
+const offLineTitle = (o: { reading: number; before: number; after: number }) =>
+    `This reading does not fit. The jobs either side read ${Number(o.before).toLocaleString("en-GB")} and `
+    + `${Number(o.after).toLocaleString("en-GB")} miles, so ${Number(o.reading).toLocaleString("en-GB")} was probably typed wrong. `
+    + `Open the document to correct it.`;
 
 interface ServiceHistoryProps {
     vehicleId: number;
@@ -386,7 +396,9 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                             </div>
                             {summary && <div className="text-sm text-slate-700 mt-2 break-words line-clamp-2">{summary}</div>}
                             <div className="flex items-center justify-between gap-2 mt-2.5">
-                                <span className="text-xs text-muted-foreground font-mono truncate">{displayDocNo(doc) || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}</span>
+                                <span className={`text-xs font-mono truncate ${doc.mileageOffLine ? "text-amber-800" : "text-muted-foreground"}`} title={doc.mileageOffLine ? offLineTitle(doc.mileageOffLine) : undefined}>
+                                    {displayDocNo(doc) || doc.externalId.substring(0, 8)}{doc.mileage ? ` · ${doc.mileage.toLocaleString()} mi` : ""}{doc.mileageOffLine ? " · does not fit" : ""}
+                                </span>
                                 <div className="flex gap-1.5 shrink-0">
                                     <Button variant="outline" size="sm" className="h-9 px-3 text-blue-600" onClick={(e) => { e.stopPropagation(); setLocation(`${base}/documents/${doc.id}`); }}><Edit className="h-4 w-4" /></Button>
                                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={(e) => handleDelete(doc.id, e)} disabled={deleteMutation.isPending && deleteMutation.variables?.id === doc.id}><Trash2 className="h-4 w-4" /></Button>
@@ -441,7 +453,17 @@ export function ServiceHistory({ vehicleId }: ServiceHistoryProps) {
                                 })()}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-xs font-mono">{displayDocNo(doc) || doc.externalId.substring(0, 8)}</TableCell>
-                            <TableCell>{doc.mileage ? doc.mileage.toLocaleString() : "-"}</TableCell>
+                            <TableCell>
+                                {doc.mileage ? (
+                                    doc.mileageOffLine ? (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-medium cursor-help"
+                                              title={offLineTitle(doc.mileageOffLine)}>
+                                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                                            {doc.mileage.toLocaleString()}
+                                        </span>
+                                    ) : doc.mileage.toLocaleString()
+                                ) : "-"}
+                            </TableCell>
                             <TableCell className="text-right font-medium">
                                 £{Number(doc.totalGross).toFixed(2)}
                             </TableCell>

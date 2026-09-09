@@ -802,7 +802,9 @@ export default function VehicleDetails() {
                                             <span>{d.accountNumber || ""}</span>
                                             <span>{d.customerName || ""}</span>
                                             <span>{d.mainDescription || ""}</span>
-                                            <span className="vd-num">{d.mileage ? Number(d.mileage).toLocaleString("en-GB") : ""}</span>
+                                            <span className="vd-num" style={d.mileageOffLine ? { background: "#fdf0d5", color: "#8a5a00", fontWeight: 600 } : undefined}
+                                                  title={d.mileageOffLine ? `This reading does not fit. The jobs either side read ${Number(d.mileageOffLine.before).toLocaleString("en-GB")} and ${Number(d.mileageOffLine.after).toLocaleString("en-GB")} miles, so ${Number(d.mileageOffLine.reading).toLocaleString("en-GB")} was probably typed wrong.` : undefined}>
+                                              {d.mileage ? Number(d.mileage).toLocaleString("en-GB") : ""}</span>
                                             <span className="vd-num">{money(d.totalGross)}</span>
                                             <span>{d.paymentMethods || ""}</span>
                                             <span className="vd-num">{money(d.balance)}</span>

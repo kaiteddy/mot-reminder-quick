@@ -13,7 +13,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
-import { odometerReading, carChangePoints } from "../shared/mileage";
+import { odometerReading, carChangePoints, mileageOutliers } from "../shared/mileage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -1821,10 +1821,20 @@ export async function getServiceHistoryByVehicleId(vehicleId: number) {
       .where(sql`UPPER(REGEXP_REPLACE(COALESCE(${vehicles.vin}, ''), '[^A-Za-z0-9]', '', 'g')) = ${vinKey}`).limit(2);
     sharedChassis = mates.length > 1;
   }
+  const readDoc = (d: any) => ({ id: d.id, date: d.dateIssued ?? d.dateCreated, miles: d.mileage });
   const carChanges = sharedChassis
-    ? carChangePoints(deduplicated, (d: any) => ({ id: d.id, date: d.dateIssued ?? d.dateCreated, miles: d.mileage }))
+    ? carChangePoints(deduplicated, readDoc)
     : new Map<string | number, { from: number; to: number }>();
-  return deduplicated.map((d: any) => ({ ...d, carChangedHere: carChanges.get(d.id) ?? null }));
+
+  // And where a single figure sits off the line, say which one — an odometer only climbs, so a
+  // job reading 86,385 between 46,835 and 49,662 was typed wrong. 342 readings on 290 records.
+  const offLine = mileageOutliers(deduplicated, readDoc, new Set(carChanges.keys()));
+
+  return deduplicated.map((d: any) => ({
+    ...d,
+    carChangedHere: carChanges.get(d.id) ?? null,
+    mileageOffLine: offLine.get(d.id) ?? null,
+  }));
 }
 
 export async function getDetailedServiceHistoryByVehicleId(vehicleId: number) {
