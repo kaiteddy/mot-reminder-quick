@@ -190,6 +190,18 @@ export const purchaseInvoiceRouter = router({
         notes: noteParts.join(" · ") || null,
       }).returning({ id: carDeals.id });
 
-      return { dealId: deal.id, salesStockId, createdStock: !existingStock };
+      // The car is ours now, so give it a vehicle record — without one it cannot be found by
+      // registration at all, because globalSearch never reads salesStock/carDeals. No job sheet:
+      // the car is not prepared until it sells. Never allowed to fail the purchase itself.
+      const { ensureStockVehicle } = await import("../services/preSalesInspection");
+      const vehicle = await ensureStockVehicle({
+        registration: reg,
+        stock: {
+          make: input.make, model: input.model, variant: input.variant, colour: input.colour, vin: input.vin,
+          registrationDate: ukDateToDate(input.firstRegistered), motExpiryDate: ukDateToDate(input.motExpiry),
+        },
+      });
+
+      return { dealId: deal.id, salesStockId, createdStock: !existingStock, vehicle };
     }),
 });

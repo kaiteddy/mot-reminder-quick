@@ -6080,6 +6080,24 @@ export async function setSalesStockSold(input: { id: number; sold: boolean; sold
           AND COALESCE("grossPrice", '') IN (${sql.join(seeded.map((s) => sql`${s}`), sql`, `)})`);
     }
   }
+
+  // Selling the car is when it gets prepared — MOT and service, so it goes out up to date — so
+  // this is where the pre-sale job sheet belongs. It also guarantees the car has a `vehicles`
+  // row by the time it leaves us, which is what makes it findable by registration afterwards.
+  // Only on the way TO sold, never on putting a car back on the forecourt, and never fatal:
+  // a failed job sheet must not stop a sale being recorded.
+  if (input.sold && prev?.registration) {
+    const { ensurePreSalePrep } = await import("./services/preSalesInspection");
+    await ensurePreSalePrep({
+      registration: prev.registration,
+      stock: {
+        make: prev.make, model: prev.model, variant: prev.variant, colour: prev.colour,
+        fuelType: prev.fuelType, vin: prev.vin, engineNo: prev.engineNo,
+      },
+      source: "marked sold on the forecourt list",
+    });
+  }
+
   return (await db.select().from(salesStock).where(eq(salesStock.id, input.id)).limit(1))[0];
 }
 

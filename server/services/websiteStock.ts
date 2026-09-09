@@ -259,6 +259,15 @@ export async function syncWebsiteStock(opts?: { apply?: boolean }): Promise<Stoc
         const id = Array.isArray(ins) ? ins[0]?.id : ins?.rows?.[0]?.id;
         report.added[report.added.length - 1].id = id ?? null;
         if (id) seen.add(id);
+        // A car that reached the website without ever passing through a purchase invoice still
+        // needs a vehicle record, or it cannot be found by registration in the search box.
+        // No job sheet here — the car is not prepared until it sells.
+        const { ensureStockVehicle } = await import("./preSalesInspection");
+        const vehicle = await ensureStockVehicle({
+          registration: car.registration,
+          stock: { make: car.make, model: car.model, variant: car.variant, colour: car.colour, fuelType: car.fuelType, vin: car.vin, registrationDate: car.registrationDate },
+        });
+        if (vehicle.why && !vehicle.created) report.errors.push(`${car.registration}: no vehicle record — ${vehicle.why}`);
       }
       continue;
     }

@@ -371,6 +371,18 @@ export const vehicleSaleRouter = router({
         purchaserEmail: String(c.email || "").trim(),
       };
       await db.update(vehicleSaleInvoices).set({ ...fields, customerId: c.id }).where(eq(vehicleSaleInvoices.id, input.id));
+
+      // The buyer drives it now, so the car should be registered to them — otherwise it stays on
+      // the garage's own account and its MOT reminder goes nowhere. Only moves a car that is
+      // ours or unowned; a car already registered to someone else is never reassigned.
+      const [inv] = await db.select({ reg: vehicleSaleInvoices.registrationNumber, kind: vehicleSaleInvoices.docKind })
+        .from(vehicleSaleInvoices).where(eq(vehicleSaleInvoices.id, input.id)).limit(1);
+      if (inv?.reg && inv.kind !== "purchase") {
+        const { transferStockVehicleToBuyer } = await import("../services/preSalesInspection");
+        const moved = await transferStockVehicleToBuyer(inv.reg, c.id);
+        if (moved.vehicleId) await db.update(vehicleSaleInvoices).set({ vehicleId: moved.vehicleId }).where(eq(vehicleSaleInvoices.id, input.id));
+      }
+
       // Only the form's own text fields go back — the caller merges these straight into the
       // form state, and a numeric customerId there would fail the next autosave's validation.
       return fields;
