@@ -2236,7 +2236,11 @@ export const appRouter = router({
         await db.update(vehicles).set({
           remindersOff: input.off ? 1 : 0,
           remindersOffAt: input.off ? new Date() : null,
-          remindersOffReason: input.off ? (input.reason || "Switched off by hand") : null,
+          // Turning a car back on by hand is a decision, so it is recorded and the daily stale-car
+          // check (server/services/staleCarReminders.ts) never switches that car off again.
+          remindersOffReason: input.off
+            ? (input.reason || "Switched off by hand")
+            : `Switched back on by hand ${new Date().toLocaleDateString("en-GB", { timeZone: "Europe/London" })}`,
         } as any).where(eq(vehicles.id, input.vehicleId));
         return { off: input.off };
       }),

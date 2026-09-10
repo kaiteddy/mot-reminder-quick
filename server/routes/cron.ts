@@ -185,6 +185,35 @@ cronRouter.get("/website-stock-sync", async (req, res) => {
  *
  * Auth: same CRON_SECRET bearer as the other crons.
  */
+/**
+ * Stale cars: switch MOT reminders off for any car with no work in five years, keeping the owner
+ * and history intact and writing the evidence on the vehicle. Daily, before anyone opens the
+ * reminders screen. See server/services/staleCarReminders.ts for the rule and why the owner is no
+ * longer cleared. `?dry=1` reports without writing. A run that finds more than 200 new cars refuses
+ * to act — on a normal day only a handful cross the line, so a flood means something upstream broke.
+ */
+cronRouter.get("/stale-car-reminders", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { getDb } = await import("../db");
+    const { stopStaleCarReminders } = await import("../services/staleCarReminders");
+    const db: any = await getDb();
+    if (!db?.$client) throw new Error("Database not available");
+    const dry = String(req.query.dry || "") === "1";
+    const s = await stopStaleCarReminders((t, p) => db.$client.query(t, p), { apply: !dry, maxPerRun: 200 });
+    const out = { ok: !s.refused, dry, found: s.found, stopped: s.stopped, dueWithin60Days: s.dueWithin60Days, byTier: s.byTier, refused: s.refused,
+      cars: s.cars.slice(0, 50).map((c) => ({ reg: c.registration, tier: c.verdict.tier })) };
+    console.log(`[CRON stale-car-reminders] ${dry ? "DRY" : "LIVE"}: found ${s.found}, stopped ${s.stopped}${s.refused ? `, REFUSED: ${s.refused}` : ""}`);
+    res.status(s.refused ? 409 : 200).json(out);
+  } catch (e: any) {
+    console.error("[CRON stale-car-reminders] failed:", e?.message || e);
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 cronRouter.get("/unanswered-messages", async (req, res) => {
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.authorization !== `Bearer ${secret}`) {

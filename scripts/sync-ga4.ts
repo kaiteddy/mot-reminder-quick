@@ -26,7 +26,7 @@ import { buildCustomerContacts } from "../server/services/contactCleanup";
 import { retireInvoicedJobSheets } from "./retire-invoiced-jobsheets";
 import { retireSupersededWebInvoices } from "./retire-superseded-web-invoices";
 import { renumberCollidingWebDrafts } from "./renumber-colliding-web-drafts";
-import { archiveStaleVehicleOwners } from "./archive-stale-vehicle-owners";
+import { stopStaleCarReminders } from "../server/services/staleCarReminders";
 import { decodeRegChangeAnnotations } from "./decode-reg-change-annotations";
 import { archiveOldEstimates } from "./archive-old-estimates";
 import { archiveCreditNotes } from "./archive-credit-notes";
@@ -341,9 +341,6 @@ await retireSupersededWebInvoices(c, GO, path.join(process.cwd(), "scripts", ".c
 // ---- 7) Renumber any web draft left holding a docNo a GA4 doc just synced in under (unrelated jobs) ----
 await renumberCollidingWebDrafts(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
-// ---- 8) Archive the customer link on vehicles nobody's invoiced in 5+ years (stops stale MOT reminders) ----
-await archiveStaleVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
-
 // ---- 9) Decode GA4's embedded reg-change annotations ("M10HAK*(date)") into a clean registration ----
 await decodeRegChangeAnnotations(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
@@ -355,6 +352,16 @@ await archiveCreditNotes(c, GO, path.join(process.cwd(), "scripts", ".cleanup-ba
 
 // ---- 12) Link a vehicle to its owner when history names exactly one customer but the vehicle itself has none ----
 await linkOrphanedVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
+
+// ---- 13) Stop reminders for cars with no work in 5+ years. Runs LAST, after owners are linked.
+// This used to clear the owner instead, and step 12 plus GA4's nightly import put it straight
+// back — 1,675 of 2,139 archived cars were back in the reminder list by September. The owner now
+// stays; only the car's reminders switch off, with the evidence written on the vehicle.
+{
+  const stale = await stopStaleCarReminders((t, p) => c.query(t, p as any[]), { apply: GO });
+  console.log(`\n===== STOP REMINDERS: STALE CARS ${GO ? "(APPLYING)" : "(DRY RUN — no writes)"} =====`);
+  console.log(`qualifying: ${stale.found}, switched off: ${stale.stopped}`);
+}
 
 console.log(GO ? "\n✓ Sync applied." : "\nDry run complete — re-run with --go to apply.");
 await c.end();
