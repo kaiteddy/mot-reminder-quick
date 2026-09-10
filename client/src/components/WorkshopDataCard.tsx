@@ -3,29 +3,52 @@
  * cooling, capacities, fuse boxes, the diagnostic port, part locations and drawings.
  * Bought once from the technical data service (GA4 credits) and stored — see shared/workshopData.ts.
  */
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Image as ImageIcon, Loader2, MapPin, RefreshCw, Search, Wrench, Zap } from "lucide-react";
-import { entryCount, matchingRows, type WorkshopData, type WorkshopGroup, type FuseBox } from "../../../shared/workshopData";
+import { entryCount, matchingRows, rowsBeneath, type WorkshopData, type WorkshopGroup, type FuseBox } from "../../../shared/workshopData";
+import { DiagramViewer, type DiagramItem } from "@/components/DiagramViewer";
 
-type Props = { workshop?: WorkshopData | null; loading?: boolean; onFetch?: () => void };
+type Props = {
+    workshop?: WorkshopData | null;
+    loading?: boolean;
+    onFetch?: () => void;
+    /** Shown on the pop-out and its printout, e.g. "AU16WOX · AUDI · Q7". */
+    vehicleLabel?: string | null;
+};
+
+/** Opens a picture in the pop-out viewer rather than a new browser window. */
+const OpenDiagram = createContext<(item: DiagramItem) => void>(() => {});
 
 const ukDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 
-function Picture({ src, alt, className = "" }: { src: string; alt: string; className?: string }) {
+function Picture({ item, label, className = "" }: { item: DiagramItem; label: string; className?: string }) {
+    const open = useContext(OpenDiagram);
     return (
-        <a href={src} target="_blank" rel="noopener noreferrer" className={`group block rounded-md border bg-white p-1.5 hover:border-primary ${className}`} title="Open full size">
-            <img src={src} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="mx-auto max-h-56 w-full object-contain" />
-            <span className="mt-1 block truncate text-center text-[11px] text-muted-foreground group-hover:text-foreground">{alt}</span>
-        </a>
+        <button type="button" onClick={() => open(item)} className={`group block w-full rounded-md border bg-white p-1.5 text-left hover:border-primary ${className}`} title="Open and print">
+            <img src={item.src} alt={label} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="mx-auto max-h-56 w-full object-contain" />
+            <span className="mt-1 block truncate text-center text-[11px] text-muted-foreground group-hover:text-foreground">{label}</span>
+        </button>
     );
 }
 
 function GroupTable({ group, filter }: { group: WorkshopGroup; filter: string }) {
+    const open = useContext(OpenDiagram);
     const rows = matchingRows(group.rows, filter);
+    // A diagram prints with the settings that hang off it, e.g. a cylinder head's tightening stages.
+    const diagramFor = (r: WorkshopGroup["rows"][number]): DiagramItem => {
+        const beneath = rowsBeneath(group.rows, group.rows.indexOf(r));
+        return {
+            src: r.image as string,
+            title: r.label,
+            subtitle: group.name,
+            notes: r.note ? [r.note] : [],
+            table: beneath.length ? { head: ["Step", "Setting", "Note"], rows: beneath.map((b) => [b.label, b.value ? `${b.value}${b.unit ? ` ${b.unit}` : ""}` : "", b.note ?? ""]) } : undefined,
+        };
+    };
     if (!rows.length) return <p className="text-sm text-muted-foreground">Nothing matches.</p>;
     return (
         <div className="overflow-x-auto">
@@ -41,7 +64,7 @@ function GroupTable({ group, filter }: { group: WorkshopGroup; filter: string })
                                 </td>
                                 <td className="py-1.5 text-right align-top font-medium tabular-nums whitespace-nowrap">
                                     {r.value && <>{r.value}{r.unit ? <span className="ml-1 text-xs font-normal text-muted-foreground">{r.unit}</span> : null}</>}
-                                    {r.image && <a href={r.image} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><ImageIcon className="h-3 w-3" />Diagram</a>}
+                                    {r.image && <button type="button" onClick={() => open(diagramFor(r))} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><ImageIcon className="h-3 w-3" />Diagram</button>}
                                 </td>
                             </tr>
                         );
@@ -61,8 +84,11 @@ function FuseBoxView({ box, filter }: { box: FuseBox; filter: string }) {
             {box.notes.map((n, i) => <p key={i} className="text-xs text-muted-foreground">{n}</p>)}
             {(box.mapImage || box.whereImage) && (
                 <div className="grid gap-2 sm:grid-cols-2">
-                    {box.mapImage && <Picture src={box.mapImage} alt="Fuse layout" />}
-                    {box.whereImage && <Picture src={box.whereImage} alt="Where the box is" />}
+                    {box.mapImage && <Picture label="Fuse layout" item={{
+                        src: box.mapImage, title: box.name, subtitle: "Fuse layout", notes: box.notes,
+                        table: { head: ["No.", "Amps", "What it protects"], rows: box.items.map((f) => [f.ref, f.amps ? `${f.amps}A` : "–", f.kind === "fuse" ? f.what : `${f.what} (${f.kind})`]) },
+                    }} />}
+                    {box.whereImage && <Picture label="Where the box is" item={{ src: box.whereImage, title: box.name, subtitle: "Where the box is", notes: box.notes }} />}
                 </div>
             )}
             <div className="overflow-x-auto">
@@ -83,7 +109,17 @@ function FuseBoxView({ box, filter }: { box: FuseBox; filter: string }) {
     );
 }
 
-export function WorkshopDataCard({ workshop, loading, onFetch }: Props) {
+export function WorkshopDataCard(props: Props) {
+    const [viewing, setViewing] = useState<DiagramItem | null>(null);
+    return (
+        <OpenDiagram.Provider value={setViewing}>
+            <WorkshopDataCardBody {...props} />
+            <DiagramViewer item={viewing} vehicleLabel={props.vehicleLabel} onClose={() => setViewing(null)} />
+        </OpenDiagram.Provider>
+    );
+}
+
+function WorkshopDataCardBody({ workshop, loading, onFetch }: Props) {
     const [query, setQuery] = useState("");
     const filter = query.trim().toLowerCase();
 
@@ -167,7 +203,7 @@ export function WorkshopDataCard({ workshop, loading, onFetch }: Props) {
                             {!filter && workshop.diagnosticPort.length > 0 && (
                                 <AccordionItem value="port">
                                     <AccordionTrigger className="py-2.5 text-sm"><span className="flex items-center gap-2"><MapPin className="h-4 w-4" />Diagnostic port</span></AccordionTrigger>
-                                    <AccordionContent><div className="grid gap-2 sm:grid-cols-2">{workshop.diagnosticPort.map((p, i) => p.image ? <Picture key={i} src={p.image} alt={p.note ?? "Diagnostic port"} /> : <p key={i} className="text-sm">{p.note}</p>)}</div></AccordionContent>
+                                    <AccordionContent><div className="grid gap-2 sm:grid-cols-2">{workshop.diagnosticPort.map((p, i) => p.image ? <Picture key={i} label={p.note ?? "Diagnostic port"} item={{ src: p.image, title: "Diagnostic port", subtitle: p.note }} /> : <p key={i} className="text-sm">{p.note}</p>)}</div></AccordionContent>
                                 </AccordionItem>
                             )}
                             {!filter && workshop.locations.length > 0 && (
@@ -176,7 +212,7 @@ export function WorkshopDataCard({ workshop, loading, onFetch }: Props) {
                                     <AccordionContent className="space-y-3">
                                         {workshop.locations.map((l, i) => (
                                             <div key={i} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                                {l.image ? <Picture src={l.image} alt={l.title} /> : <p className="text-sm font-medium">{l.title}</p>}
+                                                {l.image ? <Picture label={l.title} item={{ src: l.image, title: l.title, subtitle: "Where parts are", notes: l.notes, table: l.parts.length ? { head: ["No.", "Part"], rows: l.parts.map((pt) => [pt.ref, pt.name]) } : undefined }} /> : <p className="text-sm font-medium">{l.title}</p>}
                                                 <ol className="space-y-0.5 text-sm">{l.parts.map((p, j) => <li key={j}><span className="mr-2 inline-block w-6 text-right font-medium tabular-nums">{p.ref}</span>{p.name}</li>)}</ol>
                                             </div>
                                         ))}
@@ -190,7 +226,7 @@ export function WorkshopDataCard({ workshop, loading, onFetch }: Props) {
                                         {workshop.drawings.map((g, i) => (
                                             <div key={i}>
                                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.name}</p>
-                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{g.drawings.map((d, j) => <Picture key={j} src={d.image} alt={d.title} />)}</div>
+                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{g.drawings.map((d, j) => <Picture key={j} label={d.title} item={{ src: d.image, title: d.title, subtitle: g.name }} />)}</div>
                                             </div>
                                         ))}
                                     </AccordionContent>

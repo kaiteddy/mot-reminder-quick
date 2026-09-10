@@ -411,7 +411,8 @@ function WorkshopJobSheetInner() {
           {vehicle?.id && (
             <Section id="workshop" open={open} setOpen={setOpen} icon={Wrench} title="Workshop data"
               summary={workshop.loading ? "fetching…" : workshop.workshop ? `${workshop.workshop.adjustments.reduce((n, g) => n + g.rows.filter((r) => r.value).length, 0)} settings` : undefined}>
-              <WorkshopDataCard workshop={workshop.workshop} loading={workshop.loading} onFetch={() => workshop.fetch(true)} />
+              <WorkshopDataCard workshop={workshop.workshop} loading={workshop.loading} onFetch={() => workshop.fetch(true)}
+                vehicleLabel={[vehicle?.registration || reg, vehicle?.make, vehicle?.model].filter(Boolean).join(" · ")} />
             </Section>
           )}
 

@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildWorkshopData, parseAdjustments, parseFuseLocations, parseDiagnosticPort,
-  parseEngineLocations, parseDrawings, cleanText, workshopIsEmpty, matchingRows, entryCount,
+  parseEngineLocations, parseDrawings, cleanText, workshopIsEmpty, matchingRows, entryCount, rowsBeneath,
 } from "../shared/workshopData";
 
 const wrap = (inner: any) => [{ TechnicalData: inner }];
@@ -175,5 +175,20 @@ describe("matchingRows", () => {
 
   it("counts figures, diagrams and notes but not bare headings", () => {
     expect(entryCount(torque)).toBe(3);
+  });
+});
+
+describe("rowsBeneath", () => {
+  const row = (label: string, depth: number, value: string | null = null) => ({ label, depth, value, unit: null, note: null, image: null });
+  // The Audi Q7's cylinder head: a diagram on the heading, its stages beneath, then the next part.
+  const rows = [row("Cylinder head", 0), row("Stage 1", 1), row("Stage 2", 1, "35"), row("Stage 3", 2, "50"), row("Valve cover", 0, "10")];
+
+  it("takes the stages under a diagram and stops at the next part", () => {
+    expect(rowsBeneath(rows, 0).map((r) => r.label)).toEqual(["Stage 1", "Stage 2", "Stage 3"]);
+  });
+
+  it("returns nothing for a row with nothing under it, or no such row", () => {
+    expect(rowsBeneath(rows, 4)).toEqual([]);
+    expect(rowsBeneath(rows, 9)).toEqual([]);
   });
 });

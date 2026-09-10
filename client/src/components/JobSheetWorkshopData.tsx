@@ -72,7 +72,7 @@ export function WorkshopDataSheet({ open, onOpenChange, registration, data }: {
                         <p className="text-sm text-muted-foreground">Add the registration to see this car's workshop data.</p>
                     ) : (
                         <>
-                            <WorkshopDataCard workshop={data.workshop} loading={data.loading} onFetch={() => data.fetch(true)} />
+                            <WorkshopDataCard workshop={data.workshop} loading={data.loading} onFetch={() => data.fetch(true)} vehicleLabel={normReg(registration)} />
                             {data.failed && !data.workshop && (
                                 <p className="mt-2 text-xs text-muted-foreground">Could not fetch workshop data for this car. It may not be on file yet, or the technical data service did not answer.</p>
                             )}

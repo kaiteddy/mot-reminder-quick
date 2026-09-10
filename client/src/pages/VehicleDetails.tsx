@@ -1499,6 +1499,7 @@ export default function VehicleDetails() {
                     </Card>
                     <WorkshopDataCard
                         workshop={(vehicle.comprehensiveTechnicalData as any)?.workshop}
+                        vehicleLabel={[vehicle.registration, vehicle.make, vehicle.model].filter(Boolean).join(" · ")}
                         loading={fetchWorkshop.isPending}
                         onFetch={() => fetchWorkshop.mutate({ registration: String(vehicle.registration || "").replace(/\s/g, "").toUpperCase() })}
                     />

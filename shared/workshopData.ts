@@ -210,3 +210,16 @@ export function matchingRows(rows: WorkshopRow[], filter: string): WorkshopRow[]
 
 /** How many real entries rows hold: a figure, a diagram or a note all count; bare headings do not. */
 export const entryCount = (rows: WorkshopRow[]): number => rows.filter((r) => r.value || r.image || r.note).length;
+
+/**
+ * The rows that belong to one row: everything after it that sits deeper, up to the next row at its
+ * own level. A torque diagram hangs off a heading such as "Cylinder head"; its tightening stages
+ * are the rows beneath it, and they should print with the diagram.
+ */
+export function rowsBeneath(rows: WorkshopRow[], index: number): WorkshopRow[] {
+  const own = rows[index];
+  if (!own) return [];
+  const out: WorkshopRow[] = [];
+  for (let i = index + 1; i < rows.length && rows[i].depth > own.depth; i++) out.push(rows[i]);
+  return out;
+}
