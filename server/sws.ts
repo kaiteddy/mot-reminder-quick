@@ -1,3 +1,5 @@
+import { buildWorkshopData, type WorkshopData } from "../shared/workshopData";
+
 // SWS Solutions API Configuration (Ported from v0dashboard-2)
 const SWS_CONFIG = {
     apiKey: process.env.SWS_API_KEY || "C94A0F3F12E88DB916C008B069E34F65",
@@ -24,6 +26,8 @@ export interface SWSTechnicalData {
     maintenance?: any;
     ukvd?: any;
     raw?: any;
+    /** Torque settings, brake limits, alignment, fuse boxes, part locations, drawings - see shared/workshopData.ts. */
+    workshop?: WorkshopData;
 }
 
 export interface TyrePressureData {
@@ -236,6 +240,9 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         console.error("[SWS] Error on GET_INITIAL_SUBJECTS:", e);
     }
 
+    // Kept so the workshop groups can reuse the adjustments answer rather than ask for it twice.
+    let adjTextForWorkshop = "";
+
     // 2. Get Lubricants (V4 Protocol)
     const capacityMap: Record<string, string> = {};
 
@@ -257,6 +264,7 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         });
         const adjRes = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers: commonHeaders, body: adjBody });
         const adjText = await adjRes.text();
+        adjTextForWorkshop = adjText;
 
         if (adjRes.ok && adjText.trim() && adjText !== "[]") {
             const adjData = _swsParse(adjText, "adjustments");
@@ -341,6 +349,19 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
         }
     } catch (e) {
         console.error("[SWS] Error on V4 Data Pass:", e);
+    }
+
+    // 3b. Everything else for the car, on the same day pass: the whole adjustments answer (torque
+    // settings, brake limits, alignment, electrical...) plus fuse boxes, diagnostic port, part
+    // locations and drawings. Only when the service actually knows the car.
+    if (result.raw) {
+        try {
+            const extra = await fetchWorkshopData(cleanVRM, { adjustmentsText: adjTextForWorkshop });
+            result.workshop = extra.workshop;
+            if (!result.tyres && extra.tyres) result.tyres = extra.tyres;
+        } catch (e) {
+            console.error("[SWS] Workshop data not fetched:", (e as any)?.message || e);
+        }
     }
 
     // 4. Labor Times / Repair Tree (GA4 Logic) - two billed calls, on-demand only
@@ -525,4 +546,40 @@ export async function fetchRepairNodes(vrm: string, repid: string, nodeId: strin
         console.error("[SWS] Error fetching repair nodes:", e);
         return { tree: [], details: [] };
     }
+}
+
+/**
+ * The workshop groups for one car: the whole adjustments answer, fuse boxes, diagnostic port,
+ * part locations and drawings. One technical lookup covers every request for a car for the rest
+ * of that day (GA4's own Technical Data screen, 26/08/2026), and an answer with nothing in it is
+ * never charged, so asking for all of them at once costs no more than asking for one.
+ *
+ * Throws when not one request got through, so a network failure is never stored as "this car has
+ * no workshop data" and quietly never retried. A genuine empty answer IS returned, and stored.
+ */
+export async function fetchWorkshopData(vrm: string, opts?: { adjustmentsText?: string }): Promise<{ workshop: WorkshopData; tyres?: TyrePressureData }> {
+    const cleanVRM = vrm.toUpperCase().replace(/\s/g, "");
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': SWS_CONFIG.authHeader, 'User-Agent': 'Garage Assistant/4.0' };
+    let answered = 0;
+    const ask = async (action: string): Promise<string> => {
+        try {
+            const res = await fetch(SWS_CONFIG.lookupUrl, { method: 'POST', headers, body: new URLSearchParams({ APIKey: SWS_CONFIG.apiKey, ACTION: action, VRM: cleanVRM }) });
+            if (!res.ok) return "";
+            answered++;
+            return await res.text();
+        } catch {
+            return "";
+        }
+    };
+    const adjustmentsText = opts?.adjustmentsText ? (answered++, opts.adjustmentsText) : await ask('GET_ADJUSTMENTS');
+    const [fuses, diagnosticPort, locations, drawings] = await Promise.all([
+        ask('GET_FUSE_LOCATIONS'), ask('GET_EOBD_LOCATIONS'), ask('GET_ENGINE_LOCATIONS'), ask('GET_DRAWINGS'),
+    ]);
+    if (answered === 0) throw new Error("the technical data service did not answer");
+    const workshop = buildWorkshopData({ adjustments: adjustmentsText, fuses, diagnosticPort, locations, drawings });
+    let tyres: TyrePressureData | undefined;
+    const adj = _swsParse(adjustmentsText || "[]", "adjustments");
+    const groups = adj?.[0]?.TechnicalData?.ExtAdjustment || adj?.["0"]?.TechnicalData?.ExtAdjustment;
+    if (groups) tyres = parseTyresFromAdjustments(Array.isArray(groups) ? groups : [groups]);
+    return { workshop, tyres };
 }

@@ -1227,6 +1227,30 @@ export const appRouter = router({
         }
       }),
 
+    // Everything else the technical data service holds for a car looked up before workshop data was
+    // kept: torque settings, brake limits, alignment, electrical, fuse boxes, part locations and
+    // drawings. Bought once, stored on the car, never bought again, and an empty answer is stored
+    // too. New deep lookups include it already. Fills in tyres from the same answer if missing.
+    fetchWorkshopData: protectedProcedure
+      .input(z.object({ registration: z.string() }))
+      .mutation(async ({ input }) => {
+        const { getDb, getVehicleByRegistration } = await import("./db");
+        const db = await getDb();
+        if (!db) throw new Error("Database unavailable");
+        const veh = await getVehicleByRegistration(input.registration.toUpperCase().replace(/\s/g, ""));
+        if (!veh) throw new Error("Vehicle not found");
+        let ctd: any = veh.comprehensiveTechnicalData;
+        try { if (typeof ctd === "string") ctd = JSON.parse(ctd); } catch { ctd = null; }
+        ctd = ctd || {};
+        if (ctd.workshop) return { workshop: ctd.workshop, cached: true };
+        const { fetchWorkshopData } = await import("./sws");
+        const { workshop, tyres } = await fetchWorkshopData(String(veh.registration));
+        ctd.workshop = workshop;
+        if (!ctd.tyres && tyres) ctd.tyres = tyres;
+        await db.update(vehicles).set({ comprehensiveTechnicalData: ctd }).where(eq(vehicles.id, veh.id));
+        return { workshop, cached: false };
+      }),
+
     // On-demand tyre pressures for vehicles fetched before tyres were stored. New deep
     // fetches include them automatically; this fills the gap with ONE adjustments call,
     // cached into comprehensiveTechnicalData so it never re-fetches.

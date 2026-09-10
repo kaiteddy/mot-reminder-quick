@@ -48,6 +48,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import { WorkshopDataCard } from "@/components/WorkshopDataCard";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import {
     Dialog,
@@ -466,6 +467,22 @@ export default function VehicleDetails() {
         if (!reg || hasTyres || fetchTyres.isPending || tyresAutoRef.current === reg) return;
         tyresAutoRef.current = reg;
         fetchTyres.mutate({ registration: reg });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [vehicle]);
+    // Torque settings, brake limits, alignment, electrical, fuse boxes, part locations and drawings.
+    // Fetched once per car the first time its page opens, like tyres, then kept for good - the
+    // same technical lookup already paid for oils and air con covers them on the day it is bought.
+    const fetchWorkshop = trpc.vehicles.fetchWorkshopData.useMutation({
+        onSuccess: () => utils.vehicles.getByRegistration.invalidate(),
+        onError: (e) => toast.error("Workshop data: " + e.message),
+    });
+    const workshopAutoRef = useRef<string>("");
+    useEffect(() => {
+        const reg = String(vehicle?.registration || "").replace(/\s/g, "").toUpperCase();
+        const hasWorkshop = !!(vehicle?.comprehensiveTechnicalData as any)?.workshop;
+        if (!reg || hasWorkshop || fetchWorkshop.isPending || workshopAutoRef.current === reg) return;
+        workshopAutoRef.current = reg;
+        fetchWorkshop.mutate({ registration: reg });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [vehicle]);
     const fetchTechData = trpc.vehicles.fetchTechnicalData.useMutation({
@@ -1480,6 +1497,11 @@ export default function VehicleDetails() {
                             })()}
                         </CardContent>
                     </Card>
+                    <WorkshopDataCard
+                        workshop={(vehicle.comprehensiveTechnicalData as any)?.workshop}
+                        loading={fetchWorkshop.isPending}
+                        onFetch={() => fetchWorkshop.mutate({ registration: String(vehicle.registration || "").replace(/\s/g, "").toUpperCase() })}
+                    />
 
                     <ServiceResetCard vehicleId={vehicle.id} info={(vehicle as any).serviceResetInfo}
                         vehicleDesc={[vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration as any).getFullYear() : null, vehicle.make, vehicle.model].filter(Boolean).join(" ")}

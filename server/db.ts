@@ -3336,6 +3336,16 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           if (want("vin") && clean(u.vin || sp.vin || sws?.raw?.vinNumber)) v.vin = updates.vin = clean(u.vin || sp.vin || sws?.raw?.vinNumber);
           if (want("engineCC") && (u.engineSize || sp.capacity)) v.engineCC = updates.engineCC = Number(u.engineSize || sp.capacity) || v.engineCC;
           if (effectiveForce) { v.engineNo = updates.engineNo = null; updates.comprehensiveTechnicalData = sws; v.comprehensiveTechnicalData = sws; } // drop stale physical engine no + refresh cached data
+          // A lookup that was paid for is kept whole, not just its identity fields. Without this the
+          // technical answer was dropped here and the job sheet bought the same car a second time.
+          // What is already stored wins, so a better tyre fitment or a repair-time cache is never lost.
+          else if (sws && (sws.raw || sws.ukvd)) {
+            let prior: any = v.comprehensiveTechnicalData;
+            try { if (typeof prior === "string") prior = JSON.parse(prior); } catch { prior = null; }
+            const merged = { ...sws, ...(prior || {}) };
+            if (!prior?.workshop && sws.workshop) merged.workshop = sws.workshop;
+            updates.comprehensiveTechnicalData = merged; v.comprehensiveTechnicalData = merged;
+          }
           // The paid UKVD lookup is the ONLY source of the physical engine number and the exact
           // first-registration date - map them, or they die unread in the stored payload.
           if ((effectiveForce || empty(v.engineNo)) && clean(u.engineNumber)) v.engineNo = updates.engineNo = clean(u.engineNumber);
