@@ -942,25 +942,10 @@ export const appRouter = router({
         return getCarReadyPreview(input.docId);
       }),
     send: protectedProcedure
-      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().max(2000).optional() }))
+      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1) }))
       .mutation(async ({ input }) => {
         const { sendCarReady } = await import("./services/carReady");
         return sendCarReady(input);
-      }),
-    /** A plain-English note on what the car's MOT found, for staff to check and send with the message. */
-    motNote: protectedProcedure
-      .input(z.object({
-        testDate: z.string().optional(),
-        testResult: z.string().optional(),
-        items: z.array(z.object({
-          type: z.string().nullable().optional(),
-          text: z.string().min(1).max(600),
-          dangerous: z.boolean().nullable().optional(),
-        })).min(1).max(40),
-      }))
-      .mutation(async ({ input }) => {
-        const { writeMotNote } = await import("./services/motCustomerNote");
-        return writeMotNote(input);
       }),
   }),
 
