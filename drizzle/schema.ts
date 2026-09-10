@@ -90,7 +90,9 @@ export const vehicles = pgTable("vehicles", {
   make: varchar("make", { length: 100 }),
   model: varchar("model", { length: 100 }),
   motExpiryDate: timestamp("motExpiryDate", { mode: "date" }),
-  taxStatus: varchar("taxStatus", { length: 20 }), // Taxed, Untaxed, SORN
+  // Taxed, Untaxed, SORN, or DVLA's "Not Taxed for on Road Use" (25 chars). At length 20 that
+  // one answer stopped the whole-database DVLA scan on 10/09/2026; widened to 40 on the live table.
+  taxStatus: varchar("taxStatus", { length: 40 }),
   taxDueDate: timestamp("taxDueDate", { mode: "date" }),
   lastChecked: timestamp("lastChecked", { mode: "date" }),
   motBookedDate: timestamp("motBookedDate", { mode: "date" }),

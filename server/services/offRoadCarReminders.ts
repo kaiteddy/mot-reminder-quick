@@ -24,8 +24,12 @@
  *   - every car, not only those currently being reminded. 257 off-road cars had no owner, and GA4's
  *     nightly import attaches owners, so they would have walked back into the reminder list; trade
  *     and opted-out cars are covered too, so the car's own record is right whoever owns it.
- *   - a third fact: DVLA has no record of the plate at all (scrapped, exported, or the plate has
- *     gone to another car).
+ *
+ * NOT a reason, though it looked like one: DVLA having no record of the plate. Checked 10/09/2026
+ * against DVSA on ten recent "no record" cars — WP21KOX, a 2021 Outlander, passed its MOT on
+ * 28/07/2026, and AF59JVW, EN09EHL and LD10VCZ all had recent passes. DVLA's Vehicle Enquiry
+ * Service simply does not return some cars that are on the road, so its 404 proves nothing. The
+ * answer is still recorded (vehicles.dvlaStatus = 'not_found'), it just never switches reminders off.
  */
 import { KEPT_ON_MARKER, type Query } from "./staleCarReminders";
 
@@ -39,7 +43,7 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 const ukDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" });
 
-export type OffRoadKind = "not_found" | "sorn_and_no_mot" | "no_mot" | "sorn";
+export type OffRoadKind = "sorn_and_no_mot" | "no_mot" | "sorn";
 export type OffRoadVerdict = { kind: OffRoadKind; label: string; reason: string };
 
 /** Is this car off the road, and how do we say so? Pure. Null means keep reminding. */
@@ -48,9 +52,6 @@ export function offRoadVerdict(
   now: Date = new Date(),
 ): OffRoadVerdict | null {
   const tail0 = ` Owner and history unchanged. Reminders switch back on by themselves if DVLA shows it taxed with a valid MOT again.`;
-  if (v.dvlaStatus === "not_found") {
-    return { kind: "not_found", label: "DVLA has no record of the plate", reason: `Reminders stopped ${ukDate(now)}. ${OFF_ROAD_TAG} DVLA has no record of this registration, so the car has been scrapped or exported, or the plate has moved to another vehicle.${tail0}` };
-  }
   if (!v.motExpiryDate) {
     return String(v.taxStatus || "").trim().toUpperCase() === "SORN"
       ? { kind: "sorn", label: "SORN, MOT more recent", reason: `Reminders stopped ${ukDate(now)}. ${OFF_ROAD_TAG} DVLA shows it declared SORN, off the road. It has not needed an MOT yet.${tail0}` }
@@ -87,9 +88,9 @@ export async function findOffRoadCars(query: Query, now: Date = new Date()): Pro
      WHERE COALESCE(v."remindersOff",0) = 0
        AND COALESCE(v."remindersOffReason",'') NOT ILIKE $1
        AND v."dvlaAnsweredAt" > $2::timestamptz - interval '${DVLA_FRESH_DAYS} days'
-       AND (v."dvlaStatus" = 'not_found'
-            OR (v."dvlaStatus" = 'found' AND (UPPER(TRIM(COALESCE(v."taxStatus",''))) = 'SORN'
-                 OR v."motExpiryDate" < $2::timestamptz - interval '${NO_PASS_YEARS - 1} years')))
+       AND v."dvlaStatus" = 'found'
+       AND (UPPER(TRIM(COALESCE(v."taxStatus",''))) = 'SORN'
+            OR v."motExpiryDate" < $2::timestamptz - interval '${NO_PASS_YEARS - 1} years')
      ORDER BY v."motExpiryDate" DESC`, [`${KEPT_ON_MARKER}%`, now.toISOString()]);
   return rows
     .map((r) => ({ ...r, verdict: offRoadVerdict(r, now) }))
