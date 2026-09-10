@@ -9,7 +9,7 @@ import {
   MOT_NOTE_MAX, carReadyRoute, cleanMotNote, insertAfterReadySentence, motNoteBlock, smsSegments, withMotNote,
 } from "../shared/carReadyMessage";
 import { generateCarReadyMessage } from "./smsService";
-import { itemsForNote } from "./services/motCustomerNote";
+import { itemsForNote, plainSides, resultForNote, withNetworkRetry } from "./services/motCustomerNote";
 
 /** The approved vehicle_ready template body, read back from Twilio on 10/09/2026. */
 const APPROVED_READY = "Hi {{1}}, your {{2}} is ready to collect from ELI MOTORS. We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. Any questions, call us on 020 8203 6449.";
@@ -127,8 +127,73 @@ describe("itemsForNote", () => {
       { type: "PRS", text: "Offside Headlamp aim too high (4.1.2 (a) (ii))" },
       { type: "ADVISORY", text: "TPMS  LIGHT ON" },
     ])).toEqual([
-      { type: "ADVISORY", text: "Nearside Rear Tyre worn close to legal limit/worn on edge", dangerous: false },
+      { type: "ADVISORY", text: "Left-hand Rear Tyre worn close to legal limit/worn on edge", dangerous: false },
       { type: "ADVISORY", text: "TPMS LIGHT ON", dangerous: false },
     ]);
+  });
+});
+
+describe("itemsForNote merges the same item on both sides", () => {
+  it("one point for a left-and-right pair, the side kept for a single one", () => {
+    expect(itemsForNote([
+      { type: "ADVISORY", text: "Nearside Front Tyre slightly damaged/cracking or perishing (5.2.3 (d) (ii))" },
+      { type: "ADVISORY", text: "Offside Front Tyre slightly damaged/cracking or perishing (5.2.3 (d) (ii))" },
+      { type: "ADVISORY", text: "Offside Rear Tyre has a cut but not deep enough to reach the ply or cords (5.2.3 (d) (i))" },
+    ])).toEqual([
+      { type: "ADVISORY", text: "Front Tyre slightly damaged/cracking or perishing (both sides)", dangerous: false },
+      { type: "ADVISORY", text: "Right-hand Rear Tyre has a cut but not deep enough to reach the ply or cords", dangerous: false },
+    ]);
+  });
+
+  it("never merges across severities", () => {
+    expect(itemsForNote([
+      { type: "MAJOR", text: "Nearside Front Tyre tread depth below requirements" },
+      { type: "ADVISORY", text: "Offside Front Tyre tread depth below requirements" },
+    ]).map((i) => i.text)).toEqual(["Left-hand Front Tyre tread depth below requirements", "Right-hand Front Tyre tread depth below requirements"]);
+  });
+});
+
+describe("resultForNote", () => {
+  it("a fail whose only failing item was repaired during the test is a pass", () => {
+    // DF03UGA, 12/08/2026: failed on the engine warning light, put right at the test.
+    expect(resultForNote("FAILED", [
+      { type: "ADVISORY", text: "Exhaust emits black smoke during acceleration (8.2.1.2 (g))" },
+      { type: "PRS", text: "Engine MIL inoperative or indicates a malfunction (8.2.1.2 (h))" },
+    ])).toBe("PASSED (a fault was put right during the test)");
+  });
+
+  it("a fail with something still failing stays a fail", () => {
+    expect(resultForNote("FAILED", [
+      { type: "PRS", text: "Offside Headlamp aim too high (4.1.2 (a) (ii))" },
+      { type: "MAJOR", text: "Offside Front Side repeater not working (4.4.1 (a) (ii))" },
+    ])).toBe("FAILED");
+  });
+
+  it("leaves a pass alone", () => {
+    expect(resultForNote("PASSED", [])).toBe("PASSED");
+    expect(resultForNote("", [])).toBeUndefined();
+  });
+});
+
+describe("plainSides", () => {
+  it("turns DVSA side words and shorthand into left and right", () => {
+    expect(plainSides("Front Windscreen wiper blade defective o/s/f & n/s/f")).toBe("Front Windscreen wiper blade defective front right & front left");
+    expect(plainSides("mounting corroded o/s/r & n/s/r & rear suspension corroded")).toBe("mounting corroded rear right & rear left & rear suspension corroded");
+    expect(plainSides("The offside rear tyre has a cut. The Nearside one is fine.")).toBe("The right rear tyre has a cut. The left one is fine.");
+  });
+});
+
+describe("withNetworkRetry", () => {
+  it("tries once more when the connection drops, and never for other errors", async () => {
+    let calls = 0;
+    const dropped = Object.assign(new Error("Failed to process successful response"), {
+      cause: Object.assign(new TypeError("terminated"), { cause: { code: "ECONNRESET" } }),
+    });
+    expect(await withNetworkRetry(async () => { if (++calls === 1) throw dropped; return "ok"; })).toBe("ok");
+    expect(calls).toBe(2);
+
+    calls = 0;
+    await expect(withNetworkRetry(async () => { calls++; throw new Error("Incorrect API key provided"); })).rejects.toThrow("Incorrect API key");
+    expect(calls).toBe(1);
   });
 });
