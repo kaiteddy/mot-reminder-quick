@@ -186,6 +186,36 @@ cronRouter.get("/website-stock-sync", async (req, res) => {
  * Auth: same CRON_SECRET bearer as the other crons.
  */
 /**
+ * Off-road cars: switch MOT reminders off when DVLA shows a car SORN or with no MOT pass in three
+ * years, and back on when DVLA shows it taxed with a valid MOT again. Daily at 05:20, before the
+ * stale-car check, so a car coming back on the road is still judged on staleness the same morning.
+ * See server/services/offRoadCarReminders.ts. `?dry=1` reports without writing; more than 200
+ * changes in one run refuses to act.
+ */
+cronRouter.get("/off-road-car-reminders", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { getDb } = await import("../db");
+    const { runOffRoadCheck } = await import("../services/offRoadCarReminders");
+    const db: any = await getDb();
+    if (!db?.$client) throw new Error("Database not available");
+    const dry = String(req.query.dry || "") === "1";
+    const s = await runOffRoadCheck((t, p) => db.$client.query(t, p), { apply: !dry, maxPerRun: 200 });
+    const out = { ok: !s.refused, dry, found: s.found, stopped: s.stopped, backOnRoad: s.backOnRoad, restarted: s.restarted,
+      byKind: s.byKind, recentCustomers: s.recentCustomers, refused: s.refused,
+      cars: s.cars.slice(0, 50).map((c) => ({ reg: c.registration, tax: c.taxStatus, kind: c.verdict.kind })) };
+    console.log(`[CRON off-road-car-reminders] ${dry ? "DRY" : "LIVE"}: found ${s.found}, stopped ${s.stopped}, back on road ${s.backOnRoad}, restarted ${s.restarted}${s.refused ? `, REFUSED: ${s.refused}` : ""}`);
+    res.status(s.refused ? 409 : 200).json(out);
+  } catch (e: any) {
+    console.error("[CRON off-road-car-reminders] failed:", e?.message || e);
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+/**
  * Stale cars: switch MOT reminders off for any car with no work in five years, keeping the owner
  * and history intact and writing the evidence on the vehicle. Daily, before anyone opens the
  * reminders screen. See server/services/staleCarReminders.ts for the rule and why the owner is no
