@@ -2,6 +2,7 @@
  * SMS Service using Twilio
  * Sends SMS reminders to customers
  */
+import { carReadyRoute } from "../shared/carReadyMessage";
 import { normalizePhoneNumber } from "./utils/phoneUtils";
 
 
@@ -618,13 +619,28 @@ export async function sendCarReadyMessage(params: {
   vehicle?: string | null;
   message: string;
   templateSid?: string | null;
+  /** The cleaned MOT note, when there is one, and the template built to carry it as {{3}}. */
+  motNote?: string | null;
+  motTemplateSid?: string | null;
 }): Promise<SendSMSResult> {
   const parts = carReadyParts(params);
-  if (params.templateSid) {
+  // `message` is the whole text, MOT note included: what goes out as plain text, and what a failed
+  // template send falls back to. See carReadyRoute for why a note never rides the plain template.
+  const route = carReadyRoute({ hasNote: !!params.motNote, readyTemplate: !!params.templateSid, notesTemplate: !!params.motTemplateSid });
+  if (route.channel === "template" && route.template === "vehicle_ready_mot_notes") {
     return sendSMS({
       to: params.to,
       useTemplate: true,
-      templateSid: params.templateSid,
+      templateSid: params.motTemplateSid!,
+      templateVariables: { '1': parts.firstName, '2': parts.vehicle, '3': params.motNote! },
+      fallbackMessage: params.message,
+    });
+  }
+  if (route.channel === "template") {
+    return sendSMS({
+      to: params.to,
+      useTemplate: true,
+      templateSid: params.templateSid!,
       templateVariables: { '1': parts.firstName, '2': parts.vehicle },
       fallbackMessage: params.message,
     });

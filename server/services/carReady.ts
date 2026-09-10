@@ -9,10 +9,18 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb, getAppSetting } from "../db";
 import { customers, serviceHistory, vehicles } from "../../drizzle/schema";
 import { generateCarReadyMessage, sendCarReadyMessage, isOwnNumber } from "../smsService";
+import { carReadyRoute, cleanMotNote, withMotNote } from "../../shared/carReadyMessage";
 import { createReminderLog } from "../db";
 
 /** The Twilio ContentSid of the approved "car ready" WhatsApp template, once there is one. */
 export const CAR_READY_TEMPLATE_KEY = "carReadyTemplateSid";
+
+/**
+ * The ContentSid of the approved "car ready + notes from its MOT" template (vehicle_ready_mot_notes),
+ * once WhatsApp approves one. Until then a message carrying an MOT note goes as plain text, because
+ * the plain vehicle_ready template has nowhere to put it.
+ */
+export const CAR_READY_MOT_TEMPLATE_KEY = "carReadyMotTemplateSid";
 
 async function loadDoc(docId: number) {
   const db = await getDb();
@@ -63,10 +71,11 @@ function pickName(row: any): string {
 
 export async function getCarReadyPreview(docId: number) {
   const row = await loadDoc(docId);
-  const [companyName, phone, templateSid] = (await Promise.all([
+  const [companyName, phone, templateSid, motTemplateSid] = (await Promise.all([
     getAppSetting("companyName"),
     getAppSetting("companyPhone"),
     getAppSetting(CAR_READY_TEMPLATE_KEY),
+    getAppSetting(CAR_READY_MOT_TEMPLATE_KEY),
   ])).map(asText);
   const to = pickPhone(row);
   const customerName = pickName(row);
@@ -94,24 +103,35 @@ export async function getCarReadyPreview(docId: number) {
         ? "That number is one of ours — check the customer record"
         : null,
     usingTemplate: !!templateSid,
+    notesTemplate: !!motTemplateSid,
   };
 }
 
-export async function sendCarReady(params: { docId: number; to: string; message: string }) {
+export async function sendCarReady(params: { docId: number; to: string; message: string; motNote?: string | null }) {
   const row = await loadDoc(params.docId);
   const to = params.to.trim();
   // Re-checked here, not just in the dialog: the number is editable before sending, and texting
   // our own line would look to the customer like nothing happened.
   if (isOwnNumber(to)) throw new Error("That number is one of ours — the customer wouldn't get it");
 
-  const templateSid = asText(await getAppSetting(CAR_READY_TEMPLATE_KEY));
+  const [templateSid, motTemplateSid] = (await Promise.all([
+    getAppSetting(CAR_READY_TEMPLATE_KEY),
+    getAppSetting(CAR_READY_MOT_TEMPLATE_KEY),
+  ])).map(asText);
+  // Cleaned here as well as in the dialog: this is the last stop before Twilio, which refuses a
+  // template variable over 256 characters or with a newline in it.
+  const motNote = cleanMotNote(params.motNote) || null;
+  const message = withMotNote(params.message, motNote);
+  const route = carReadyRoute({ hasNote: !!motNote, readyTemplate: !!templateSid, notesTemplate: !!motTemplateSid });
   const result = await sendCarReadyMessage({
     to,
     customerName: pickName(row),
     registration: row.registration || "",
     vehicle: [row.make, row.model].filter(Boolean).join(" ").trim(),
-    message: params.message,
+    message,
     templateSid,
+    motNote,
+    motTemplateSid,
   });
   if (!result.success) throw new Error(result.error || "Message failed to send");
 
@@ -128,10 +148,11 @@ export async function sendCarReady(params: { docId: number; to: string; message:
       recipient: to,
       messageSid: (result as any).messageId ?? null,
       status: "sent",
-      templateUsed: templateSid ? "vehicle_ready" : null,
+      templateUsed: route.channel === "template" ? route.template : null,
       customerName: pickName(row),
       registration: row.registration || null,
-      messageContent: params.message,
+      // The whole text, note included, so Conversations shows what the customer actually read.
+      messageContent: message,
       sentAt: new Date(),
     } as any);
   } catch (e: any) {

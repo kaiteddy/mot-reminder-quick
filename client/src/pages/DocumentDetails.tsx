@@ -30,6 +30,7 @@ import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { buildServiceSets } from "@/lib/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
+import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, smsSegments, withMotNote } from "@shared/carReadyMessage";
 import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -497,6 +498,29 @@ export default function DocumentDetails() {
   const [readyForm, setReadyForm] = useState({ to: "", message: "" });
   const readyPreview = trpc.carReady.preview.useQuery({ docId: id }, { enabled: readyOpen });
   const readyMut = trpc.carReady.send.useMutation();
+  // Notes from its MOT — which test, which of its items, and the note staff will send. Kept apart
+  // from readyForm so rewording the message never loses the note, and the other way round.
+  const [readyTestIdx, setReadyTestIdx] = useState(0);
+  const [readyTickAll, setReadyTickAll] = useState(false);
+  const [readyPicked, setReadyPicked] = useState<Record<number, boolean>>({});
+  const [readyNote, setReadyNote] = useState("");
+  const [readyNoteShown, setReadyNoteShown] = useState(false);
+  const [readyNoteStale, setReadyNoteStale] = useState(false);
+  const [readyUrgency, setReadyUrgency] = useState<string | null>(null);
+  const readyReg = String(readyPreview.data?.registration || "").replace(/\s/g, "");
+  const readyMot = trpc.documents.motTests.useQuery({ registration: readyReg }, { enabled: readyOpen && !!readyReg });
+  const readyNoteMut = trpc.carReady.motNote.useMutation();
+  const readyTests = ((readyMot.data as any[]) || []);
+  const readyTest: any = readyTests[readyTestIdx];
+  const readyItems: any[] = readyTest?.defects || [];
+  // Tick a recent test's items — that MOT is this visit. An older test may describe work done
+  // since, so it starts unticked unless staff chose it on purpose from the MOT Adv. tab. PRS items
+  // were repaired during the test and are never sent.
+  useEffect(() => {
+    if (!readyOpen || !readyTest) return;
+    const recent = !!readyTest.completedDate && Date.now() - new Date(readyTest.completedDate).getTime() < 30 * 86_400_000;
+    setReadyPicked(Object.fromEntries(readyItems.map((d: any, i: number) => [i, (readyTickAll || recent) && String(d.type || "").toUpperCase() !== "PRS"])));
+  }, [readyOpen, readyTestIdx, readyMot.data, readyTickAll]);
   // Fill the form once the preview lands, but never overwrite wording already being edited.
   useEffect(() => {
     const d = readyPreview.data as any;
@@ -1185,16 +1209,37 @@ export default function DocumentDetails() {
   const excessNetOnly = Number((data as any)?.doc?.excessNet) || 0;
   const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
-  function openCarReady() {
+  /** Opens the dialog; the MOT Adv. tab passes the index of the test whose items should go with it. */
+  function openCarReady(testIdx?: unknown) {
     setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
+    const chosen = typeof testIdx === "number";
+    setReadyTestIdx(chosen ? testIdx : 0);
+    setReadyTickAll(chosen);
+    setReadyNote(""); setReadyNoteShown(false); setReadyNoteStale(false); setReadyUrgency(null);
     setReadyOpen(true);
+  }
+  async function writeReadyNote() {
+    const items = readyItems
+      .filter((d: any, i: number) => readyPicked[i] && String(d.type || "").toUpperCase() !== "PRS")
+      .map((d: any) => ({ type: d.type ?? null, text: String(d.text || ""), dangerous: !!d.dangerous }));
+    if (!items.length) { toast.error("Tick at least one item to explain"); return; }
+    try {
+      const r = await readyNoteMut.mutateAsync({
+        testDate: readyTest?.completedDate ? new Date(readyTest.completedDate).toLocaleDateString("en-GB") : undefined,
+        testResult: readyTest?.testResult || undefined,
+        items,
+      });
+      setReadyNote(r.note); setReadyNoteShown(!!r.note); setReadyUrgency(r.urgency); setReadyNoteStale(false);
+      if (!r.note) toast("Nothing in the ticked items to tell the customer about");
+    } catch (e: any) { toast.error("Couldn't write the note: " + (e.message || "")); }
   }
   async function sendCarReady() {
     const to = readyForm.to.trim();
     if (to.replace(/\D/g, "").length < 10) { toast.error("Enter a valid mobile number"); return; }
+    const motNote = readyNoteShown ? readyNote.trim() : "";
     try {
-      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message });
-      toast.success(`Told the customer their car is ready (${to})`);
+      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote: motNote || undefined });
+      toast.success(`Told the customer their car is ready${motNote ? ", with notes from its MOT," : ""} (${to})`);
       setReadyOpen(false);
     } catch (e: any) { toast.error("Message failed: " + (e.message || "")); }
   }
@@ -2014,6 +2059,7 @@ export default function DocumentDetails() {
                       registration={form.registration}
                       make={form.make || undefined} model={form.model || undefined}
                       busy={partsForDefects.isPending}
+                      onTextCustomer={isCollectable ? (testIdx: number) => openCarReady(testIdx) : undefined}
                       onUse={async (texts) => {
                         if (!texts.length) return;
                         // 1) put the MOT defect wording into the job Description
@@ -2216,7 +2262,7 @@ export default function DocumentDetails() {
         {/* "car is ready" — confirm before it goes to the customer */}
         {readyOpen && (
           <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={() => setReadyOpen(false)}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mt-16" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl mt-16" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b">
                 <h3 className="text-lg font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-600" /> Car is ready</h3>
                 <button onClick={() => setReadyOpen(false)} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
@@ -2243,12 +2289,88 @@ export default function DocumentDetails() {
                       <label className="text-xs text-muted-foreground">Message</label>
                       <textarea rows={4} className="w-full border rounded px-2 py-1.5 text-sm mt-0.5 resize-y outline-none focus:border-violet-500"
                         value={readyForm.message} onChange={(e) => setReadyForm((f) => ({ ...f, message: e.target.value }))} />
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {readyPreview.data?.usingTemplate
-                          ? "Sends as the approved WhatsApp template, falling back to this wording by SMS."
-                          : "Sends as a text. Add an approved WhatsApp template SID in Settings to send it on WhatsApp instead."}
-                      </p>
                     </div>
+
+                    {/* Notes from its MOT: what the tester recorded, in words the customer understands. */}
+                    {readyMot.isLoading ? (
+                      <p className="text-[12px] text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1.5" />Checking its MOT history…</p>
+                    ) : readyTest && readyItems.length === 0 ? (
+                      <p className="text-[11.5px] text-slate-400">Its latest MOT ({readyTest.completedDate ? new Date(readyTest.completedDate).toLocaleDateString("en-GB") : "—"}, {readyTest.testResult}) recorded nothing to tell the customer about.</p>
+                    ) : readyTest ? (
+                      <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[12.5px] font-semibold text-slate-700">
+                            Notes from its MOT
+                            <span className="ml-1.5 font-normal text-slate-500">{readyTest.completedDate ? new Date(readyTest.completedDate).toLocaleDateString("en-GB") : "—"} · {readyTest.testResult}</span>
+                          </div>
+                          {readyTests.length > 1 && (
+                            <select value={readyTestIdx} title="Which MOT test to explain"
+                              onChange={(e) => { setReadyTestIdx(Number(e.target.value)); setReadyTickAll(true); if (readyNoteShown) setReadyNoteStale(true); }}
+                              className="border rounded px-1 py-0.5 text-[11.5px] bg-white">
+                              {readyTests.map((t: any, i: number) => (
+                                <option key={i} value={i}>{t.completedDate ? new Date(t.completedDate).toLocaleDateString("en-GB") : "—"} {t.testResult} ({(t.defects || []).length})</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+                          {readyItems.map((d: any, i: number) => {
+                            const prs = String(d.type || "").toUpperCase() === "PRS";
+                            return (
+                              <li key={i}>
+                                <label className={`flex items-start gap-2 text-[12px] leading-snug ${prs ? "text-slate-400" : "text-slate-700 cursor-pointer"}`}>
+                                  <input type="checkbox" className="mt-0.5" disabled={prs} checked={!prs && !!readyPicked[i]}
+                                    onChange={(e) => { setReadyPicked((p) => ({ ...p, [i]: e.target.checked })); if (readyNoteShown) setReadyNoteStale(true); }} />
+                                  <span><b className="font-semibold">{String(d.type || "").toUpperCase()}{d.dangerous ? " ⚠" : ""}</b> {d.text}{prs ? " — fixed during the test" : ""}</span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={writeReadyNote} disabled={readyNoteMut.isPending}
+                            className="inline-flex items-center gap-1.5 rounded bg-violet-600 text-white px-2.5 py-1 text-[12px] hover:bg-violet-700 disabled:opacity-50">
+                            {readyNoteMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            {readyNoteMut.isPending ? "Writing…" : readyNoteShown ? "Rewrite" : "Write it in plain English"}
+                          </button>
+                          {readyNoteStale && <span className="text-[11px] text-amber-700">Items changed — rewrite?</span>}
+                          {readyNoteShown && readyUrgency && URGENCY_CHIP[readyUrgency] && (
+                            <span className={`ml-auto text-[10.5px] font-semibold px-1.5 py-0.5 rounded ${URGENCY_CHIP[readyUrgency][1]}`}>{URGENCY_CHIP[readyUrgency][0]}</span>
+                          )}
+                        </div>
+                        {readyNoteShown && (
+                          <div>
+                            <textarea rows={3} maxLength={MOT_NOTE_MAX} value={readyNote}
+                              onChange={(e) => setReadyNote(e.target.value.replace(/[\r\n]+/g, " "))}
+                              className="w-full border rounded px-2 py-1.5 text-sm bg-white resize-y outline-none focus:border-violet-500" />
+                            <div className="flex items-center justify-between text-[11px] text-slate-500">
+                              <span>{readyNote.length}/{MOT_NOTE_MAX} — check it reads right before sending</span>
+                              <button type="button" onClick={() => { setReadyNote(""); setReadyNoteShown(false); setReadyNoteStale(false); setReadyUrgency(null); }} className="hover:underline">Remove note</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {readyNoteShown && cleanMotNote(readyNote) && (
+                      <div>
+                        <label className="text-xs text-muted-foreground">What the customer gets</label>
+                        <div className="mt-0.5 whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 text-[12.5px] text-slate-700">{withMotNote(readyForm.message, readyNote)}</div>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-400 -mt-1">
+                      {(() => {
+                        const hasNote = readyNoteShown && !!cleanMotNote(readyNote);
+                        const route = carReadyRoute({ hasNote, readyTemplate: !!readyPreview.data?.usingTemplate, notesTemplate: !!readyPreview.data?.notesTemplate });
+                        const segs = smsSegments(withMotNote(readyForm.message, hasNote ? readyNote : ""));
+                        if (route.channel === "template") return hasNote
+                          ? `Sends on WhatsApp as the approved template with MOT notes, falling back to this text by SMS (${segs} SMS segments).`
+                          : "Sends as the approved WhatsApp template, falling back to this wording by SMS.";
+                        return hasNote
+                          ? `Sends as a text (${segs} SMS segments). The WhatsApp template with MOT notes isn't approved yet, so it can't go as a template.`
+                          : "Sends as a text. Add an approved WhatsApp template SID in Settings to send it on WhatsApp instead.";
+                      })()}
+                    </p>
                     <div className="flex justify-end gap-2 pt-1">
                       <button onClick={() => setReadyOpen(false)} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
                       <button onClick={sendCarReady} disabled={readyMut.isPending || !readyForm.to.trim() || !readyForm.message.trim()}
@@ -3568,7 +3690,15 @@ function PrevParts({ vehicleId, onOpen, onAdd }: { vehicleId?: number; onOpen: (
 }
 
 // MOT advisory / failure history from DVSA — each defect can be pulled into the job sheet as Labour
-function MOTAdvisoriesTab({ registration, onUse, busy, make, model }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean; make?: string; model?: string }) {
+/** Label and colour for the urgency the MOT note writer settles on. */
+const URGENCY_CHIP: Record<string, [string, string]> = {
+  monitor: ["Keep an eye on it", "bg-slate-100 text-slate-600"],
+  plan: ["Plan it in", "bg-sky-100 text-sky-700"],
+  soon: ["Book in soon", "bg-amber-100 text-amber-800"],
+  urgent: ["Urgent", "bg-red-100 text-red-700"],
+};
+
+function MOTAdvisoriesTab({ registration, onUse, busy, make, model, onTextCustomer }: { registration?: string; onUse: (texts: string[]) => void; busy?: boolean; make?: string; model?: string; onTextCustomer?: (testIdx: number) => void }) {
   const reg = (registration || "").replace(/\s/g, "");
   const { data, isLoading } = trpc.documents.motTests.useQuery({ registration: reg }, { enabled: !!reg });
   const tests = (data as any[]) || [];
@@ -3604,7 +3734,13 @@ function MOTAdvisoriesTab({ registration, onUse, busy, make, model }: { registra
                 {t.odometerValue && <span className="text-slate-500 text-[12px]">{Number(t.odometerValue).toLocaleString("en-GB")} mi</span>}
               </div>
               {defects.length > 0 && (
-                <button type="button" disabled={busy} onClick={() => onUse(defects.map((d: any) => d.text))} className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add all ({defects.length})</button>
+                <div className="flex items-center gap-3">
+                  {onTextCustomer && (
+                    <button type="button" onClick={() => onTextCustomer(ti)} title="Open Car ready with these items explained in plain English"
+                      className="inline-flex items-center gap-1 text-[12px] text-green-700 hover:underline"><MessageSquare className="w-3.5 h-3.5" /> Text to customer</button>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => onUse(defects.map((d: any) => d.text))} className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add all ({defects.length})</button>
+                </div>
               )}
             </div>
             {defects.length === 0 ? (
