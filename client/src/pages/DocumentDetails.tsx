@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { ArrowLeft, Printer, Save, X, Search, Plus, Trash2, Loader2, ChevronDown, Mail, Droplet, Snowflake, Gauge, CalendarClock, ShieldCheck, MessageSquare, Phone, StickyNote, ArrowDownLeft, CheckCircle2, FileText, ExternalLink, Sparkles, Cog, GripVertical, ShoppingCart, Clock, Wrench, Paperclip, Pencil, MapPin, Truck, ArrowLeftRight, ChevronLeft, ChevronRight, BookOpen, Copy, GitMerge, Lock, Unlock, CheckSquare, Square, ClipboardList } from "lucide-react";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import { LineItemsView } from "@/components/ServiceHistory";
+import { useWorkshopData, WorkshopDataSheet } from "@/components/JobSheetWorkshopData";
 import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
@@ -975,6 +976,23 @@ export default function DocumentDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, vehInfo.tyres]);
 
+  // Workshop data for the car on this document: torque settings, brake limits, alignment, fuse
+  // boxes, part locations and drawings. Stored on the car and bought at most once. A current job
+  // sheet fetches it by itself, like tyres, because the car is in; any other document only fetches
+  // when the panel is opened, so looking back through old invoices never spends credits.
+  const [workshopOpen, setWorkshopOpen] = useState(false);
+  const workshopReg = String((data as any)?.vehicle?.registration || "");
+  const isCurrentJobSheet = form.docType === "JS" && (!form.dateCreated || Date.now() - new Date(form.dateCreated).getTime() < 30 * 86400000);
+  const workshop = useWorkshopData(workshopReg, techData?.workshop, { auto: !isNew && isCurrentJobSheet });
+  // The classic toolbar's Technical Data button (Ga4Shell) sends "eli-technical-data"; while a
+  // document is on screen it opens this panel, and marking the event handled stops the toolbar
+  // falling back to its "coming soon" message.
+  useEffect(() => {
+    const onTechnicalData = (e: Event) => { e.preventDefault(); setWorkshopOpen(true); };
+    window.addEventListener("eli-technical-data", onTechnicalData);
+    return () => window.removeEventListener("eli-technical-data", onTechnicalData);
+  }, []);
+
   // Detect when the customer's name / phone / email / postcode on this doc differ from
   // their saved record, so we can offer to update the customer master (auto-save can't prompt).
   const custSync = useMemo(() => {
@@ -1773,7 +1791,7 @@ export default function DocumentDetails() {
               {base && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   <button type="button" onClick={() => toast.message("MOT Check isn't wired up in Classic view — see the MOT Expiry card below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-blue-700" /> MOT Check</button>
-                  <button type="button" onClick={() => toast.message("Technical Data isn't wired up in Classic view — see the cards below.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-red-700" /> Technical Data</button>
+                  <button type="button" onClick={() => setWorkshopOpen(true)} title="Torque settings, brake limits, wheel alignment, fuse boxes, part locations and drawings" className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-red-700" /> Technical Data</button>
                   <button type="button" onClick={() => toast.message("VRM Transfer isn't wired up in Classic view yet.")} className="ga4-btn !text-[11px]">VRM Transfer</button>
                   <button type="button" onClick={() => toast.message("No attachments yet.")} className="ga4-btn !text-[11px] inline-flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> More</button>
                 </div>
@@ -1948,6 +1966,15 @@ export default function DocumentDetails() {
                   <div className="text-[9.5px] @4xl:text-[10.5px] text-slate-500 truncate">{fetchTyresDoc.isError ? "no tyre data for this car — tap to retry" : "click to fetch — will print on the sheet"}</div>
                 </button>
               )}
+              <button type="button" onClick={() => setWorkshopOpen(true)}
+                title="Torque settings, brake limits, wheel alignment, fuse boxes, part locations and drawings for this car"
+                className="rounded-md border px-1.5 py-1 @4xl:px-2.5 @4xl:py-1.5 min-w-0 text-left bg-violet-50 border-violet-200 hover:bg-violet-100">
+                <div className="flex items-center gap-1 @4xl:gap-1.5 text-[9px] @4xl:text-[10px] font-semibold uppercase tracking-wide text-violet-800 min-w-0"><Wrench className="w-3 h-3 @4xl:w-4 @4xl:h-4 shrink-0" /><span className="truncate">Workshop Data</span></div>
+                <div className="text-[11px] @4xl:text-[13px] font-semibold text-slate-800 leading-tight mt-0.5 truncate">
+                  {workshop.loading ? "Fetching…" : workshop.workshop ? `${workshop.workshop.adjustments.reduce((n, g) => n + g.rows.filter((r) => r.value).length, 0)} settings` : "Open"}
+                </div>
+                <div className="text-[9.5px] @4xl:text-[10.5px] text-slate-500 truncate">torque · fuses · diagrams</div>
+              </button>
               <InfoCard icon={<Gauge className="w-4 h-4" />} tone="slate" label="Mileage"
                 main={form.mileage ? Number(form.mileage).toLocaleString("en-GB") : "—"} sub={form.mileage ? "miles (last)" : undefined} />
               <InfoCard icon={<CalendarClock className="w-4 h-4" />} tone={motTone(vehInfo.motExpiry)} label="MOT Expiry"
@@ -2404,6 +2431,8 @@ export default function DocumentDetails() {
         {excessOpen && (
           <ExcessCreateDialog mainDocNo={docNo} mainDocTax={Number((data as any)?.doc?.totalTax) || 0} pending={createExcessMut.isPending} onClose={() => setExcessOpen(false)} onCreate={doCreateExcess} />
         )}
+
+        <WorkshopDataSheet open={workshopOpen} onOpenChange={setWorkshopOpen} registration={workshopReg || String(form.registration || "")} data={workshop} />
 
         {/* History row click opens a quick-view slide-over instead of navigating away, so you can
             flick through past jobs on this vehicle without losing your place on the current one. */}

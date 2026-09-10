@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { RequireLogin } from "@/components/RequireLogin";
 import { Link, useLocation } from "wouter";
+import { WorkshopDataCard } from "@/components/WorkshopDataCard";
+import { useWorkshopData } from "@/components/JobSheetWorkshopData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck, Printer, Receipt, CheckCircle2, CheckSquare, Square } from "lucide-react";
@@ -109,6 +111,9 @@ function WorkshopJobSheetInner() {
   const [savedType, setSavedType] = useState<"Job Sheet" | "Invoice">("Job Sheet");
   const [printing, setPrinting] = useState(false);
   const utils = trpc.useUtils();
+  // Torque settings, brake limits, alignment, fuse boxes, part locations and drawings for the car
+  // on this job. The car is in the workshop, so fetch it as soon as the car is known.
+  const workshop = useWorkshopData(vehicle?.registration || reg, vehicle?.comprehensiveTechnicalData?.workshop, { auto: !!vehicle?.id });
 
   useEffect(() => {
     if (!reg) { setLoading(false); return; }
@@ -369,6 +374,12 @@ function WorkshopJobSheetInner() {
             <Input value={mileage} onChange={(e) => setMileage(e.target.value)} inputMode="numeric" placeholder="Current mileage" className={inputCls} />
             {motMileage && <p className="text-xs text-slate-400">Pulled from last MOT ({Number(motMileage).toLocaleString()} mi) — adjust if needed.</p>}
           </Section>
+          {vehicle?.id && (
+            <Section id="workshop" open={open} setOpen={setOpen} icon={Wrench} title="Workshop data"
+              summary={workshop.loading ? "fetching…" : workshop.workshop ? `${workshop.workshop.adjustments.reduce((n, g) => n + g.rows.filter((r) => r.value).length, 0)} settings` : undefined}>
+              <WorkshopDataCard workshop={workshop.workshop} loading={workshop.loading} onFetch={() => workshop.fetch(true)} />
+            </Section>
+          )}
 
           <Section id="customer" open={open} setOpen={setOpen} icon={User} title="Customer" summary={custName || (customer ? undefined : "Not linked")}>
             <label className="text-sm text-slate-500 block">Name</label>

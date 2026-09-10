@@ -127,7 +127,12 @@ export default function Ga4Shell({ children }: { children: React.ReactNode }) {
             </label>
             <button type="button" className="bevel-button" onClick={soon("Advanced Search")}><SlidersHorizontal size={13} /> Advanced</button>
             <button type="button" className="bevel-button" onClick={soon("History")}><History size={13} /> History</button>
-            <button type="button" className="bevel-button" onClick={soon("Technical Data")}><Wrench size={13} /> Technical Data</button>
+            {/* An open document takes this signal and shows its car's workshop data (DocumentDetails).
+                Nothing on screen to handle it, and it falls back to the usual "not available" note. */}
+            <button type="button" className="bevel-button" onClick={(e) => {
+              const handled = !window.dispatchEvent(new Event("eli-technical-data", { cancelable: true }));
+              if (!handled) soon("Technical Data")(e);
+            }}><Wrench size={13} /> Technical Data</button>
             <button type="button" className="bevel-button" onClick={go("/documents")}>Modern view</button>
             <div className="zoom-control">
               <button type="button" className="bevel-button icon-only" aria-label="Zoom out" disabled={zoomIndex <= 0}
