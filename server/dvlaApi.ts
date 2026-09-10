@@ -3,7 +3,7 @@
  * Fetches vehicle details from DVLA Open Data API
  */
 
-interface DVLAVehicle {
+export interface DVLAVehicle {
   registrationNumber: string;
   taxStatus?: string;
   taxDueDate?: string;
@@ -51,62 +51,48 @@ function isValidUKRegistration(registration: string): boolean {
   return patterns.some(pattern => pattern.test(cleanReg));
 }
 
-export async function getVehicleDetails(registration: string): Promise<DVLAVehicle | null> {
+/**
+ * What DVLA actually said. `getVehicleDetails` flattens every failure to null, which cannot tell
+ * "DVLA has no record of this plate" from "our key was rejected" from "we were rate limited" —
+ * and the refresh then stamped all of them as checked. Anything that records DVLA's answer on a
+ * vehicle should use this instead.
+ */
+export type DvlaOutcome = "found" | "not_found" | "invalid_plate" | "rate_limited" | "auth_failed" | "no_key" | "error";
+export type DvlaLookup = { outcome: DvlaOutcome; httpStatus?: number; data?: DVLAVehicle };
+
+export async function lookupVehicle(registration: string): Promise<DvlaLookup> {
   const apiKey = process.env.DVLA_API_KEY;
-
-  if (!apiKey) {
-    console.warn("[DVLA] API key not configured - skipping DVLA lookup");
-    return null; // Return null instead of throwing to allow graceful degradation
-  }
-
-  // Clean registration (remove spaces, convert to uppercase)
-  const cleanReg = registration.replace(/\s+/g, "").toUpperCase();
-
-  // Validate registration format
-  if (!isValidUKRegistration(cleanReg)) {
-    console.log(`[DVLA] Invalid UK registration format: ${cleanReg}`);
-    return null;
-  }
-
+  if (!apiKey) return { outcome: "no_key" };
+  const cleanReg = String(registration || "").replace(/\s+/g, "").toUpperCase();
+  if (!isValidUKRegistration(cleanReg)) return { outcome: "invalid_plate" };
   try {
     const response = await fetch("https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles", {
       method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        registrationNumber: cleanReg,
-      }),
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ registrationNumber: cleanReg }),
     });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log(`[DVLA] Vehicle not found: ${cleanReg}`);
-        return null; // Vehicle not found
-      }
-      if (response.status === 400) {
-        console.log(`[DVLA] Bad request for ${cleanReg} - possibly invalid registration or API key issue`);
-        return null; // Return null for bad requests instead of throwing
-      }
-      if (response.status === 403) {
-        console.warn(`[DVLA] API key authentication failed`);
-        return null;
-      }
-      if (response.status === 429) {
-        console.warn(`[DVLA] Rate limit exceeded`);
-        return null;
-      }
-
-      console.error(`[DVLA] API error ${response.status}: ${response.statusText}`);
-      return null; // Graceful degradation
-    }
-
-    const data: DVLAVehicle = await response.json();
-    console.log(`[DVLA] Successfully fetched details for ${cleanReg}`);
-    return data;
-  } catch (error) {
-    console.error(`[DVLA] Error fetching vehicle details for ${cleanReg}:`, error);
-    return null; // Return null instead of throwing to allow graceful degradation
+    const httpStatus = response.status;
+    if (response.ok) return { outcome: "found", httpStatus, data: (await response.json()) as DVLAVehicle };
+    if (httpStatus === 404) return { outcome: "not_found", httpStatus };
+    if (httpStatus === 400) return { outcome: "invalid_plate", httpStatus };
+    if (httpStatus === 401 || httpStatus === 403) return { outcome: "auth_failed", httpStatus };
+    if (httpStatus === 429) return { outcome: "rate_limited", httpStatus };
+    return { outcome: "error", httpStatus };
+  } catch {
+    return { outcome: "error" };
   }
+}
+
+export async function getVehicleDetails(registration: string): Promise<DVLAVehicle | null> {
+  const r = await lookupVehicle(registration);
+  if (r.outcome === "found") {
+    console.log(`[DVLA] Successfully fetched details for ${registration.replace(/\s+/g, "").toUpperCase()}`);
+    return r.data ?? null;
+  }
+  if (r.outcome === "no_key") console.warn("[DVLA] API key not configured - skipping DVLA lookup");
+  else if (r.outcome === "auth_failed") console.warn("[DVLA] API key authentication failed");
+  else if (r.outcome === "rate_limited") console.warn("[DVLA] Rate limit exceeded");
+  else if (r.outcome === "not_found") console.log(`[DVLA] Vehicle not found: ${registration}`);
+  else if (r.outcome === "error") console.error(`[DVLA] API error ${r.httpStatus ?? ""} for ${registration}`);
+  return null; // Graceful degradation, as before
 }

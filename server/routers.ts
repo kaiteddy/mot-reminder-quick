@@ -942,10 +942,25 @@ export const appRouter = router({
         return getCarReadyPreview(input.docId);
       }),
     send: protectedProcedure
-      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1) }))
+      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().max(2000).optional() }))
       .mutation(async ({ input }) => {
         const { sendCarReady } = await import("./services/carReady");
         return sendCarReady(input);
+      }),
+    /** A plain-English note on what the car's MOT found, for staff to check and send with the message. */
+    motNote: protectedProcedure
+      .input(z.object({
+        testDate: z.string().optional(),
+        testResult: z.string().optional(),
+        items: z.array(z.object({
+          type: z.string().nullable().optional(),
+          text: z.string().min(1).max(600),
+          dangerous: z.boolean().nullable().optional(),
+        })).min(1).max(40),
+      }))
+      .mutation(async ({ input }) => {
+        const { writeMotNote } = await import("./services/motCustomerNote");
+        return writeMotNote(input);
       }),
   }),
 
@@ -2898,7 +2913,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { getDb, getAllVehicles, bulkUpdateVehicleMOT } = await import("./db");
-        const { getVehicleDetails } = await import("./dvlaApi");
+        const { lookupVehicle } = await import("./dvlaApi");
+        const { dvlaUpdateFor, isSupersededRegistration } = await import("./services/dvlaRecord");
         const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
         const { vehicles } = await import("../drizzle/schema");
         const { asc, sql, or } = await import("drizzle-orm");
@@ -2945,61 +2961,41 @@ export const appRouter = router({
               continue;
             }
 
-            const dvlaData = await getVehicleDetails(vehicle.registration);
-            
-            let bestMotExpiryStr = dvlaData?.motExpiryDate;
+            // GA4's renamed record: its plate is on another car now, so never look it up.
+            if (isSupersededRegistration(vehicle.registration)) {
+              updates.push({ id: vehicle.id, lastChecked: new Date(), dvlaStatus: "superseded" } as any);
+              skipped++;
+              continue;
+            }
+
+            // Record what DVLA actually said, even with no MOT date (new cars): server/services/dvlaRecord.ts.
+            const lookup = await lookupVehicle(vehicle.registration);
+            const { update: dvlaUpdate, answered } = dvlaUpdateFor(vehicle, lookup);
+
+            // DVSA's own latest pass beats DVLA's expiry when it has one.
+            let bestMotExpiryStr: string | undefined;
             try {
               const dvsaData = await getMOTHistory(vehicle.registration);
               if (dvsaData) {
                 const bestDate = getLatestMOTExpiry(dvsaData);
-                if (bestDate) {
-                  bestMotExpiryStr = bestDate.toISOString();
-                }
+                if (bestDate) bestMotExpiryStr = bestDate.toISOString();
               }
             } catch (motErr) {
                console.error(`Error checking DVSA MOT for bulk update ${vehicle.registration}:`, motErr);
             }
 
-            if (dvlaData && bestMotExpiryStr) {
-              const update: any = {
-                id: vehicle.id,
-                motExpiryDate: new Date(bestMotExpiryStr),
-                lastChecked: new Date(),
-              };
-
-              // Update other fields if they're better
-              if (dvlaData.make && (!vehicle.make || dvlaData.make.length > vehicle.make.length)) {
-                update.make = dvlaData.make;
-              }
-              if (dvlaData.model && (!vehicle.model || dvlaData.model.length > vehicle.model.length)) {
-                update.model = dvlaData.model;
-              }
-              if (dvlaData.colour && !vehicle.colour) {
-                update.colour = dvlaData.colour;
-              }
-              if (dvlaData.fuelType && !vehicle.fuelType) {
-                update.fuelType = dvlaData.fuelType;
-              }
-
-              // Always update tax info if available
-              if (dvlaData.taxStatus) {
-                update.taxStatus = dvlaData.taxStatus;
-              }
-              if (dvlaData.taxDueDate) {
-                update.taxDueDate = new Date(dvlaData.taxDueDate);
-              }
-
-              updates.push(update);
+            const update: any = { id: vehicle.id, ...dvlaUpdate };
+            if (bestMotExpiryStr) {
+              update.motExpiryDate = new Date(bestMotExpiryStr);
+              update.lastChecked = new Date();
+            }
+            if (Object.keys(update).length > 1) updates.push(update);
+            if (answered || bestMotExpiryStr) {
               updated++;
-              console.log(`[BULK-MOT] Updated ${vehicle.registration}: MOT expires ${bestMotExpiryStr}`);
+              console.log(`[BULK-MOT] Updated ${vehicle.registration}: DVLA ${lookup.outcome}${bestMotExpiryStr ? `, MOT expires ${bestMotExpiryStr}` : ""}`);
             } else {
-              // Even if no MOT data, update lastChecked so we don't keep checking it as "Never Checked"
-              updates.push({
-                id: vehicle.id,
-                lastChecked: new Date(),
-              } as any);
               skipped++;
-              console.log(`[BULK-MOT] No MOT data for ${vehicle.registration}, updated lastChecked`);
+              console.log(`[BULK-MOT] DVLA did not answer for ${vehicle.registration} (${lookup.outcome}); left due`);
             }
 
             // Add small delay to avoid rate limiting

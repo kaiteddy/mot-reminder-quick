@@ -17,8 +17,15 @@
  * note. Everything else is as for stale cars — owner and history untouched, the reason written on
  * the car, and a car turned back on by hand is never switched off again by a check.
  *
- * Only data DVLA confirmed within the last 45 days is acted on. If the daily check stops working,
- * this stops too rather than acting on a stale picture.
+ * Only data DVLA confirmed within the last 45 days is acted on — by `dvlaAnsweredAt`, which moves
+ * only when DVLA really answered, not `lastChecked`, which used to move even when it had not.
+ *
+ * Widened 10/09/2026 after scanning the whole database ("Can we scan the entire database"):
+ *   - every car, not only those currently being reminded. 257 off-road cars had no owner, and GA4's
+ *     nightly import attaches owners, so they would have walked back into the reminder list; trade
+ *     and opted-out cars are covered too, so the car's own record is right whoever owns it.
+ *   - a third fact: DVLA has no record of the plate at all (scrapped, exported, or the plate has
+ *     gone to another car).
  */
 import { KEPT_ON_MARKER, type Query } from "./staleCarReminders";
 
@@ -32,11 +39,23 @@ const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 const ukDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" });
 
-export type OffRoadKind = "sorn_and_no_mot" | "no_mot" | "sorn";
+export type OffRoadKind = "not_found" | "sorn_and_no_mot" | "no_mot" | "sorn";
 export type OffRoadVerdict = { kind: OffRoadKind; label: string; reason: string };
 
 /** Is this car off the road, and how do we say so? Pure. Null means keep reminding. */
-export function offRoadVerdict(v: { taxStatus?: string | null; motExpiryDate: Date | string }, now: Date = new Date()): OffRoadVerdict | null {
+export function offRoadVerdict(
+  v: { taxStatus?: string | null; motExpiryDate?: Date | string | null; dvlaStatus?: string | null },
+  now: Date = new Date(),
+): OffRoadVerdict | null {
+  const tail0 = ` Owner and history unchanged. Reminders switch back on by themselves if DVLA shows it taxed with a valid MOT again.`;
+  if (v.dvlaStatus === "not_found") {
+    return { kind: "not_found", label: "DVLA has no record of the plate", reason: `Reminders stopped ${ukDate(now)}. ${OFF_ROAD_TAG} DVLA has no record of this registration, so the car has been scrapped or exported, or the plate has moved to another vehicle.${tail0}` };
+  }
+  if (!v.motExpiryDate) {
+    return String(v.taxStatus || "").trim().toUpperCase() === "SORN"
+      ? { kind: "sorn", label: "SORN, MOT more recent", reason: `Reminders stopped ${ukDate(now)}. ${OFF_ROAD_TAG} DVLA shows it declared SORN, off the road. It has not needed an MOT yet.${tail0}` }
+      : null;
+  }
   const expiry = new Date(v.motExpiryDate);
   const sorn = String(v.taxStatus || "").trim().toUpperCase() === "SORN";
   // A pass lasts a year: expiry more than (3 - 1) years ago means no pass for over 3 years.
@@ -54,23 +73,23 @@ export function offRoadVerdict(v: { taxStatus?: string | null; motExpiryDate: Da
 }
 
 export type OffRoadCar = {
-  id: number; registration: string; customerId: number; customerName: string | null;
-  motExpiryDate: Date | string; taxStatus: string | null; lastJob: Date | string | null; verdict: OffRoadVerdict;
+  id: number; registration: string; customerId: number | null; customerName: string | null;
+  motExpiryDate: Date | string | null; taxStatus: string | null; dvlaStatus: string | null;
+  lastJob: Date | string | null; verdict: OffRoadVerdict;
 };
 
 export async function findOffRoadCars(query: Query, now: Date = new Date()): Promise<OffRoadCar[]> {
   const { rows } = await query(`
-    SELECT v.id, v.registration, v."customerId", cu.name "customerName", v."motExpiryDate", v."taxStatus",
+    SELECT v.id, v.registration, v."customerId", cu.name "customerName", v."motExpiryDate", v."taxStatus", v."dvlaStatus",
            (SELECT MAX(COALESCE(s."dateIssued",s."dateCreated")) FROM "serviceHistory" s WHERE s."vehicleId" = v.id) "lastJob"
       FROM vehicles v
-      JOIN customers cu ON cu.id = v."customerId"
-     WHERE v."motExpiryDate" IS NOT NULL
-       AND COALESCE(v."remindersOff",0) = 0
+      LEFT JOIN customers cu ON cu.id = v."customerId"
+     WHERE COALESCE(v."remindersOff",0) = 0
        AND COALESCE(v."remindersOffReason",'') NOT ILIKE $1
-       AND COALESCE(cu."optedOut",0) = 0 AND COALESCE(cu."noVehicleReminders",0) = 0
-       AND v."lastChecked" > $2::timestamptz - interval '${DVLA_FRESH_DAYS} days'
-       AND (UPPER(TRIM(COALESCE(v."taxStatus",''))) = 'SORN'
-            OR v."motExpiryDate" < $2::timestamptz - interval '${NO_PASS_YEARS - 1} years')
+       AND v."dvlaAnsweredAt" > $2::timestamptz - interval '${DVLA_FRESH_DAYS} days'
+       AND (v."dvlaStatus" = 'not_found'
+            OR (v."dvlaStatus" = 'found' AND (UPPER(TRIM(COALESCE(v."taxStatus",''))) = 'SORN'
+                 OR v."motExpiryDate" < $2::timestamptz - interval '${NO_PASS_YEARS - 1} years')))
      ORDER BY v."motExpiryDate" DESC`, [`${KEPT_ON_MARKER}%`, now.toISOString()]);
   return rows
     .map((r) => ({ ...r, verdict: offRoadVerdict(r, now) }))
@@ -83,9 +102,10 @@ export async function findBackOnRoad(query: Query, now: Date = new Date()) {
     SELECT id, registration, "motExpiryDate" FROM vehicles
      WHERE COALESCE("remindersOff",0) = 1
        AND "remindersOffReason" ILIKE $1
+       AND "dvlaStatus" = 'found'
        AND UPPER(TRIM(COALESCE("taxStatus",''))) = 'TAXED'
        AND "motExpiryDate" > $2::timestamptz
-       AND "lastChecked" > $2::timestamptz - interval '${DVLA_FRESH_DAYS} days'`, [`%${OFF_ROAD_TAG}%`, now.toISOString()]);
+       AND "dvlaAnsweredAt" > $2::timestamptz - interval '${DVLA_FRESH_DAYS} days'`, [`%${OFF_ROAD_TAG}%`, now.toISOString()]);
   return rows as { id: number; registration: string; motExpiryDate: Date | string }[];
 }
 

@@ -8,6 +8,18 @@ import { KEPT_ON_MARKER } from "./services/staleCarReminders";
 const NOW = new Date("2026-09-10T09:00:00Z");
 
 describe("offRoadVerdict", () => {
+  it("switches off a plate DVLA has no record of", () => {
+    const v = offRoadVerdict({ dvlaStatus: "not_found", motExpiryDate: null, taxStatus: "Taxed" }, NOW)!;
+    expect(v.kind).toBe("not_found");
+    expect(v.reason).toContain("DVLA has no record of this registration, so the car has been scrapped or exported, or the plate has moved to another vehicle.");
+    expect(v.reason).toContain(OFF_ROAD_TAG);
+  });
+
+  it("switches off a new car declared SORN before its first MOT, but not a taxed one", () => {
+    expect(offRoadVerdict({ dvlaStatus: "found", taxStatus: "SORN", motExpiryDate: null }, NOW)!.reason).toContain("It has not needed an MOT yet.");
+    expect(offRoadVerdict({ dvlaStatus: "found", taxStatus: "Taxed", motExpiryDate: null }, NOW)).toBeNull();
+  });
+
   it("keeps reminding a taxed car with a recent MOT", () => {
     expect(offRoadVerdict({ taxStatus: "Taxed", motExpiryDate: "2026-11-01" }, NOW)).toBeNull();
     expect(offRoadVerdict({ taxStatus: "Untaxed", motExpiryDate: "2025-06-01" }, NOW)).toBeNull();

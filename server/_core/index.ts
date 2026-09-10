@@ -304,7 +304,8 @@ function startBackgroundMOTChecker() {
     try {
       console.log("[BG WORKER] Starting routine MOT verification sweep...");
       const { getDb, bulkUpdateVehicleMOT } = await import("../db");
-      const { getVehicleDetails } = await import("../dvlaApi");
+      const { lookupVehicle } = await import("../dvlaApi");
+      const { dvlaUpdateFor, isSupersededRegistration } = await import("../services/dvlaRecord");
       const { vehicles } = await import("../../drizzle/schema");
       const { sql, or, asc } = await import("drizzle-orm");
 
@@ -332,45 +333,26 @@ function startBackgroundMOTChecker() {
 
       console.log(`[BG WORKER] Verifying MOT for ${vehiclesToUpdate.length} missing/stale vehicles...`);
       
-      const updates: Array<{
-        id: number;
-        motExpiryDate?: Date | null;
-        make?: string;
-        model?: string;
-        colour?: string;
-        fuelType?: string;
-        taxStatus?: string;
-        taxDueDate?: Date | null;
-        lastChecked?: Date | null;
-      }> = [];
-
+      // Record what DVLA actually said (server/services/dvlaRecord.ts). This used to throw away
+      // every answer without an MOT date — all new cars, including any declared SORN — and marked
+      // a car checked even when DVLA rejected our key, so "checked" proved nothing.
+      const updates: any[] = [];
       for (const v of vehiclesToUpdate) {
         if (!v.registration) continue;
-        try {
-          const dvlaData = await getVehicleDetails(v.registration);
-          if (dvlaData && dvlaData.motExpiryDate) {
-            updates.push({
-              id: v.id,
-              motExpiryDate: new Date(dvlaData.motExpiryDate),
-              make: dvlaData.make,
-              model: dvlaData.model,
-              colour: dvlaData.colour,
-              fuelType: dvlaData.fuelType,
-              taxStatus: dvlaData.taxStatus,
-              taxDueDate: dvlaData.taxDueDate ? new Date(dvlaData.taxDueDate) : null,
-              lastChecked: new Date()
-            });
-          } else {
-             // Missing or exempt (e.g. pre-1960 or extremely new)
-             updates.push({ id: v.id, lastChecked: new Date() });
-          }
-        } catch (e) {
-          // In case DVSA throws rate-limits/404s, mark it as checked to prevent infinite stall
-          updates.push({ id: v.id, lastChecked: new Date() });
+        if (isSupersededRegistration(v.registration)) {
+          // GA4's renamed record: its plate is on another car now, so never look it up.
+          updates.push({ id: v.id, lastChecked: new Date(), dvlaStatus: "superseded" });
+          continue;
         }
-        
-        // Wait 1.5 seconds between DVSA API hits to prevent hammering rate limits
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        const r = await lookupVehicle(v.registration);
+        if (r.outcome === "auth_failed" || r.outcome === "no_key") {
+          console.error("[BG WORKER] DVLA rejected the API key; stopping this sweep, nothing marked checked.");
+          break;
+        }
+        const { update } = dvlaUpdateFor(v as any, r);
+        if (Object.keys(update).length) updates.push({ id: v.id, ...update });
+        // Same pace as before, 1.5 seconds between DVLA calls.
+        if (r.outcome !== "invalid_plate") await new Promise((resolve) => setTimeout(resolve, 1500));
       }
 
       if (updates.length > 0) {

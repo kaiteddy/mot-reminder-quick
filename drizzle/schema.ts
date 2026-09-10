@@ -104,6 +104,10 @@ export const vehicles = pgTable("vehicles", {
   remindersOff: integer("remindersOff").default(0).notNull(),
   remindersOffAt: timestamp("remindersOffAt", { mode: "date" }),
   remindersOffReason: text("remindersOffReason"),
+  // What DVLA last ACTUALLY said about this plate, and when (server/services/dvlaRecord.ts):
+  // "found" | "not_found" | "invalid_plate" | "superseded". lastChecked is not proof of an answer.
+  dvlaStatus: varchar("dvlaStatus", { length: 20 }),
+  dvlaAnsweredAt: timestamp("dvlaAnsweredAt", { mode: "date" }),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
   fuelType: varchar("fuelType", { length: 50 }),

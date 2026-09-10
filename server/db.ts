@@ -1349,6 +1349,9 @@ export async function bulkUpdateVehicleMOT(updates: Array<{
   taxStatus?: string;
   taxDueDate?: Date | null;
   lastChecked?: Date | null;
+  dvlaStatus?: string;
+  dvlaAnsweredAt?: Date | null;
+  dateOfRegistration?: Date;
 }>) {
   const db = await getDb();
   if (!db) return;
@@ -1359,6 +1362,9 @@ export async function bulkUpdateVehicleMOT(updates: Array<{
     if (Object.prototype.hasOwnProperty.call(update, 'taxStatus')) updateData.taxStatus = update.taxStatus;
     if (Object.prototype.hasOwnProperty.call(update, 'taxDueDate')) updateData.taxDueDate = update.taxDueDate;
     if (Object.prototype.hasOwnProperty.call(update, 'lastChecked')) updateData.lastChecked = update.lastChecked;
+    if (Object.prototype.hasOwnProperty.call(update, 'dvlaStatus')) updateData.dvlaStatus = update.dvlaStatus;
+    if (Object.prototype.hasOwnProperty.call(update, 'dvlaAnsweredAt')) updateData.dvlaAnsweredAt = update.dvlaAnsweredAt;
+    if (update.dateOfRegistration) updateData.dateOfRegistration = update.dateOfRegistration;
     if (update.make) updateData.make = update.make;
     if (update.model) updateData.model = update.model;
     if (update.colour) updateData.colour = update.colour;
