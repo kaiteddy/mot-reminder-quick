@@ -73,15 +73,16 @@ async function syncTable(opts: {
   map: (row: any) => Record<string, any> | null;  // GA4 row -> { externalId, ...cols } (null = skip)
   changed?: (ga4: any, web: any) => boolean;       // has anything we sync changed?
   insertOnly?: boolean;                            // never overwrite existing rows (safe for ambiguous data)
+  keepWeb?: string[];                              // columns an update never overwrites once the web app holds a value
 }) {
-  const { name, table, rows, cols, map, changed, insertOnly } = opts;
+  const { name, table, rows, cols, map, changed, insertOnly, keepWeb = [] } = opts;
   // existing GA4-sourced rows only (skip web-created + null externalId)
   const existing = new Map<string, any>();
   for (const r of await q(`SELECT id, "externalId", ${cols.map(qc).join(",")} FROM "${table}" WHERE "externalId" IS NOT NULL AND "externalId" NOT LIKE 'WEB-%'`))
     if (!existing.has(r.externalId)) existing.set(r.externalId, r);
 
   const toInsert: any[][] = [];
-  const toUpdate: { id: number; vals: Record<string, any> }[] = [];
+  const toUpdate: { id: number; vals: Record<string, any>; web: any }[] = [];
   let same = 0, skipped = 0;
   for (const row of rows) {
     const m = map(row);
@@ -90,7 +91,7 @@ async function syncTable(opts: {
     // Deliberately removed here — putting it back would undo a merge or restore a typo.
     if (!web && ga4Skips.has(norm(m.externalId))) { skipped++; continue; }
     if (!web) { toInsert.push([m.externalId, ...cols.map((k) => m[k] ?? null)]); }
-    else if (!insertOnly && changed && changed(m, web)) { toUpdate.push({ id: web.id, vals: m }); }
+    else if (!insertOnly && changed && changed(m, web)) { toUpdate.push({ id: web.id, vals: m, web }); }
     else same++;
   }
   console.log(`${name}: ${rows.length} in GA4 → +${toInsert.length} new${insertOnly ? " (insert-only)" : `, ~${toUpdate.length} changed`}, ${same} kept, ${skipped} skipped`);
@@ -106,7 +107,8 @@ async function syncTable(opts: {
       await c.query(`INSERT INTO "${table}" (${insCols}) VALUES ${tuples.join(",")} ON CONFLICT DO NOTHING`, params);
     }
     for (const u of toUpdate)
-      await c.query(`UPDATE "${table}" SET ${cols.map((k, i) => `${qc(k)}=$${i + 1}`).join(",")} WHERE id=$${cols.length + 1}`, [...cols.map((k) => u.vals[k] ?? null), u.id]);
+      await c.query(`UPDATE "${table}" SET ${cols.map((k, i) => `${qc(k)}=$${i + 1}`).join(",")} WHERE id=$${cols.length + 1}`,
+        [...cols.map((k) => (keepWeb.includes(k) && u.web?.[k] != null ? u.web[k] : u.vals[k] ?? null)), u.id]);
   }
   return { inserted: toInsert.length, updated: toUpdate.length };
 }
@@ -285,8 +287,15 @@ await syncTable({
   changed: (g, w) => !numEq(g.totalGross, w.totalGross) || !numEq(g.totalNet, w.totalNet) || !numEq(g.totalTax, w.totalTax)
     || !numEq(g.totalReceipts, w.totalReceipts) || !numEq(g.balance, w.balance)
     || !eq(g.docStatus, w.docStatus) || !eq(g.docNo, w.docNo) || !eq(dt2(w.dateIssued), g.dateIssued) || !eq(dt2(w.datePaid), g.datePaid)
-    || Number(g.mileage || 0) !== Number(w.mileage || 0) || (g.customerId && g.customerId !== w.customerId) || (g.vehicleId && g.vehicleId !== w.vehicleId)
+    || Number(g.mileage || 0) !== Number(w.mileage || 0) || (g.customerId && g.customerId !== w.customerId)
     || !eq(g.description, w.description),
+  // Which CAR an invoice belongs to is the web app's decision once it has made one. Invoices are
+  // moved here deliberately — merged duplicate records (08/09/2026), and 36 invoices put back on
+  // the car they were done on (10/09/2026) — while GA4 still links them to the old plate record.
+  // This update rewrites the whole row, and ~800 docs re-flag as "changed" on every run (see the
+  // note below), so without this one manual run would quietly undo all of that. GA4's link is
+  // still used when the web app has none.
+  keepWeb: ["vehicleId"],
 });
 
 const docMap = new Map<string, number>();
