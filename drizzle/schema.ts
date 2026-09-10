@@ -465,10 +465,10 @@ export const partsPriceList = pgTable("partsPriceList", {
   vatRate: numeric("vatRate", { precision: 5, scale: 2 }).default("20"),
   quantity: numeric("quantity", { precision: 10, scale: 2 }), // typical qty for this part; blank = default to 1
   nominalCode: varchar("nominalCode", { length: 50 }),
-  // Price FLOOR rule: when set, ANY part/lubricant whose description contains this row's
-  // description (whole-word match, most-specific rule wins) must never be priced below this —
-  // historical-average suggestions get clamped up, and the job-sheet editor warns on a manual
-  // price below it (e.g. "Oil Filter" min £11.95, "Oil" min £12.95). See applyPriceFloors.
+  // Price FLOOR rule: when set, any line holding all of this row's words (any order, whole words;
+  // the most specific rule wins) shouldn't be priced below this — part suggestions get clamped up,
+  // and both job sheets warn on a price below it. An engine-oil row prices its grade instead (this
+  // Min £, else its list price). See shared/priceFloors.ts.
   minPrice: numeric("minPrice", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),

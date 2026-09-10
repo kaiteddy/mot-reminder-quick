@@ -11,6 +11,7 @@ import { round2 } from "@/lib/utils";
 import { buildServiceSets, parseVehOil } from "@/lib/serviceParts";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
+import { belowPriceFloor, priceAtFloor, priceFloors, type PriceFloor } from "@shared/priceFloors";
 
 type Line = { id: number; kind: "Labour" | "Part"; description: string; price: string; qty: string };
 
@@ -58,30 +59,45 @@ function JobChip({ on, label, sub, onClick }: { on: boolean; label: string; sub?
   );
 }
 
-function LineRows({ rows, kind, upd, rm, add }: {
+function LineRows({ rows, kind, upd, rm, add, shortOf }: {
   rows: Line[]; kind: "Labour" | "Part"; upd: (id: number, p: Partial<Line>) => void; rm: (id: number) => void; add: (k: "Labour" | "Part") => void;
+  /** The house price a line is charged below, or null (shared/priceFloors). */
+  shortOf: (l: Line) => PriceFloor | null;
 }) {
   const noun = kind === "Labour" ? "labour" : "part";
   return (
     <>
       {rows.length === 0 && <p className="text-sm text-slate-400 py-1">No {noun} added yet.</p>}
-      {rows.map((l) => (
-        <div key={l.id} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-          <Input value={l.description} onChange={(e) => upd(l.id, { description: e.target.value })} placeholder={kind === "Labour" ? "What was done" : "Part description"} className={inputCls} />
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 flex-1">
-              <span className="text-sm text-slate-500 shrink-0">Qty</span>
-              <Input value={l.qty} onChange={(e) => upd(l.id, { qty: e.target.value })} inputMode="decimal" className={inputCls} />
+      {rows.map((l) => {
+        const short = shortOf(l);
+        return (
+          <div key={l.id} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+            <Input value={l.description} onChange={(e) => upd(l.id, { description: e.target.value })} placeholder={kind === "Labour" ? "What was done" : "Part description"} className={inputCls} />
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-1">
+                <span className="text-sm text-slate-500 shrink-0">Qty</span>
+                <Input value={l.qty} onChange={(e) => upd(l.id, { qty: e.target.value })} inputMode="decimal" className={inputCls} />
+              </div>
+              <div className="flex items-center gap-1.5 flex-1">
+                <span className="text-base text-slate-500 shrink-0">£</span>
+                <Input value={l.price} onChange={(e) => upd(l.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00"
+                  className={inputCls + ((l.description.trim() && !(parseFloat(l.price) > 0)) || short ? " border-red-400 bg-red-50" : "")} />
+              </div>
+              <Button type="button" variant="ghost" size="icon" className="h-12 w-10 text-red-500 shrink-0" onClick={() => rm(l.id)}><Trash2 className="w-5 h-5" /></Button>
             </div>
-            <div className="flex items-center gap-1.5 flex-1">
-              <span className="text-base text-slate-500 shrink-0">£</span>
-              <Input value={l.price} onChange={(e) => upd(l.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00"
-                className={inputCls + (l.description.trim() && !(parseFloat(l.price) > 0) ? " border-red-400 bg-red-50" : "")} />
-            </div>
-            <Button type="button" variant="ghost" size="icon" className="h-12 w-10 text-red-500 shrink-0" onClick={() => rm(l.id)}><Trash2 className="w-5 h-5" /></Button>
+            {/* Warn, never block: a goodwill price stays possible, it just can't go out unnoticed. */}
+            {short && (
+              <button type="button" onClick={() => upd(l.id, { price: priceAtFloor({ quantity: l.qty }, short).toFixed(2) })}
+                className="w-full text-left rounded-lg border border-red-200 bg-red-50 px-3 py-2 active:bg-red-100">
+                <span className="block text-[14px] font-semibold text-red-700">
+                  Below the house price of {money(short.min)}{short.per === "line" && (parseFloat(l.qty) || 1) !== 1 ? " for the line" : ""} — tap to charge it
+                </span>
+                <span className="block text-[12px] text-red-700/80">{short.why.charAt(0).toUpperCase() + short.why.slice(1)}</span>
+              </button>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
       <Button type="button" variant="outline" className="w-full h-12 border-dashed text-violet-700" onClick={() => add(kind)}>
         <Plus className="w-4 h-4 mr-2" /> Add {noun}
       </Button>
@@ -203,6 +219,24 @@ function WorkshopJobSheetInner() {
     if (unpriced) toast.message(`${set.label} added — ${set.parts.length} parts + sundries. ${unpriced} line${unpriced === 1 ? "" : "s"} need a price (Labour/Parts).`);
     else toast.success(`${set.label} added — labour, ${set.parts.length} parts + sundries, all priced`);
   };
+
+  // House prices, by the same rule as the desktop job sheet (shared/priceFloors): oil at its grade's
+  // price-list price, Small/Major Service labour at the band for the engine size, anything else at a
+  // price-list Min £. A line typed below one is flagged under it — warn only, never block.
+  const fullBandsQ = trpc.priceGuide.labourBands.useQuery({ jobKey: "fullService" }, { staleTime: 5 * 60_000 });
+  const floorOf = priceFloors({
+    priceList: priceListQ.data,
+    interimBands: bandsQ.data,
+    fullBands: fullBandsQ.data,
+    engineCC: vehicle?.engineCC,
+    carOilGrade: parseVehOil(vehicle).oilGrades[0],
+  });
+  const shortOf = (l: Line) => {
+    const line = { itemType: l.kind, description: l.description, quantity: l.qty, unitPrice: l.price };
+    const floor = floorOf(line);
+    return belowPriceFloor(line, floor) ? floor : null;
+  };
+  const shortCount = (rows: Line[]) => rows.filter((l) => shortOf(l)).length;
 
   const updateCustomer = trpc.customers.update.useMutation();
 
@@ -413,12 +447,13 @@ function WorkshopJobSheetInner() {
             </div>
           </div>
 
-          <Section id="labour" open={open} setOpen={setOpen} icon={Wrench} title="Labour" summary={labour.length ? `${labour.length} · ${money(sum(labour))}` : undefined}>
-            <LineRows rows={labour} kind="Labour" upd={upd} rm={rm} add={add} />
+          {/* A collapsed section still says when a line inside it is under its house price. */}
+          <Section id="labour" open={open} setOpen={setOpen} icon={Wrench} title="Labour" summary={labour.length ? `${shortCount(labour) ? `⚠ ${shortCount(labour)} under price` : labour.length} · ${money(sum(labour))}` : undefined}>
+            <LineRows rows={labour} kind="Labour" upd={upd} rm={rm} add={add} shortOf={shortOf} />
           </Section>
 
-          <Section id="parts" open={open} setOpen={setOpen} icon={Package} title="Parts" summary={parts.length ? `${parts.length} · ${money(sum(parts))}` : undefined}>
-            <LineRows rows={parts} kind="Part" upd={upd} rm={rm} add={add} />
+          <Section id="parts" open={open} setOpen={setOpen} icon={Package} title="Parts" summary={parts.length ? `${shortCount(parts) ? `⚠ ${shortCount(parts)} under price` : parts.length} · ${money(sum(parts))}` : undefined}>
+            <LineRows rows={parts} kind="Part" upd={upd} rm={rm} add={add} shortOf={shortOf} />
           </Section>
 
           <Section id="mot" open={open} setOpen={setOpen} icon={ShieldCheck} title="MOT" summary={motNet > 0 ? money(motNet) : undefined}>

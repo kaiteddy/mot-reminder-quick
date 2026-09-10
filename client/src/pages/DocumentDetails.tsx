@@ -21,6 +21,7 @@ import { useReactToPrint } from "react-to-print";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { trpc } from "@/lib/trpc";
 import { splitAddress, tidyAddressLine } from "@shared/address";
+import { belowPriceFloor, priceAtFloor, priceFloors } from "@shared/priceFloors";
 import { useParams, useLocation } from "wouter";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
@@ -2068,9 +2069,9 @@ export default function DocumentDetails() {
                         <Search className="w-3.5 h-3.5" /> Check repair pricing history for this car
                       </button>
                     )}
-                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} />
+                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} engineCC={form.engineCC} carOilGrade={vehInfo?.oilGrades?.[0]} />
                   </TabsContent>
-                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} /></TabsContent>
+                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} engineCC={form.engineCC} carOilGrade={vehInfo?.oilGrades?.[0]} /></TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={resolvedVehicleId}
@@ -4057,24 +4058,7 @@ function PartAutocomplete({ value, onType, onPick, inp, placeholder }: {
   );
 }
 
-// Client mirror of server/db.ts matchPriceFloor (keep in sync): the floor rule (if any) that
-// applies to a line description. Whole-word phrase match so "Oil" can't catch "Coil Spring";
-// the most specific (longest) matching rule wins ("Oil Filter" £11.95 beats "Oil" £12.95).
-function matchPriceFloor(description: string | null | undefined, rules: { description: string; minPrice: number }[]): number | null {
-  const d = String(description ?? "");
-  if (!d.trim() || !rules.length) return null;
-  let best: { len: number; min: number } | null = null;
-  for (const r of rules) {
-    const phrase = r.description.trim();
-    if (!phrase) continue;
-    const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (!new RegExp(`\\b${esc}\\b`, "i").test(d)) continue;
-    if (!best || phrase.length > best.len) best = { len: phrase.length, min: r.minPrice };
-  }
-  return best ? best.min : null;
-}
-
-function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string; vin?: string } }) {
+function ItemsEditor({ items, setItems, kind, editing, vehicle, engineCC, carOilGrade }: { items: Item[]; setItems: (f: (p: Item[]) => Item[]) => void; kind: string; editing: boolean; vehicle?: { make?: string; model?: string; vin?: string }; engineCC?: any; carOilGrade?: string }) {
   const rows = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.itemType === kind);
   const update = (idx: number, patch: Partial<Item>) => setItems((p) => p.map((it, i) => (i === idx ? recalc({ ...it, ...patch }) : it)));
   const add = () => setItems((p) => [...p, recalc({ itemType: kind, description: "", quantity: 1, unitPrice: kind === "Labour" ? 70 : 0, vatRate: 20, _k: nextItemKey() })]);
@@ -4084,13 +4068,16 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
   const noun = KIND_NOUN[kind] || "lines";
   const showPartNo = kind === "Part" || kind === "Lubricant";
 
-  // Business price floors (Parts Price List "Min £" rules) — warn live when a part/lubricant is
-  // priced below its minimum (e.g. any oil filter under £11.95). Deliberately a warning, not a
-  // hard block: a genuine goodwill/warranty discount stays possible, it just can't happen unnoticed.
-  const { data: priceListRows } = trpc.partsPriceList.list.useQuery({}, { enabled: editing && showPartNo, staleTime: 60_000 });
-  const floorRules = ((priceListRows as any[]) || [])
-    .filter((r) => r.minPrice != null && Number(r.minPrice) > 0)
-    .map((r) => ({ description: String(r.description), minPrice: Number(r.minPrice) }));
+  // House prices (shared/priceFloors) — warn live when a line is priced below one: engine oil below
+  // its grade's price-list price (the dearest listed oil for a grade off the list), Small or Major
+  // Service labour below the band for the engine size, anything else below a Parts Price List
+  // "Min £" rule. Deliberately a warning, not a hard block: a genuine goodwill/warranty discount
+  // stays possible, it just can't happen unnoticed. Advisories are never priced.
+  const priced = editing && kind !== "Other";
+  const { data: priceListRows } = trpc.partsPriceList.list.useQuery({}, { enabled: priced, staleTime: 60_000 });
+  const { data: interimBands } = trpc.priceGuide.labourBands.useQuery({ jobKey: "interimService" }, { enabled: priced && kind === "Labour", staleTime: 5 * 60_000 });
+  const { data: fullBands } = trpc.priceGuide.labourBands.useQuery({ jobKey: "fullService" }, { enabled: priced && kind === "Labour", staleTime: 5 * 60_000 });
+  const floorOf = priceFloors({ priceList: priceListRows, interimBands, fullBands, engineCC, carOilGrade });
 
   if (!editing && rows.length === 0) return <p className="text-sm text-muted-foreground py-6 text-center">No {noun}.</p>;
 
@@ -4113,11 +4100,11 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
   // The data cells for one row (everything except the drag-handle column).
   const rowCells = (it: Item, idx: number) => {
     const gross = (num(it.subNet) ?? 0) + (num(it.taxAmount) ?? 0);
-    // Floors used to apply to PART rows only (showPartNo), which meant a standard price for
-    // labour-side work — an MOT, an interim service — had nowhere to live and no warning when a
-    // job was written up under it. The rules are description-matched, so they work on any row.
-    const floor = floorRules.length ? matchPriceFloor(it.description, floorRules) : null;
-    const belowFloor = floor != null && (num(it.unitPrice) ?? 0) > 0 && (num(it.unitPrice) ?? 0) < floor;
+    // Labour rows are checked as well as parts: an MOT or a service written up as labour needs its
+    // house price as much as a part does — invoice 91172's Major Service labour went out at £134
+    // against the £155 band with nothing said.
+    const floor = floorOf(it);
+    const belowFloor = belowPriceFloor(it, floor);
     // A described line at £0.00 is almost always an unbilled line, not a free one — the floor
     // warning above deliberately skips zeros, so without this tag a £0 oil line sails through.
     const noPrice = kind !== "Other" && (num(it.unitPrice) ?? 0) <= 0 && !!(it.description || "").trim();
@@ -4179,11 +4166,11 @@ function ItemsEditor({ items, setItems, kind, editing, vehicle }: { items: Item[
         {noPrice && (
           <span className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap">⚠ no price</span>
         )}
-        {belowFloor && (
-          <button type="button" onClick={editing ? () => update(idx, { unitPrice: floor!.toFixed(2) }) : undefined}
-            title={editing ? `Minimum for this item is £${money(floor)} — click to apply` : `Below the £${money(floor)} minimum`}
+        {floor && belowFloor && (
+          <button type="button" onClick={editing ? () => update(idx, { unitPrice: priceAtFloor(it, floor).toFixed(2) }) : undefined}
+            title={`Below the house price of £${money(floor.min)}${floor.per === "line" && (num(it.quantity) ?? 1) !== 1 ? " for the line" : ""} — ${floor.why}.${editing ? " Click to apply." : ""}`}
             className="mt-0.5 block w-full text-right text-[10px] font-semibold text-red-600 whitespace-nowrap hover:underline">
-            min £{money(floor)}
+            min £{money(floor.min)}
           </button>
         )}
       </TableCell>
