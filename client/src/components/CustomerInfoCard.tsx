@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: { vehicleId: number; triggerButton: React.ReactNode; onAssigned?: () => void }) {
+export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: { vehicleId: number; triggerButton: React.ReactNode; onAssigned?: (customer: any) => void }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [debounced, setDebounced] = useState("");
+  // The customer whose Select was pressed. onAssigned gets them, so a caller can act on the new
+  // owner (an open job sheet puts itself under them) instead of only refetching.
+  const chosen = useRef<any>(null);
 
   // Server-side search (paged endpoint) — the full customer list is 8,000+ rows / ~3.7MB and
   // used to be downloaded every time this dialog opened.
@@ -28,7 +31,7 @@ export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: {
     onSuccess: () => {
       toast.success("Vehicle successfully assigned to customer.");
       setOpen(false);
-      if (onAssigned) onAssigned();
+      if (onAssigned) onAssigned(chosen.current);
       else setTimeout(() => window.location.reload(), 1000);
     },
     onError: (err) => {
@@ -73,7 +76,7 @@ export function AssignCustomerDialog({ vehicleId, triggerButton, onAssigned }: {
                     size="sm" 
                     variant="secondary"
                     disabled={assignMutation.isPending}
-                    onClick={() => assignMutation.mutate({ vehicleId, customerId: c.id })}
+                    onClick={() => { chosen.current = c; assignMutation.mutate({ vehicleId, customerId: c.id }); }}
                   >
                     Select
                   </Button>
