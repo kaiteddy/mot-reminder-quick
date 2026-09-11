@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Package, FileText, ShieldCheck, Printer, Receipt, CheckCircle2, CheckSquare, Square } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { round2 } from "@/lib/utils";
-import { buildServiceSets, parseVehOil } from "@/lib/serviceParts";
+import { buildServiceSets, parseVehOil } from "@shared/serviceParts";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
 import { belowPriceFloor, priceAtFloor, priceFloors, type PriceFloor } from "@shared/priceFloors";
@@ -159,8 +159,8 @@ function WorkshopJobSheetInner() {
   const pricingQ = trpc.ai.getPricingKnowledge.useQuery(undefined, { staleTime: 5 * 60_000 });
   const bandsQ = trpc.priceGuide.labourBands.useQuery(undefined, { staleTime: 5 * 60_000 });
   const priceListQ = trpc.partsPriceList.list.useQuery({}, { staleTime: 5 * 60_000 });
-  // Major Service labour comes from the Price Guide: the median of what we actually charged
-  // for full-service labour on this size band (there is no banded table for it).
+  // Major Service labour (the full-service band for this engine size) and its air/cabin filter
+  // prices (what we last charged on the same model) come from the Price Guide lookup.
   const guideQ = trpc.priceGuide.forRegistration.useQuery({ registration: reg }, { enabled: !!reg, staleTime: 5 * 60_000 });
   const motPrice = Number((pricingQ.data as any)?.motCost) || 50;
   const serviceSets = buildServiceSets({
@@ -169,6 +169,7 @@ function WorkshopJobSheetInner() {
     priceList: (priceListQ.data as any[]) || [],
     labourBands: (bandsQ.data as any[]) || [],
     majorLabourNet: (guideQ.data as any)?.fullServiceLabour?.net,
+    partPrices: (guideQ.data as any)?.servicePartPrices,
   });
   const majorLabourPrice = serviceSets.major.labour?.unitPrice;
   const smallLabourPrice = serviceSets.small.labour?.unitPrice;
@@ -186,8 +187,9 @@ function WorkshopJobSheetInner() {
 
   const toggleService = (kind: "small" | "major") => {
     // Ticking before the price list has answered built the set with everything at £0 — the
-    // race behind "sometimes the oil is 0.00". Untick always works.
-    if (!ticks[kind] && !priceListQ.data) { toast.message("Prices still loading — try again in a second"); return; }
+    // race behind "sometimes the oil is 0.00". The Major Service also waits on the Price Guide
+    // lookup, which carries its labour and filter prices. Untick always works.
+    if (!ticks[kind] && (!priceListQ.data || (kind === "major" && guideQ.isFetching && !guideQ.data))) { toast.message("Prices still loading — try again in a second"); return; }
     const next = { ...ticks };
     const removeKind = (k: "small" | "major") => {
       const ids = next[k]; if (!ids) return;

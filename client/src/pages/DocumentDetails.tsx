@@ -31,7 +31,7 @@ import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
-import { buildServiceSets } from "@/lib/serviceParts";
+import { buildServiceSets } from "@shared/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, smsSegments, withMotNote } from "@shared/carReadyMessage";
 import { DefectExplainButton } from "@/components/DefectExplainer";
@@ -3469,15 +3469,18 @@ function JobsToDoPicker({ vehInfo, engineCC, registration, ticked, onToggleMot, 
   // The banded labour rule, straight from the table Adam maintains.
   const { data: labourBands } = trpc.priceGuide.labourBands.useQuery({}, { staleTime: 5 * 60_000 });
   const hasAircon = !!vehInfo?.airconType;
-  // Major Service labour: the Price Guide's per-band median of what we actually charged.
-  const { data: guideData } = trpc.priceGuide.forRegistration.useQuery(
+  // Major Service labour (the full-service band for this engine size) and its air/cabin filter
+  // prices (what we last charged on the same model) come from the Price Guide lookup.
+  const guideQ = trpc.priceGuide.forRegistration.useQuery(
     { registration: registration || "" }, { enabled: !!registration, staleTime: 5 * 60_000 });
-  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade, majorLabourNet: (guideData as any)?.fullServiceLabour?.net });
+  const guideData = guideQ.data;
+  const SETS = buildServiceSets({ vehInfo, engineCC, priceList, labourBands: (labourBands as any[]) || [], grade, majorLabourNet: (guideData as any)?.fullServiceLabour?.net, partPrices: (guideData as any)?.servicePartPrices });
 
   const toggleSet = (kind: "small" | "major" | "aircon") => {
     if (ticked[kind]) { onRemoveSet(kind); return; }
-    // Ticking before the price list has answered builds the set with everything at £0.
-    if (!priceListData) { toast.message("Prices still loading — try again in a second"); return; }
+    // Ticking before the prices have answered builds the set at £0 — every part waits on the
+    // price list, and the Major Service's labour and filters on the Price Guide lookup.
+    if (!priceListData || (kind === "major" && guideQ.isFetching && !guideData)) { toast.message("Prices still loading — try again in a second"); return; }
     const set = (SETS as any)[kind];
     if (set) onAddSet(kind, set);
   };

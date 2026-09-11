@@ -15,6 +15,7 @@ import {
 import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
 import { odometerReading, carChangePoints, mileageOutliers } from "../shared/mileage";
+import { buildServiceSets, parseVehOil, priceListMatch, type ServiceSet } from "../shared/serviceParts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -6184,7 +6185,7 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     WHERE s."docType" IN ('SI','XS')
       AND s."dateCreated" >= now() - (${years} || ' years')::interval`);
 
-  type Doc = { make: string; model: string; cc: number; own: number; other: number; labour: number; cats: Set<string>; oilFilter: boolean; airFilter: boolean; cabinFilter: boolean };
+  type Doc = { make: string; model: string; cc: number; extras: number; own: number; other: number; labour: number; cats: Set<string>; oilFilter: boolean; airFilter: boolean; cabinFilter: boolean };
   const docs = new Map<number, Doc>();
   for (const r of rows.rows) {
     let d = docs.get(r.id);
@@ -6194,6 +6195,7 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
         model: String(r.model || "").toUpperCase(),
         cc: Number(r.cc) || 0,
         // Extras are per-document, so they're taken once when the doc is first seen.
+        extras: Number(r.extras) || 0,
         own: Number(r.extras) || 0,
         other: 0, labour: 0, cats: new Set(), oilFilter: false, airFilter: false, cabinFilter: false,
       };
@@ -6204,7 +6206,11 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
     const type = String(r.t || "");
     if (!s) continue;
     if (/^labour$/i.test(type)) { if (!/\bmot\b/.test(s)) d.labour += amt; continue; }
-    if (!/^part$/i.test(type)) continue;                    // "Other" rows are notes/advisories
+    // A web-app invoice charges its sundries as a "Sundries" line, not in GA4's Extras column, so
+    // reading Part lines alone dropped the £4.50/£5.50 from every web-era service. Taken only when
+    // the Extras column is empty, so no document can carry it twice.
+    if (/^sundries$/i.test(type)) { if (!d.extras) d.own += amt; continue; }
+    if (!/^(part|lubricants?)$/i.test(type)) continue;       // "Other" rows are notes/advisories
     if (/oil\s*filter/.test(s)) d.oilFilter = true;
     if (/air\s*(filter|cleaner)/.test(s)) d.airFilter = true;
     if (/(pollen|cabin|micro)\s*filter/.test(s)) d.cabinFilter = true;
@@ -6330,12 +6336,134 @@ export async function getJobPriceGuide(opts?: { years?: number }) {
   return { years, categories: PRICE_GUIDE_CATEGORIES, all, sizes, makes };
 }
 
+type QuoteLine = { kind: "part" | "sundries" | "labour"; description: string; quantity: number; unitPrice: number | null; vatRate: number; net: number; tax: number };
+
+/** A service set priced line by line — the net, then VAT rounded per line as the invoice rounds
+ * it — so the figure read out on the phone is the one the job sheet then produces. */
+function priceServiceSet(set: ServiceSet) {
+  const lines: QuoteLine[] = [
+    ...set.parts.map((p) => ({ kind: "part" as const, description: p.description, quantity: p.quantity, unitPrice: p.unitPrice ?? null, vatRate: p.vatRate ?? 20 })),
+    ...(set.sundries ? [{ kind: "sundries" as const, description: "Sundries", quantity: 1, unitPrice: set.sundries, vatRate: 20 }] : []),
+    ...(set.labour ? [{ kind: "labour" as const, description: set.labour.description, quantity: 1, unitPrice: set.labour.unitPrice, vatRate: 20 }] : []),
+  ].map((l) => {
+    const net = round2(l.quantity * (l.unitPrice ?? 0));
+    return { ...l, net, tax: round2((net * l.vatRate) / 100) };
+  });
+  const sum = (pick: (l: QuoteLine) => boolean, key: "net" | "tax" = "net") =>
+    round2(lines.filter(pick).reduce((a, l) => a + l[key], 0));
+  const net = sum(() => true);
+  const tax = sum(() => true, "tax");
+  return {
+    lines,
+    labour: sum((l) => l.kind === "labour"),
+    parts: sum((l) => l.kind === "part"),
+    sundries: sum((l) => l.kind === "sundries"),
+    net, tax, gross: round2(net + tax),
+  };
+}
+
+/** Engine-oil capacity for a car with no tech data of its own, borrowed from cars that have it:
+ * the same make, engine size and fuel first (the same engine, so the same sump), then any engine
+ * within 50cc on the same fuel, then anything within 150cc. Most of the fleet holds no tech data
+ * of its own — 513 of the 1,717 cars serviced in the two years to 09/2026 — so without this the
+ * quote couldn't price the oil for most cars; the same-engine match alone covers another 908.
+ * Ties go to the larger capacity, so a borrowed figure can't be what under-quotes. */
+async function estimateOilCapacity(make: string, cc: number, fuelType?: string | null) {
+  const db = await getDb();
+  if (!db || !cc) return null;
+  const fuel = String(fuelType || "").toUpperCase();
+  const rows: any = await db.execute(sql`
+    WITH known AS (
+      SELECT upper(v.make) make, v."engineCC" cc, upper(COALESCE(v."fuelType", '')) fuel,
+             (SELECT substring(l->>'capacity' from '([0-9]+([.][0-9]+)?)')::numeric
+                FROM jsonb_array_elements(CASE WHEN jsonb_typeof((v."comprehensiveTechnicalData")::jsonb->'lubricants') = 'array'
+                     THEN (v."comprehensiveTechnicalData")::jsonb->'lubricants' ELSE '[]'::jsonb END) l
+               WHERE l->>'description' ILIKE 'engine oil%' LIMIT 1) litres
+        FROM vehicles v
+       WHERE v."comprehensiveTechnicalData" IS NOT NULL
+         AND v."engineCC" BETWEEN ${cc - 150} AND ${cc + 150}
+    )
+    SELECT 1 tier, mode() WITHIN GROUP (ORDER BY litres DESC) litres, count(*) n FROM known
+     WHERE litres > 0 AND make = ${make} AND cc = ${cc} AND fuel = ${fuel}
+    UNION ALL
+    SELECT 2, mode() WITHIN GROUP (ORDER BY litres DESC), count(*) FROM known
+     WHERE litres > 0 AND abs(cc - ${cc}) <= 50 AND fuel = ${fuel}
+    UNION ALL
+    SELECT 3, mode() WITHIN GROUP (ORDER BY litres DESC), count(*) FROM known WHERE litres > 0
+    ORDER BY 1`);
+  const BASIS: Record<number, string> = { 1: "the same engine", 2: "a similar engine (within 50cc)", 3: "a similar-sized engine (within 150cc)" };
+  const hit = rows.rows.find((r: any) => Number(r.n) > 0 && Number(r.litres) > 0);
+  return hit ? { litres: Number(hit.litres), basis: BASIS[Number(hit.tier)], n: Number(hit.n) } : null;
+}
+
+type PartPriceSource = { price: number; basis: "model" | "make" | "all"; n: number; lastCharged: string | null; docNo: string | null };
+
+/** What we last charged for the service parts the price list doesn't carry — the air and cabin
+ * filters, which run from under £10 on a small car to over £50 on a big one, so no one list price
+ * fits. Adam's rule (10/09/2026): the most recent charge on the same model and engine (make, first
+ * word of the model, engine size, fuel) within two years; failing that the middle price on the
+ * same make over the last 12 months; failing that the middle price across every car over the last
+ * 12 months. Every invoice keeps the next quote current, so a rise in parts prices reaches the
+ * quote without anyone editing a list. Keyed by the part description the service sets use.
+ * A combined "air & pollen filters" line is two parts at one price, so it's left out. */
+async function getRecentServicePartPrices(car: { make: string; modelWord: string; cc: number; fuelType?: string | null }) {
+  const out: Record<string, PartPriceSource> = {};
+  const db = await getDb();
+  if (!db) return out;
+  const fuel = String(car.fuelType || "").toUpperCase();
+  const rows: any = await db.execute(sql`
+    WITH raw AS (
+      SELECT li.description d, li."unitPrice"::numeric price, s."dateCreated" dt, s."docNo" doc_no,
+             upper(v.make) make, upper(split_part(COALESCE(v.model, ''), ' ', 1)) model_word,
+             v."engineCC" cc, upper(COALESCE(v."fuelType", '')) fuel
+        FROM "serviceLineItems" li
+        JOIN "serviceHistory" s ON s.id = li."documentId"
+        JOIN vehicles v ON v.id = s."vehicleId"
+       WHERE s."docType" IN ('SI', 'XS')
+         AND s."dateCreated" >= now() - interval '2 years'
+         AND li."unitPrice" > 0 AND COALESCE(li.quantity, 1) = 1
+         AND li.description ~* '(air|pollen|cabin|micro)'
+         AND li.description !~* '(fuel|fluid|housing|pipe|hose|seal|gasket|cooler|oil)'
+    ), lines AS (
+      SELECT CASE
+               WHEN d ~* 'air[[:space:]]*(filter|cleaner)' AND d ~* '(pollen|micro|cabin[[:space:]]*filter)' THEN NULL
+               WHEN d ~* '(pollen|cabin|micro)([[:space:]]*air)?[[:space:]]*filter' THEN 'Cabin Filter'
+               WHEN d ~* 'air[[:space:]]*(filter|cleaner)' THEN 'Air Filter'
+             END part,
+             price, dt, doc_no, make, model_word, cc, fuel
+        FROM raw
+    )
+    SELECT part, 'model' basis, (array_agg(price ORDER BY dt DESC))[1] price, count(*) n, max(dt) last_dt,
+           (array_agg(doc_no ORDER BY dt DESC))[1] doc_no
+      FROM lines WHERE part IS NOT NULL AND make = ${car.make} AND model_word = ${car.modelWord} AND cc = ${car.cc} AND fuel = ${fuel}
+     GROUP BY part
+    UNION ALL
+    SELECT part, 'make', percentile_cont(0.5) WITHIN GROUP (ORDER BY price), count(*), max(dt), NULL
+      FROM lines WHERE part IS NOT NULL AND make = ${car.make} AND dt >= now() - interval '12 months' GROUP BY part
+    UNION ALL
+    SELECT part, 'all', percentile_cont(0.5) WITHIN GROUP (ORDER BY price), count(*), max(dt), NULL
+      FROM lines WHERE part IS NOT NULL AND dt >= now() - interval '12 months' GROUP BY part`);
+  const RANK: Record<string, number> = { model: 0, make: 1, all: 2 };
+  for (const r of [...rows.rows].sort((a: any, b: any) => RANK[a.basis] - RANK[b.basis])) {
+    if (out[r.part] || !(Number(r.price) > 0)) continue;
+    if ((r.basis === "model" && !(car.cc && car.make)) || (r.basis === "make" && !car.make)) continue;
+    out[r.part] = {
+      price: round2(Number(r.price)),
+      basis: r.basis,
+      n: Number(r.n),
+      lastCharged: r.last_dt ? new Date(r.last_dt).toISOString() : null,
+      docNo: r.doc_no ?? null,
+    };
+  }
+  return out;
+}
+
 /** "How much is a service for this car?" — the whole price guide, reduced to one answer.
  *
- * Takes a registration, works out which size band that car is in, and hands back the prices for
- * it. Falls back to DVLA when we've never seen the car, so a new customer on the phone gets an
- * answer too. The model's own figures come back alongside, but only when there are enough of
- * them to mean anything — otherwise the band is the answer. */
+ * Takes a registration and prices that car's own interim and full service from its oil
+ * capacity, filters and engine size, the way its job sheet will. Falls back to DVLA when we've
+ * never seen the car, so a new customer on the phone gets an answer too. The size band's history
+ * comes back alongside as reference — what these jobs have come to, not the price. */
 export async function getPriceGuideForRegistration(registration: string, opts?: { years?: number }) {
   const reg = String(registration || "").toUpperCase().replace(/\s+/g, "");
   if (!reg) return null;
@@ -6350,7 +6478,7 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     try {
       const { getVehicleDetails } = await import("./dvlaApi");
       const d: any = await getVehicleDetails(reg);
-      if (d) { vehicle = { registration: reg, make: d.make, model: d.model, engineCC: d.engineCapacity ?? d.engineCC }; source = "dvla"; }
+      if (d) { vehicle = { registration: reg, make: d.make, model: d.model, engineCC: d.engineCapacity ?? d.engineCC, fuelType: d.fuelType }; source = "dvla"; }
     } catch { /* no DVLA answer — fall through to "unknown car" */ }
   }
   if (!vehicle) return { found: false, registration: reg };
@@ -6379,28 +6507,56 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   const fullStats = guide.sizes.find((b: any) => b.band === band)?.cats?.fullService || guide.all.fullService;
   const MOT_PRICE = 50;
 
-  // THE PRICE TO QUOTE. Banded labour is a decided rate; the parts figure is what cars this size
-  // have actually needed. Keeping the two apart matters: quoting the historical median instead
-  // undercharges a 1998cc car by £23, because the history is full of jobs done at the old flat
-  // £124 labour rather than this engine's £144 band.
-  const quote = ourLabour && interimStats
-    ? (() => {
-        const labour = Number(ourLabour.labour);
-        const parts = Math.round(interimStats.parts / 1.2);
-        const net = labour + parts;
-        return {
-          bandLabel: ourLabour.label,
-          labour, parts, net,
-          gross: Math.round(net * 1.2),
-          withMot: Math.round(net * 1.2) + MOT_PRICE,
-          motPrice: MOT_PRICE,
-        };
-      })()
-    : null;
+  // THE PRICE TO QUOTE — built from THIS car, the same way the job sheet's Small/Major Service
+  // tick builds the job (shared/serviceParts): its oil capacity and grade at price-list prices,
+  // the oil filter and sump plug seal off the list, the air and cabin filters at what we last
+  // charged on the same model, the sundries, and the labour rate set for its engine size.
+  // It used to take parts as the median of every 1400–1999cc car over three years, so a 5-litre
+  // BMW 220d was priced like a small petrol hatchback at last year's prices: YL67KWC quoted £256
+  // interim / £310 full on 10/09/2026, against £279.54 / £354.24 built from the car.
+  const vehInfo = parseVehOil(vehicle);
+  const ownLitres = parseFloat(String(vehInfo.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
+  const [fullBands, priceList, partPrices, estimated] = await Promise.all([
+    getServiceLabourBands("fullService"),
+    listPartsPriceList(),
+    getRecentServicePartPrices({ make, modelWord: model, cc, fuelType: vehicle.fuelType }),
+    ownLitres ? Promise.resolve(null) : estimateOilCapacity(make, cc, vehicle.fuelType),
+  ]);
+  const fullLabourBand = pickLabourBand(fullBands, cc);
+  const litres = ownLitres || estimated?.litres || 0;
+  const servicePartPrices = Object.fromEntries(Object.entries(partPrices).map(([name, p]) => [name, p.price]));
+  const sets = buildServiceSets({
+    vehInfo: { ...vehInfo, oilCapacity: litres || undefined },
+    engineCC: cc,
+    priceList,
+    labourBands,
+    majorLabourNet: fullLabourBand ? Number(fullLabourBand.labour) : null,
+    partPrices: servicePartPrices,
+  });
+  const oil = {
+    litres,
+    grade: vehInfo.oilGrades[0] || null,
+    pricePerLitre: sets.small.parts[0]?.unitPrice ?? null,
+    // Most cars hold no tech data of their own, so the capacity is often borrowed — and a quote
+    // resting on a borrowed figure says where it came from.
+    source: ownLitres ? "this car's tech data"
+      : estimated ? `${estimated.basis} on ${estimated.n} other car${estimated.n === 1 ? "" : "s"}`
+      : null,
+  };
+  // No capacity anywhere means no oil figure, and a quote without its oil is the very under-quote
+  // this replaces — so none is given and the page falls back to history, labelled as such.
+  const quoteFrom = (set: ServiceSet, bandLabel: string) => {
+    if (!litres) return null;
+    const priced = priceServiceSet(set);
+    return { bandLabel, ...priced, withMot: round2(priced.gross + MOT_PRICE), motPrice: MOT_PRICE };
+  };
+  const quote = ourLabour ? quoteFrom(sets.small, ourLabour.label) : null;
+  const fullQuote = fullLabourBand ? quoteFrom(sets.major, fullLabourBand.label) : null;
 
-  // `decided` separates a rate we set from an average of what we happened to charge. Only the
-  // interim service has a band in serviceLabourBands; everything else is history alone, and the
-  // page has to say so rather than presenting both in the same voice.
+  // `decided` separates a price built from rates we set from an average of what we happened to
+  // charge. Both services are built from the car whenever it can be priced (an engine size for the
+  // labour band, an oil capacity); otherwise history stands in, and the page has to say so rather
+  // than presenting both in the same voice.
   const options = [
     {
       key: "mot",
@@ -6417,28 +6573,31 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
       price: quote ? quote.gross : interimStats?.median ?? null,
       priceExVat: quote ? quote.net : interimStats ? Math.round(interimStats.median / 1.2) : null,
       decided: !!quote,
-      note: quote ? `Labour £${quote.labour} (${quote.bandLabel}) + parts £${quote.parts}` : null,
+      note: null,
+      quote,
       includes: ["Engine oil replaced", "Oil filter replaced", "Sump plug seal where needed", "Levels topped up and vehicle checked over"],
     },
     {
       key: "fullService",
       name: "Full service",
-      price: fullStats?.median ?? null,
-      priceExVat: fullStats ? Math.round(fullStats.median / 1.2) : null,
-      decided: false,
+      price: fullQuote ? fullQuote.gross : fullStats?.median ?? null,
+      priceExVat: fullQuote ? fullQuote.net : fullStats ? Math.round(fullStats.median / 1.2) : null,
+      decided: !!fullQuote,
       note: "Everything in the interim, plus the two filters",
+      quote: fullQuote,
       includes: ["Everything in the interim service", "Air filter replaced", "Pollen / cabin filter replaced"],
     },
   ];
 
   // The combinations people actually ask for, so the difference is a number and not mental
-  // arithmetic on the phone. The interim leg uses the quote when there is one, so the combo can
-  // never disagree with the headline price sitting directly above it.
+  // arithmetic on the phone. Each leg uses the car's own price when there is one, so a combo can
+  // never disagree with the prices sitting directly above it.
   const interimPrice = quote ? quote.gross : interimStats?.median ?? null;
+  const fullPrice = fullQuote ? fullQuote.gross : fullStats?.median ?? null;
   const combos = [
-    interimPrice != null ? { name: "MOT + interim service", price: interimPrice + MOT_PRICE, decided: !!quote } : null,
-    fullStats ? { name: "MOT + full service", price: fullStats.median + MOT_PRICE, decided: false } : null,
-    interimPrice != null && fullStats ? { name: "Difference: interim → full", price: fullStats.median - interimPrice, isDiff: true, decided: false } : null,
+    interimPrice != null ? { name: "MOT + interim service", price: round2(interimPrice + MOT_PRICE), decided: !!quote } : null,
+    fullPrice != null ? { name: "MOT + full service", price: round2(fullPrice + MOT_PRICE), decided: !!fullQuote } : null,
+    interimPrice != null && fullPrice != null ? { name: "Difference: interim → full", price: round2(fullPrice - interimPrice), isDiff: true, decided: !!quote && !!fullQuote } : null,
   ].filter(Boolean);
 
   return {
@@ -6449,11 +6608,21 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     band,
     ourLabour,
     quote,
+    fullQuote,
+    oil,
+    // Last-charged prices for the service parts the price list doesn't carry, keyed by the set's
+    // part description: the job sheet's Major Service tick prices its air and cabin filters from
+    // these. The sources say which charge each came from, for the parts actually priced that way.
+    servicePartPrices,
+    partPriceSources: Object.fromEntries(Object.entries(partPrices).filter(([name]) => priceListMatch(name, priceList).unitPrice == null)),
     labourBands,
-    // Full-service labour median for this size band, from what these jobs ACTUALLY carried —
-    // there is no fullService row in serviceLabourBands, so the guide IS its price source.
-    // net is for prefilling job-sheet labour lines (line prices are ex-VAT).
-    fullServiceLabour: fullStats ? { net: Math.round(fullStats.labour / 1.2), incVat: fullStats.labour, n: fullStats.n } : null,
+    fullLabourBands: fullBands,
+    // Full-service labour for the job sheet's Major Service tick — net, as job-sheet lines are
+    // ex-VAT. The fullService band (Adam, 10/09/2026: £155 up to 2.0L, £175 over); the history
+    // median only when no band covers the car, i.e. its engine size isn't known.
+    fullServiceLabour: fullLabourBand
+      ? { net: Number(fullLabourBand.labour), incVat: round2(Number(fullLabourBand.labour) * 1.2), label: fullLabourBand.label, source: "band" as const }
+      : fullStats ? { net: Math.round(fullStats.labour / 1.2), incVat: fullStats.labour, n: fullStats.n, source: "history" as const } : null,
     options,
     combos,
     motPrice: MOT_PRICE,

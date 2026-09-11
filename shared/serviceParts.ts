@@ -6,11 +6,18 @@
  *
  * Small Service  — engine oil (qty = the engine's oil capacity), oil filter, sump plug seal,
  *                  £4.50 sundries, banded labour by engine size.
- * Major Service  — oil, oil/air/cabin filters, sump plug, £5.50 sundries (labour set by staff).
+ * Major Service  — oil, oil/air/cabin filters, sump plug, £5.50 sundries, labour from the
+ *                  full-service band for the engine size.
  * Air Con Re-Gas — offered only when the vehicle's tech data says it has aircon.
  *
- * Parts are priced from the partsPriceList table where a match exists; oil grade/capacity come
- * from the vehicle's SWS tech data so the oil quantity matches the engine.
+ * Parts are priced from the partsPriceList table where a match exists; a part the list doesn't
+ * carry (the air and cabin filters) takes what we last charged on the same model, passed in as
+ * `partPrices`. Oil grade/capacity come from the vehicle's SWS tech data so the oil quantity
+ * matches the engine.
+ *
+ * The server prices the Price Guide's quote from these same sets (getPriceGuideForRegistration),
+ * so the figure read out on the phone is the job the tick then puts on the sheet — which is why
+ * this lives in shared/.
  */
 
 export type ServicePart = { description: string; quantity: number; unitPrice?: number; vatRate?: number };
@@ -84,13 +91,23 @@ export function buildServiceSets(opts: {
   priceList: any[];
   labourBands: any[] | undefined;
   grade?: string;
-  /** Net labour for a Major/Full Service. No banded table exists for it — the caller passes the
-   * Price Guide's per-band median of what we've actually charged (priceGuide.forRegistration →
-   * fullServiceLabour.net). Absent → the labour line is left for staff to price. */
+  /** Net labour for a Major/Full Service: the full-service band for the engine size, which the
+   * caller passes from priceGuide.forRegistration → fullServiceLabour.net (serviceLabourBands,
+   * jobKey "fullService"). Absent → the labour line is left for staff to price. */
   majorLabourNet?: number | null;
+  /** Net prices for parts the price list doesn't carry, keyed by the part's description here
+   * ("Air Filter", "Cabin Filter") — what we last charged on the same model, from
+   * priceGuide.forRegistration → servicePartPrices. A price-list entry always wins over these. */
+  partPrices?: Record<string, number | null | undefined>;
 }): Record<string, ServiceSet> {
   const { vehInfo, priceList } = opts;
-  const priced = (description: string, quantity: number): ServicePart => ({ description, quantity, ...priceListMatch(description, priceList) });
+  const priced = (description: string, quantity: number): ServicePart => {
+    const listed = priceListMatch(description, priceList);
+    const recent = opts.partPrices?.[description];
+    return listed.unitPrice == null && recent != null && recent > 0
+      ? { description, quantity, unitPrice: Number(recent) }
+      : { description, quantity, ...listed };
+  };
 
   const oilCap = parseFloat(String(vehInfo?.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
   const oilLabel = opts.grade || vehInfo?.oilGrades?.[0] || vehInfo?.oilSpec || "";

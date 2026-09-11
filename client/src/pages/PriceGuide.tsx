@@ -20,6 +20,12 @@ const money = (n: any) => `£${Number(n || 0).toLocaleString("en-GB")}`;
  * out loud. */
 const exVat = (n: any) => Number(n || 0) / 1.2;
 const fmt = (n: any, mode: "inc" | "ex") => `£${Math.round(mode === "ex" ? exVat(n) : Number(n || 0)).toLocaleString("en-GB")}`;
+/** Pounds, with the pence whenever there are any. A quote built from the car's own parts is the
+ * figure its job sheet will produce to the penny, so it isn't rounded the way a median is. */
+const amount = (n: any) => {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? money(v) : `£${v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 const SIZE_HINT: Record<string, string> = {
   Small: "under 1400cc — Aygo, Fiesta, Picanto",
@@ -95,7 +101,7 @@ function ServiceDifference({ make, onMake, diff }: { make: string; onMake: (m: s
         <ul className="space-y-0.5 text-slate-600">
           {SERVICE_DIFFERENCE.onlyFull.map((l) => <li key={l} className="flex gap-1.5"><span className="text-violet-600">+</span><span>{l}</span></li>)}
         </ul>
-        {diff ? <div className="mt-1.5 text-[10px] text-slate-400">That's the whole difference — and the {money(diff)} between them.</div> : null}
+        {diff ? <div className="mt-1.5 text-[10px] text-slate-400">That's the whole difference — and the {amount(diff)} between them.</div> : null}
       </div>
       <div>
         <div className="font-semibold text-slate-600 mb-1">Neither — charged separately</div>
@@ -137,11 +143,63 @@ function ServiceDifference({ make, onMake, diff }: { make: string; onMake: (m: s
   );
 }
 
+/** The parts behind a quote built from the car, as its job sheet will carry them — so the price
+ * read out on the phone can be checked against the car instead of taken on trust. */
+function QuoteParts({ lines, className }: { lines?: any[]; className?: string }) {
+  const parts = (lines || []).filter((l) => l.kind === "part");
+  if (!parts.length) return null;
+  return (
+    <div className={className}>
+      {parts.map((l, i) => (
+        <span key={`${l.description}-${i}`}>
+          {i > 0 ? " · " : ""}
+          {l.unitPrice == null ? (
+            <span className="text-amber-700">{l.description}: no price</span>
+          ) : l.quantity !== 1 ? (
+            `${l.description} ${l.quantity}${/^engine oil/i.test(l.description) ? " L" : ""} × ${amount(l.unitPrice)} = ${amount(l.net)}`
+          ) : (
+            `${l.description} ${amount(l.net)}`
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Where a quote built from the car got its figures. The oil capacity is often borrowed from the
+ * same engine on another car, and each filter price comes from a different depth of history, so a
+ * quote resting on an estimate says so instead of reading as certain. */
+function PriceSources({ data }: { data: any }) {
+  if (!data?.quote && !data?.fullQuote) return null;
+  const oil = data?.oil;
+  const sources = Object.entries((data?.partPriceSources || {}) as Record<string, any>);
+  const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB") : "");
+  const basis = (s: any) =>
+    s.basis === "model"
+      ? `last charged on the same model${s.docNo ? ` (invoice ${s.docNo}, ${when(s.lastCharged)})` : ""}`
+      : s.basis === "make"
+        ? `middle of ${s.n} charge${s.n === 1 ? "" : "s"} on this make in the last 12 months`
+        : `middle of ${s.n} charge${s.n === 1 ? "" : "s"} across all cars in the last 12 months`;
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500">
+      <span className="font-semibold text-slate-600">How this car was priced:</span>
+      {oil?.litres ? (
+        <span>
+          oil {oil.litres} L{oil.grade ? ` of ${oil.grade}` : ""}{oil.pricePerLitre != null ? ` at ${amount(oil.pricePerLitre)}/L` : ""} — capacity from {oil.source}
+        </span>
+      ) : null}
+      {sources.map(([name, s]) => (
+        <span key={name}>{name.toLowerCase()} {amount(s.price)} — {basis(s)}</span>
+      ))}
+    </div>
+  );
+}
+
 /** The whole point of the page, in one box: type the reg, get the price.
  *
  * Everything below it is reference material. This is what gets used with a customer on the
- * phone, so it does the thinking — works out the car's size band and reads back the few numbers
- * that get asked for, big enough to read at a glance. */
+ * phone, so it does the thinking — prices the car's own service from its oil, filters and engine
+ * size, and reads back the few numbers that get asked for, big enough to read at a glance. */
 function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; onCar: (info: { make: string; diff?: number }) => void }) {
   const [reg, setReg] = useState("");
   const [submitted, setSubmitted] = useState("");
@@ -198,20 +256,22 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
             <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Quote this</div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
-                <span className="text-[30px] font-bold leading-none text-emerald-900">{money((data as any).quote.gross)}</span>
+                <span className="text-[30px] font-bold leading-none text-emerald-900">{amount((data as any).quote.gross)}</span>
                 <span className="text-sm text-emerald-800">
-                  interim service, inc VAT — <strong>{money((data as any).quote.withMot)}</strong> with the MOT
+                  interim service, inc VAT — <strong>{amount((data as any).quote.withMot)}</strong> with the MOT
                 </span>
               </div>
               <div className="text-[12px] text-emerald-900/90 mt-1.5">
-                Labour <strong>{money((data as any).quote.labour)}</strong> ({(data as any).quote.bandLabel} · {v?.engineCC}cc)
-                {" + "}parts <strong>{money((data as any).quote.parts)}</strong>
-                {" = "}<strong>{money((data as any).quote.net)}</strong> + VAT
+                Labour <strong>{amount((data as any).quote.labour)}</strong> ({(data as any).quote.bandLabel} · {v?.engineCC}cc)
+                {" + "}parts <strong>{amount((data as any).quote.parts)}</strong>
+                {" + "}sundries <strong>{amount((data as any).quote.sundries)}</strong>
+                {" = "}<strong>{amount((data as any).quote.net)}</strong> + VAT
                 {" · "}MOT {money((data as any).quote.motPrice)}, no VAT
               </div>
+              <QuoteParts lines={(data as any).quote.lines} className="text-[11px] text-emerald-900/70 mt-0.5" />
               <div className="text-[11px] text-emerald-800/70 mt-1">
-                Labour is your set rate for this engine size. Parts is what cars this size have actually needed —
-                swap in the real figure once the car is on a ramp.
+                Built from this car, the way the job sheet's Service tick builds the job: labour at your set rate for its
+                engine size, oil by its capacity and grade at price-list prices, filters at what we last charged on the same model.
               </div>
             </div>
           )}
@@ -225,16 +285,24 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="text-[12px] font-semibold text-slate-700">{o.name}</div>
                     <div className={`text-[9px] uppercase tracking-wide ${o.decided ? "text-emerald-700" : "text-amber-700"}`}>
-                      {o.decided ? "set price" : "typical"}
+                      {o.quote ? "this car" : o.decided ? "set price" : "typical"}
                     </div>
                   </div>
-                  <div className="text-[26px] font-bold leading-tight mt-0.5">{o.price != null ? money(o.price) : "—"}</div>
+                  <div className="text-[26px] font-bold leading-tight mt-0.5">{o.price != null ? amount(o.price) : "—"}</div>
                   {o.priceExVat != null && o.key !== "mot" && (
-                    <div className="text-[11px] text-slate-500">{money(o.priceExVat)} + VAT</div>
+                    <div className="text-[11px] text-slate-500">{amount(o.priceExVat)} + VAT</div>
                   )}
-                  {o.note && <div className="text-[10px] text-slate-400 mt-0.5">{o.note}</div>}
+                  {o.quote ? (
+                    <>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Labour {amount(o.quote.labour)} ({o.quote.bandLabel}) + parts {amount(o.quote.parts)}
+                        {o.quote.sundries ? ` + sundries ${amount(o.quote.sundries)}` : ""}
+                      </div>
+                      <QuoteParts lines={o.quote.lines} className="text-[10px] text-slate-400 mt-0.5" />
+                    </>
+                  ) : o.note && <div className="text-[10px] text-slate-400 mt-0.5">{o.note}</div>}
                   {!o.decided && o.key !== "mot" && (
-                    <div className="text-[10px] text-amber-700/80 mt-0.5">no set rate — this is what it has averaged</div>
+                    <div className="text-[10px] text-amber-700/80 mt-0.5">can't price this car — this is what it has averaged</div>
                   )}
                   <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">
                     {o.includes.map((line: string) => (
@@ -246,6 +314,8 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
             </div>
           )}
 
+          <PriceSources data={data} />
+
           {(data as any)?.combos?.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {((data as any).combos as any[]).map((c) => (
@@ -253,7 +323,7 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
                   <div className="text-[10px] uppercase tracking-wide text-slate-500">
                     {c.name}{!c.decided && !c.isDiff ? " (typical)" : ""}
                   </div>
-                  <div className="text-[18px] font-bold leading-tight">{c.isDiff ? `+${money(c.price)}` : money(c.price)}</div>
+                  <div className="text-[18px] font-bold leading-tight">{c.isDiff ? `+${amount(c.price)}` : amount(c.price)}</div>
                 </div>
               ))}
             </div>
@@ -295,7 +365,7 @@ function QuickQuote({ years, vat, onCar }: { years: number; vat: "inc" | "ex"; o
             })}
           </div>
           <p className="text-[11px] text-slate-500">
-            What a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car has averaged, {vat === "inc" ? "VAT included" : "excluding VAT"} — labour plus the parts that car took. MOT is on top. Only the interim service above has a rate you set; these are history.
+            What a <strong>{String((data as any)?.band || "").toLowerCase()}</strong> car has averaged, {vat === "inc" ? "VAT included" : "excluding VAT"} — labour plus the parts that car took. MOT is on top. The prices above are built from this car; these are history.
           </p>
         </>
       )}
