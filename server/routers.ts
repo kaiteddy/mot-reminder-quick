@@ -2376,22 +2376,23 @@ export const appRouter = router({
         const { getAllReminders, updateReminder, createReminderLog, findCustomerByPhone } = await import("./db");
         const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
 
-        // Check if customer has opted out
+        // Every reason not to send lives in shared/reminderEligibility.ts, the rule the MOT Reminders
+        // page lists by: the customer opted out or is a trade account, or this car is switched off.
+        const { reminderBlocks, reminderBlockMessage } = await import("../shared/reminderEligibility");
         const customer = await findCustomerByPhone(input.phoneNumber);
-        if (customer && customer.optedOut) {
-          throw new Error(`Customer ${customer.name} has opted out of messages. They can opt back in by replying START.`);
-        }
-        if (customer && (customer as any).noVehicleReminders) {
-          throw new Error(`${customer.name} is a trade account - per-vehicle reminders are switched off for them.`);
-        }
-        // …and this particular car may have been switched off on its own.
+        let veh: any = null;
         if (input.vehicleId) {
           const { getDb } = await import("./db");
           const dbv = await getDb();
-          const [veh]: any = dbv ? await dbv.select({ off: vehicles.remindersOff, reason: vehicles.remindersOffReason, reg: vehicles.registration })
+          [veh] = dbv ? await dbv.select({ off: vehicles.remindersOff, reason: vehicles.remindersOffReason, reg: vehicles.registration })
             .from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1) : [];
-          if (veh?.off) throw new Error(`Reminders are switched off for ${veh.reg}${veh.reason ? ` — ${veh.reason}` : ""}. Turn them back on from the vehicle page to send.`);
         }
+        const sendTo = {
+          customerName: customer?.name, customerOptedOut: customer?.optedOut, customerTrade: (customer as any)?.noVehicleReminders,
+          registration: veh?.reg, remindersOff: veh?.off, remindersOffReason: veh?.reason,
+        };
+        const blocked = reminderBlocks(sendTo);
+        if (blocked.length) throw new Error(reminderBlockMessage(sendTo, blocked[0]));
 
         // Handle test messages (id = 0)
         if (input.id === 0) {
@@ -3347,13 +3348,16 @@ export const appRouter = router({
         let skippedOptOut = 0;
 
         for (const log of logsToResend) {
-          // Never resend to a customer who has opted out since the original (failed) send.
+          // Never resend where the shared rule (shared/reminderEligibility.ts) now says no: the customer
+          // opted out or became a trade account, or the car's reminders were switched off, since the send.
+          const { reminderBlocks } = await import("../shared/reminderEligibility");
           const recipientCustomer = await findCustomerByPhone(log.recipient);
-          if (recipientCustomer && (recipientCustomer.optedOut || (recipientCustomer as any).noVehicleReminders)) { skippedOptOut++; continue; }
-          // Nor resend about a car whose reminders have been switched off since.
-          if (log.vehicleId) {
-            const [veh]: any = await db.select({ off: vehicles.remindersOff }).from(vehicles).where(eq(vehicles.id, log.vehicleId)).limit(1);
-            if (veh?.off) { skippedOptOut++; continue; }
+          const [resendVeh]: any = log.vehicleId
+            ? await db.select({ off: vehicles.remindersOff }).from(vehicles).where(eq(vehicles.id, log.vehicleId)).limit(1)
+            : [];
+          if (reminderBlocks({ customerOptedOut: recipientCustomer?.optedOut, customerTrade: (recipientCustomer as any)?.noVehicleReminders, remindersOff: resendVeh?.off }).length) {
+            skippedOptOut++;
+            continue;
           }
           try {
             let messageContent = log.messageContent;

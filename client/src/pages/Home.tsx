@@ -36,6 +36,7 @@ import {
 import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { normRegKey } from "@shared/vehicleIdentity";
+import { reminderBlocks, type ReminderBlock } from "@shared/reminderEligibility";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -105,6 +106,10 @@ export default function Home() {
   // yet 137 of them sat in this list on 11/09/2026 with last visits back to 2015. Adam: "they
   // shouldn't be reminded".
   const [hideTrade, setHideTrade] = useState(true);
+  // Which reasons a car can't be reminded (shared/reminderEligibility.ts, the same rule Send applies)
+  // may still be shown on request. Any other reason, opted out or one added later, is never listed.
+  const showBlocked = (block: ReminderBlock) =>
+    block === "reminders_off" ? !hideRemindersOff : block === "trade" ? !hideTrade : false;
   const filtersAtDefault = !searchTerm && motWindows.size === 0 && !showDeadVehicles && hideMissingPhone && hideSorn
     && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff && hideTrade;
   const resetFilters = () => {
@@ -339,14 +344,9 @@ export default function Home() {
   const filteredAndSortedVehicles = useMemo(() => {
     if (!vehicles) return [];
     let filtered = vehicles.filter(vehicle => {
-      // Opted-out customers can never actually receive a reminder (sendWhatsApp rejects them
-      // server-side) — mostly the garage's own trade/stock accounts (e.g. Eli Motors itself,
-      // M & Y Autos), not real customers. Keep this list to vehicles a reminder can actually reach.
-      if (vehicle.customerOptedOut) return false;
-
-      if (hideRemindersOff && vehicle.remindersOff) return false;
-
-      if (hideTrade && vehicle.customerTrade) return false;
+      // Keep this list to cars a reminder can actually reach: the server refuses anything
+      // reminderBlocks() names, so the page must never count one as due.
+      if (!reminderBlocks(vehicle).every(showBlocked)) return false;
 
       if (!showDeadVehicles) {
         if (vehicle.motExpiryDate) {
@@ -441,7 +441,7 @@ export default function Home() {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
     let expired = 0, due = 0, valid = 0, noData = 0, e90 = 0, e60 = 0, e30 = 0, e7 = 0, x7 = 0, x14 = 0, x30 = 0, x60 = 0, x90 = 0;
     const today = new Date();
-    const counted = vehicles.filter((v) => !(hideRemindersOff && v.remindersOff) && !(hideTrade && v.customerTrade));
+    const counted = vehicles.filter((v) => reminderBlocks(v).every(showBlocked));
     counted.forEach(vehicle => {
       const { status } = getMOTStatus(vehicle.motExpiryDate);
       const lastSent = vehicle.lastReminderSent ? new Date(vehicle.lastReminderSent).getTime() : 0;

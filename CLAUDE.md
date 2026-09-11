@@ -51,6 +51,25 @@ Pushing to `main` triggers the Vercel deploy.
   `SWS_API_KEY` / `SWS_AUTH_HEADER` env vars, falling back to the old hardcoded values if unset — set these
   in `.env` to rotate the key without a code change.
 
+## Protected rules (checked before every build)
+`pnpm build` first runs `vitest run --config vitest.guards.config.ts` — pure tests plus the tripwires in
+`server/guards/`. A broken rule stops the build, so Vercel does not deploy it. Fix the code, not the tripwire;
+change a tripwire only when Adam changes the rule. Each came from a real fault found on 11/09/2026:
+- **Who can be reminded** is decided only by `shared/reminderEligibility.ts` (opted out, trade account, reminders
+  switched off). The server's send checks and the MOT Reminders page's list and counts all use it. Add a new
+  reason there — never as a separate check in one page or procedure (the page once listed 230 cars Send refused).
+- **Refreshing a car's MOT** records DVLA's whole answer (tax, "Updated", DVLA status) through
+  `server/services/motRefresh.ts` / `dvlaRecord.ts`. Never save only an MOT date; `updateVehicleMOTExpiryDate` is for
+  a manually booked date (`bookMOT`) and nothing else.
+- **Long checks from a page** go in small batches with visible progress: `bulkVerifyMOT` takes at most 25 plates,
+  `MOTRefreshButtonLive` sends 8 at a time. Never one request for a whole list (it times out on Vercel).
+- **Plate search** compares `normRegKey()` on both sides — plates are stored both "GY65 FBK" and "GY65FBK".
+- **Paid UKVD lookups** only through `server/ukvd.ts`, which saves every answer so none is bought twice.
+- **Data Costs panel** matches months as `to_char(...)` text in SQL, never dates parsed in Node.
+- **First-MOT dates** come from DVSA (`server/services/firstMotReminders.ts`), never from `dateOfRegistration`.
+- **Tests never touch the live database**: DB tests need the sandbox `TEST_DATABASE_URL`; anything in the build
+  gate must need no database at all.
+
 ## House rules
 - One-way mirror only — never push changes back into GA4.
 - Never commit `.env` or any secret. `IDEALPOSTCODES_API_KEY` and other keys stay server-side.
