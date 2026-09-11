@@ -12,17 +12,10 @@ import { buildServiceSets, parseVehOil } from "@/lib/serviceParts";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
 import { belowPriceFloor, priceAtFloor, priceFloors, type PriceFloor } from "@shared/priceFloors";
+import { splitAddress } from "@shared/address";
 
 type Line = { id: number; kind: "Labour" | "Part"; description: string; price: string; qty: string };
 
-// The customer record stores one address blob ("12 Church Road, Hendon, London"); the document
-// prints split fields. Comma-split, peeling the leading house number off the first part.
-function splitAddress(addr: string) {
-  const parts = addr.split(",").map((x) => x.trim()).filter(Boolean);
-  if (!parts.length) return {};
-  const m = parts[0].match(/^(\d+[a-zA-Z]?)\s+(.+)$/);
-  return { custHouseNo: m?.[1], custRoad: m ? m[2] : parts[0], custLocality: parts[1], custTown: parts[2], custCounty: parts[3] };
-}
 let _lid = 1;
 const money = (n: number) => `£${(n || 0).toFixed(2)}`;
 const inputCls = "w-full bg-white border border-slate-300 rounded-lg px-3 h-12 text-[16px] outline-none focus:border-violet-500";
@@ -330,6 +323,9 @@ function WorkshopJobSheetInner() {
 
   const onSave = () => {
     const nameParts = custName.trim().split(/\s+/).filter(Boolean);
+    // The address box is the customer record's single line, in any of its shapes (GA4 import,
+    // web-created, postcode on the end); the shared parser splits it as the desktop page does.
+    const addr = splitAddress(custAddress, custPostcode);
     save.mutate({
       docType: "JS",
       registration: reg,
@@ -339,8 +335,12 @@ function WorkshopJobSheetInner() {
       custSurname: nameParts.length > 1 ? nameParts[nameParts.length - 1] : "",
       custTelephone: custPhone || undefined,
       custEmail: custEmail || undefined,
-      ...splitAddress(custAddress),
-      custPostcode: custPostcode || undefined,
+      custHouseNo: addr.houseNo || undefined,
+      custRoad: addr.road || undefined,
+      custLocality: addr.locality || undefined,
+      custTown: addr.town || undefined,
+      custCounty: addr.county || undefined,
+      custPostcode: custPostcode || addr.postcode || undefined,
       mileage: mileage ? Number(String(mileage).replace(/\D/g, "")) || null : null,
       description: notes || undefined,
       lineItems: [
