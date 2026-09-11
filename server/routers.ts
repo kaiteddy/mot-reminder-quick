@@ -2810,9 +2810,13 @@ export const appRouter = router({
 
     // "Refresh Visible" on the MOT Reminders page. Records what DVLA and DVSA say on every car with
     // that plate, the same way the hourly refresh and the bulk check do: server/services/motRefresh.ts.
+    // The page sends small batches and shows each one's results as they land (MOTRefreshButtonLive).
+    // It used to send every visible car in one request, asked one plate at a time: 57 cars took over a
+    // minute with nothing on screen until the end (11/09/2026), and 2,524 would have run far past the
+    // server's time limit. Now at most 25 plates per request, up to 4 asked at once.
     bulkVerifyMOT: protectedProcedure
       .input(z.object({
-        registrations: z.array(z.string()),
+        registrations: z.array(z.string()).max(25),
       }))
       .mutation(async ({ input }) => {
         const { getDb, bulkUpdateVehicleMOT } = await import("./db");
@@ -2836,36 +2840,44 @@ export const appRouter = router({
         const carsByReg = new Map<string, typeof rows>();
         for (const row of rows) carsByReg.set(norm(row.registration), [...(carsByReg.get(norm(row.registration)) || []), row]);
 
-        const results: Array<{ registration: string; success: boolean; verified: boolean; motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null; error?: string }> = [];
-        let stats = { refreshed: 0, failed: 0 };
-        for (const reg of wanted) {
+        type PlateResult = { registration: string; success: boolean; verified: boolean; motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null; error?: string };
+        const refreshPlate = async (reg: string): Promise<PlateResult> => {
           const cars = carsByReg.get(reg) || [];
           try {
             // GA4's renamed record: its plate is on another car now, so never look it up.
             if (isSupersededRegistration(reg)) {
               if (cars.length) await bulkUpdateVehicleMOT(cars.map((c) => ({ id: c.id, lastChecked: new Date(), dvlaStatus: "superseded" })));
-              results.push({ registration: reg, success: false, verified: false, error: "This plate has moved to another car, so it was not checked" });
-              stats.failed++;
-              continue;
+              return { registration: reg, success: false, verified: false, error: "This plate has moved to another car, so it was not checked" };
             }
-            const lookup = await lookupVehicle(reg);
+            let lookup = await lookupVehicle(reg);
+            if (lookup.outcome === "rate_limited") {
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              lookup = await lookupVehicle(reg);
+            }
             let dvsa: any; // undefined = DVSA could not be asked; null = DVSA has no record
             try { dvsa = await getMOTHistory(reg); } catch (e: any) { console.error(`[MOT-REFRESH] DVSA failed for ${reg}:`, e?.message || e); }
             const now = new Date();
-            const refreshed = (cars.length ? cars : [{ id: 0 }]).map((c) => motRefreshFor(c, lookup, dvsa, now));
-            const writes = cars.length ? refreshed.map((r) => r.update).filter((u) => Object.keys(u).length > 1) : [];
+            const outcomes = (cars.length ? cars : [{ id: 0 }]).map((c) => motRefreshFor(c, lookup, dvsa, now));
+            const writes = cars.length ? outcomes.map((o) => o.update).filter((u) => Object.keys(u).length > 1) : [];
             if (writes.length) await bulkUpdateVehicleMOT(writes);
-            const result = refreshed[0].result;
-            results.push({ registration: reg, verified: result.success, ...result });
-            result.success ? stats.refreshed++ : stats.failed++;
+            const result = outcomes[0].result;
             console.log(`[MOT-REFRESH] ${reg}: DVLA ${lookup.outcome}, DVSA ${dvsa === undefined ? "unavailable" : dvsa ? "answered" : "no record"} → ${result.success ? `${result.firstMot ? "first MOT due" : "MOT expires"} ${result.motExpiryDate?.slice(0, 10)}${result.taxStatus ? `, ${result.taxStatus}` : ""}` : result.error}`);
+            return { registration: reg, verified: result.success, ...result };
           } catch (error: any) {
-            results.push({ registration: reg, success: false, verified: false, error: error?.message || "Failed to verify MOT" });
-            stats.failed++;
+            return { registration: reg, success: false, verified: false, error: error?.message || "Failed to verify MOT" };
           }
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        console.log(`[MOT-REFRESH] ${wanted.length} plates: ${stats.refreshed} refreshed, ${stats.failed} not`);
+        };
+
+        const results: PlateResult[] = new Array(wanted.length);
+        let next = 0;
+        await Promise.all(Array.from({ length: Math.min(4, wanted.length) }, async () => {
+          while (next < wanted.length) {
+            const i = next++;
+            results[i] = await refreshPlate(wanted[i]);
+          }
+        }));
+        const refreshedCount = results.filter((r) => r.success).length;
+        console.log(`[MOT-REFRESH] batch of ${wanted.length}: ${refreshedCount} refreshed, ${wanted.length - refreshedCount} not`);
         return results;
       }),
 
