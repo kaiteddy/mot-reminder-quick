@@ -1149,6 +1149,8 @@ export async function getAllVehiclesWithCustomers() {
         customerEmail: customers.email,
         customerPhone: customers.phone,
         customerOptedOut: customers.optedOut,
+        // Trade accounts (customer page "Mark as trade"): never sent per-car reminders.
+        customerTrade: customers.noVehicleReminders,
         taxStatus: vehicles.taxStatus,
         taxDueDate: vehicles.taxDueDate,
         vin: vehicles.vin,

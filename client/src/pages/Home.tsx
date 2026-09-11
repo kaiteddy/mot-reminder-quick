@@ -101,8 +101,12 @@ export default function Home() {
   // Cars whose reminders are switched off (no work here in 4+ years, off the road, or by hand) can't be
   // sent a reminder. On 11/09/2026 they were 93 of the 233 cars due within 30 days, padding every count.
   const [hideRemindersOff, setHideRemindersOff] = useState(true);
+  // Trade accounts' cars are never reminded (Send refuses them, the four-year check skips them),
+  // yet 137 of them sat in this list on 11/09/2026 with last visits back to 2015. Adam: "they
+  // shouldn't be reminded".
+  const [hideTrade, setHideTrade] = useState(true);
   const filtersAtDefault = !searchTerm && motWindows.size === 0 && !showDeadVehicles && hideMissingPhone && hideSorn
-    && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff;
+    && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff && hideTrade;
   const resetFilters = () => {
     setSearchTerm("");
     setMotWindows(new Set());
@@ -113,6 +117,7 @@ export default function Home() {
     setShowOnlyNeverSent(false);
     setHideNoData(true);
     setHideRemindersOff(true);
+    setHideTrade(true);
   };
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
@@ -341,6 +346,8 @@ export default function Home() {
 
       if (hideRemindersOff && vehicle.remindersOff) return false;
 
+      if (hideTrade && vehicle.customerTrade) return false;
+
       if (!showDeadVehicles) {
         if (vehicle.motExpiryDate) {
           const expiry = new Date(vehicle.motExpiryDate);
@@ -411,12 +418,12 @@ export default function Home() {
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData, hideRemindersOff]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData, hideRemindersOff, hideTrade]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
@@ -434,7 +441,7 @@ export default function Home() {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
     let expired = 0, due = 0, valid = 0, noData = 0, e90 = 0, e60 = 0, e30 = 0, e7 = 0, x7 = 0, x14 = 0, x30 = 0, x60 = 0, x90 = 0;
     const today = new Date();
-    const counted = hideRemindersOff ? vehicles.filter((v) => !v.remindersOff) : vehicles;
+    const counted = vehicles.filter((v) => !(hideRemindersOff && v.remindersOff) && !(hideTrade && v.customerTrade));
     counted.forEach(vehicle => {
       const { status } = getMOTStatus(vehicle.motExpiryDate);
       const lastSent = vehicle.lastReminderSent ? new Date(vehicle.lastReminderSent).getTime() : 0;
@@ -450,7 +457,7 @@ export default function Home() {
       }
     });
     return { total: counted.length, expired, due, valid, noData, expired90: e90, expired60: e60, expired30: e30, expired7: e7, expiring7: x7, expiring14: x14, expiring30: x30, expiring60: x60, expiring90: x90 };
-  }, [vehicles, hideRemindersOff]);
+  }, [vehicles, hideRemindersOff, hideTrade]);
 
   return (
     <DashboardLayout>
@@ -518,6 +525,7 @@ export default function Home() {
                 <FilterChip active={hideReadAndExpired} onClick={() => setHideReadAndExpired(!hideReadAndExpired)} title="MOT expired and the last reminder was read">Read &amp; expired</FilterChip>
                 <FilterChip active={hideNoData} onClick={() => setHideNoData(!hideNoData)} title="No MOT date on file">No MOT date</FilterChip>
                 <FilterChip active={hideRemindersOff} onClick={() => setHideRemindersOff(!hideRemindersOff)} title="Reminders switched off: no work here in 4+ years, off the road, or by hand">Reminders off</FilterChip>
+                <FilterChip active={hideTrade} onClick={() => setHideTrade(!hideTrade)} title="Cars on trade accounts (marked on the customer page), which are never sent reminders">Trade</FilterChip>
               </FilterRow>
               <FilterRow label="Show">
                 <FilterChip active={showDeadVehicles} onClick={() => setShowDeadVehicles(!showDeadVehicles)} title="MOT ran out over 300 days ago and not taxed">Dead cars</FilterChip>
