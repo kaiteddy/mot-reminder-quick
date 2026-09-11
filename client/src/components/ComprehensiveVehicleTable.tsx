@@ -42,6 +42,8 @@ interface Vehicle {
     customerPhone: string | null;
     customerEmail: string | null;
     customerOptedOut: number | null;
+    remindersOff?: number | null;
+    remindersOffReason?: string | null;
     taxStatus: string | null;
     taxDueDate: Date | string | null;
     lastChecked?: Date | string | null;
@@ -278,6 +280,9 @@ export function ComprehensiveVehicleTable({
                                             </span>
                                             {!!vehicle.customerOptedOut && (
                                                 <Badge variant="destructive" className="h-4 text-[9px] px-1 w-fit">OPTED OUT</Badge>
+                                            )}
+                                            {!!vehicle.remindersOff && (
+                                                <Badge variant="secondary" className="h-4 text-[9px] px-1 w-fit" title={vehicle.remindersOffReason || "Reminders switched off for this car"}>REMINDERS OFF</Badge>
                                             )}
                                         </div>
                                     </TableCell>

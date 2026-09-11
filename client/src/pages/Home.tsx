@@ -63,6 +63,9 @@ export default function Home() {
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
   const [hideNoData, setHideNoData] = useState(true);
+  // Cars whose reminders are switched off (no work here in 5+ years, off the road, or by hand) can't be
+  // sent a reminder. On 11/09/2026 they were 93 of the 233 cars due within 30 days, padding every count.
+  const [hideRemindersOff, setHideRemindersOff] = useState(true);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -288,6 +291,8 @@ export default function Home() {
       // M & Y Autos), not real customers. Keep this list to vehicles a reminder can actually reach.
       if (vehicle.customerOptedOut) return false;
 
+      if (hideRemindersOff && vehicle.remindersOff) return false;
+
       if (!showDeadVehicles) {
         if (vehicle.motExpiryDate) {
           const expiry = new Date(vehicle.motExpiryDate);
@@ -357,12 +362,12 @@ export default function Home() {
       return true;
     });
     return filtered;
-  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData]);
+  }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData, hideRemindersOff]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
@@ -380,7 +385,8 @@ export default function Home() {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
     let expired = 0, due = 0, valid = 0, noData = 0, e90 = 0, e60 = 0, e30 = 0, e7 = 0, x7 = 0, x14 = 0, x30 = 0, x60 = 0, x90 = 0;
     const today = new Date();
-    vehicles.forEach(vehicle => {
+    const counted = hideRemindersOff ? vehicles.filter((v) => !v.remindersOff) : vehicles;
+    counted.forEach(vehicle => {
       const { status } = getMOTStatus(vehicle.motExpiryDate);
       const lastSent = vehicle.lastReminderSent ? new Date(vehicle.lastReminderSent).getTime() : 0;
       const sentRecently = (today.getTime() - lastSent) < 30 * 24 * 60 * 60 * 1000;
@@ -394,8 +400,8 @@ export default function Home() {
         if (!sentRecently) { if (diffDays >= 0 && diffDays <= 7) x7++; if (diffDays >= 0 && diffDays <= 14) x14++; if (diffDays >= 0 && diffDays <= 30) x30++; if (diffDays >= 0 && diffDays <= 60) x60++; if (diffDays >= 0 && diffDays <= 90) x90++; }
       }
     });
-    return { total: vehicles.length, expired, due, valid, noData, expired90: e90, expired60: e60, expired30: e30, expired7: e7, expiring7: x7, expiring14: x14, expiring30: x30, expiring60: x60, expiring90: x90 };
-  }, [vehicles]);
+    return { total: counted.length, expired, due, valid, noData, expired90: e90, expired60: e60, expired30: e30, expired7: e7, expiring7: x7, expiring14: x14, expiring30: x30, expiring60: x60, expiring90: x90 };
+  }, [vehicles, hideRemindersOff]);
 
   return (
     <DashboardLayout>
@@ -534,6 +540,20 @@ export default function Home() {
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
                   Hide "No Data" Vehicles
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="hide-reminders-off-home"
+                  checked={hideRemindersOff}
+                  onCheckedChange={(checked) => setHideRemindersOff(checked as boolean)}
+                />
+                <label
+                  htmlFor="hide-reminders-off-home"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Hide Cars With Reminders Off
                 </label>
               </div>
             </div>

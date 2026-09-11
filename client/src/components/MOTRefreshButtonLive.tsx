@@ -43,7 +43,9 @@ export function MOTRefreshButtonLive({
       const updates: VehicleUpdate[] = results.map(r => ({
         registration: r.registration,
         status: r.success ? "success" : "failed",
-        message: r.success ? `MOT expires ${new Date(r.motExpiryDate || '').toLocaleDateString('en-GB')}` : r.error,
+        message: r.success
+          ? `${r.firstMot ? "First MOT due" : "MOT expires"} ${new Date(r.motExpiryDate || '').toLocaleDateString('en-GB')}${r.taxStatus ? ` · ${r.taxStatus}` : ""}`
+          : r.error,
         motExpiryDate: r.motExpiryDate,
       }));
       

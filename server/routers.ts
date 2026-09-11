@@ -2808,77 +2808,64 @@ export const appRouter = router({
       });
     }),
 
+    // "Refresh Visible" on the MOT Reminders page. Records what DVLA and DVSA say on every car with
+    // that plate, the same way the hourly refresh and the bulk check do: server/services/motRefresh.ts.
     bulkVerifyMOT: protectedProcedure
       .input(z.object({
         registrations: z.array(z.string()),
       }))
       .mutation(async ({ input }) => {
-        const { getVehicleDetails } = await import("./dvlaApi");
-        const { updateVehicleMOTExpiryDate } = await import("./db");
-        const { getMOTHistory, getLatestMOTExpiry } = await import("./motApi");
+        const { getDb, bulkUpdateVehicleMOT } = await import("./db");
+        const { lookupVehicle } = await import("./dvlaApi");
+        const { getMOTHistory } = await import("./motApi");
+        const { isSupersededRegistration } = await import("./services/dvlaRecord");
+        const { motRefreshFor } = await import("./services/motRefresh");
+        const { vehicles } = await import("../drizzle/schema");
+        const { sql, inArray } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
 
-        const results = [];
+        const norm = (r: string) => String(r || "").replace(/\s+/g, "").toUpperCase();
+        const wanted = Array.from(new Set(input.registrations.map(norm).filter(Boolean)));
+        const rows = wanted.length
+          ? await db.select({
+              id: vehicles.id, registration: vehicles.registration, make: vehicles.make, colour: vehicles.colour,
+              fuelType: vehicles.fuelType, dateOfRegistration: vehicles.dateOfRegistration,
+            }).from(vehicles).where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, wanted))
+          : [];
+        const carsByReg = new Map<string, typeof rows>();
+        for (const row of rows) carsByReg.set(norm(row.registration), [...(carsByReg.get(norm(row.registration)) || []), row]);
 
-        for (const registration of input.registrations) {
+        const results: Array<{ registration: string; success: boolean; verified: boolean; motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null; error?: string }> = [];
+        let stats = { refreshed: 0, failed: 0 };
+        for (const reg of wanted) {
+          const cars = carsByReg.get(reg) || [];
           try {
-            // DVLA API for tax and base details
-            const dvlaData = await getVehicleDetails(registration);
-            
-            // DVSA MOT History API for the most accurate MOT
-            let motExpiryDateStr = dvlaData?.motExpiryDate;
-            try {
-               const dvsaData = await getMOTHistory(registration);
-               if (dvsaData) {
-                 const bestDate = getLatestMOTExpiry(dvsaData);
-                 if (bestDate) {
-                   motExpiryDateStr = bestDate.toISOString();
-                 }
-               }
-            } catch (motErr) {
-               console.error(`Error checking DVSA MOT for ${registration}:`, motErr);
+            // GA4's renamed record: its plate is on another car now, so never look it up.
+            if (isSupersededRegistration(reg)) {
+              if (cars.length) await bulkUpdateVehicleMOT(cars.map((c) => ({ id: c.id, lastChecked: new Date(), dvlaStatus: "superseded" })));
+              results.push({ registration: reg, success: false, verified: false, error: "This plate has moved to another car, so it was not checked" });
+              stats.failed++;
+              continue;
             }
-
-            if (dvlaData && motExpiryDateStr) {
-              const expiryDate = new Date(motExpiryDateStr);
-
-              // Update vehicle MOT date in database
-              await updateVehicleMOTExpiryDate(registration, expiryDate);
-
-              results.push({
-                registration,
-                success: true,
-                motExpiryDate: expiryDate.toISOString(),
-                make: dvlaData.make,
-                model: dvlaData.model,
-                verified: true,
-              });
-            } else if (dvlaData) {
-              // Vehicle found but no MOT data (might be exempt or too new)
-              results.push({
-                registration,
-                success: false,
-                error: 'Vehicle found but no MOT expiry date available (may be exempt or too new)',
-                verified: false,
-              });
-            } else {
-              // Vehicle not found
-              results.push({
-                registration,
-                success: false,
-                error: 'Vehicle not found in DVLA database',
-                verified: false,
-              });
-            }
+            const lookup = await lookupVehicle(reg);
+            let dvsa: any; // undefined = DVSA could not be asked; null = DVSA has no record
+            try { dvsa = await getMOTHistory(reg); } catch (e: any) { console.error(`[MOT-REFRESH] DVSA failed for ${reg}:`, e?.message || e); }
+            const now = new Date();
+            const refreshed = (cars.length ? cars : [{ id: 0 }]).map((c) => motRefreshFor(c, lookup, dvsa, now));
+            const writes = cars.length ? refreshed.map((r) => r.update).filter((u) => Object.keys(u).length > 1) : [];
+            if (writes.length) await bulkUpdateVehicleMOT(writes);
+            const result = refreshed[0].result;
+            results.push({ registration: reg, verified: result.success, ...result });
+            result.success ? stats.refreshed++ : stats.failed++;
+            console.log(`[MOT-REFRESH] ${reg}: DVLA ${lookup.outcome}, DVSA ${dvsa === undefined ? "unavailable" : dvsa ? "answered" : "no record"} → ${result.success ? `${result.firstMot ? "first MOT due" : "MOT expires"} ${result.motExpiryDate?.slice(0, 10)}${result.taxStatus ? `, ${result.taxStatus}` : ""}` : result.error}`);
           } catch (error: any) {
-            results.push({
-              registration,
-              success: false,
-              error: error.message || 'Failed to verify MOT',
-              verified: false,
-            });
+            results.push({ registration: reg, success: false, verified: false, error: error?.message || "Failed to verify MOT" });
+            stats.failed++;
           }
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
-
+        console.log(`[MOT-REFRESH] ${wanted.length} plates: ${stats.refreshed} refreshed, ${stats.failed} not`);
         return results;
       }),
 

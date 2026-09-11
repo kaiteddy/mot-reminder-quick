@@ -1157,6 +1157,9 @@ export async function getAllVehiclesWithCustomers() {
         colour: vehicles.colour,
         fuelType: vehicles.fuelType,
         lastChecked: vehicles.lastChecked,
+        // Per-car switch (stale-owner and off-road checks, or by hand): the MOT Reminders page hides these by default.
+        remindersOff: vehicles.remindersOff,
+        remindersOffReason: vehicles.remindersOffReason,
       })
       .from(vehicles)
       .leftJoin(customers, eq(vehicles.customerId, customers.id))
@@ -1326,12 +1329,14 @@ export async function bulkUpdateVehicleMOT(updates: Array<{
   model?: string;
   colour?: string;
   fuelType?: string;
-  taxStatus?: string;
+  taxStatus?: string | null;
   taxDueDate?: Date | null;
   lastChecked?: Date | null;
   dvlaStatus?: string;
   dvlaAnsweredAt?: Date | null;
   dateOfRegistration?: Date;
+  firstMotDue?: Date | null;
+  firstMotCheckedAt?: Date | null;
 }>) {
   const db = await getDb();
   if (!db) return;
@@ -1344,6 +1349,8 @@ export async function bulkUpdateVehicleMOT(updates: Array<{
     if (Object.prototype.hasOwnProperty.call(update, 'lastChecked')) updateData.lastChecked = update.lastChecked;
     if (Object.prototype.hasOwnProperty.call(update, 'dvlaStatus')) updateData.dvlaStatus = update.dvlaStatus;
     if (Object.prototype.hasOwnProperty.call(update, 'dvlaAnsweredAt')) updateData.dvlaAnsweredAt = update.dvlaAnsweredAt;
+    if (Object.prototype.hasOwnProperty.call(update, 'firstMotDue')) updateData.firstMotDue = update.firstMotDue;
+    if (Object.prototype.hasOwnProperty.call(update, 'firstMotCheckedAt')) updateData.firstMotCheckedAt = update.firstMotCheckedAt;
     if (update.dateOfRegistration) updateData.dateOfRegistration = update.dateOfRegistration;
     if (update.make) updateData.make = update.make;
     if (update.model) updateData.model = update.model;
