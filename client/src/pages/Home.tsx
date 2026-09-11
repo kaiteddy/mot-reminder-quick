@@ -98,7 +98,7 @@ export default function Home() {
   const [hideReadAndExpired, setHideReadAndExpired] = useState(true);
   const [showOnlyNeverSent, setShowOnlyNeverSent] = useState(false);
   const [hideNoData, setHideNoData] = useState(true);
-  // Cars whose reminders are switched off (no work here in 5+ years, off the road, or by hand) can't be
+  // Cars whose reminders are switched off (no work here in 4+ years, off the road, or by hand) can't be
   // sent a reminder. On 11/09/2026 they were 93 of the 233 cars due within 30 days, padding every count.
   const [hideRemindersOff, setHideRemindersOff] = useState(true);
   const filtersAtDefault = !searchTerm && motWindows.size === 0 && !showDeadVehicles && hideMissingPhone && hideSorn
@@ -517,7 +517,7 @@ export default function Home() {
                 <FilterChip active={hideSorn} onClick={() => setHideSorn(!hideSorn)} title="Declared off the road with DVLA">SORN</FilterChip>
                 <FilterChip active={hideReadAndExpired} onClick={() => setHideReadAndExpired(!hideReadAndExpired)} title="MOT expired and the last reminder was read">Read &amp; expired</FilterChip>
                 <FilterChip active={hideNoData} onClick={() => setHideNoData(!hideNoData)} title="No MOT date on file">No MOT date</FilterChip>
-                <FilterChip active={hideRemindersOff} onClick={() => setHideRemindersOff(!hideRemindersOff)} title="Reminders switched off: no work here in 5+ years, off the road, or by hand">Reminders off</FilterChip>
+                <FilterChip active={hideRemindersOff} onClick={() => setHideRemindersOff(!hideRemindersOff)} title="Reminders switched off: no work here in 4+ years, off the road, or by hand">Reminders off</FilterChip>
               </FilterRow>
               <FilterRow label="Show">
                 <FilterChip active={showDeadVehicles} onClick={() => setShowDeadVehicles(!showDeadVehicles)} title="MOT ran out over 300 days ago and not taxed">Dead cars</FilterChip>

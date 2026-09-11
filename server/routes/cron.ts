@@ -248,7 +248,7 @@ cronRouter.get("/off-road-car-reminders", async (req, res) => {
 });
 
 /**
- * Stale cars: switch MOT reminders off for any car with no work in five years, keeping the owner
+ * Stale cars: switch MOT reminders off for any car with no work in four years, keeping the owner
  * and history intact and writing the evidence on the vehicle. Daily, before anyone opens the
  * reminders screen. See server/services/staleCarReminders.ts for the rule and why the owner is no
  * longer cleared. `?dry=1` reports without writing. A run that finds more than 200 new cars refuses
