@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from '@/lib/trpc';
+import { normRegKey } from "@shared/vehicleIdentity";
 import DashboardLayout from "@/components/DashboardLayout";
 import { fileToBase64 } from '@/lib/utils';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -274,7 +275,7 @@ export default function GA4Scanner() {
     };
 
     const sortedFilteredResults = [...results].filter(item => {
-        const matchesSearch = item.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        const matchesSearch = normRegKey(item.registration).includes(normRegKey(searchTerm)) ||
             (item.customerName || "").toLowerCase().includes(searchTerm.toLowerCase());
         if (!matchesSearch) return false;
         if (filterMode === "never" && item.lastSent) return false;

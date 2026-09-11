@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ export default function ReminderArchive() {
   const filteredReminders = archivedReminders.filter(reminder => {
     // Search filter
     const matchesSearch = 
-      reminder.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      normRegKey(reminder.registration).includes(normRegKey(searchTerm)) ||
       reminder.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       reminder.customerPhone?.toLowerCase().includes(searchTerm.toLowerCase());
 

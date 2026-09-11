@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -332,7 +333,8 @@ export default function Home() {
       }
 
       const termLower = searchTerm.toLowerCase();
-      const matchesSearch = (vehicle.registration?.toLowerCase() || "").includes(termLower.replace(/\s+/g, '')) ||
+      // Plates are stored both "GY65 FBK" and "GY65FBK": compare with spaces stripped on both sides.
+      const matchesSearch = normRegKey(vehicle.registration).includes(normRegKey(searchTerm)) ||
         (vehicle.customerName?.toLowerCase() || "").includes(termLower) ||
         (vehicle.make?.toLowerCase() || "").includes(termLower);
       if (!matchesSearch) return false;

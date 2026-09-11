@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -176,7 +177,7 @@ export default function ReminderFollowUp() {
             // Search Filter
             const term = searchTerm.toLowerCase();
             const matchesSearch =
-                (log.registration?.toLowerCase() || "").includes(term) ||
+                normRegKey(log.registration ?? "").includes(normRegKey(searchTerm)) ||
                 (log.customerName?.toLowerCase() || "").includes(term) ||
                 (log.recipient?.toLowerCase() || "").includes(term);
 
