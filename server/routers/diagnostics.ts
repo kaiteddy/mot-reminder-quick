@@ -200,58 +200,93 @@ export const diagnosticsRouter = router({
   costsSummary: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new Error("Database unavailable");
-    const months = (await db.execute(sql`SELECT date_trunc('month', now()) AS cur, date_trunc('month', now() - interval '1 month') AS prev`)) as any;
+    const { ensureUkvdLookupLog } = await import("../ukvd");
+    await ensureUkvdLookupLog();
+
+    // Months are matched as "YYYY-MM" text worked out by the database. They used to be matched as
+    // parsed dates, but date_trunc on a timestamp column comes back as zoneless text that Node
+    // reads in the server's own time zone: on a clock set to British Summer Time "1 September"
+    // became 31 August 23:00, matched neither month, and every row read £0.00.
+    const months = (await db.execute(sql`SELECT to_char(now(), 'YYYY-MM') AS cur, to_char(now() - interval '1 month', 'YYYY-MM') AS prev`)) as any;
     const { cur, prev } = months.rows[0];
+    const since = sql`date_trunc('month', now() - interval '1 month')::timestamp`;
 
     const two = async (q: any) => {
       const r: any = await db.execute(q);
       const by: Record<string, { n: number; spend: number }> = {};
-      for (const row of r.rows) by[new Date(row.m).toISOString()] = { n: Number(row.n) || 0, spend: Number(row.spend) || 0 };
-      const k = (d: any) => new Date(d).toISOString();
-      return { thisMonth: by[k(cur)] || { n: 0, spend: 0 }, lastMonth: by[k(prev)] || { n: 0, spend: 0 } };
+      for (const row of r.rows) by[String(row.m)] = { n: Number(row.n) || 0, spend: Number(row.spend) || 0 };
+      return { thisMonth: by[cur] || { n: 0, spend: 0 }, lastMonth: by[prev] || { n: 0, spend: 0 } };
     };
 
-    // UKVD by BALANCE MOVEMENT, not by summing saved receipts: calls that never persist a
-    // payload (stock refreshes, repeat syncs) still move the account balance, so consecutive
-    // snapshots capture every charge. Positive drops are spend; rises are top-ups (excluded).
-    const prevLead = new Date(new Date(prev).getTime() - 3 * 86400000); // a few snapshots before the window so the first delta has a baseline
+    // UKVD by BALANCE MOVEMENT between receipts: every billed answer carries the account balance
+    // after it, so consecutive balances capture every charge. Drops are spend; rises are top-ups,
+    // left out. Since 11/09/2026 every receipt is logged in "ukvdLookups" (server/ukvd.ts). Before
+    // that only the latest receipt kept on each vehicle survives, used up to the first logged one.
+    // Those old receipts carry no time of their own and are placed by swsLastUpdated, which moves
+    // on later SWS fetches too, so a car can bring an old balance forward: LL14LDJ's £147.90 landed
+    // between £35.66 and £34.82 on 24/08/2026 and read as a £112 top-up then £113 of spend, making
+    // August £166.52 instead of £43.02. A receipt far from both neighbours while they sit close to
+    // each other is out of place, and is dropped before the movement is summed.
     const ukvd = await two(sql`
-      WITH snaps AS (
-        SELECT "swsLastUpdated" t,
-               ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric bal
-        FROM vehicles
-        WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL
-          AND "swsLastUpdated" >= ${prevLead}
-        ORDER BY "swsLastUpdated"
+      WITH logstart AS (
+        SELECT COALESCE(MIN("createdAt"), 'infinity'::timestamp) s FROM "ukvdLookups" WHERE billed AND balance IS NOT NULL
+      ), snaps AS (
+        SELECT "createdAt" t, balance bal FROM "ukvdLookups"
+         WHERE billed AND balance IS NOT NULL AND "createdAt" >= ${since} - interval '3 days'
+        UNION ALL
+        SELECT "swsLastUpdated", ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric
+          FROM vehicles
+         WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance' IS NOT NULL
+           AND "swsLastUpdated" >= ${since} - interval '3 days'
+           AND "swsLastUpdated" < (SELECT s FROM logstart)
+      ), placed AS (
+        SELECT t, bal, LAG(bal) OVER w AS prev, LEAD(bal) OVER w AS nxt FROM snaps WINDOW w AS (ORDER BY t)
+      ), kept AS (
+        SELECT t, bal FROM placed
+         WHERE NOT (prev IS NOT NULL AND nxt IS NOT NULL
+                    AND abs(prev - nxt) < 0.5 * LEAST(abs(bal - prev), abs(bal - nxt)))
       ), deltas AS (
-        SELECT t, GREATEST(LAG(bal) OVER (ORDER BY t) - bal, 0) AS drop
-        FROM snaps
+        SELECT t, GREATEST(LAG(bal) OVER (ORDER BY t) - bal, 0) AS drop FROM kept
       )
-      SELECT date_trunc('month', t) m, COUNT(*) n, COALESCE(SUM(drop), 0) spend
-      FROM deltas WHERE t >= ${prev} GROUP BY 1`);
+      SELECT to_char(t, 'YYYY-MM') m, COUNT(*) FILTER (WHERE drop > 0) n, COALESCE(SUM(drop), 0) spend
+        FROM deltas WHERE t >= ${since} GROUP BY 1`);
     const balRow: any = await db.execute(sql`
-      SELECT ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric AS balance
-      FROM vehicles
-      WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation' IS NOT NULL
-      ORDER BY "swsLastUpdated" DESC NULLS LAST LIMIT 1`);
+      SELECT COALESCE(
+        (SELECT balance FROM "ukvdLookups" WHERE billed AND balance IS NOT NULL ORDER BY "createdAt" DESC LIMIT 1),
+        (SELECT ("comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance')::numeric
+           FROM vehicles
+          WHERE "comprehensiveTechnicalData"->'ukvd'->'raw'->'BillingInformation'->>'AccountBalance' IS NOT NULL
+          ORDER BY "swsLastUpdated" DESC NULLS LAST LIMIT 1)) AS balance`);
     const ukvdBalance = balRow.rows[0]?.balance != null ? Number(balRow.rows[0].balance) : null;
+    const savedRow: any = await db.execute(sql`
+      SELECT COUNT(*) AS n FROM "ukvdLookups" WHERE saved AND "createdAt" >= date_trunc('month', now())::timestamp`);
+    const ukvdSavedThisMonth = Number(savedRow.rows[0]?.n) || 0;
 
-    // Only fetches that RETURNED data count - GA4's Technical Data screen states no charge
-    // when nothing comes back, and swsLastUpdated is also stamped on empty "attempted" marks.
+    // A day pass is 2.5 credits per car per day, whatever is fetched that day. Two things buy one:
+    // the specs/oils/repair-times fetch (swsLastUpdated) and the workshop data (torque settings,
+    // fuses, drawings: ctd.workshop.fetchedAt). The same car on the same day is one pass. Only
+    // fetches that RETURNED data count - GA4's Technical Data screen states no charge when nothing
+    // comes back, and swsLastUpdated is also stamped on empty "attempted" marks.
     const sws = await two(sql`
-      SELECT date_trunc('month', "swsLastUpdated") m, COUNT(*) n, COUNT(*) * 0.40 spend
-      FROM vehicles
-      WHERE "swsLastUpdated" >= ${prev}
-        AND ("comprehensiveTechnicalData"->'specs' IS NOT NULL OR "comprehensiveTechnicalData"->'lubricants' IS NOT NULL)
-      GROUP BY 1`);
+      SELECT to_char(d, 'YYYY-MM') m, COUNT(*) n, COUNT(*) * 0.40 spend FROM (
+        SELECT id, date_trunc('day', "swsLastUpdated") d
+          FROM vehicles
+         WHERE "swsLastUpdated" >= ${since}
+           AND ("comprehensiveTechnicalData"->'specs' IS NOT NULL OR "comprehensiveTechnicalData"->'lubricants' IS NOT NULL)
+        UNION
+        SELECT id, date_trunc('day', ("comprehensiveTechnicalData"->'workshop'->>'fetchedAt')::timestamptz AT TIME ZONE 'UTC')
+          FROM vehicles
+         WHERE "comprehensiveTechnicalData"->'workshop'->>'fetchedAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
+      ) passes
+      WHERE d >= ${since} GROUP BY 1`);
 
     const ga4 = await two(sql`
-      SELECT date_trunc('month', "filledAt") m, COUNT(*) n, COUNT(*) * 0.16 spend
-      FROM "ga4NumberPool" WHERE "filledAt" >= ${prev} GROUP BY 1`);
+      SELECT to_char("filledAt", 'YYYY-MM') m, COUNT(*) n, COUNT(*) * 0.16 spend
+      FROM "ga4NumberPool" WHERE "filledAt" >= ${since} GROUP BY 1`);
 
     const addr = await two(sql`
-      SELECT date_trunc('month', "createdAt") m, COUNT(*) n, COUNT(*) * 0.04 spend
-      FROM "addressLookups" WHERE source = 'Ideal Postcodes' AND results > 0 AND "createdAt" >= ${prev} GROUP BY 1`);
+      SELECT to_char("createdAt", 'YYYY-MM') m, COUNT(*) n, COUNT(*) * 0.04 spend
+      FROM "addressLookups" WHERE source = 'Ideal Postcodes' AND results > 0 AND "createdAt" >= ${since} GROUP BY 1`);
 
     // Twilio: exact billed totals from their usage API (never blocks the panel on failure).
     let twilio: { thisMonth: number; lastMonth: number } | null = null;
@@ -268,6 +303,6 @@ export const diagnosticsRouter = router({
       }
     } catch { /* panel shows a dash */ }
 
-    return { ukvd: { ...ukvd, balance: ukvdBalance }, sws, ga4, addr, twilio };
+    return { ukvd: { ...ukvd, balance: ukvdBalance, savedThisMonth: ukvdSavedThisMonth }, sws, ga4, addr, twilio };
   }),
 });

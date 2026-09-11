@@ -186,6 +186,38 @@ cronRouter.get("/website-stock-sync", async (req, res) => {
  * Auth: same CRON_SECRET bearer as the other crons.
  */
 /**
+ * First-MOT dates: ask DVSA (free) about cars with no MOT expiry, mostly new cars, and store the date
+ * their first MOT falls due so they come into the reminder list like any other car. A car DVSA shows
+ * as already tested gets its blank MOT expiry filled. Daily at 05:10, before the off-road and
+ * stale-car checks. See server/services/firstMotReminders.ts. `?dry=1` asks DVSA but writes nothing.
+ * Stops at once with a 503 if DVSA refuses our key: its secret has to be renewed every two years.
+ */
+cronRouter.get("/first-mot-dates", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { getDb } = await import("../db");
+    const { getMOTHistory } = await import("../motApi");
+    const { runFirstMotCheck } = await import("../services/firstMotReminders");
+    const db: any = await getDb();
+    if (!db?.$client) throw new Error("Database not available");
+    const dry = String(req.query.dry || "") === "1";
+    const s = await runFirstMotCheck((t, p) => db.$client.query(t, p), (reg) => getMOTHistory(reg), { apply: !dry, max: 60, paceMs: 100 });
+    const out = { ok: !s.stopped, dry, checked: s.checked, awaitingFirst: s.awaitingFirst, overdue: s.overdue, dueWithin60Days: s.dueWithin60Days,
+      tested: s.tested, expiryFilled: s.expiryFilled, noRecord: s.noRecord, errors: s.errors, cleared: s.cleared, stopped: s.stopped,
+      cars: s.cars.slice(0, 50).map((c) => ({ reg: c.registration, kind: c.finding.kind,
+        date: c.finding.kind === "awaiting_first" ? c.finding.due : c.finding.kind === "tested" ? c.finding.expiry : null })) };
+    console.log(`[CRON first-mot-dates] ${dry ? "DRY" : "LIVE"}: checked ${s.checked}, awaiting first MOT ${s.awaitingFirst} (overdue ${s.overdue}), MOT expiry filled ${s.expiryFilled}, no record ${s.noRecord}, errors ${s.errors}${s.stopped ? `, STOPPED: ${s.stopped}` : ""}`);
+    res.status(s.stopped ? 503 : 200).json(out);
+  } catch (e: any) {
+    console.error("[CRON first-mot-dates] failed:", e?.message || e);
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+/**
  * Off-road cars: switch MOT reminders off when DVLA shows a car SORN or with no MOT pass in three
  * years, and back on when DVLA shows it taxed with a valid MOT again. Daily at 05:20, before the
  * stale-car check, so a car coming back on the road is still judged on staleness the same morning.

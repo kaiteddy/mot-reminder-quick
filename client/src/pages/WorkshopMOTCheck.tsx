@@ -143,6 +143,8 @@ function WorkshopMOTCheckInner() {
     onSuccess: async (data) => {
       setVehicleData(data as VehicleData);
       toast.success("Vehicle found!");
+      const savedAt = (data as any).ukvdSavedAt;
+      if (savedAt) toast.info(`Full check already bought on ${new Date(savedAt).toLocaleDateString("en-GB")}, shown again at no charge`);
 
       // Try to fetch customer profile data — keep the response even with no linked customer,
       // so its `vehicle` id still lets CustomerInfoCard offer an "Assign Owner" prompt.

@@ -2171,7 +2171,17 @@ export const appRouter = router({
           };
         }
 
-        // Fetch from free APIs always. UKVD used only if paid full check, OR if local DB lacks VIN
+        // Fetch from free APIs always. The paid UKVD lookup is bought once per plate: server/ukvd.ts
+        // answers any repeat from its saved copy. A car on file already holding one is answered from
+        // that outright (image and all); otherwise UKVD only for a full check or a car with no VIN.
+        const storedUkvd = (() => {
+          try {
+            const ctd: any = typeof existingVehicle?.comprehensiveTechnicalData === "string"
+              ? JSON.parse(existingVehicle.comprehensiveTechnicalData)
+              : existingVehicle?.comprehensiveTechnicalData;
+            return ctd?.ukvd?.raw ? ctd.ukvd : null;
+          } catch { return null; }
+        })();
         const promises: Promise<any>[] = [
           getMOTHistory(input.registration).catch((err) => {
             console.error("MOT API Error:", err.message);
@@ -2181,10 +2191,10 @@ export const appRouter = router({
             console.error("DVLA API Error:", err.message);
             return null;
           }),
-          (input.checkType === "full" || !existingVehicle?.vin) ? fetchUKVDData(input.registration, input.checkType === "full").catch((err) => {
+          (input.checkType === "full" || (!storedUkvd && !existingVehicle?.vin)) ? fetchUKVDData(input.registration, input.checkType === "full").catch((err) => {
             console.error("UKVD API Error:", err.message);
             return null;
-          }) : Promise.resolve({ vin: existingVehicle.vin })
+          }) : Promise.resolve(storedUkvd ?? { vin: existingVehicle!.vin })
         ];
 
         const [motData, dvlaData, ukvdData] = await Promise.all(promises);
@@ -2218,6 +2228,8 @@ export const appRouter = router({
         return {
           registration: input.registration,
           vedRate,
+          // A full check answered from one bought in the last 30 days: when it was bought.
+          ukvdSavedAt: input.checkType === "full" ? ((ukvdData as any)?.savedAt ?? null) : null,
           make: ukvdData?.make || motData?.make || dvlaData?.make,
           model: ukvdData?.model || motData?.model || dvlaData?.model,
           vin: ukvdData?.vin || dvlaData?.vin,

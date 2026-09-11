@@ -273,7 +273,8 @@ function CostsPanel() {
                             </thead>
                             <tbody>
                                 {row("Vehicle lookups (UKVD)", c.ukvd?.thisMonth?.spend, c.ukvd?.lastMonth?.spend,
-                                    (c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""} · ` : "") + "from balance movement (exact)")}
+                                    (c.ukvd?.balance != null ? `balance £${Number(c.ukvd.balance).toFixed(2)}${Number(c.ukvd.balance) < 20 ? " — LOW, top up" : ""} · ` : "") + "from UKVD's receipts (exact)"
+                                    + (c.ukvd?.savedThisMonth ? ` · ${c.ukvd.savedThisMonth} repeat lookup${c.ukvd.savedThisMonth === 1 ? "" : "s"} answered from saved copies, no charge` : ""))}
                                 {row("SWS credits — technical data", c.sws?.thisMonth?.spend, c.sws?.lastMonth?.spend, `${c.sws?.thisMonth?.n ?? 0} vehicle day passes × 2.5 credits (estimate)`)}
                                 {row("SWS credits — VRM lookups", c.ga4?.thisMonth?.spend, c.ga4?.lastMonth?.spend, `${c.ga4?.thisMonth?.n ?? 0} invoice fills × 1 credit`)}
                                 {row("SWS credit pool (both rows)", (c.sws?.thisMonth?.spend || 0) + (c.ga4?.thisMonth?.spend || 0), (c.sws?.lastMonth?.spend || 0) + (c.ga4?.lastMonth?.spend || 0), "one pot — topped up by PayPal to SWS Solutions, £48 = 300 credits")}

@@ -34,6 +34,8 @@ interface Vehicle {
     make: string | null;
     model: string | null;
     motExpiryDate: Date | string | null;
+    /** True when motExpiryDate is the first-MOT due date of a car never tested. */
+    firstMot?: boolean;
     dateOfRegistration: Date | string | null;
     customerId: number | null;
     customerName: string | null;
@@ -292,6 +294,11 @@ export function ComprehensiveVehicleTable({
                                                 <span className="font-medium">{new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")}</span>
                                             ) : (
                                                 <span className="text-slate-400 italic">No data</span>
+                                            )}
+                                            {vehicle.firstMot && (
+                                                <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-700" title="Never had an MOT. This is the date its first one is due, from DVSA.">
+                                                    First MOT due
+                                                </span>
                                             )}
                                             {vehicle.lastChecked && (
                                                 <span className="text-[10px] text-muted-foreground mt-0.5">

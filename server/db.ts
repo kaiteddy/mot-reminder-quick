@@ -1099,6 +1099,7 @@ export async function getVehiclesWithCustomersForReminders() {
         make: vehicles.make,
         model: vehicles.model,
         motExpiryDate: vehicles.motExpiryDate,
+        firstMotDue: vehicles.firstMotDue,
         customerId: vehicles.customerId,
         customerName: customers.name,
         customerEmail: customers.email,
@@ -1113,11 +1114,14 @@ export async function getVehiclesWithCustomersForReminders() {
       // Trade accounts' stock fleets never enter the reminder stream (Max Morris got seven
       // different cars' reminders on his personal mobile before asking us to stop), and nor
       // does a car switched off on its own (its owner has since been in with another one).
-      .where(and(isNotNull(vehicles.motExpiryDate),
+      .where(and(sql`COALESCE(${vehicles.motExpiryDate}, ${vehicles.firstMotDue}) IS NOT NULL`,
         sql`COALESCE(${customers.noVehicleReminders}, 0) = 0`,
         sql`COALESCE(${vehicles.remindersOff}, 0) = 0`));
 
-    return result;
+    // A new car that has never had an MOT is reminded against its first-MOT due date from DVSA
+    // (server/services/firstMotReminders.ts); `firstMot` says that is the date being used.
+    const { reminderMotDate } = await import("./services/firstMotReminders");
+    return result.map(({ firstMotDue, ...v }) => ({ ...v, ...reminderMotDate({ motExpiryDate: v.motExpiryDate, firstMotDue }) }));
   } catch (error) {
     console.error("[Database] Failed to get vehicles with customers:", error);
     return [];
@@ -1136,6 +1140,7 @@ export async function getAllVehiclesWithCustomers() {
         make: vehicles.make,
         model: vehicles.model,
         motExpiryDate: vehicles.motExpiryDate,
+        firstMotDue: vehicles.firstMotDue,
         motBookedDate: vehicles.motBookedDate,
         dateOfRegistration: vehicles.dateOfRegistration,
         customerId: vehicles.customerId,
@@ -1178,11 +1183,14 @@ export async function getAllVehiclesWithCustomers() {
     }
 
     const lastVisitMap = await getLastVisitDatesForVehicles();
+    // New cars never tested carry their first-MOT due date instead (server/services/firstMotReminders.ts).
+    const { reminderMotDate } = await import("./services/firstMotReminders");
 
-    return allVehicles.map(v => {
+    return allVehicles.map(({ firstMotDue, ...v }) => {
       const log = v.id ? logMap.get(v.id) : null;
       return {
         ...v,
+        ...reminderMotDate({ motExpiryDate: v.motExpiryDate, firstMotDue }),
         lastReminderSent: log ? log.sentAt : null,
         lastReminderStatus: log ? log.status : null,
         lastVisit: v.id ? lastVisitMap.get(v.id) || null : null,

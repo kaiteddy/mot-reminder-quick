@@ -110,6 +110,10 @@ export const vehicles = pgTable("vehicles", {
   // "found" | "not_found" | "invalid_plate" | "superseded". lastChecked is not proof of an answer.
   dvlaStatus: varchar("dvlaStatus", { length: 20 }),
   dvlaAnsweredAt: timestamp("dvlaAnsweredAt", { mode: "date" }),
+  // For a car never MOT-tested: the date DVSA says its first MOT is due, and when DVSA was last asked
+  // (server/services/firstMotReminders.ts). Reminder lists use it only while motExpiryDate is empty.
+  firstMotDue: timestamp("firstMotDue", { mode: "date" }),
+  firstMotCheckedAt: timestamp("firstMotCheckedAt", { mode: "date" }),
   externalId: varchar("externalId", { length: 255 }), // GA4 _ID
   colour: varchar("colour", { length: 50 }),
   fuelType: varchar("fuelType", { length: 50 }),
