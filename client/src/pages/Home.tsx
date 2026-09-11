@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,40 @@ import { ImageUpload } from "@/components/ImageUpload";
 import { ServiceHistory } from "@/components/ServiceHistory";
 import { DebouncedInput } from "@/components/DebouncedInput";
 
+const MOT_WINDOWS: [string, string][] = [
+  ["expired", "Expired"], ["due-7", "≤ 7 days"], ["due-14", "≤ 14 days"],
+  ["due-30", "≤ 30 days"], ["due-60", "≤ 60 days"], ["due-90", "≤ 90 days"],
+];
+
+/** One labelled line of the filter panel: the label sits left on a wide screen, above on a phone. */
+function FilterRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
+/** An on/off filter button; filled when on. */
+function FilterChip({ active, onClick, title, children }: { active: boolean; onClick: () => void; title?: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      title={title}
+      className={`inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent";
 type MOTStatusFilter = "all" | "expired" | "due" | "valid";
 type TaxStatusFilter = "all" | "taxed" | "untaxed" | "sorn";
@@ -67,6 +101,19 @@ export default function Home() {
   // Cars whose reminders are switched off (no work here in 5+ years, off the road, or by hand) can't be
   // sent a reminder. On 11/09/2026 they were 93 of the 233 cars due within 30 days, padding every count.
   const [hideRemindersOff, setHideRemindersOff] = useState(true);
+  const filtersAtDefault = !searchTerm && motWindows.size === 0 && !showDeadVehicles && hideMissingPhone && hideSorn
+    && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff;
+  const resetFilters = () => {
+    setSearchTerm("");
+    setMotWindows(new Set());
+    setShowDeadVehicles(false);
+    setHideMissingPhone(true);
+    setHideSorn(true);
+    setHideReadAndExpired(true);
+    setShowOnlyNeverSent(false);
+    setHideNoData(true);
+    setHideRemindersOff(true);
+  };
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<number>>(new Set());
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -437,127 +484,45 @@ export default function Home() {
         </div>
 
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-4">
+          <CardContent className="pt-6 space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <DebouncedInput 
-                  placeholder="Search Registration, Customer, or Make..." 
-                  value={searchTerm} 
-                  onChange={(val) => setSearchTerm(val)} 
-                  className="pl-10" 
+                <DebouncedInput
+                  placeholder="Search registration, customer or make…"
+                  value={searchTerm}
+                  onChange={(val) => setSearchTerm(val)}
+                  className="pl-10"
                 />
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-sm text-muted-foreground tabular-nums">
+                  {filteredAndSortedVehicles.length.toLocaleString("en-GB")} {filteredAndSortedVehicles.length === 1 ? "car" : "cars"} shown
+                </span>
+                {!filtersAtDefault && (
+                  <Button variant="ghost" size="sm" onClick={resetFilters}>Reset filters</Button>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 mt-4">
-              <span className="text-sm font-semibold text-muted-foreground">MOT:</span>
-              {([["expired", "Expired"], ["due-7", "Due ≤ 7 days"], ["due-14", "Due ≤ 14 days"], ["due-30", "Due ≤ 30 days"], ["due-60", "Due ≤ 60 days"], ["due-90", "Due ≤ 90 days"]] as [string, string][]).map(([key, label]) => (
-                <div key={key} className="flex items-center space-x-2">
-                  <Checkbox id={`mw-${key}`} checked={motWindows.has(key)} onCheckedChange={(c) => toggleWindow(key, c as boolean)} />
-                  <label htmlFor={`mw-${key}`} className="text-sm font-medium leading-none cursor-pointer">{label}</label>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap gap-4 mt-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="show-dead-home"
-                  checked={showDeadVehicles}
-                  onCheckedChange={(checked) => setShowDeadVehicles(checked as boolean)}
-                />
-                <label
-                  htmlFor="show-dead-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Show Dead Vehicles
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hide-no-phone-home"
-                  checked={hideMissingPhone}
-                  onCheckedChange={(checked) => setHideMissingPhone(checked as boolean)}
-                />
-                <label
-                  htmlFor="hide-no-phone-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Hide Missing Phone Numbers
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hide-sorn-home"
-                  checked={hideSorn}
-                  onCheckedChange={(checked) => setHideSorn(checked as boolean)}
-                />
-                <label
-                  htmlFor="hide-sorn-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Hide SORN Vehicles
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hide-read-expired-home"
-                  checked={hideReadAndExpired}
-                  onCheckedChange={(checked) => setHideReadAndExpired(checked as boolean)}
-                />
-                <label
-                  htmlFor="hide-read-expired-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Hide Read & Expired
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="show-only-never-sent-home"
-                  checked={showOnlyNeverSent}
-                  onCheckedChange={(checked) => setShowOnlyNeverSent(checked as boolean)}
-                />
-                <label
-                  htmlFor="show-only-never-sent-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Show Only Never Sent
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hide-no-data-home"
-                  checked={hideNoData}
-                  onCheckedChange={(checked) => setHideNoData(checked as boolean)}
-                />
-                <label
-                  htmlFor="hide-no-data-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Hide "No Data" Vehicles
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="hide-reminders-off-home"
-                  checked={hideRemindersOff}
-                  onCheckedChange={(checked) => setHideRemindersOff(checked as boolean)}
-                />
-                <label
-                  htmlFor="hide-reminders-off-home"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Hide Cars With Reminders Off
-                </label>
-              </div>
+            <div className="space-y-2.5 border-t pt-4">
+              <FilterRow label="MOT due">
+                <FilterChip active={motWindows.size === 0} onClick={() => setMotWindows(new Set())}>Any</FilterChip>
+                {MOT_WINDOWS.map(([key, label]) => (
+                  <FilterChip key={key} active={motWindows.has(key)} onClick={() => toggleWindow(key, !motWindows.has(key))}>{label}</FilterChip>
+                ))}
+              </FilterRow>
+              <FilterRow label="Hide">
+                <FilterChip active={hideMissingPhone} onClick={() => setHideMissingPhone(!hideMissingPhone)} title="Customers with no mobile number, who can't be sent a reminder">No phone</FilterChip>
+                <FilterChip active={hideSorn} onClick={() => setHideSorn(!hideSorn)} title="Declared off the road with DVLA">SORN</FilterChip>
+                <FilterChip active={hideReadAndExpired} onClick={() => setHideReadAndExpired(!hideReadAndExpired)} title="MOT expired and the last reminder was read">Read &amp; expired</FilterChip>
+                <FilterChip active={hideNoData} onClick={() => setHideNoData(!hideNoData)} title="No MOT date on file">No MOT date</FilterChip>
+                <FilterChip active={hideRemindersOff} onClick={() => setHideRemindersOff(!hideRemindersOff)} title="Reminders switched off: no work here in 5+ years, off the road, or by hand">Reminders off</FilterChip>
+              </FilterRow>
+              <FilterRow label="Show">
+                <FilterChip active={showDeadVehicles} onClick={() => setShowDeadVehicles(!showDeadVehicles)} title="MOT ran out over 300 days ago and not taxed">Dead cars</FilterChip>
+                <FilterChip active={showOnlyNeverSent} onClick={() => setShowOnlyNeverSent(!showOnlyNeverSent)} title="Only cars never sent a reminder">Never sent only</FilterChip>
+              </FilterRow>
             </div>
           </CardContent>
         </Card>
