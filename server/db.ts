@@ -6523,6 +6523,12 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     ownLitres ? Promise.resolve(null) : estimateOilCapacity(make, cc, vehicle.fuelType),
   ]);
   const fullLabourBand = pickLabourBand(fullBands, cc);
+  // The Major Service tick's labour. A car with no engine size on file takes the lowest band, the
+  // house price shared/priceFloors holds that line to when the job has no engine size; the history
+  // median it used to take (£144 on 11/09/2026) sat under that, so the tick's own line was flagged.
+  // The full service quote doesn't take it: it would pass a guess off as "this car" and under-quote
+  // anything over 2.0L, so the page still quotes that car from history.
+  const tickLabourBand = fullLabourBand ?? (!cc && fullBands.length ? fullBands[0] : null);
   const litres = ownLitres || estimated?.litres || 0;
   const servicePartPrices = Object.fromEntries(Object.entries(partPrices).map(([name, p]) => [name, p.price]));
   const sets = buildServiceSets({
@@ -6618,10 +6624,11 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     labourBands,
     fullLabourBands: fullBands,
     // Full-service labour for the job sheet's Major Service tick — net, as job-sheet lines are
-    // ex-VAT. The fullService band (Adam, 10/09/2026: £155 up to 2.0L, £175 over); the history
-    // median only when no band covers the car, i.e. its engine size isn't known.
-    fullServiceLabour: fullLabourBand
-      ? { net: Number(fullLabourBand.labour), incVat: round2(Number(fullLabourBand.labour) * 1.2), label: fullLabourBand.label, source: "band" as const }
+    // ex-VAT. The fullService band (Adam, 10/09/2026: £155 up to 2.0L, £175 over), or the lowest
+    // band when the car's engine size isn't known (tickLabourBand); the history median only when no
+    // band applies at all.
+    fullServiceLabour: tickLabourBand
+      ? { net: Number(tickLabourBand.labour), incVat: round2(Number(tickLabourBand.labour) * 1.2), label: tickLabourBand.label, source: fullLabourBand ? "band" as const : "lowestBand" as const }
       : fullStats ? { net: Math.round(fullStats.labour / 1.2), incVat: fullStats.labour, n: fullStats.n, source: "history" as const } : null,
     options,
     combos,
