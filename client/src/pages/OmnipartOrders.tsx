@@ -3,16 +3,94 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, Search, RefreshCw } from "lucide-react";
+import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { RegPlate } from "@/components/RegPlate";
 import { useClassicBase } from "@/lib/classicNav";
-import { OrderStatusBadge, normReg } from "@/components/OmnipartOrdersCard";
+import { OrderStatusBadge, OrderProgress, normReg } from "@/components/OmnipartOrdersCard";
 
 function money(v: number | null | undefined) {
   return typeof v === "number" ? `£${v.toFixed(2)}` : "—";
+}
+
+const agoShort = (h: number | null | undefined) =>
+  h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+
+/** One board row that expands on click to show the parts on the order. */
+function BoardRow({ o, base }: { o: any; base: string }) {
+  const [open, setOpen] = useState(false);
+  const detail = trpc.omnipart.getOrderDetail.useQuery(
+    { ref: o.orderRef, branchId: o.branchId ?? undefined },
+    { enabled: open, retry: false, staleTime: 60 * 1000 },
+  );
+  const parts = detail.data?.parts || [];
+  const vehicle = [o.make, o.model, o.year].filter(Boolean).join(" ");
+  return (
+    <>
+      <TableRow className={(o.needsAttention ? "bg-amber-50 " : "") + "cursor-pointer"} onClick={() => setOpen((v) => !v)}>
+        <TableCell className="font-medium">
+          <span className="inline-flex items-center gap-1">
+            {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {o.orderRef}
+          </span>
+        </TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          {o.reg ? (
+            <Link href={`/view-vehicle/${normReg(o.reg)}`} className="hover:underline">
+              <RegPlate reg={o.reg} />
+            </Link>
+          ) : "—"}
+        </TableCell>
+        <TableCell>{vehicle || "—"}</TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          {o.jobSheet ? (
+            <Link href={`${base}/documents/${o.jobSheet.id}`} className="text-brand-primary hover:underline">
+              {o.jobSheet.ga4Number || o.jobSheet.docNo || o.jobSheet.id}
+            </Link>
+          ) : <span className="text-muted-foreground/60">—</span>}
+        </TableCell>
+        <TableCell className="text-right">{o.numberOfItems ?? "—"}</TableCell>
+        <TableCell className="text-right">{money(o.totalIncTax)}</TableCell>
+        <TableCell>{o.orderDate ? new Date(o.orderDate).toLocaleDateString("en-GB") : "—"}</TableCell>
+        <TableCell>
+          <div className="flex flex-col gap-0.5">
+            <OrderStatusBadge status={o.status} />
+            {o.status && !String(o.status).toLowerCase().includes("deliver") && (
+              <span className={"text-xs " + (o.needsAttention ? "text-amber-700 font-semibold" : "text-muted-foreground")}>
+                {o.needsAttention ? "⚠ " : ""}ordered {agoShort(o.ageHours)}
+              </span>
+            )}
+          </div>
+        </TableCell>
+      </TableRow>
+      {open && (
+        <TableRow className="bg-muted/30">
+          <TableCell colSpan={8} className="py-3">
+            <div className="px-6 space-y-2">
+              <OrderProgress status={o.status} />
+              <div className="pt-1">
+                {detail.isLoading && <div className="text-xs text-muted-foreground">Loading parts…</div>}
+                {!detail.isLoading && parts.length === 0 && (
+                  <div className="text-xs text-muted-foreground/70">Part detail not available for this order.</div>
+                )}
+                {parts.map((p: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-sm py-0.5">
+                    <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="font-medium">{p.name || p.code || "part"}</span>
+                    {p.code && p.name && p.name !== p.code && <span className="text-xs text-muted-foreground/70">({p.code})</span>}
+                    {p.quantity != null && <span className="text-xs text-muted-foreground">×{p.quantity}</span>}
+                    {p.status && <span className="ml-auto text-xs text-muted-foreground/70">{p.status}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
 }
 
 /** Board of all recent Euro Car Parts (Omnipart) orders with live delivery status. */
@@ -32,8 +110,6 @@ export default function OmnipartOrders() {
       String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
   }, [data, q]);
   const chasing = (data?.orders || []).filter((o: any) => o.needsAttention).length;
-  const agoShort = (h: number | null | undefined) =>
-    h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 
   return (
     <DashboardLayout>
@@ -93,48 +169,9 @@ export default function OmnipartOrders() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders.map((o) => {
-                      const vehicle = [o.make, o.model, o.year].filter(Boolean).join(" ");
-                      return (
-                        <TableRow key={o.orderRef} className={(o as any).needsAttention ? "bg-amber-50" : ""}>
-                          <TableCell className="font-medium">{o.orderRef}</TableCell>
-                          <TableCell>
-                            {o.reg ? (
-                              <Link href={`/view-vehicle/${normReg(o.reg)}`} className="hover:underline">
-                                <RegPlate reg={o.reg} />
-                              </Link>
-                            ) : (
-                              "—"
-                            )}
-                          </TableCell>
-                          <TableCell>{vehicle || "—"}</TableCell>
-                          <TableCell>
-                            {o.jobSheet ? (
-                              <Link href={`${base}/documents/${o.jobSheet.id}`} className="text-brand-primary hover:underline">
-                                {o.jobSheet.ga4Number || o.jobSheet.docNo || o.jobSheet.id}
-                              </Link>
-                            ) : (
-                              <span className="text-muted-foreground/60">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">{o.numberOfItems ?? "—"}</TableCell>
-                          <TableCell className="text-right">{money(o.totalIncTax)}</TableCell>
-                          <TableCell>
-                            {o.orderDate ? new Date(o.orderDate).toLocaleDateString("en-GB") : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-0.5">
-                              <OrderStatusBadge status={o.status} />
-                              {o.status && !String(o.status).toLowerCase().includes("deliver") && (
-                                <span className={"text-xs " + ((o as any).needsAttention ? "text-amber-700 font-semibold" : "text-muted-foreground")}>
-                                  {(o as any).needsAttention ? "⚠ " : ""}ordered {agoShort((o as any).ageHours)}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {orders.map((o) => (
+                      <BoardRow key={o.orderRef} o={o} base={base} />
+                    ))}
                     {orders.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
