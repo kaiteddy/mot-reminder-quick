@@ -70,6 +70,12 @@ describe("who can be reminded: one rule, shared by the server and the MOT Remind
     expect(fn).toContain("remindersOff");
     expect(fn).toContain("noVehicleReminders");
   });
+
+  it("builds the Follow up tab from shared/motFollowUp.ts, on cars the shared rule allows", () => {
+    const home = code(read("client/src/pages/Home.tsx"));
+    expect(home, "Who needs chasing is decided only by followUpFor() in shared/motFollowUp.ts, and only for cars reminderBlocks() allows.")
+      .toMatch(/followUps = useMemo\([\s\S]{0,300}reminderBlocks\([\s\S]{0,150}followUpFor\(/);
+  });
 });
 
 describe("refreshing a car's MOT records everything, in batches the page can show", () => {
@@ -87,6 +93,34 @@ describe("refreshing a car's MOT records everything, in batches the page can sho
     const batch = Number(read("client/src/components/MOTRefreshButtonLive.tsx").match(/const BATCH_SIZE = (\d+)/)?.[1]);
     expect(batch, "MOTRefreshButtonLive must send plates in batches of at most 25").toBeGreaterThan(0);
     expect(batch).toBeLessThanOrEqual(25);
+  });
+
+  it("has one refresh path, shared by Refresh Visible and the midnight MOT check, which stays scheduled", () => {
+    const routers = read("server/routers.ts");
+    expect(callsIn(routers, "refreshPlates"), "bulkVerifyMOT must refresh through server/services/motRefreshRun.ts").toBeGreaterThanOrEqual(1);
+    expect(callsIn(routers, "motRefreshFor"), "Don't refresh cars inline in routers.ts: use refreshPlates(), so every refresh records a car the same way").toBe(0);
+    expect(callsIn(read("server/routes/cron.ts"), "refreshPlates"), "The midnight MOT check must refresh through refreshPlates()").toBeGreaterThanOrEqual(1);
+    const crons = JSON.parse(read("vercel.json")).crons.map((c: any) => c.path);
+    expect(crons, "Adam, 14/09/2026: expired cars are checked at 23:59 and 00:01 so one tested elsewhere isn't chased")
+      .toEqual(expect.arrayContaining(["/api/cron/mot-expiry-check", "/api/cron/mot-expiry-check-after-midnight"]));
+  });
+});
+
+describe("a message preview never sends", () => {
+  it("skips every send in reminders.sendWhatsApp when preview is set", () => {
+    const routers = code(read("server/routers.ts"));
+    const start = routers.indexOf("sendWhatsApp: protectedProcedure");
+    const firstPreview = routers.indexOf("if (input.preview) {", start);
+    const secondPreview = routers.indexOf("if (input.preview) {", firstPreview + 1);
+    expect(start, "reminders.sendWhatsApp not found").toBeGreaterThan(-1);
+    expect(firstPreview, "the direct-send preview return in reminders.sendWhatsApp not found").toBeGreaterThan(start);
+    expect(secondPreview, "the saved-reminder preview return in reminders.sendWhatsApp not found").toBeGreaterThan(firstPreview);
+    // Everything that can send before either preview return is given back.
+    const sends = routers.slice(start, secondPreview).split("\n").filter((line) => /await send\w*\(/.test(line));
+    expect(sends.length, "expected reminders.sendWhatsApp to call the send functions").toBeGreaterThan(0);
+    expect(sends.filter((line) => !line.includes("input.preview ?")),
+      "The Preview Message dialog once sent the WhatsApp as it opened, then again on Confirm & Send (14/09/2026). Guard each send with input.preview.")
+      .toEqual([]);
   });
 });
 

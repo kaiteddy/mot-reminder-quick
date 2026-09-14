@@ -1176,16 +1176,39 @@ export async function getAllVehiclesWithCustomers() {
         vehicleId: reminderLogs.vehicleId,
         sentAt: reminderLogs.sentAt,
         status: reminderLogs.status,
+        messageType: reminderLogs.messageType,
+        templateUsed: reminderLogs.templateUsed,
       })
       .from(reminderLogs)
       .where(and(isNotNull(reminderLogs.vehicleId), gte(reminderLogs.sentAt, oneYearAgo)))
       .orderBy(desc(reminderLogs.sentAt));
 
     const logMap = new Map();
+    // For the MOT Reminders "Follow up" tab (shared/motFollowUp.ts): each car's last MOT reminder, and its
+    // last follow-up — the urgent follow-up template, or a follow-up call logged from the page.
+    const motReminderMap = new Map<number, { sentAt: Date; status: string }>();
+    const followUpMap = new Map<number, { at: Date; how: "message" | "call" }>();
     for (const log of logs) {
       if (!logMap.has(log.vehicleId)) {
         logMap.set(log.vehicleId, { sentAt: log.sentAt, status: log.status });
       }
+      if (log.vehicleId == null) continue;
+      const followUpMessage = /^urgent/i.test(log.templateUsed || "") || (log.messageType as string) === "UrgentFollowUp";
+      if (followUpMessage) {
+        if (!followUpMap.has(log.vehicleId)) followUpMap.set(log.vehicleId, { at: log.sentAt, how: "message" });
+      } else if (log.messageType === "MOT" && !motReminderMap.has(log.vehicleId)) {
+        motReminderMap.set(log.vehicleId, { sentAt: log.sentAt, status: log.status });
+      }
+    }
+    const followUpCalls = await db
+      .select({ vehicleId: customerLogs.vehicleId, createdAt: customerLogs.createdAt })
+      .from(customerLogs)
+      .where(and(eq(customerLogs.type, "call"), ilike(customerLogs.subject, "MOT follow-up%"),
+        isNotNull(customerLogs.vehicleId), gte(customerLogs.createdAt, oneYearAgo)));
+    for (const call of followUpCalls) {
+      if (call.vehicleId == null) continue;
+      const known = followUpMap.get(call.vehicleId);
+      if (!known || call.createdAt > known.at) followUpMap.set(call.vehicleId, { at: call.createdAt, how: "call" });
     }
 
     const lastVisitMap = await getLastVisitDatesForVehicles();
@@ -1199,6 +1222,10 @@ export async function getAllVehiclesWithCustomers() {
         ...reminderMotDate({ motExpiryDate: v.motExpiryDate, firstMotDue }),
         lastReminderSent: log ? log.sentAt : null,
         lastReminderStatus: log ? log.status : null,
+        lastMotReminderAt: motReminderMap.get(v.id)?.sentAt ?? null,
+        lastMotReminderStatus: motReminderMap.get(v.id)?.status ?? null,
+        lastFollowUpAt: followUpMap.get(v.id)?.at ?? null,
+        lastFollowUpHow: followUpMap.get(v.id)?.how ?? null,
         lastVisit: v.id ? lastVisitMap.get(v.id) || null : null,
       };
     });

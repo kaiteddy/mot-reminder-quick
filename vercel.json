@@ -7,6 +7,8 @@
         { "path": "/api/cron/website-stock-sync", "schedule": "15 6 * * *" },
         { "path": "/api/cron/unanswered-messages", "schedule": "*/10 * * * *" },
         { "path": "/api/cron/first-mot-dates", "schedule": "10 5 * * *" },
+        { "path": "/api/cron/mot-expiry-check", "schedule": "59 22,23 * * *" },
+        { "path": "/api/cron/mot-expiry-check-after-midnight", "schedule": "1 23,0 * * *" },
         { "path": "/api/cron/off-road-car-reminders", "schedule": "20 5 * * *" },
         { "path": "/api/cron/stale-car-reminders", "schedule": "30 5 * * *" }
     ],

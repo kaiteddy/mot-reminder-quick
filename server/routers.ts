@@ -2406,7 +2406,7 @@ export const appRouter = router({
 
           // If custom message provided, send it directly (for chat quick replies)
           if (input.customMessage) {
-            result = await sendSMS({
+            result = input.preview ? { success: true } : await sendSMS({
               to: input.phoneNumber,
               message: input.customMessage,
             });
@@ -2423,7 +2423,7 @@ export const appRouter = router({
               daysLeft: daysUntil,
             });
 
-            result = await sendUrgentFollowUpWithTemplate({
+            result = input.preview ? { success: true } : await sendUrgentFollowUpWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2441,7 +2441,7 @@ export const appRouter = router({
               daysLeft: daysUntil,
             });
 
-            result = await sendServiceReminderWithTemplate({
+            result = input.preview ? { success: true } : await sendServiceReminderWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2465,7 +2465,7 @@ export const appRouter = router({
               daysLeft: daysUntil,
             });
 
-            result = await sendMOTReminderWithTemplate({
+            result = input.preview ? { success: true } : await sendMOTReminderWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2473,6 +2473,9 @@ export const appRouter = router({
             });
           }
 
+          // A preview only builds the words for the "Preview Message" dialog: every send above is skipped
+          // when preview is set. It used to send first and return the preview after, so the customer
+          // got the message when the dialog opened and again on "Confirm & Send" (found 14/09/2026).
           if (input.preview) {
             return {
               success: true,
@@ -2566,7 +2569,7 @@ export const appRouter = router({
             daysLeft,
           });
 
-          result = await sendMOTReminderWithTemplate({
+          result = input.preview ? { success: true } : await sendMOTReminderWithTemplate({
             to: input.phoneNumber,
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
@@ -2586,7 +2589,7 @@ export const appRouter = router({
             daysLeft,
           });
 
-          result = await sendServiceReminderWithTemplate({
+          result = input.preview ? { success: true } : await sendServiceReminderWithTemplate({
             to: input.phoneNumber,
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
@@ -2602,12 +2605,13 @@ export const appRouter = router({
 
           messageContent = message;
 
-          result = await sendSMS({
+          result = input.preview ? { success: true } : await sendSMS({
             to: input.phoneNumber,
             message,
           });
         }
 
+        // As above: a preview builds the words and sends nothing.
         if (input.preview) {
           return {
             success: true,
@@ -2809,77 +2813,17 @@ export const appRouter = router({
       });
     }),
 
-    // "Refresh Visible" on the MOT Reminders page. Records what DVLA and DVSA say on every car with
-    // that plate, the same way the hourly refresh and the bulk check do: server/services/motRefresh.ts.
-    // The page sends small batches and shows each one's results as they land (MOTRefreshButtonLive).
-    // It used to send every visible car in one request, asked one plate at a time: 57 cars took over a
-    // minute with nothing on screen until the end (11/09/2026), and 2,524 would have run far past the
-    // server's time limit. Now at most 25 plates per request, up to 4 asked at once.
+    // "Refresh Visible" on the MOT Reminders page. The page sends small batches and shows each one's
+    // results as they land (MOTRefreshButtonLive); the checking itself is server/services/motRefreshRun.ts,
+    // shared with the midnight MOT check. It once took every visible car in one request: 57 cars showed
+    // nothing for over a minute (11/09/2026), and 2,524 would have run past the server's time limit.
     bulkVerifyMOT: protectedProcedure
       .input(z.object({
         registrations: z.array(z.string()).max(25),
       }))
       .mutation(async ({ input }) => {
-        const { getDb, bulkUpdateVehicleMOT } = await import("./db");
-        const { lookupVehicle } = await import("./dvlaApi");
-        const { getMOTHistory } = await import("./motApi");
-        const { isSupersededRegistration } = await import("./services/dvlaRecord");
-        const { motRefreshFor } = await import("./services/motRefresh");
-        const { vehicles } = await import("../drizzle/schema");
-        const { sql, inArray } = await import("drizzle-orm");
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
-
-        const norm = (r: string) => String(r || "").replace(/\s+/g, "").toUpperCase();
-        const wanted = Array.from(new Set(input.registrations.map(norm).filter(Boolean)));
-        const rows = wanted.length
-          ? await db.select({
-              id: vehicles.id, registration: vehicles.registration, make: vehicles.make, colour: vehicles.colour,
-              fuelType: vehicles.fuelType, dateOfRegistration: vehicles.dateOfRegistration,
-            }).from(vehicles).where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, wanted))
-          : [];
-        const carsByReg = new Map<string, typeof rows>();
-        for (const row of rows) carsByReg.set(norm(row.registration), [...(carsByReg.get(norm(row.registration)) || []), row]);
-
-        type PlateResult = { registration: string; success: boolean; verified: boolean; motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null; error?: string };
-        const refreshPlate = async (reg: string): Promise<PlateResult> => {
-          const cars = carsByReg.get(reg) || [];
-          try {
-            // GA4's renamed record: its plate is on another car now, so never look it up.
-            if (isSupersededRegistration(reg)) {
-              if (cars.length) await bulkUpdateVehicleMOT(cars.map((c) => ({ id: c.id, lastChecked: new Date(), dvlaStatus: "superseded" })));
-              return { registration: reg, success: false, verified: false, error: "This plate has moved to another car, so it was not checked" };
-            }
-            let lookup = await lookupVehicle(reg);
-            if (lookup.outcome === "rate_limited") {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-              lookup = await lookupVehicle(reg);
-            }
-            let dvsa: any; // undefined = DVSA could not be asked; null = DVSA has no record
-            try { dvsa = await getMOTHistory(reg); } catch (e: any) { console.error(`[MOT-REFRESH] DVSA failed for ${reg}:`, e?.message || e); }
-            const now = new Date();
-            const outcomes = (cars.length ? cars : [{ id: 0 }]).map((c) => motRefreshFor(c, lookup, dvsa, now));
-            const writes = cars.length ? outcomes.map((o) => o.update).filter((u) => Object.keys(u).length > 1) : [];
-            if (writes.length) await bulkUpdateVehicleMOT(writes);
-            const result = outcomes[0].result;
-            console.log(`[MOT-REFRESH] ${reg}: DVLA ${lookup.outcome}, DVSA ${dvsa === undefined ? "unavailable" : dvsa ? "answered" : "no record"} → ${result.success ? `${result.firstMot ? "first MOT due" : "MOT expires"} ${result.motExpiryDate?.slice(0, 10)}${result.taxStatus ? `, ${result.taxStatus}` : ""}` : result.error}`);
-            return { registration: reg, verified: result.success, ...result };
-          } catch (error: any) {
-            return { registration: reg, success: false, verified: false, error: error?.message || "Failed to verify MOT" };
-          }
-        };
-
-        const results: PlateResult[] = new Array(wanted.length);
-        let next = 0;
-        await Promise.all(Array.from({ length: Math.min(4, wanted.length) }, async () => {
-          while (next < wanted.length) {
-            const i = next++;
-            results[i] = await refreshPlate(wanted[i]);
-          }
-        }));
-        const refreshedCount = results.filter((r) => r.success).length;
-        console.log(`[MOT-REFRESH] batch of ${wanted.length}: ${refreshedCount} refreshed, ${wanted.length - refreshedCount} not`);
-        return results;
+        const { refreshPlates } = await import("./services/motRefreshRun");
+        return refreshPlates(input.registrations);
       }),
 
     bookMOT: protectedProcedure
@@ -2895,6 +2839,27 @@ export const appRouter = router({
         await resetReminderState(input.vehicleId);
 
         return { success: true };
+      }),
+
+    // Record a follow-up phone call about a car's MOT, so the MOT Reminders "Follow up" tab shows the car
+    // as followed up (shared/motFollowUp.ts). It goes in the customer's contact log with everything else.
+    logFollowUpCall: protectedProcedure
+      .input(z.object({
+        vehicleId: z.number(),
+        customerId: z.number().nullable().optional(),
+        note: z.string().trim().max(500).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { addCustomerLog } = await import("./db");
+        return addCustomerLog({
+          vehicleId: input.vehicleId,
+          customerId: input.customerId ?? null,
+          type: "call",
+          direction: "out",
+          subject: "MOT follow-up call",
+          body: input.note || null,
+          createdBy: (ctx as any).user?.name ?? null,
+        } as any);
       }),
 
     markResponded: protectedProcedure

@@ -67,6 +67,11 @@ change a tripwire only when Adam changes the rule. Each came from a real fault f
 - **Paid UKVD lookups** only through `server/ukvd.ts`, which saves every answer so none is bought twice.
 - **Data Costs panel** matches months as `to_char(...)` text in SQL, never dates parsed in Node.
 - **First-MOT dates** come from DVSA (`server/services/firstMotReminders.ts`), never from `dateOfRegistration`.
+- **Who needs a follow-up** (MOT Reminders ▸ Follow up) is decided only by `shared/motFollowUp.ts`: sent an MOT
+  reminder for the MOT it is on now, not renewed, and — to count as a missed MOT — checked after the MOT ran out.
+  The midnight check (`server/services/motExpiryCheck.ts`; crons `mot-expiry-check` at 23:59 and
+  `mot-expiry-check-after-midnight` at 00:01 London time) asks DVSA again so a car tested elsewhere drops off.
+  Every MOT refresh goes through `server/services/motRefreshRun.ts`.
 - **Tests never touch the live database**: DB tests need the sandbox `TEST_DATABASE_URL`; anything in the build
   gate must need no database at all.
 

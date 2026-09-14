@@ -24,9 +24,11 @@ import {
     XCircle,
     AlertTriangle,
     History,
-    CalendarCheck
+    CalendarCheck,
+    PhoneCall
 } from "lucide-react";
 import { Link } from "wouter";
+import type { FollowUp } from "@shared/motFollowUp";
 
 interface Vehicle {
     id: number;
@@ -68,10 +70,23 @@ interface ComprehensiveVehicleTableProps {
     pendingVehicleId?: number | null;
     deletePendingId?: number | null;
     onViewHistory: (vehicle: Vehicle) => void;
+    /** On the MOT Reminders "Follow up" tab: each car's follow-up state, shown under its MOT date. */
+    followUps?: Map<number, FollowUp>;
+    /** Log a follow-up phone call. */
+    onLogCall?: (vehicle: Vehicle) => void;
+    defaultSort?: { field: SortField; direction: SortDirection };
 }
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent" | "lastVisit" | "daysLeft";
 type SortDirection = "asc" | "desc";
+
+const FOLLOW_UP_LABEL: Record<FollowUp["stage"], { text: string; tone: string }> = {
+    missed: { text: "Missed MOT", tone: "text-red-700" },
+    expired_unchecked: { text: "Expired, checking", tone: "text-amber-700" },
+    due: { text: "Reminded, not done", tone: "text-blue-700" },
+};
+const ukDayMonth = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", timeZone: "Europe/London" });
+const ukTime = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
 
 export function ComprehensiveVehicleTable({
     vehicles,
@@ -88,9 +103,12 @@ export function ComprehensiveVehicleTable({
     pendingVehicleId = null,
     deletePendingId = null,
     onViewHistory,
+    followUps,
+    onLogCall,
+    defaultSort,
 }: ComprehensiveVehicleTableProps) {
-    const [sortField, setSortField] = useState<SortField>("registration");
-    const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+    const [sortField, setSortField] = useState<SortField>(defaultSort?.field ?? "registration");
+    const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSort?.direction ?? "asc");
 
     const toggleSort = (field: SortField) => {
         if (sortField === field) {
@@ -234,6 +252,7 @@ export function ComprehensiveVehicleTable({
                     ) : (
                         sortedVehicles.map((vehicle) => {
                             const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
+                            const fu = followUps?.get(vehicle.id);
                             const rowClass = status === "expired" ? "bg-red-50/50" : status === "due" ? "bg-orange-50/50" : "";
 
                             return (
@@ -308,6 +327,19 @@ export function ComprehensiveVehicleTable({
                                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-700" title="Never had an MOT. This is the date its first one is due, from DVSA.">
                                                     First MOT due
                                                 </span>
+                                            )}
+                                            {fu && (
+                                                <div className="mt-1 flex flex-col gap-0.5 text-[10px] leading-tight">
+                                                    <span className={`font-semibold uppercase tracking-wide ${FOLLOW_UP_LABEL[fu.stage].tone}`}>{FOLLOW_UP_LABEL[fu.stage].text}</span>
+                                                    <span className="text-muted-foreground">Reminded {ukDayMonth(fu.remindedAt)}{fu.reminderStatus ? ` · ${fu.reminderStatus}` : ""}</span>
+                                                    {fu.checkedAfterExpiry && (
+                                                        <span className="text-muted-foreground" title="Checked with DVSA and DVLA after the MOT ran out">No new MOT at {ukTime(fu.checkedAfterExpiry)} {ukDayMonth(fu.checkedAfterExpiry)}</span>
+                                                    )}
+                                                    {fu.followedUpAt && (
+                                                        <span className="text-green-700">Followed up {ukDayMonth(fu.followedUpAt)} ({fu.followedUpHow === "call" ? "call" : "message"})</span>
+                                                    )}
+                                                    {fu.bookedFor && <span className="text-green-700">Booked {ukDayMonth(fu.bookedFor)}</span>}
+                                                </div>
                                             )}
                                             {vehicle.lastChecked && (
                                                 <span className="text-[10px] text-muted-foreground mt-0.5">
@@ -391,11 +423,23 @@ export function ComprehensiveVehicleTable({
                                                 {pendingVehicleId === vehicle.id ? (
                                                     <Loader2 className="h-4 w-4 animate-spin" />
                                                 ) : (
-                                                    <span title="Send Reminder">
+                                                    <span title={followUps ? "Send follow-up message" : "Send Reminder"}>
                                                         <Send className="h-4 w-4" />
                                                     </span>
                                                 )}
                                             </Button>
+                                            {onLogCall && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                                                    onClick={() => onLogCall(vehicle)}
+                                                >
+                                                    <span title="Log a follow-up call">
+                                                        <PhoneCall className="h-4 w-4" />
+                                                    </span>
+                                                </Button>
+                                            )}
                                             {onMarkBooked && (
                                                 <Button
                                                     size="icon"

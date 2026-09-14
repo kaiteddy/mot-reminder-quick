@@ -37,6 +37,7 @@ import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { reminderBlocks, type ReminderBlock } from "@shared/reminderEligibility";
+import { followUpFor, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -106,6 +107,18 @@ export default function Home() {
   // yet 137 of them sat in this list on 11/09/2026 with last visits back to 2015. Adam: "they
   // shouldn't be reminded".
   const [hideTrade, setHideTrade] = useState(true);
+  // "Follow up" tab (shared/motFollowUp.ts): cars sent an MOT reminder whose MOT hasn't been renewed.
+  // Adam, 14/09/2026: one reminder is sent "and that's it", with no follow-up for people who forgot.
+  // Open it straight from a link with ?view=follow-up.
+  const [view, setView] = useState<"all" | "followup">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "follow-up" ? "followup" : "all");
+  const [followUpStages, setFollowUpStages] = useState<Set<FollowUpStage>>(new Set());
+  const [showHandled, setShowHandled] = useState(false);
+  const toggleStage = (stage: FollowUpStage) => setFollowUpStages((prev) => {
+    const next = new Set(prev);
+    next.has(stage) ? next.delete(stage) : next.add(stage);
+    return next;
+  });
   // Which reasons a car can't be reminded (shared/reminderEligibility.ts, the same rule Send applies)
   // may still be shown on request. Any other reason, opted out or one added later, is never listed.
   const showBlocked = (block: ReminderBlock) =>
@@ -139,6 +152,7 @@ export default function Home() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewContent, setPreviewContent] = useState("");
   const [pendingVehicle, setPendingVehicle] = useState<any>(null);
+  const [pendingMessageType, setPendingMessageType] = useState<"MOT" | "Service" | "UrgentFollowUp">("MOT");
 
   // Book MOT State
   const [isBookMOTOpen, setIsBookMOTOpen] = useState(false);
@@ -185,6 +199,19 @@ export default function Home() {
     },
   });
 
+  const logCallMutation = trpc.reminders.logFollowUpCall.useMutation();
+  const handleLogCall = async (vehicle: any) => {
+    const note = window.prompt(`Log a follow-up call to ${vehicle.customerName || "the customer"} about ${vehicle.registration}.\nAnything to note? (optional)`, "");
+    if (note === null) return;
+    try {
+      await logCallMutation.mutateAsync({ vehicleId: vehicle.id, customerId: vehicle.customerId ?? null, note: note.trim() || undefined });
+      toast.success(`Call logged for ${vehicle.registration}`);
+      await refetch();
+    } catch (error: any) {
+      toast.error(`Could not log the call: ${error?.message || error}`);
+    }
+  };
+
   const processImage = trpc.reminders.processImage.useMutation({
     onSuccess: (data) => {
       toast.success(`Extracted ${data.count} reminders`);
@@ -227,13 +254,11 @@ export default function Home() {
 
   const confirmSend = () => {
     if (!pendingVehicle) return;
-    const { status } = getMOTStatus(pendingVehicle.motExpiryDate);
-    const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
 
     sendReminderMutation.mutate({
       id: 0,
       phoneNumber: pendingVehicle.customerPhone,
-      messageType: reminderType,
+      messageType: pendingMessageType,
       customerName: pendingVehicle.customerName || "Customer",
       registration: pendingVehicle.registration,
       expiryDate: pendingVehicle.motExpiryDate ? new Date(pendingVehicle.motExpiryDate).toISOString() : undefined,
@@ -249,9 +274,11 @@ export default function Home() {
     }
     setPendingVehicle(vehicle);
     const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
-    const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
+    // On the Follow up tab the message is the follow-up template, not a second copy of the reminder.
+    const reminderType = view === "followup" ? "UrgentFollowUp" : status === "expired" || status === "due" ? "MOT" : "Service";
+    setPendingMessageType(reminderType);
 
-    if (status === "valid" && daysLeft && daysLeft > 60) {
+    if (view !== "followup" && status === "valid" && daysLeft && daysLeft > 60) {
       if (!window.confirm(`⚠️ Warning: MOT is not due for ${daysLeft} days. Send anyway?`)) return;
     }
 
@@ -269,7 +296,7 @@ export default function Home() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedVehicleIds(new Set(filteredAndSortedVehicles.filter(v => v.customerPhone).map(v => v.id)));
+      setSelectedVehicleIds(new Set(listed.filter(v => v.customerPhone).map(v => v.id)));
     } else {
       setSelectedVehicleIds(new Set());
     }
@@ -287,7 +314,7 @@ export default function Home() {
   };
 
   const handleBatchSend = async () => {
-    const vehiclesToSend = filteredAndSortedVehicles.filter(v => selectedVehicleIds.has(v.id));
+    const vehiclesToSend = listed.filter(v => selectedVehicleIds.has(v.id));
     if (vehiclesToSend.length === 0) return;
 
     setIsSendingBatch(true);
@@ -296,7 +323,7 @@ export default function Home() {
       if (!vehicle.customerPhone) continue;
       try {
         const { status } = getMOTStatus(vehicle.motExpiryDate);
-        const reminderType = status === "expired" || status === "due" ? "MOT" : "Service";
+        const reminderType = view === "followup" ? "UrgentFollowUp" : status === "expired" || status === "due" ? "MOT" : "Service";
         await sendReminderMutation.mutateAsync({
           id: 0,
           phoneNumber: vehicle.customerPhone,
@@ -420,22 +447,52 @@ export default function Home() {
     return filtered;
   }, [vehicles, searchTerm, motStatusFilter, taxStatusFilter, motWindows, showDeadVehicles, hideMissingPhone, hideSorn, hideReadAndExpired, showOnlyNeverSent, hideNoData, hideRemindersOff, hideTrade]);
 
+  // Follow up tab: every car that can be reminded, was sent an MOT reminder, and hasn't renewed.
+  const followUps = useMemo(() => {
+    const map = new Map<number, FollowUp>();
+    for (const vehicle of vehicles || []) {
+      if (reminderBlocks(vehicle).length) continue;
+      const fu = followUpFor(vehicle);
+      if (fu) map.set(vehicle.id, fu);
+    }
+    return map;
+  }, [vehicles]);
+  const followUpCounts = useMemo(() => {
+    const counts = { open: 0, handled: 0, missed: 0, expired_unchecked: 0, due: 0 };
+    followUps.forEach((fu) => {
+      if (fu.handled) counts.handled++;
+      else { counts.open++; counts[fu.stage]++; }
+    });
+    return counts;
+  }, [followUps]);
+  const followUpVehicles = useMemo(() => (vehicles || []).filter((vehicle) => {
+    const fu = followUps.get(vehicle.id);
+    if (!fu) return false;
+    if (fu.handled && !showHandled) return false;
+    if (followUpStages.size > 0 && !followUpStages.has(fu.stage)) return false;
+    const term = searchTerm.toLowerCase();
+    return normRegKey(vehicle.registration).includes(normRegKey(searchTerm))
+      || (vehicle.customerName?.toLowerCase() || "").includes(term)
+      || (vehicle.make?.toLowerCase() || "").includes(term);
+  }), [vehicles, followUps, showHandled, followUpStages, searchTerm]);
+  const listed = view === "followup" ? followUpVehicles : filteredAndSortedVehicles;
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
   useEffect(() => {
     setSelectedVehicleIds((prev) => {
       if (prev.size === 0) return prev;
-      const visible = new Set(filteredAndSortedVehicles.map((v) => v.id));
+      const visible = new Set(listed.map((v) => v.id));
       const next = new Set<number>();
       prev.forEach((id) => { if (visible.has(id)) next.add(id); });
       return next.size === prev.size ? prev : next;
     });
-  }, [filteredAndSortedVehicles]);
+  }, [listed]);
 
   const stats = useMemo(() => {
     if (!vehicles) return { total: 0, expired: 0, due: 0, valid: 0, noData: 0, expired90: 0, expired60: 0, expired30: 0, expired7: 0, expiring7: 0, expiring14: 0, expiring30: 0, expiring60: 0, expiring90: 0 };
@@ -476,7 +533,7 @@ export default function Home() {
             <Button onClick={() => setShowUpload(!showUpload)}>
               <Search className="w-4 h-4 mr-2" /> Upload Screenshot
             </Button>
-            <MOTRefreshButtonLive registrations={filteredAndSortedVehicles.map(v => v.registration).filter(Boolean)} label="Refresh Visible" onComplete={refetch} />
+            <MOTRefreshButtonLive registrations={listed.map(v => v.registration).filter(Boolean)} label="Refresh Visible" onComplete={refetch} />
           </div>
         </div>
 
@@ -492,6 +549,15 @@ export default function Home() {
 
         <Card>
           <CardContent className="pt-6 space-y-4">
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Which cars to show">
+              <Button role="tab" aria-selected={view === "all"} variant={view === "all" ? "default" : "outline"} size="sm" onClick={() => setView("all")}>
+                All cars
+              </Button>
+              <Button role="tab" aria-selected={view === "followup"} variant={view === "followup" ? "default" : "outline"} size="sm" onClick={() => setView("followup")}>
+                Follow up
+                <span className={`ml-2 rounded-full px-1.5 text-xs tabular-nums ${view === "followup" ? "bg-primary-foreground/20" : "bg-red-100 text-red-700"}`}>{followUpCounts.open}</span>
+              </Button>
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -504,14 +570,31 @@ export default function Home() {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="text-sm text-muted-foreground tabular-nums">
-                  {filteredAndSortedVehicles.length.toLocaleString("en-GB")} {filteredAndSortedVehicles.length === 1 ? "car" : "cars"} shown
+                  {listed.length.toLocaleString("en-GB")} {listed.length === 1 ? "car" : "cars"} shown
                 </span>
-                {!filtersAtDefault && (
+                {view === "all" && !filtersAtDefault && (
                   <Button variant="ghost" size="sm" onClick={resetFilters}>Reset filters</Button>
                 )}
               </div>
             </div>
 
+            {view === "followup" ? (
+            <div className="space-y-2.5 border-t pt-4">
+              <p className="text-sm text-muted-foreground max-w-3xl">
+                Cars sent an MOT reminder that haven't had their MOT. Each is checked with DVSA at 23:59 on the day
+                its MOT runs out and again at 00:01, so a car tested somewhere else drops off instead of being chased.
+              </p>
+              <FilterRow label="Stage">
+                <FilterChip active={followUpStages.size === 0} onClick={() => setFollowUpStages(new Set())}>All ({followUpCounts.open})</FilterChip>
+                <FilterChip active={followUpStages.has("missed")} onClick={() => toggleStage("missed")} title="The MOT has run out, and a check since shows no new MOT">Missed MOT ({followUpCounts.missed})</FilterChip>
+                <FilterChip active={followUpStages.has("expired_unchecked")} onClick={() => toggleStage("expired_unchecked")} title="The MOT has run out but the car hasn't been checked since; tonight's check will confirm it">Expired, checking ({followUpCounts.expired_unchecked})</FilterChip>
+                <FilterChip active={followUpStages.has("due")} onClick={() => toggleStage("due")} title="Reminder sent, MOT runs out within 14 days, not booked">Reminded, not done ({followUpCounts.due})</FilterChip>
+              </FilterRow>
+              <FilterRow label="Show">
+                <FilterChip active={showHandled} onClick={() => setShowHandled(!showHandled)} title="Cars already sent a follow-up, called, or booked in since their reminder">Already followed up ({followUpCounts.handled})</FilterChip>
+              </FilterRow>
+            </div>
+            ) : (
             <div className="space-y-2.5 border-t pt-4">
               <FilterRow label="MOT due">
                 <FilterChip active={motWindows.size === 0} onClick={() => setMotWindows(new Set())}>Any</FilterChip>
@@ -532,6 +615,7 @@ export default function Home() {
                 <FilterChip active={showOnlyNeverSent} onClick={() => setShowOnlyNeverSent(!showOnlyNeverSent)} title="Only cars never sent a reminder">Never sent only</FilterChip>
               </FilterRow>
             </div>
+            )}
           </CardContent>
         </Card>
 
@@ -540,7 +624,7 @@ export default function Home() {
             <span className="text-sm font-semibold text-primary">{selectedVehicleIds.size} selected</span>
             <Button onClick={handleBatchSend} disabled={isSendingBatch} className="ml-auto">
               {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Send MOT Reminders ({selectedVehicleIds.size})
+              {view === "followup" ? "Send follow-up" : "Send MOT Reminders"} ({selectedVehicleIds.size})
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedVehicleIds(new Set())} disabled={isSendingBatch}>Clear</Button>
           </div>
@@ -549,7 +633,11 @@ export default function Home() {
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <ComprehensiveVehicleTable
-              vehicles={filteredAndSortedVehicles.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)}
+              key={view}
+              followUps={view === "followup" ? followUps : undefined}
+              onLogCall={view === "followup" ? handleLogCall : undefined}
+              defaultSort={view === "followup" ? { field: "daysLeft", direction: "asc" } : undefined}
+              vehicles={listed.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)}
               isLoading={isLoading}
               selectedVehicleIds={selectedVehicleIds}
               onSelectAll={handleSelectAll}
@@ -568,10 +656,10 @@ export default function Home() {
           </CardContent>
 
           {/* Pagination Controls */}
-          {!isLoading && filteredAndSortedVehicles.length > 0 && (
+          {!isLoading && listed.length > 0 && (
             <div className="flex items-center justify-between px-4 py-4 border-t">
               <div className="text-sm text-slate-500">
-                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedVehicles.length)} of {filteredAndSortedVehicles.length} entries
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, listed.length)} of {listed.length} entries
               </div>
               <div className="flex gap-2">
                 <Button
@@ -586,7 +674,7 @@ export default function Home() {
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => p + 1)}
-                  disabled={currentPage * ITEMS_PER_PAGE >= filteredAndSortedVehicles.length}
+                  disabled={currentPage * ITEMS_PER_PAGE >= listed.length}
                 >
                   Next
                 </Button>

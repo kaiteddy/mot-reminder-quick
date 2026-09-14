@@ -33,6 +33,8 @@ export default defineConfig({
       "server/staleCarReminders.test.ts",
       "server/mileage.test.ts",
       "server/workshopData.test.ts",
+      "server/motFollowUp.test.ts",
+      "server/motExpiryCheck.test.ts",
     ],
   },
 });
