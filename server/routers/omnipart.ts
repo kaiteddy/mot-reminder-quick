@@ -29,6 +29,43 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
     }
 }
 
+// Resolve Omnipart request headers from a raw token or the stored jar. Auth is cookie-based: the
+// bearer= cookie inside the harvested COOKIE_JAR is what the API validates (Authorization is a
+// best-effort extra). Used by the order-tracking + digital-returns procedures below.
+async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.eurocarparts.com/"): Promise<Record<string, string>> {
+  let rawToken = inputToken || "auto";
+  if (!rawToken || rawToken === "auto") {
+    const { getAppSetting } = await import("../db");
+    const dbToken = await getAppSetting('omnipart_jwt_token');
+    if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
+    rawToken = dbToken as string;
+  }
+  let clean = rawToken;
+  let authHeader = "";
+  let cookieHeader = "";
+  if (clean.startsWith("COOKIE_JAR:")) {
+    cookieHeader = clean.substring(11).trim();
+    const match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
+    if (match) authHeader = `Bearer ${match[1]}`;
+  } else {
+    clean = clean.replace(/^["']|["']$/g, '').trim().replace(/[\n\r]| /g, '');
+    const lc = clean.toLowerCase();
+    if (lc.startsWith("authorization:bearer")) clean = clean.substring(20);
+    else if (lc.startsWith("bearer")) clean = clean.substring(6);
+    if (clean.startsWith("ey")) { authHeader = `Bearer ${clean}`; cookieHeader = `bearer=${clean}`; }
+  }
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Origin": "https://omnipart.eurocarparts.com",
+    "Referer": referer,
+  };
+  if (authHeader) h["Authorization"] = authHeader;
+  if (cookieHeader) h["Cookie"] = cookieHeader;
+  return h;
+}
+
 export const omnipartRouter = router({
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
   lookupVrm: protectedProcedure
@@ -295,10 +332,174 @@ export const omnipartRouter = router({
       } catch (error: any) {
         const message = error.message || "Failed to search for parts on Omnipart";
         console.error("Omnipart Parts Error:", message);
-        
+
         if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired")) {
             throw new TRPCError({ code: "UNAUTHORIZED", message });
         }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      }
+    }),
+
+  // Live ECP order tracking (WISMO — "Where Is My Order"). Returns each recent order with its
+  // delivery status and the reg it was ordered against, so orders can be matched to a vehicle/job.
+  // Endpoint: POST /account/wismo-order-list, body "{}", cookie-jar auth (see omnipart-invoices notes).
+  getOrderTracking: protectedProcedure
+    .input(z.object({ token: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      try {
+        let rawToken = input?.token || "auto";
+        if (!rawToken || rawToken === "auto") {
+            const { getAppSetting } = await import("../db");
+            const dbToken = await getAppSetting('omnipart_jwt_token');
+            if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
+            rawToken = dbToken as string;
+        }
+
+        let clean = rawToken;
+        let authHeader = "";
+        let cookieHeader = "";
+        if (clean.startsWith("COOKIE_JAR:")) {
+            cookieHeader = clean.substring(11).trim();
+            const match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
+            if (match) authHeader = `Bearer ${match[1]}`;
+        } else {
+            clean = clean.replace(/^["']|["']$/g, '').trim().replace(/[\n\r]| /g, '');
+            const lc = clean.toLowerCase();
+            if (lc.startsWith("authorization:bearer")) clean = clean.substring(20);
+            else if (lc.startsWith("bearer")) clean = clean.substring(6);
+            if (clean.startsWith("ey")) { authHeader = `Bearer ${clean}`; cookieHeader = `bearer=${clean}`; }
+        }
+
+        const apiHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Origin": "https://omnipart.eurocarparts.com",
+          "Referer": "https://omnipart.eurocarparts.com/account/order-tracking",
+        };
+        if (authHeader) apiHeaders["Authorization"] = authHeader;
+        if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
+
+        // Empty body returns the recent set; sending limit/page as ints triggers a 422.
+        const raw = await crawlWithCurl(
+          "POST",
+          "https://api.omnipart.eurocarparts.com/account/wismo-order-list",
+          apiHeaders,
+          "{}"
+        );
+
+        if (raw && (raw["@type"] === "hydra:Error" || raw.detail)) {
+            throw new Error(raw.detail || raw["hydra:description"] || "Euro Car Parts rejected the order-tracking request.");
+        }
+
+        // Response is an object keyed by order_ref (plus a "next_page" key) — normalise to an array.
+        const orders = Object.entries(raw || {})
+          .filter(([k]) => k !== "next_page")
+          .map(([ref, o]: [string, any]) => {
+            const vd = o?.vehicle_details || {};
+            const deliveries = o?.deliveries || {};
+            let deliveryStatus: string | null = null;
+            let deliveryEta: string | null = null;
+            for (const v of Object.values(deliveries)) {
+              if (v && typeof v === "object") {
+                if ((v as any).delivery_status && !deliveryStatus) deliveryStatus = (v as any).delivery_status;
+                if ((v as any).eta && !deliveryEta) deliveryEta = (v as any).eta;
+              }
+            }
+            return {
+              orderRef: o?.order_ref || ref,
+              reg: o?.customer_order_ref || vd.vrm || null,           // the join key to a vehicle/job
+              make: vd.make || null,
+              model: vd.model || null,
+              year: vd.year || null,
+              vin: vd.vin || null,
+              orderDate: o?.order_date || null,
+              status: o?.order_status || null,                        // e.g. "Preparing your order" | "Delivered"
+              deliveryStatus,
+              eta: o?.eta ?? deliveryEta ?? null,
+              numberOfItems: o?.number_of_items ?? null,
+              totalIncTax: o?.totals?.total_inc_tax ?? null,
+              dbOrderId: o?.db_order_id || null,
+            };
+          })
+          .sort((a, b) => String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
+
+        return { count: orders.length, orders };
+      } catch (error: any) {
+        const message = error.message || "Failed to fetch Omnipart order tracking";
+        console.error("Omnipart Order Tracking Error:", message);
+        if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth") || message.toLowerCase().includes("expired") || message.toLowerCase().includes("jwt")) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      }
+    }),
+
+  // ---- Digital returns: turn a bought-and-unused part into a credit request ----
+  // Ported from the parallel v0dashboard build. READ endpoints (reasons, returnable items) are safe.
+  // The SUBMIT endpoint creates a REAL credit request at ECP — it must only ever fire on an explicit
+  // user button press, never automatically and never in a loop.
+
+  // The list of allowed return reasons (Damaged, Incomplete, Incorrectly Labelled, ...).
+  getDigitalReturnReasons: protectedProcedure
+    .input(z.object({ token: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      try {
+        const headers = await omnipartHeaders(input?.token, "https://omnipart.eurocarparts.com/account/order-tracking");
+        const data = await crawlWithCurl("GET", "https://api.omnipart.eurocarparts.com/digital-return-reasons", headers);
+        return Array.isArray(data) ? data : [];
+      } catch (error: any) {
+        const message = error.message || "Failed to fetch digital return reasons";
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      }
+    }),
+
+  // The items on a given order that are eligible for a digital return.
+  getReturnableItems: protectedProcedure
+    .input(z.object({ orderId: z.string(), token: z.string().optional() }))
+    .query(async ({ input }) => {
+      try {
+        const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
+        const url = `https://api.omnipart.eurocarparts.com/orders/${encodeURIComponent(input.orderId)}/digital-return-products`;
+        const data = await crawlWithCurl("GET", url, headers);
+        if (data && (data["@type"] === "hydra:Error" || data.detail)) {
+            throw new Error(data.detail || "No returnable items for this order.");
+        }
+        return data;
+      } catch (error: any) {
+        const message = error.message || "Failed to fetch returnable items";
+        throw new TRPCError({ code: message.toLowerCase().includes("not found") ? "NOT_FOUND" : "INTERNAL_SERVER_ERROR", message });
+      }
+    }),
+
+  // WRITE — submits a digital return, creating a credit request at Euro Car Parts.
+  // GATING: call this ONLY from an explicit user action (a confirm button). Never call it on load,
+  // in a loop, or as a side effect. The body shape mirrors the Omnipart UI (per-line sku/qty/reason);
+  // confirm it against one real button-press before treating returns as fire-and-forget.
+  submitDigitalReturn: protectedProcedure
+    .input(z.object({
+      orderId: z.string(),
+      items: z.array(z.object({
+        sku: z.string(),
+        quantity: z.number(),
+        returnLineId: z.string(),
+        returnReason: z.string(),
+        additionalInfo: z.string().optional(),
+      })).min(1),
+      token: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
+        const body = JSON.stringify({ order_id: input.orderId, items: input.items });
+        const data = await crawlWithCurl("POST", "https://api.omnipart.eurocarparts.com/digital-returns", headers, body);
+        if (data && (data["@type"] === "hydra:Error" || data.detail)) {
+            throw new Error(data.detail || "Digital return was rejected by Euro Car Parts.");
+        }
+        return data;
+      } catch (error: any) {
+        const message = error.message || "Failed to submit digital return";
+        console.error("Omnipart Digital Return Error:", message);
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }
     })

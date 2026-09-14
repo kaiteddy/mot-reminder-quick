@@ -49,6 +49,7 @@ import { toast } from "sonner"; // Added toast import
 import { ManufacturerLogo } from "@/components/ManufacturerLogo";
 import { ServiceHistory } from "@/components/ServiceHistory";
 import { WorkshopDataCard } from "@/components/WorkshopDataCard";
+import { OmnipartOrdersCard } from "@/components/OmnipartOrdersCard";
 import { AssignCustomerDialog } from "@/components/CustomerInfoCard";
 import {
     Dialog,
@@ -1511,6 +1512,8 @@ export default function VehicleDetails() {
 
 
                     <ServicingCard servicing={servicing} />
+
+                    <OmnipartOrdersCard registration={vehicle.registration} />
 
                     {/* Service History */}
                     <Card className="md:col-span-3">
