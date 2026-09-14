@@ -469,13 +469,16 @@ export const omnipartRouter = router({
               totalIncTax: o?.totals?.total_inc_tax ?? null,
               dbOrderId: o?.db_order_id || null,
               branchId: o?.branch_id ?? null,
-              // How long ago it was ordered, and whether it needs chasing (placed >24h ago, still not
-              // delivered) — so a stuck order surfaces at a glance instead of going unnoticed.
+              // How long ago it was ordered, and whether it needs chasing — flagged once it hasn't
+              // been delivered by the evening (18:00) of the day it was ordered, so a same-day order
+              // that never arrived surfaces instead of going unnoticed.
               ageHours: o?.order_date ? Math.max(0, Math.round((Date.now() - new Date(o.order_date).getTime()) / 3600000)) : null,
               needsAttention: (() => {
                 const delivered = String(o?.order_status || "").toLowerCase().includes("deliver");
-                const ah = o?.order_date ? (Date.now() - new Date(o.order_date).getTime()) / 3600000 : null;
-                return !delivered && ah != null && ah >= 24;
+                if (delivered || !o?.order_date) return false;
+                const od = new Date(o.order_date);
+                const endOfOrderDay = new Date(od.getFullYear(), od.getMonth(), od.getDate(), 18, 0, 0).getTime();
+                return Date.now() > endOfOrderDay;
               })(),
               // filled in below by the reg+date job match (null if no job sheet found)
               jobSheet: null as null | { id: number; docNo: string | null; ga4Number: string | null; docType: string | null; date: Date | string | null },
