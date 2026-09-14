@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { normRegKey } from "@shared/vehicleIdentity";
+import { daysSince, whenAgo } from "@shared/motFollowUp";
 
 /**
  * Plates per request. The whole visible list used to go in one request: nothing showed until every
@@ -14,6 +15,9 @@ import { normRegKey } from "@shared/vehicleIdentity";
  * server's time limit. A batch this size answers in a few seconds, so the list fills in as it goes.
  */
 const BATCH_SIZE = 8;
+
+/** Days before an MOT runs out that it counts as due soon, as on the MOT Reminders list. */
+const DUE_SOON_DAYS = 30;
 
 interface MOTRefreshButtonLiveProps {
   registrations: string[];
@@ -24,13 +28,48 @@ interface MOTRefreshButtonLiveProps {
   disabled?: boolean;
 }
 
+type MotState = "expired" | "due" | "valid";
+
 interface VehicleUpdate {
   key: string;
   registration: string;
   status: "pending" | "processing" | "success" | "failed";
   message?: string;
   motExpiryDate?: string;
+  /** Where the MOT stands today. A check that worked can still find the MOT has run out. */
+  mot?: MotState;
 }
+
+/**
+ * What a successful check found, in words, judged against today on the UK calendar. A check that
+ * worked used to show every car green, "MOT expires 07/09/2026", even a week after that MOT had run
+ * out (Adam, 14/09/2026: "they look confirmed but we are past that date").
+ */
+function describeMot(r: { motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null }): { mot: MotState; message: string } {
+  const expiry = r.motExpiryDate || "";
+  const daysLeft = -daysSince(expiry);
+  const mot: MotState = daysLeft < 0 ? "expired" : daysLeft <= DUE_SOON_DAYS ? "due" : "valid";
+  const date = new Date(expiry).toLocaleDateString("en-GB", { timeZone: "Europe/London" });
+  const inDays = `in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`;
+  const what = r.firstMot
+    ? mot === "expired" ? `First MOT overdue since ${date}` : mot === "due" ? `First MOT due ${date}, ${inDays}` : `First MOT due ${date}`
+    : mot === "expired" ? `MOT expired ${date}, ${whenAgo(expiry)}`
+      : daysLeft === 0 ? `MOT runs out today`
+        : mot === "due" ? `MOT runs out ${date}, ${inDays}`
+          : `MOT valid to ${date}`;
+  return { mot, message: `${what}${r.taxStatus ? ` · ${r.taxStatus}` : ""}` };
+}
+
+const ROW_TONE: Record<MotState | VehicleUpdate["status"], string> = {
+  expired: "bg-red-50 border-red-200",
+  due: "bg-amber-50 border-amber-200",
+  valid: "bg-green-50 border-green-200",
+  success: "bg-green-50 border-green-200",
+  failed: "bg-slate-50 border-slate-300",
+  processing: "bg-blue-50 border-blue-200",
+  pending: "bg-slate-50 border-slate-200",
+};
+const TEXT_TONE: Record<MotState, string> = { expired: "text-red-700", due: "text-amber-800", valid: "text-green-700" };
 
 export function MOTRefreshButtonLive({
   registrations,
@@ -73,7 +112,7 @@ export function MOTRefreshButtonLive({
     setStopping(false);
     stopRequested.current = false;
 
-    let refreshed = 0;
+    const tally = { expired: 0, due: 0, valid: 0 };
     let failed = 0;
     let checked = 0;
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
@@ -87,13 +126,10 @@ export function MOTRefreshButtonLive({
         const outcome = new Map<string, Partial<VehicleUpdate>>();
         for (const b of batch) {
           const r = byKey.get(b.key);
-          if (r?.success) {
-            refreshed++;
-            outcome.set(b.key, {
-              status: "success",
-              motExpiryDate: r.motExpiryDate,
-              message: `${r.firstMot ? "First MOT due" : "MOT expires"} ${new Date(r.motExpiryDate || "").toLocaleDateString("en-GB")}${r.taxStatus ? ` · ${r.taxStatus}` : ""}`,
-            });
+          if (r?.success && r.motExpiryDate) {
+            const { mot, message } = describeMot(r);
+            tally[mot]++;
+            outcome.set(b.key, { status: "success", motExpiryDate: r.motExpiryDate, mot, message });
           } else {
             failed++;
             outcome.set(b.key, { status: "failed", message: r?.error || "No answer for this plate" });
@@ -109,9 +145,12 @@ export function MOTRefreshButtonLive({
 
     setRunning(false);
     setStopping(false);
+    const found = tally.expired + tally.due + tally.valid;
     const notChecked = list.length - checked;
-    if (refreshed > 0) toast.success(`MOT data refreshed for ${refreshed} vehicle${refreshed !== 1 ? "s" : ""}`);
-    if (failed > 0) toast.error(`Could not refresh ${failed} vehicle${failed !== 1 ? "s" : ""}`);
+    if (found > 0) {
+      toast.success(`Checked ${found} vehicle${found !== 1 ? "s" : ""}: ${tally.expired} expired, ${tally.due} due soon, ${tally.valid} valid`);
+    }
+    if (failed > 0) toast.error(`Couldn't check ${failed} vehicle${failed !== 1 ? "s" : ""}`);
     if (notChecked > 0) toast.info(`Stopped: ${notChecked} vehicle${notChecked !== 1 ? "s" : ""} not checked`);
     onComplete?.();
   };
@@ -123,12 +162,20 @@ export function MOTRefreshButtonLive({
   }, [vehicleUpdates, running]);
 
   const total = vehicleUpdates.length;
-  const refreshedCount = vehicleUpdates.filter((v) => v.status === "success").length;
+  const expiredCount = vehicleUpdates.filter((v) => v.mot === "expired").length;
+  const dueCount = vehicleUpdates.filter((v) => v.mot === "due").length;
+  const validCount = vehicleUpdates.filter((v) => v.mot === "valid").length;
   const failedCount = vehicleUpdates.filter((v) => v.status === "failed").length;
-  const done = refreshedCount + failedCount;
+  const done = expiredCount + dueCount + validCount + failedCount;
   const notCheckedCount = total - done;
   const percent = total ? Math.round((done / total) * 100) : 0;
   const count = registrations.length;
+  const breakdown = [
+    `${expiredCount} expired`,
+    `${dueCount} due soon`,
+    `${validCount} valid`,
+    failedCount ? `${failedCount} couldn't be checked` : "",
+  ].filter(Boolean).join(" · ");
 
   return (
     <>
@@ -145,11 +192,11 @@ export function MOTRefreshButtonLive({
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>MOT Data Refresh Progress</DialogTitle>
+            <DialogTitle>Refreshing MOT and tax</DialogTitle>
             <DialogDescription>
               {running
-                ? `Checked ${done} of ${total}${stopping ? " · stopping after this batch" : ""}`
-                : `Finished: ${refreshedCount} refreshed${failedCount ? `, ${failedCount} could not be` : ""}${notCheckedCount ? `, ${notCheckedCount} not checked` : ""}`}
+                ? `Checked ${done} of ${total}${done ? ` · ${breakdown}` : ""}${stopping ? " · stopping after this batch" : ""}`
+                : `Finished: ${breakdown}${notCheckedCount ? ` · ${notCheckedCount} not checked` : ""}`}
             </DialogDescription>
           </DialogHeader>
 
@@ -158,37 +205,34 @@ export function MOTRefreshButtonLive({
           </div>
 
           <ScrollArea className="h-[400px] pr-4">
-            <div ref={listRef} className="space-y-2">
+            <div ref={listRef} className="space-y-1">
               {vehicleUpdates.map((vehicle) => (
                 <div
                   key={vehicle.key}
                   data-status={vehicle.status}
-                  className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${
-                    vehicle.status === "success" ? "bg-green-50 border-green-200" :
-                    vehicle.status === "failed" ? "bg-red-50 border-red-200" :
-                    vehicle.status === "processing" ? "bg-blue-50 border-blue-200" :
-                    "bg-slate-50 border-slate-200"
-                  }`}
+                  className={`flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 ${ROW_TONE[vehicle.mot ?? vehicle.status]}`}
                 >
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="font-mono font-bold text-sm">{vehicle.registration}</div>
-                    {vehicle.status === "success" && <CheckCircle className="w-4 h-4 text-green-600" />}
-                    {vehicle.status === "failed" && <XCircle className="w-4 h-4 text-red-600" />}
-                    {vehicle.status === "processing" && <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />}
+                  <div className="flex flex-1 items-center gap-2">
+                    <div className="font-mono text-sm font-semibold">{vehicle.registration}</div>
+                    {vehicle.mot === "valid" && <CheckCircle className="h-4 w-4 text-green-600" />}
+                    {vehicle.mot === "due" && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                    {vehicle.mot === "expired" && <AlertTriangle className="h-4 w-4 text-red-600" />}
+                    {vehicle.status === "failed" && <XCircle className="h-4 w-4 text-slate-500" />}
+                    {vehicle.status === "processing" && <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />}
                   </div>
 
-                  <div className="text-sm text-slate-600 text-right">
+                  <div className="text-right text-[13px] text-slate-600">
                     {vehicle.status === "pending" && <Badge variant="secondary">{running ? "Waiting" : "Not checked"}</Badge>}
                     {vehicle.status === "processing" && <Badge variant="default" className="bg-blue-600">Checking…</Badge>}
-                    {vehicle.status === "success" && <span className="text-green-700">{vehicle.message}</span>}
-                    {vehicle.status === "failed" && <span className="text-red-700">{vehicle.message || "Failed"}</span>}
+                    {vehicle.status === "success" && vehicle.mot && <span className={TEXT_TONE[vehicle.mot]}>{vehicle.message}</span>}
+                    {vehicle.status === "failed" && <span className="text-slate-600">Couldn't check: {vehicle.message || "no answer"}</span>}
                   </div>
                 </div>
               ))}
             </div>
           </ScrollArea>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 border-t pt-4">
             {running ? (
               <Button
                 variant="outline"
