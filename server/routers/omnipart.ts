@@ -29,6 +29,40 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
     }
 }
 
+// Self-heal the session on read: if the jar's bearer is expired or within 5 min of expiry, renew it
+// server-side via /token/refresh (which rotates the refresh_token) and persist the fresh jar. This
+// keeps the tracker working the moment it's opened, even if the scheduled refresh lapsed (e.g. the
+// Mac slept). Non-fatal — on any failure it returns the jar unchanged and the caller surfaces the error.
+async function refreshJarIfStale(jar: string): Promise<string> {
+  const bm = jar.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+  let minsLeft = -1;
+  if (bm) { try { const p = JSON.parse(Buffer.from(bm[1].split(".")[1], "base64").toString()); minsLeft = (p.exp - Date.now() / 1000) / 60; } catch { /* unparseable → treat as stale */ } }
+  if (minsLeft > 5) return jar;
+  const rt = jar.match(/refresh_token=([0-9a-fA-F]+)/);
+  if (!rt) return jar;
+  try {
+    const data = await crawlWithCurl(
+      "POST",
+      "https://api.omnipart.eurocarparts.com/token/refresh",
+      {
+        "Content-Type": "application/json", "Accept": "application/json",
+        "Origin": "https://omnipart.eurocarparts.com", "Referer": "https://omnipart.eurocarparts.com/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Cookie": jar,
+      },
+      JSON.stringify({ refresh_token: rt[1] })
+    );
+    if (data && data.token && data.refresh_token) {
+      let newJar = /bearer=/.test(jar) ? jar.replace(/bearer=[^;]*/, `bearer=${data.token}`) : `${jar}; bearer=${data.token}`;
+      newJar = newJar.replace(/refresh_token=[^;]*/, `refresh_token=${data.refresh_token}`);
+      const { saveAppSetting } = await import("../db");
+      await saveAppSetting("omnipart_jwt_token", "COOKIE_JAR:" + newJar);
+      return newJar;
+    }
+  } catch { /* fall through — return stale jar */ }
+  return jar;
+}
+
 // Resolve Omnipart request headers from a raw token or the stored jar. Auth is cookie-based: the
 // bearer= cookie inside the harvested COOKIE_JAR is what the API validates (Authorization is a
 // best-effort extra). Used by the order-tracking + digital-returns procedures below.
@@ -45,6 +79,7 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
   let cookieHeader = "";
   if (clean.startsWith("COOKIE_JAR:")) {
     cookieHeader = clean.substring(11).trim();
+    cookieHeader = await refreshJarIfStale(cookieHeader);   // renew on demand if the bearer has lapsed
     const match = cookieHeader.match(/bearer=(eyJ[^;]+)/i);
     if (match) authHeader = `Bearer ${match[1]}`;
   } else {
