@@ -420,9 +420,51 @@ export const omnipartRouter = router({
               numberOfItems: o?.number_of_items ?? null,
               totalIncTax: o?.totals?.total_inc_tax ?? null,
               dbOrderId: o?.db_order_id || null,
+              // filled in below by the reg+date job match (null if no job sheet found)
+              jobSheet: null as null | { id: number; docNo: string | null; ga4Number: string | null; docType: string | null; date: Date | string | null },
             };
           })
           .sort((a, b) => String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
+
+        // Match each order to the job it was ordered against. The reg is the clean join (the order's
+        // customer_order_ref == serviceHistory.registration); the order DATE picks the specific job
+        // among that vehicle's several — the one open when the parts were ordered.
+        try {
+          const regs = Array.from(new Set(orders.map((o) => o.reg).filter(Boolean))) as string[];
+          if (regs.length) {
+            const { getJobSheetsByRegs } = await import("../db");
+            const jobs = await getJobSheetsByRegs(regs);
+            const norm = (r: string | null) => (r || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const byReg = new Map<string, typeof jobs>();
+            for (const j of jobs) {
+              const k = norm(j.registration);
+              if (!byReg.has(k)) byReg.set(k, []);
+              byReg.get(k)!.push(j);
+            }
+            const refTime = (j: typeof jobs[number]) => {
+              const d = j.dateCreated || j.dateIssued;
+              return d ? new Date(d).getTime() : 0;
+            };
+            for (const o of orders) {
+              const list = byReg.get(norm(o.reg)) || [];
+              if (!list.length) { o.jobSheet = null; continue; }
+              const od = o.orderDate ? new Date(o.orderDate).getTime() : null;
+              let best: (typeof jobs)[number] | null = null;
+              if (od != null) {
+                const before = list.filter((j) => refTime(j) <= od).sort((a, b) => refTime(b) - refTime(a));
+                best = before[0] || list.slice().sort((a, b) => Math.abs(refTime(a) - od) - Math.abs(refTime(b) - od))[0];
+              } else {
+                best = list.slice().sort((a, b) => refTime(b) - refTime(a))[0];
+              }
+              o.jobSheet = best
+                ? { id: best.id, docNo: best.docNo, ga4Number: best.ga4Number, docType: best.docType, date: best.dateIssued || best.dateCreated || null }
+                : null;
+            }
+          }
+        } catch (e: any) {
+          // non-fatal: order tracking still returns even if job matching fails
+          console.error("Omnipart job-match error:", e?.message);
+        }
 
         return { count: orders.length, orders };
       } catch (error: any) {

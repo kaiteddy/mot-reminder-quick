@@ -8,6 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { RegPlate } from "@/components/RegPlate";
+import { useClassicBase } from "@/lib/classicNav";
 import { OrderStatusBadge, normReg } from "@/components/OmnipartOrdersCard";
 
 function money(v: number | null | undefined) {
@@ -16,6 +17,7 @@ function money(v: number | null | undefined) {
 
 /** Board of all recent Euro Car Parts (Omnipart) orders with live delivery status. */
 export default function OmnipartOrders() {
+  const base = useClassicBase();
   const { data, isLoading, error, refetch, isFetching } =
     trpc.omnipart.getOrderTracking.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
   const [q, setQ] = useState("");
@@ -71,6 +73,7 @@ export default function OmnipartOrders() {
                       <TableHead>Order ref</TableHead>
                       <TableHead>Reg</TableHead>
                       <TableHead>Vehicle</TableHead>
+                      <TableHead>Job sheet</TableHead>
                       <TableHead className="text-right">Items</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead>Date</TableHead>
@@ -93,6 +96,15 @@ export default function OmnipartOrders() {
                             )}
                           </TableCell>
                           <TableCell>{vehicle || "—"}</TableCell>
+                          <TableCell>
+                            {o.jobSheet ? (
+                              <Link href={`${base}/documents/${o.jobSheet.id}`} className="text-brand-primary hover:underline">
+                                {o.jobSheet.ga4Number || o.jobSheet.docNo || o.jobSheet.id}
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground/60">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">{o.numberOfItems ?? "—"}</TableCell>
                           <TableCell className="text-right">{money(o.totalIncTax)}</TableCell>
                           <TableCell>
@@ -106,7 +118,7 @@ export default function OmnipartOrders() {
                     })}
                     {orders.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                           No orders {q ? "match that reg" : "found"}.
                         </TableCell>
                       </TableRow>

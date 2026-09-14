@@ -1,7 +1,9 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Truck } from "lucide-react";
+import { Truck, FileText } from "lucide-react";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { useClassicBase } from "@/lib/classicNav";
 import { ReturnDialog } from "@/components/ReturnDialog";
 
 // Normalise a registration for comparison — vehicles.registration is stored solid (no space),
@@ -29,6 +31,7 @@ function money(v: number | null | undefined) {
 
 /** Inline card for a single vehicle's ECP orders, matched by registration. */
 export function OmnipartOrdersCard({ registration }: { registration?: string | null }) {
+  const base = useClassicBase();
   const { data, isLoading, error } = trpc.omnipart.getOrderTracking.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
     retry: false,
@@ -66,6 +69,18 @@ export function OmnipartOrdersCard({ registration }: { registration?: string | n
                 {o.orderDate ? new Date(o.orderDate).toLocaleDateString("en-GB") : "—"} ·{" "}
                 {o.numberOfItems ?? "?"} item{o.numberOfItems === 1 ? "" : "s"} · {money(o.totalIncTax)}
               </span>
+              {o.jobSheet ? (
+                <Link
+                  href={`${base}/documents/${o.jobSheet.id}`}
+                  className="mt-0.5 inline-flex items-center gap-1 text-xs text-brand-primary hover:underline"
+                >
+                  <FileText className="w-3 h-3" />
+                  Job {o.jobSheet.ga4Number || o.jobSheet.docNo || o.jobSheet.id}
+                  {o.jobSheet.date ? ` · ${new Date(o.jobSheet.date).toLocaleDateString("en-GB")}` : ""}
+                </Link>
+              ) : (
+                <span className="mt-0.5 text-xs text-muted-foreground/70">No matching job sheet</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <OrderStatusBadge status={o.status} />
