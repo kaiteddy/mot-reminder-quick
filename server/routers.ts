@@ -2376,22 +2376,23 @@ export const appRouter = router({
         const { getAllReminders, updateReminder, createReminderLog, findCustomerByPhone } = await import("./db");
         const { sendMOTReminderWithTemplate, sendSMS, generateServiceReminderMessage } = await import("./smsService");
 
-        // Check if customer has opted out
+        // Every reason not to send lives in shared/reminderEligibility.ts, the rule the MOT Reminders
+        // page lists by: the customer opted out or is a trade account, or this car is switched off.
+        const { reminderBlocks, reminderBlockMessage } = await import("../shared/reminderEligibility");
         const customer = await findCustomerByPhone(input.phoneNumber);
-        if (customer && customer.optedOut) {
-          throw new Error(`Customer ${customer.name} has opted out of messages. They can opt back in by replying START.`);
-        }
-        if (customer && (customer as any).noVehicleReminders) {
-          throw new Error(`${customer.name} is a trade account - per-vehicle reminders are switched off for them.`);
-        }
-        // …and this particular car may have been switched off on its own.
+        let veh: any = null;
         if (input.vehicleId) {
           const { getDb } = await import("./db");
           const dbv = await getDb();
-          const [veh]: any = dbv ? await dbv.select({ off: vehicles.remindersOff, reason: vehicles.remindersOffReason, reg: vehicles.registration })
+          [veh] = dbv ? await dbv.select({ off: vehicles.remindersOff, reason: vehicles.remindersOffReason, reg: vehicles.registration })
             .from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1) : [];
-          if (veh?.off) throw new Error(`Reminders are switched off for ${veh.reg}${veh.reason ? ` — ${veh.reason}` : ""}. Turn them back on from the vehicle page to send.`);
         }
+        const sendTo = {
+          customerName: customer?.name, customerOptedOut: customer?.optedOut, customerTrade: (customer as any)?.noVehicleReminders,
+          registration: veh?.reg, remindersOff: veh?.off, remindersOffReason: veh?.reason,
+        };
+        const blocked = reminderBlocks(sendTo);
+        if (blocked.length) throw new Error(reminderBlockMessage(sendTo, blocked[0]));
 
         // Handle test messages (id = 0)
         if (input.id === 0) {
@@ -2405,24 +2406,28 @@ export const appRouter = router({
 
           // If custom message provided, send it directly (for chat quick replies)
           if (input.customMessage) {
-            result = await sendSMS({
+            result = input.preview ? { success: true } : await sendSMS({
               to: input.phoneNumber,
               message: input.customMessage,
             });
             messageContent = input.customMessage;
           } else if (messageType === "UrgentFollowUp") {
-            const { sendUrgentFollowUpWithTemplate, generateFullUrgentFollowUpTemplateContent } = await import("./smsService");
+            const { sendUrgentFollowUpWithTemplate } = await import("./smsService");
+            const { followUpMessage } = await import("../shared/motFollowUpMessage");
+            // One follow-up message per MOT (Adam, 14/09/2026); after that the Follow up tab asks for a call.
+            // Another goes only when the last one never arrived.
+            if (input.vehicleId) {
+              const { getFollowUpHistory } = await import("./db");
+              const { repeatFollowUpBlock } = await import("../shared/motFollowUp");
+              const history = await getFollowUpHistory(input.vehicleId);
+              const repeat = history && repeatFollowUpBlock(history.lastFollowUp, history.motExpiryDate ?? expiryDate, registration);
+              if (repeat) throw new Error(repeat);
+            }
             
-            const isExpired = expiryDate < new Date();
-            messageContent = generateFullUrgentFollowUpTemplateContent({
-              customerName,
-              registration,
-              motExpiryDate: expiryDate,
-              isExpired,
-              daysLeft: daysUntil,
-            });
+            // The preview and the log show exactly what the approved template sends.
+            messageContent = followUpMessage({ customerName, registration, motExpiryDate: expiryDate }).text;
 
-            result = await sendUrgentFollowUpWithTemplate({
+            result = input.preview ? { success: true } : await sendUrgentFollowUpWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2440,7 +2445,7 @@ export const appRouter = router({
               daysLeft: daysUntil,
             });
 
-            result = await sendServiceReminderWithTemplate({
+            result = input.preview ? { success: true } : await sendServiceReminderWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2464,7 +2469,7 @@ export const appRouter = router({
               daysLeft: daysUntil,
             });
 
-            result = await sendMOTReminderWithTemplate({
+            result = input.preview ? { success: true } : await sendMOTReminderWithTemplate({
               to: input.phoneNumber,
               customerName,
               registration,
@@ -2472,6 +2477,9 @@ export const appRouter = router({
             });
           }
 
+          // A preview only builds the words for the "Preview Message" dialog: every send above is skipped
+          // when preview is set. It used to send first and return the preview after, so the customer
+          // got the message when the dialog opened and again on "Confirm & Send" (found 14/09/2026).
           if (input.preview) {
             return {
               success: true,
@@ -2489,7 +2497,10 @@ export const appRouter = router({
           now.setHours(0, 0, 0, 0);
           const expDate = new Date(expiryDate);
           expDate.setHours(0, 0, 0, 0);
-          const isExpired = expDate < now;
+          // A follow-up is filed as urgent_expired / urgent_expiring by the same UK-day rule that picked its template.
+          const isExpired = messageType === "UrgentFollowUp"
+            ? (await import("../shared/motFollowUpMessage")).followUpMessage({ customerName, registration, motExpiryDate: expiryDate }).isExpired
+            : expDate < now;
 
           // Who this went to. The reminder screens send by VEHICLE and don't pass a customer,
           // so the log used to be filed against nobody — and a message filed against nobody
@@ -2565,7 +2576,7 @@ export const appRouter = router({
             daysLeft,
           });
 
-          result = await sendMOTReminderWithTemplate({
+          result = input.preview ? { success: true } : await sendMOTReminderWithTemplate({
             to: input.phoneNumber,
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
@@ -2585,7 +2596,7 @@ export const appRouter = router({
             daysLeft,
           });
 
-          result = await sendServiceReminderWithTemplate({
+          result = input.preview ? { success: true } : await sendServiceReminderWithTemplate({
             to: input.phoneNumber,
             customerName: reminder.customerName || "Customer",
             registration: reminder.registration,
@@ -2601,12 +2612,13 @@ export const appRouter = router({
 
           messageContent = message;
 
-          result = await sendSMS({
+          result = input.preview ? { success: true } : await sendSMS({
             to: input.phoneNumber,
             message,
           });
         }
 
+        // As above: a preview builds the words and sends nothing.
         if (input.preview) {
           return {
             success: true,
@@ -2808,65 +2820,17 @@ export const appRouter = router({
       });
     }),
 
-    // "Refresh Visible" on the MOT Reminders page. Records what DVLA and DVSA say on every car with
-    // that plate, the same way the hourly refresh and the bulk check do: server/services/motRefresh.ts.
+    // "Refresh Visible" on the MOT Reminders page. The page sends small batches and shows each one's
+    // results as they land (MOTRefreshButtonLive); the checking itself is server/services/motRefreshRun.ts,
+    // shared with the midnight MOT check. It once took every visible car in one request: 57 cars showed
+    // nothing for over a minute (11/09/2026), and 2,524 would have run past the server's time limit.
     bulkVerifyMOT: protectedProcedure
       .input(z.object({
-        registrations: z.array(z.string()),
+        registrations: z.array(z.string()).max(25),
       }))
       .mutation(async ({ input }) => {
-        const { getDb, bulkUpdateVehicleMOT } = await import("./db");
-        const { lookupVehicle } = await import("./dvlaApi");
-        const { getMOTHistory } = await import("./motApi");
-        const { isSupersededRegistration } = await import("./services/dvlaRecord");
-        const { motRefreshFor } = await import("./services/motRefresh");
-        const { vehicles } = await import("../drizzle/schema");
-        const { sql, inArray } = await import("drizzle-orm");
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
-
-        const norm = (r: string) => String(r || "").replace(/\s+/g, "").toUpperCase();
-        const wanted = Array.from(new Set(input.registrations.map(norm).filter(Boolean)));
-        const rows = wanted.length
-          ? await db.select({
-              id: vehicles.id, registration: vehicles.registration, make: vehicles.make, colour: vehicles.colour,
-              fuelType: vehicles.fuelType, dateOfRegistration: vehicles.dateOfRegistration,
-            }).from(vehicles).where(inArray(sql`REPLACE(UPPER(${vehicles.registration}), ' ', '')`, wanted))
-          : [];
-        const carsByReg = new Map<string, typeof rows>();
-        for (const row of rows) carsByReg.set(norm(row.registration), [...(carsByReg.get(norm(row.registration)) || []), row]);
-
-        const results: Array<{ registration: string; success: boolean; verified: boolean; motExpiryDate?: string; firstMot?: boolean; taxStatus?: string | null; error?: string }> = [];
-        let stats = { refreshed: 0, failed: 0 };
-        for (const reg of wanted) {
-          const cars = carsByReg.get(reg) || [];
-          try {
-            // GA4's renamed record: its plate is on another car now, so never look it up.
-            if (isSupersededRegistration(reg)) {
-              if (cars.length) await bulkUpdateVehicleMOT(cars.map((c) => ({ id: c.id, lastChecked: new Date(), dvlaStatus: "superseded" })));
-              results.push({ registration: reg, success: false, verified: false, error: "This plate has moved to another car, so it was not checked" });
-              stats.failed++;
-              continue;
-            }
-            const lookup = await lookupVehicle(reg);
-            let dvsa: any; // undefined = DVSA could not be asked; null = DVSA has no record
-            try { dvsa = await getMOTHistory(reg); } catch (e: any) { console.error(`[MOT-REFRESH] DVSA failed for ${reg}:`, e?.message || e); }
-            const now = new Date();
-            const refreshed = (cars.length ? cars : [{ id: 0 }]).map((c) => motRefreshFor(c, lookup, dvsa, now));
-            const writes = cars.length ? refreshed.map((r) => r.update).filter((u) => Object.keys(u).length > 1) : [];
-            if (writes.length) await bulkUpdateVehicleMOT(writes);
-            const result = refreshed[0].result;
-            results.push({ registration: reg, verified: result.success, ...result });
-            result.success ? stats.refreshed++ : stats.failed++;
-            console.log(`[MOT-REFRESH] ${reg}: DVLA ${lookup.outcome}, DVSA ${dvsa === undefined ? "unavailable" : dvsa ? "answered" : "no record"} → ${result.success ? `${result.firstMot ? "first MOT due" : "MOT expires"} ${result.motExpiryDate?.slice(0, 10)}${result.taxStatus ? `, ${result.taxStatus}` : ""}` : result.error}`);
-          } catch (error: any) {
-            results.push({ registration: reg, success: false, verified: false, error: error?.message || "Failed to verify MOT" });
-            stats.failed++;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        console.log(`[MOT-REFRESH] ${wanted.length} plates: ${stats.refreshed} refreshed, ${stats.failed} not`);
-        return results;
+        const { refreshPlates } = await import("./services/motRefreshRun");
+        return refreshPlates(input.registrations);
       }),
 
     bookMOT: protectedProcedure
@@ -2882,6 +2846,27 @@ export const appRouter = router({
         await resetReminderState(input.vehicleId);
 
         return { success: true };
+      }),
+
+    // Record a follow-up phone call about a car's MOT, so the MOT Reminders "Follow up" tab shows the car
+    // as followed up (shared/motFollowUp.ts). It goes in the customer's contact log with everything else.
+    logFollowUpCall: protectedProcedure
+      .input(z.object({
+        vehicleId: z.number(),
+        customerId: z.number().nullable().optional(),
+        note: z.string().trim().max(500).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { addCustomerLog } = await import("./db");
+        return addCustomerLog({
+          vehicleId: input.vehicleId,
+          customerId: input.customerId ?? null,
+          type: "call",
+          direction: "out",
+          subject: "MOT follow-up call",
+          body: input.note || null,
+          createdBy: (ctx as any).user?.name ?? null,
+        } as any);
       }),
 
     markResponded: protectedProcedure
@@ -3335,13 +3320,16 @@ export const appRouter = router({
         let skippedOptOut = 0;
 
         for (const log of logsToResend) {
-          // Never resend to a customer who has opted out since the original (failed) send.
+          // Never resend where the shared rule (shared/reminderEligibility.ts) now says no: the customer
+          // opted out or became a trade account, or the car's reminders were switched off, since the send.
+          const { reminderBlocks } = await import("../shared/reminderEligibility");
           const recipientCustomer = await findCustomerByPhone(log.recipient);
-          if (recipientCustomer && (recipientCustomer.optedOut || (recipientCustomer as any).noVehicleReminders)) { skippedOptOut++; continue; }
-          // Nor resend about a car whose reminders have been switched off since.
-          if (log.vehicleId) {
-            const [veh]: any = await db.select({ off: vehicles.remindersOff }).from(vehicles).where(eq(vehicles.id, log.vehicleId)).limit(1);
-            if (veh?.off) { skippedOptOut++; continue; }
+          const [resendVeh]: any = log.vehicleId
+            ? await db.select({ off: vehicles.remindersOff }).from(vehicles).where(eq(vehicles.id, log.vehicleId)).limit(1)
+            : [];
+          if (reminderBlocks({ customerOptedOut: recipientCustomer?.optedOut, customerTrade: (recipientCustomer as any)?.noVehicleReminders, remindersOff: resendVeh?.off }).length) {
+            skippedOptOut++;
+            continue;
           }
           try {
             let messageContent = log.messageContent;

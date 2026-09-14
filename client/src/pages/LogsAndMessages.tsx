@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { APP_TITLE, getLoginRoute } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { AlertCircle, CheckCircle2, Check, CheckCheck, Clock, Loader2, MessageSquare, Send, XCircle, Search, Filter, Download, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -102,7 +103,7 @@ export default function LogsAndMessages() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (!log.customerName?.toLowerCase().includes(query) &&
-        !log.registration?.toLowerCase().includes(query) &&
+        !normRegKey(log.registration ?? "").includes(normRegKey(searchQuery)) &&
         !log.recipient?.toLowerCase().includes(query)) return false;
     }
     return log.status === 'failed' || log.status === 'undelivered';
@@ -197,7 +198,7 @@ export default function LogsAndMessages() {
       const query = searchQuery.toLowerCase();
       return (
         log.customerName?.toLowerCase().includes(query) ||
-        log.registration?.toLowerCase().includes(query) ||
+        (!!log.registration && normRegKey(log.registration).includes(normRegKey(searchQuery))) ||
         log.recipient?.toLowerCase().includes(query)
       );
     }

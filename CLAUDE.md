@@ -51,6 +51,42 @@ Pushing to `main` triggers the Vercel deploy.
   `SWS_API_KEY` / `SWS_AUTH_HEADER` env vars, falling back to the old hardcoded values if unset — set these
   in `.env` to rotate the key without a code change.
 
+## Protected rules (checked before every build)
+`pnpm build` first runs `vitest run --config vitest.guards.config.ts` — pure tests plus the tripwires in
+`server/guards/`. A broken rule stops the build, so Vercel does not deploy it. Fix the code, not the tripwire;
+change a tripwire only when Adam changes the rule. Each came from a real fault found on 11/09/2026:
+- **Who can be reminded** is decided only by `shared/reminderEligibility.ts` (opted out, trade account, reminders
+  switched off). The server's send checks and the MOT Reminders page's list and counts all use it. Add a new
+  reason there — never as a separate check in one page or procedure (the page once listed 230 cars Send refused).
+- **Refreshing a car's MOT** records DVLA's whole answer (tax, "Updated", DVLA status) through
+  `server/services/motRefresh.ts` / `dvlaRecord.ts`. Never save only an MOT date; `updateVehicleMOTExpiryDate` is for
+  a manually booked date (`bookMOT`) and nothing else.
+- **Long checks from a page** go in small batches with visible progress: `bulkVerifyMOT` takes at most 25 plates,
+  `MOTRefreshButtonLive` sends 8 at a time. Never one request for a whole list (it times out on Vercel).
+- **Plate search** compares `normRegKey()` on both sides — plates are stored both "GY65 FBK" and "GY65FBK".
+- **Paid UKVD lookups** only through `server/ukvd.ts`, which saves every answer so none is bought twice.
+- **Data Costs panel** matches months as `to_char(...)` text in SQL, never dates parsed in Node.
+- **First-MOT dates** come from DVSA (`server/services/firstMotReminders.ts`), never from `dateOfRegistration`.
+- **Who needs a follow-up** (MOT Reminders ▸ Follow up) is decided only by `shared/motFollowUp.ts`: sent an MOT
+  reminder for the MOT it is on now, not renewed, and — to count as a missed MOT — checked after the MOT ran out.
+  The midnight check (`server/services/motExpiryCheck.ts`; crons `mot-expiry-check` at 23:59 and
+  `mot-expiry-check-after-midnight` at 00:01 London time) asks DVSA again so a car tested elsewhere drops off.
+  Every MOT refresh goes through `server/services/motRefreshRun.ts`.
+- **After the follow-up it's a phone call**, never a third message. `followUpFor().todo` asks for a call
+  `CALL_AFTER_DAYS` (14) after a follow-up that reached them once a check since shows no MOT, or at once if it never
+  arrived. `reminders.sendWhatsApp` refuses a second follow-up message for the same MOT (`repeatFollowUpBlock`). The
+  06:00 check (`server/services/followUpRecheck.ts`, cron `mot-follow-up-recheck`) re-asks DVSA about those cars and
+  about reminded cars whose MOT runs out within 14 days. The follow-up itself is only asked for `FOLLOW_UP_AFTER_DAYS`
+  (7) after the reminder, or once the MOT has run out; until then the car is "Waiting", hidden from the to-do list.
+- **The follow-up WhatsApp** uses only the two Meta-approved UTILITY templates in `shared/motFollowUpMessage.ts`
+  (name, registration, date — three variables, no days left). New wording means a new template approved by Meta
+  first; its SID and body then change there together.
+- **Message status** on the MOT Reminders page (Read / Delivered / Sent / Not received / Sent as SMS / SMS delivered)
+  is worked out only by `shared/messageDelivery.ts`. A rescue text (`rescue-sms:<SID>`) is how its original message
+  arrived, never a message of its own; a follow-up that was not received does not count as followed up.
+- **Tests never touch the live database**: DB tests need the sandbox `TEST_DATABASE_URL`; anything in the build
+  gate must need no database at all.
+
 ## House rules
 - One-way mirror only — never push changes back into GA4.
 - Never commit `.env` or any secret. `IDEALPOSTCODES_API_KEY` and other keys stay server-side.

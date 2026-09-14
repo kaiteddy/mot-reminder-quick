@@ -1,5 +1,5 @@
 /**
- * Switch MOT reminders off for cars with no work in five years, keeping owner and history intact.
+ * Switch MOT reminders off for cars with no work in four years, keeping owner and history intact.
  *
  *   npx tsx scripts/stop-reminders-stale-cars.ts          # DRY RUN — reports, writes nothing
  *   npx tsx scripts/stop-reminders-stale-cars.ts --go     # apply (backs up every row first)

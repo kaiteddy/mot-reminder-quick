@@ -15,20 +15,22 @@
  * on the vehicle page turns it back on, and a car switched back on by hand is never touched again.
  *
  * The rule. A car whose owner is not opted out or a trade account, with at least one job on file,
- * and no work in the last five years — counting a job linked to the car OR written up under its
- * registration, because 2,611 jobs carry a plate but no link and ignoring them makes a regular look
- * like a stranger. The evidence is graded and written into the reason, strongest first:
+ * and no work in the last four years (five until Adam shortened it on 11/09/2026) — counting a job
+ * linked to the car OR written up under its registration, because 2,611 jobs carry a plate but no
+ * link and ignoring them makes a regular look like a stranger. The evidence is graded and written
+ * into the reason, strongest first:
  *   1. the owner has replied to a reminder saying a car was not theirs;
  *   2. the same phone number came back with a different car two or more years later;
  *   3. reminded twice or more in three years and never came;
  *   4. reminded once in three years and never came;
- *   5. nothing beyond the five years of silence.
+ *   5. nothing beyond the years of silence.
  */
 
 /** Minimal query surface shared by a pg Client (scripts) and the server's pg Pool. */
 export type Query = (text: string, params?: unknown[]) => Promise<{ rows: any[] }>;
 
-export const STALE_YEARS = 5;
+/** No work on a car for this many years and its reminders go off. Adam, 11/09/2026: four (was five). */
+export const STALE_YEARS = 4;
 /** How much later the same phone must return with another car before we believe this one went. */
 export const REPLACED_GAP_YEARS = 2;
 /** Marker written when someone turns reminders back on by hand; such a car is never re-flagged. */
@@ -64,7 +66,7 @@ export function staleCarVerdict(e: StaleEvidence, now: Date = new Date()): Stale
   if (replaced) return { tier: 2, label: "same phone back with another car", reason: `${head} The same phone number was back with ${e.otherReg} on ${ukDate(e.otherDate!)}, so this car has probably been replaced.${tail}` };
   if (e.remindedCount >= 2) return { tier: 3, label: "reminded 2+ times, never came", reason: `${head} Reminded ${e.remindedCount} times in the last 3 years without a booking.${tail}` };
   if (e.remindedCount === 1) return { tier: 4, label: "reminded once, never came", reason: `${head} Reminded once in the last 3 years without a booking.${tail}` };
-  return { tier: 5, label: "no work in 5+ years", reason: `${head} Nothing since suggests it is still theirs.${tail}` };
+  return { tier: 5, label: `no work in ${STALE_YEARS}+ years`, reason: `${head} Nothing since suggests it is still theirs.${tail}` };
 }
 
 export type StaleCar = StaleEvidence & {

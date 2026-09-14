@@ -163,8 +163,9 @@ function WorkshopJobSheetInner() {
   // prices (what we last charged on the same model) come from the Price Guide lookup.
   const guideQ = trpc.priceGuide.forRegistration.useQuery({ registration: reg }, { enabled: !!reg, staleTime: 5 * 60_000 });
   const motPrice = Number((pricingQ.data as any)?.motCost) || 50;
+  const vehOil = parseVehOil(vehicle);
   const serviceSets = buildServiceSets({
-    vehInfo: parseVehOil(vehicle),
+    vehInfo: vehOil,
     engineCC: vehicle?.engineCC,
     priceList: (priceListQ.data as any[]) || [],
     labourBands: (bandsQ.data as any[]) || [],
@@ -446,6 +447,13 @@ function WorkshopJobSheetInner() {
                 <JobChip on={!!ticks.small} label="Small Service" sub={smallLabourPrice ? `£${smallLabourPrice} + parts` : "labour + parts"} onClick={() => toggleService("small")} />
                 <JobChip on={!!ticks.major} label="Major Service" sub={majorLabourPrice ? `£${majorLabourPrice} + parts` : "oil + filters"} onClick={() => toggleService("major")} />
               </div>
+              {/* SWS had no oil figure for this car, so the service's oil quantity is the app's guess
+                  for the make: the tick still uses it, and the technician checks the car. */}
+              {vehOil.oilEstimated && vehOil.oilCapacity ? (
+                <p className="text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Oil amount {String(vehOil.oilCapacity).trim()} is an estimate, please check
+                </p>
+              ) : null}
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Describe the work to be carried out…" rows={4} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[16px] outline-none focus:border-violet-500" />
             </div>
           </div>

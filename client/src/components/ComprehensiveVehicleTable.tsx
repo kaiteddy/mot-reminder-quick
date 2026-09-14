@@ -18,15 +18,14 @@ import {
     CalendarDays,
     Trash2,
     Loader2,
-    Eye,
-    CheckCircle2,
-    Clock,
-    XCircle,
     AlertTriangle,
     History,
-    CalendarCheck
+    CalendarCheck,
+    PhoneCall
 } from "lucide-react";
 import { Link } from "wouter";
+import { followUpShownDelivery, whenAgo, type FollowUp } from "@shared/motFollowUp";
+import type { Delivery, DeliveryState } from "@shared/messageDelivery";
 
 interface Vehicle {
     id: number;
@@ -42,6 +41,7 @@ interface Vehicle {
     customerPhone: string | null;
     customerEmail: string | null;
     customerOptedOut: number | null;
+    customerTrade?: number | null;
     remindersOff?: number | null;
     remindersOffReason?: string | null;
     taxStatus: string | null;
@@ -49,6 +49,7 @@ interface Vehicle {
     lastChecked?: Date | string | null;
     lastReminderSent: Date | string | null;
     lastReminderStatus: string | null;
+    lastReminderDelivery?: Delivery | null;
     lastVisit?: Date | string | null;
 }
 
@@ -67,10 +68,38 @@ interface ComprehensiveVehicleTableProps {
     pendingVehicleId?: number | null;
     deletePendingId?: number | null;
     onViewHistory: (vehicle: Vehicle) => void;
+    /** On the MOT Reminders "Follow up" tab: each car's follow-up state, shown under its MOT date. */
+    followUps?: Map<number, FollowUp>;
+    /** Log a follow-up phone call. */
+    onLogCall?: (vehicle: Vehicle) => void;
+    defaultSort?: { field: SortField; direction: SortDirection };
 }
 
 type SortField = "registration" | "customer" | "make" | "motExpiry" | "lastSent" | "lastVisit" | "daysLeft";
 type SortDirection = "asc" | "desc";
+
+const FOLLOW_UP_LABEL: Record<FollowUp["stage"], { text: string; tone: string }> = {
+    missed: { text: "Missed MOT", tone: "text-red-700" },
+    expired_unchecked: { text: "Expired, checking", tone: "text-amber-700" },
+    due: { text: "Reminded, not done", tone: "text-blue-700" },
+};
+// Did they get it (shared/messageDelivery.ts). Adam, 14/09/2026: "a little status update next to these so we
+// know if delivered, read, not received, sent as SMS".
+const DELIVERY_LABEL: Record<DeliveryState, { text: string; tone: string }> = {
+    read: { text: "Read", tone: "bg-blue-50 text-blue-700" },
+    delivered: { text: "Delivered", tone: "bg-green-50 text-green-700" },
+    sent: { text: "Sent", tone: "bg-slate-100 text-slate-600" },
+    not_received: { text: "Not received", tone: "bg-red-50 text-red-700" },
+    sms_sent: { text: "Sent as SMS", tone: "bg-violet-50 text-violet-700" },
+    sms_delivered: { text: "SMS delivered", tone: "bg-violet-50 text-violet-700" },
+};
+const deliveryPill = (d: Delivery) => (
+    <span className={`shrink-0 rounded px-1.5 py-px text-[11px] font-medium leading-4 ${DELIVERY_LABEL[d.state].tone}`} title={d.note}>
+        {DELIVERY_LABEL[d.state].text}
+    </span>
+);
+const ukDayMonth = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", timeZone: "Europe/London" });
+const ukTime = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
 
 export function ComprehensiveVehicleTable({
     vehicles,
@@ -87,9 +116,12 @@ export function ComprehensiveVehicleTable({
     pendingVehicleId = null,
     deletePendingId = null,
     onViewHistory,
+    followUps,
+    onLogCall,
+    defaultSort,
 }: ComprehensiveVehicleTableProps) {
-    const [sortField, setSortField] = useState<SortField>("registration");
-    const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+    const [sortField, setSortField] = useState<SortField>(defaultSort?.field ?? "registration");
+    const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSort?.direction ?? "asc");
 
     const toggleSort = (field: SortField) => {
         if (sortField === field) {
@@ -166,17 +198,6 @@ export function ComprehensiveVehicleTable({
         });
     }, [vehicles, sortField, sortDirection]);
 
-    const getDeliveryStatusIcon = (status: string | null | undefined) => {
-        if (!status) return null;
-        switch (status) {
-            case "read": return <span title="Read"><Eye className="w-3.5 h-3.5 text-blue-600" /></span>;
-            case "delivered": return <span title="Delivered"><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /></span>;
-            case "sent": return <span title="Sent"><Clock className="w-3.5 h-3.5 text-yellow-600" /></span>;
-            case "failed": return <span title="Failed"><XCircle className="w-3.5 h-3.5 text-red-600" /></span>;
-            default: return <span title="Queued"><Clock className="w-3.5 h-3.5 text-gray-400" /></span>;
-        }
-    };
-
     if (isLoading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -185,266 +206,220 @@ export function ComprehensiveVehicleTable({
         );
     }
 
-    return (
-        <div className="rounded-md border overflow-hidden">
-            <Table>
-                <TableHeader className="bg-slate-50">
-                    <TableRow>
-                        <TableHead className="w-12 px-4">
-                            <Checkbox
-                                checked={vehicles.length > 0 && selectedVehicleIds.size === vehicles.filter(v => v.customerPhone).length && selectedVehicleIds.size > 0}
-                                onCheckedChange={(checked) => onSelectAll(!!checked)}
-                            />
-                        </TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("registration")}>
-                            <div className="flex items-center">Registration {getSortIcon("registration")}</div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("customer")}>
-                            <div className="flex items-center">Customer {getSortIcon("customer")}</div>
-                        </TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("make")}>
-                            <div className="flex items-center">Vehicle {getSortIcon("make")}</div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("motExpiry")}>
-                            <div className="flex items-center">MOT Expiry {getSortIcon("motExpiry")}</div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("daysLeft")}>
-                            <div className="flex items-center">Days {getSortIcon("daysLeft")}</div>
-                        </TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Tax Status</TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("lastVisit")}>
-                            <div className="flex items-center">Last Visit {getSortIcon("lastVisit")}</div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("lastSent")}>
-                            <div className="flex items-center">Last Sent {getSortIcon("lastSent")}</div>
-                        </TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {sortedVehicles.length === 0 ? (
-                        <TableRow>
-                            <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
-                                No vehicles found matching the criteria.
-                            </TableCell>
-                        </TableRow>
-                    ) : (
-                        sortedVehicles.map((vehicle) => {
-                            const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
-                            const rowClass = status === "expired" ? "bg-red-50/50" : status === "due" ? "bg-orange-50/50" : "";
+    // Thin rows (Adam, 14/09/2026: "make it easy for me to read, I like thinner UI lines"):
+    // one line per cell, with the extra detail in hover notes rather than stacked under it.
+    const HEAD = "h-8 px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+    const CELL = "px-2 py-1 text-[13px] leading-tight";
+    const ICON = "size-3.5";
+    const iconButton = "h-7 w-7";
+    const shortDate = (d: Date | string) =>
+        new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "Europe/London" });
+    const sortHead = (field: SortField, label: string) => (
+        <TableHead className={`${HEAD} cursor-pointer select-none`} onClick={() => toggleSort(field)}>
+            <span className="inline-flex items-center">{label}{getSortIcon(field)}</span>
+        </TableHead>
+    );
+    const tag = (text: string, tone: string, title?: string) => (
+        <span className={`shrink-0 rounded px-1 py-px text-[10px] font-semibold uppercase leading-none ${tone}`} title={title}>{text}</span>
+    );
+    const statusPill = (status: string, daysLeft: number | null) => {
+        const d = daysLeft ?? 0;
+        const pill = "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
+        if (status === "expired") return <span className={`${pill} bg-red-50 text-red-700 ring-red-200`}>Expired {Math.abs(d)}d</span>;
+        if (status === "due") return <span className={`${pill} bg-orange-50 text-orange-700 ring-orange-200`}>{d === 0 ? "Due today" : `Due ${d}d`}</span>;
+        if (status === "valid") return <span className={`${pill} bg-green-50 text-green-700 ring-green-200`}>Valid</span>;
+        return <span className="text-[11px] text-slate-400">No data</span>;
+    };
+    const followUpNote = (fu: FollowUp) => [
+        `Reminder sent ${ukDayMonth(fu.remindedAt)} at ${ukTime(fu.remindedAt)}.${fu.reminderDelivery ? ` ${fu.reminderDelivery.note}` : ""}`,
+        fu.checkedAfterExpiry
+            ? `Checked ${ukDayMonth(fu.checkedAfterExpiry)} at ${ukTime(fu.checkedAfterExpiry)}: no new MOT.`
+            : fu.stage === "expired_unchecked" ? "Not checked since the MOT ran out; the midnight check will confirm." : "",
+        fu.followedUpAt
+            ? `Followed up ${ukDayMonth(fu.followedUpAt)} at ${ukTime(fu.followedUpAt)} by ${fu.followedUpHow === "call" ? "phone" : "message"}.${fu.followUpDelivery ? ` ${fu.followUpDelivery.note}` : ""}`
+            : "",
+        fu.bookedFor ? `Booked for ${ukDayMonth(fu.bookedFor)}.` : "",
+        fu.todo === "wait"
+            ? `Giving them time to book: follow up from ${fu.followUpFrom.slice(8, 10)}/${fu.followUpFrom.slice(5, 7)} if there's still no MOT.`
+            : "",
+        fu.todo === "call"
+            ? fu.followUpDelivery?.state === "not_received"
+                ? "The follow-up didn't arrive: give them a call, or fix the number and send it again."
+                : `Still no MOT ${whenAgo(fu.followedUpAt!)} after the follow-up: give them a call.`
+            : "",
+    ].filter(Boolean).join(" ");
 
-                            return (
-                                <TableRow key={vehicle.id} className={rowClass}>
-                                    <TableCell className="px-4">
-                                        <Checkbox
-                                            checked={selectedVehicleIds.has(vehicle.id)}
-                                            onCheckedChange={(checked) => onSelectOne(vehicle.id, !!checked)}
-                                            disabled={!vehicle.customerPhone || isSendingBatch}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="font-mono font-bold whitespace-nowrap">
-                                        <div className="flex flex-col gap-1 items-start">
-                                            <div className="flex items-center">
-                                                <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration)}`}>
-                                                    <span className="cursor-pointer hover:underline text-blue-600">
-                                                        {vehicle.registration}
-                                                    </span>
-                                                </Link>
-                                                {vehicle.dateOfRegistration && (
-                                                    <span className="ml-2 text-[10px] text-slate-400 font-normal">
-                                                        ({new Date(vehicle.dateOfRegistration).getFullYear()})
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {(vehicle as any).bookingRequested === 1 && (
-                                                <div className="bg-green-100 text-green-800 px-1 py-0.5 text-[9px] font-bold tracking-wider uppercase rounded-sm border border-green-300">
-                                                    Booking Requested
-                                                </div>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-col">
-                                            <span className="font-medium">
-                                                {vehicle.customerId ? (
-                                                    <Link href={`/customers/${vehicle.customerId}`}>
-                                                        <span className="cursor-pointer hover:underline text-blue-600 truncate max-w-[120px] inline-block">
-                                                            {vehicle.customerName || "Unknown"}
-                                                        </span>
-                                                    </Link>
-                                                ) : (
-                                                    vehicle.customerName || "Unknown"
-                                                )}
-                                            </span>
-                                            {!!vehicle.customerOptedOut && (
-                                                <Badge variant="destructive" className="h-4 text-[9px] px-1 w-fit">OPTED OUT</Badge>
-                                            )}
-                                            {!!vehicle.remindersOff && (
-                                                <Badge variant="secondary" className="h-4 text-[9px] px-1 w-fit" title={vehicle.remindersOffReason || "Reminders switched off for this car"}>REMINDERS OFF</Badge>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-xs font-mono text-slate-500 whitespace-nowrap">
-                                        {vehicle.customerPhone || "-"}
-                                    </TableCell>
-                                    <TableCell className="text-xs max-w-[150px]">
-                                        <div className="truncate font-medium">{vehicle.make || "Unknown"}</div>
-                                        <div className="truncate text-slate-500">{vehicle.model || ""}</div>
-                                    </TableCell>
-                                    <TableCell className="text-sm whitespace-nowrap">
-                                        <div className="flex flex-col">
-                                            {vehicle.motExpiryDate ? (
-                                                <span className="font-medium">{new Date(vehicle.motExpiryDate).toLocaleDateString("en-GB")}</span>
-                                            ) : (
-                                                <span className="text-slate-400 italic">No data</span>
-                                            )}
-                                            {vehicle.firstMot && (
-                                                <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-700" title="Never had an MOT. This is the date its first one is due, from DVSA.">
-                                                    First MOT due
+    return (
+        <Table>
+            <TableHeader className="bg-slate-50/80">
+                <TableRow className="hover:bg-transparent">
+                    <TableHead className={`${HEAD} w-8 pl-3`}>
+                        <Checkbox
+                            checked={vehicles.length > 0 && selectedVehicleIds.size === vehicles.filter(v => v.customerPhone).length && selectedVehicleIds.size > 0}
+                            onCheckedChange={(checked) => onSelectAll(!!checked)}
+                        />
+                    </TableHead>
+                    {sortHead("registration", "Reg")}
+                    {sortHead("customer", "Customer")}
+                    <TableHead className={HEAD}>Phone</TableHead>
+                    {sortHead("make", "Vehicle")}
+                    {sortHead("motExpiry", "MOT")}
+                    {sortHead("daysLeft", "Status")}
+                    {followUps ? <TableHead className={HEAD}>Follow-up</TableHead> : sortHead("lastSent", "Last sent")}
+                    <TableHead className={HEAD}>Tax</TableHead>
+                    {sortHead("lastVisit", "Last visit")}
+                    <TableHead className={`${HEAD} pr-3 text-right`}><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {sortedVehicles.length === 0 ? (
+                    <TableRow>
+                        <TableCell colSpan={11} className="h-20 text-center text-sm text-muted-foreground">
+                            No cars match these filters.
+                        </TableCell>
+                    </TableRow>
+                ) : (
+                    sortedVehicles.map((vehicle) => {
+                        const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
+                        const fu = followUps?.get(vehicle.id);
+                        const shownDelivery = fu ? followUpShownDelivery(fu) : null;
+                        const year = vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).getFullYear() : null;
+                        const vehicleTitle = `${[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unknown"}${year ? ` (${year})` : ""}`;
+
+                        return (
+                            <TableRow key={vehicle.id} className="border-slate-100 hover:bg-slate-50">
+                                <TableCell className={`${CELL} pl-3`}>
+                                    <Checkbox
+                                        checked={selectedVehicleIds.has(vehicle.id)}
+                                        onCheckedChange={(checked) => onSelectOne(vehicle.id, !!checked)}
+                                        disabled={!vehicle.customerPhone || isSendingBatch}
+                                    />
+                                </TableCell>
+                                <TableCell className={CELL}>
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <Link href={`/view-vehicle/${encodeURIComponent(vehicle.registration)}`}>
+                                            <span className="cursor-pointer font-mono font-semibold text-blue-700 hover:underline">{vehicle.registration}</span>
+                                        </Link>
+                                        {(vehicle as any).bookingRequested === 1 && tag("Booking", "bg-green-100 text-green-800", "The customer asked to book")}
+                                    </span>
+                                </TableCell>
+                                <TableCell className={CELL}>
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                        {vehicle.customerId ? (
+                                            <Link href={`/customers/${vehicle.customerId}`}>
+                                                <span className="block max-w-[170px] cursor-pointer truncate text-slate-900 hover:underline" title={vehicle.customerName || undefined}>
+                                                    {vehicle.customerName || "Unknown"}
                                                 </span>
-                                            )}
-                                            {vehicle.lastChecked && (
-                                                <span className="text-[10px] text-muted-foreground mt-0.5">
-                                                    Updated: {new Date(vehicle.lastChecked).toLocaleDateString("en-GB")}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-sm font-medium">
-                                        {daysLeft !== null ? (
-                                            <span className={daysLeft < 0 ? "text-red-600" : daysLeft <= 30 ? "text-orange-600" : "text-green-600"}>
-                                                {daysLeft < 0 ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d`}
-                                            </span>
-                                        ) : "-"}
-                                    </TableCell>
-                                    <TableCell>
-                                        {status === "expired" && <Badge className="bg-red-500">Expired</Badge>}
-                                        {status === "due" && <Badge className="bg-orange-500">Due Soon</Badge>}
-                                        {status === "valid" && <Badge className="bg-green-500 text-white border-none">Valid</Badge>}
-                                        {status === "none" && <Badge variant="secondary">No Data</Badge>}
-                                    </TableCell>
-                                    <TableCell>
-                                        {vehicle.taxStatus ? (
-                                            <Badge
-                                                variant="outline"
-                                                className={vehicle.taxStatus === "Taxed" ? "text-green-600 border-green-200 bg-green-50" : vehicle.taxStatus === "SORN" ? "bg-slate-100" : "text-red-600 border-red-200 bg-red-50"}
-                                            >
-                                                {vehicle.taxStatus}
-                                            </Badge>
-                                        ) : "-"}
-                                    </TableCell>
-                                    <TableCell className="text-[11px] whitespace-nowrap">
-                                        {vehicle.lastVisit ? (
-                                            (() => {
-                                                const visitDate = new Date(vehicle.lastVisit as Date | string);
-                                                const diffDays = Math.floor((new Date().getTime() - visitDate.getTime()) / (1000 * 60 * 60 * 24));
-                                                return (
-                                                    <span className="font-medium">
-                                                        {visitDate.toLocaleDateString("en-GB")}
-                                                        <span className="text-slate-500 ml-1 font-normal">({diffDays}d ago)</span>
-                                                    </span>
-                                                );
-                                            })()
+                                            </Link>
                                         ) : (
-                                            <span className="text-slate-400">Never</span>
+                                            <span className="block max-w-[170px] truncate text-slate-500">{vehicle.customerName || "Unknown"}</span>
                                         )}
+                                        {!!vehicle.customerOptedOut && tag("Opted out", "bg-red-100 text-red-700")}
+                                        {!!vehicle.customerTrade && tag("Trade", "bg-amber-100 text-amber-800", "Trade account: never sent reminders")}
+                                        {!!vehicle.remindersOff && tag("Off", "bg-slate-200 text-slate-700", vehicle.remindersOffReason || "Reminders switched off for this car")}
+                                    </span>
+                                </TableCell>
+                                <TableCell className={`${CELL} font-mono text-[12px] text-slate-500`}>{vehicle.customerPhone || "—"}</TableCell>
+                                <TableCell className={CELL}>
+                                    <span className="block max-w-[220px] truncate" title={vehicleTitle}>
+                                        <span className="text-slate-900">{vehicle.make || "Unknown"}</span>
+                                        {vehicle.model && <span className="text-slate-500"> {vehicle.model}</span>}
+                                        {year && <span className="text-slate-400"> · {year}</span>}
+                                    </span>
+                                </TableCell>
+                                <TableCell
+                                    className={`${CELL} tabular-nums`}
+                                    title={vehicle.lastChecked ? `Last checked ${new Date(vehicle.lastChecked).toLocaleDateString("en-GB")}` : "Not checked yet"}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {vehicle.motExpiryDate ? shortDate(vehicle.motExpiryDate) : <span className="text-slate-400">—</span>}
+                                        {vehicle.firstMot && tag("1st MOT", "bg-blue-100 text-blue-700", "Never had an MOT: this is when its first one is due, from DVSA")}
+                                    </span>
+                                </TableCell>
+                                <TableCell className={CELL}>{statusPill(status, daysLeft)}</TableCell>
+                                {followUps ? (
+                                    <TableCell className={CELL} title={fu ? followUpNote(fu) : undefined}>
+                                        {fu ? (
+                                            <span className="flex max-w-[320px] min-w-0 items-center gap-1.5">
+                                                <span className={`shrink-0 font-semibold ${FOLLOW_UP_LABEL[fu.stage].tone}`}>{FOLLOW_UP_LABEL[fu.stage].text}</span>
+                                                <span className="truncate text-slate-500">
+                                                    {fu.followedUpAt
+                                                        ? `${fu.followedUpHow === "call" ? "called" : "messaged"} ${whenAgo(fu.followedUpAt)}`
+                                                        : fu.bookedFor ? `booked for ${ukDayMonth(fu.bookedFor)}` : `reminded ${whenAgo(fu.remindedAt)}`}
+                                                </span>
+                                                {shownDelivery && deliveryPill(shownDelivery)}
+                                                {fu.todo === "call" && tag("Call", "bg-amber-100 text-amber-800", "One follow-up message per MOT; the next step is a phone call")}
+                                            </span>
+                                        ) : <span className="text-slate-400">—</span>}
                                     </TableCell>
-                                    <TableCell>
+                                ) : (
+                                    <TableCell
+                                        className={CELL}
+                                        title={vehicle.lastReminderSent ? `Sent ${shortDate(vehicle.lastReminderSent)}.${vehicle.lastReminderDelivery ? ` ${vehicle.lastReminderDelivery.note}` : ""}` : undefined}
+                                    >
                                         {vehicle.lastReminderSent ? (
-                                            (() => {
-                                                const sentDate = new Date(vehicle.lastReminderSent);
-                                                const today = new Date();
-                                                const diffTime = today.getTime() - sentDate.getTime();
-                                                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                                                return (
-                                                    <div className="flex flex-col text-[11px]">
-                                                        <span className="font-medium">
-                                                            {sentDate.toLocaleDateString("en-GB")}
-                                                            <span className="text-slate-500 ml-1 font-normal">({diffDays}d ago)</span>
-                                                        </span>
-                                                        <div className="flex items-center gap-1">
-                                                            {getDeliveryStatusIcon(vehicle.lastReminderStatus)}
-                                                            <span className="text-slate-400 capitalize">{vehicle.lastReminderStatus || 'queued'}</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })()
-                                        ) : (
-                                            <span className="text-slate-400 text-xs">Never</span>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {whenAgo(vehicle.lastReminderSent)}
+                                                {vehicle.lastReminderDelivery && deliveryPill(vehicle.lastReminderDelivery)}
+                                            </span>
+                                        ) : <span className="text-slate-400">Never</span>}
+                                    </TableCell>
+                                )}
+                                <TableCell className={CELL}>
+                                    {vehicle.taxStatus ? (
+                                        <span className={vehicle.taxStatus === "Taxed" ? "text-green-700" : vehicle.taxStatus === "SORN" ? "text-slate-500" : "text-red-600"}>
+                                            {/^not taxed/i.test(vehicle.taxStatus) ? "Not taxed" : vehicle.taxStatus}
+                                        </span>
+                                    ) : <span className="text-slate-400">—</span>}
+                                </TableCell>
+                                <TableCell className={`${CELL} text-slate-600`} title={vehicle.lastVisit ? shortDate(vehicle.lastVisit) : undefined}>
+                                    {vehicle.lastVisit ? whenAgo(vehicle.lastVisit) : <span className="text-slate-400">Never</span>}
+                                </TableCell>
+                                <TableCell className={`${CELL} pr-3`}>
+                                    <div className="flex items-center justify-end gap-0.5">
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className={`${iconButton} text-blue-600 hover:bg-blue-50 hover:text-blue-700`}
+                                            onClick={() => onSendReminder(vehicle)}
+                                            disabled={isSendingBatch || !vehicle.customerPhone || (pendingVehicleId === vehicle.id)}
+                                            title={followUps ? "Send follow-up message" : "Send reminder"}
+                                        >
+                                            {pendingVehicleId === vehicle.id ? <Loader2 className={`${ICON} animate-spin`} /> : <Send className={ICON} />}
+                                        </Button>
+                                        {onLogCall && (
+                                            <Button size="icon" variant="ghost" className={`${iconButton} text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800`} onClick={() => onLogCall(vehicle)} title="Log a follow-up call">
+                                                <PhoneCall className={ICON} />
+                                            </Button>
                                         )}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                onClick={() => onSendReminder(vehicle)}
-                                                disabled={isSendingBatch || !vehicle.customerPhone || (pendingVehicleId === vehicle.id)}
-                                            >
-                                                {pendingVehicleId === vehicle.id ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <span title="Send Reminder">
-                                                        <Send className="h-4 w-4" />
-                                                    </span>
-                                                )}
+                                        {onMarkBooked && (
+                                            <Button size="icon" variant="ghost" className={`${iconButton} text-green-600 hover:bg-green-50 hover:text-green-700`} onClick={() => onMarkBooked(vehicle)} title="Mark as booked">
+                                                <CalendarCheck className={ICON} />
                                             </Button>
-                                            {onMarkBooked && (
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                                    onClick={() => onMarkBooked(vehicle)}
-                                                >
-                                                    <span title="Mark as Booked">
-                                                        <CalendarCheck className="h-4 w-4" />
-                                                    </span>
-                                                </Button>
-                                            )}
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                onClick={() => onViewHistory(vehicle)}
-                                            >
-                                                <span title="View Service History">
-                                                    <History className="h-4 w-4" />
-                                                </span>
-                                            </Button>
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 text-slate-600 hover:text-slate-700 hover:bg-slate-100"
-                                                onClick={() => onBookMOT(vehicle)}
-                                            >
-                                                <span title="Book MOT / Update Date">
-                                                    <CalendarDays className="h-4 w-4" />
-                                                </span>
-                                            </Button>
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                                                onClick={() => onDelete(vehicle.id)}
-                                                disabled={isDeletingBatch || (deletePendingId === vehicle.id)}
-                                            >
-                                                {deletePendingId === vehicle.id ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <Trash2 className="h-4 w-4" />
-                                                )}
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })
-                    )}
-                </TableBody>
-            </Table>
-        </div>
+                                        )}
+                                        <Button size="icon" variant="ghost" className={`${iconButton} text-slate-500 hover:bg-slate-100 hover:text-slate-800`} onClick={() => onViewHistory(vehicle)} title="Service history">
+                                            <History className={ICON} />
+                                        </Button>
+                                        <Button size="icon" variant="ghost" className={`${iconButton} text-slate-500 hover:bg-slate-100 hover:text-slate-800`} onClick={() => onBookMOT(vehicle)} title="Book MOT / update date">
+                                            <CalendarDays className={ICON} />
+                                        </Button>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className={`${iconButton} text-slate-400 hover:bg-red-50 hover:text-red-600`}
+                                            onClick={() => onDelete(vehicle.id)}
+                                            disabled={isDeletingBatch || (deletePendingId === vehicle.id)}
+                                            title="Delete car"
+                                        >
+                                            {deletePendingId === vehicle.id ? <Loader2 className={`${ICON} animate-spin`} /> : <Trash2 className={ICON} />}
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })
+                )}
+            </TableBody>
+        </Table>
     );
 }

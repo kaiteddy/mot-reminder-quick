@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { Car, RefreshCw, Loader2, ExternalLink, Gauge, CalendarClock, ShieldCheck, Search, AlertTriangle, Eye, LayoutGrid, List, ChevronUp, ChevronDown, ChevronsUpDown, ReceiptText, BadgePoundSterling, Undo2, Upload, Printer, Globe, CloudOff } from "lucide-react";
@@ -228,7 +229,7 @@ export default function SalesStock() {
     let out = onlyStuck ? cars.filter((c) => missingCount(c) > 0) : cars;
     if (onlyUnlisted) out = out.filter((c: any) => !isAdvertised(c) && !isSold(c));
     if (statFilter) out = out.filter((c: any) => matchesStat(c, statFilter));
-    if (f) out = out.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f));
+    if (f) out = out.filter((c) => `${c.registration} ${c.make} ${c.model} ${c.colour} ${c.fuelType}`.toLowerCase().includes(f) || (!!normRegKey(f) && normRegKey(c.registration || "").includes(normRegKey(f))));
     return out;
   }, [cars, filter, onlyStuck, onlyUnlisted, isAdvertised, statFilter, matchesStat]);
 

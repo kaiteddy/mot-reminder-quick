@@ -31,7 +31,7 @@ import { useClassicBase } from "@/lib/classicNav";
 import { findPartOn7zap, openSevenZap, openSevenZapPopup, sevenZapPartUrl } from "@/lib/sevenZap";
 import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
-import { buildServiceSets } from "@shared/serviceParts";
+import { buildServiceSets, isEstimatedLubricant } from "@shared/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, smsSegments, withMotNote } from "@shared/carReadyMessage";
 import { DefectExplainButton } from "@/components/DefectExplainer";
@@ -915,7 +915,9 @@ export default function DocumentDetails() {
   const vehInfo = useMemo(() => {
     const v = (data as any)?.vehicle;
     const td = (v?.comprehensiveTechnicalData as any) || {};
-    const oils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const allOils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const realOils = allOils.filter((l: any) => !isEstimatedLubricant(l));
+    const oils = realOils.length ? realOils : allOils;
     const oil = oils[0];
     // SWS lists one engine-oil row per ACEA/API standard; collapse to the distinct SAE grades
     // (e.g. 5W-30, 0W-30, 0W-20), preferred first, so every grade the engine accepts is visible.
@@ -929,6 +931,8 @@ export default function DocumentDetails() {
       oilGrades,
       oilPreferred: prefG,
       oilCapacity: lookupTech?.oilCapacity ?? oil?.capacity,
+      // The app's make-level guess (saved when SWS had nothing) looks like a real figure — say so.
+      oilEstimated: lookupTech?.oilCapacity != null ? !!lookupTech.oilEstimated : !!oil && isEstimatedLubricant(oil),
       airconType: lookupTech?.airconType ?? td.aircon?.type,
       airconCapacity: lookupTech?.airconCapacity ?? td.aircon?.quantity ?? td.aircon?.capacity,
       motExpiry: motTaxLive.data?.motExpiryDate ?? lookupTech?.motExpiry ?? v?.motExpiryDate,
@@ -1946,7 +1950,7 @@ export default function DocumentDetails() {
             <div className="@container px-3 pt-1 pb-4 grid grid-cols-2 gap-1.5 sm:flex sm:flex-nowrap sm:gap-1.5 @4xl:gap-2 sm:[&>*]:flex-1 sm:[&>*]:basis-0 [&>*]:min-w-0 overflow-hidden">
               <InfoCard icon={<Droplet className="w-4 h-4" />} tone="amber" label="Engine Oil"
                 main={vehInfo.oilGrades?.length ? vehInfo.oilGrades.join("  ·  ") : (vehInfo.oilSpec || "—")}
-                sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
+                sub={[vehInfo.oilCapacity ? `Capacity ${vehInfo.oilCapacity}${vehInfo.oilEstimated ? " — estimate, please check" : ""}` : null, (vehInfo.oilGrades?.length > 1 && vehInfo.oilPreferred?.length) ? `preferred ${vehInfo.oilPreferred.join("/")}` : null].filter(Boolean).join(" · ") || undefined} />
               <InfoCard icon={<Snowflake className="w-4 h-4" />} tone="sky" label="Air Con"
                 main={vehInfo.airconType || "—"} sub={fmtGasQty(vehInfo.airconCapacity)} />
               {vehInfo.tyres?.entries?.length ? (

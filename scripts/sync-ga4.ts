@@ -362,7 +362,7 @@ await archiveCreditNotes(c, GO, path.join(process.cwd(), "scripts", ".cleanup-ba
 // ---- 12) Link a vehicle to its owner when history names exactly one customer but the vehicle itself has none ----
 await linkOrphanedVehicleOwners(c, GO, path.join(process.cwd(), "scripts", ".cleanup-backups"));
 
-// ---- 13) Stop reminders for cars with no work in 5+ years. Runs LAST, after owners are linked.
+// ---- 13) Stop reminders for cars with no work in 4+ years. Runs LAST, after owners are linked.
 // This used to clear the owner instead, and step 12 plus GA4's nightly import put it straight
 // back — 1,675 of 2,139 archived cars were back in the reminder list by September. The owner now
 // stays; only the car's reminders switch off, with the evidence written on the vehicle.

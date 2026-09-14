@@ -457,6 +457,27 @@ async function logIncomingMessage(data: {
       customerId,
     });
 
+    // They say the car isn't theirs: take it off the reminder list now, in their own words, instead
+    // of leaving it for someone to remember (services/notOwnerReplies). Never allowed to fail the
+    // webhook — Twilio would retry and the message would be handled twice.
+    if (triage?.kind === "not_owner") {
+      try {
+        const { getDb } = await import("../db");
+        const db: any = await getDb();
+        if (db?.$client) {
+          const { switchOffCarForNotOwnerReply } = await import("../services/notOwnerReplies");
+          const car = await switchOffCarForNotOwnerReply((t, p) => db.$client.query(t, p), { messageSid: data.messageSid });
+          if (car) {
+            await db.$client.query(`UPDATE "customerMessages" SET "triageReason" = COALESCE("triageReason", '') || $1 WHERE "messageSid" = $2`,
+              [` Reminders switched off for ${car.registration}.`, data.messageSid]);
+            console.log(`[Twilio Webhook] ✓ Reminders switched off for ${car.registration}: the customer says it isn't theirs`);
+          }
+        }
+      } catch (e: any) {
+        console.warn("[Twilio Webhook] could not switch off the disowned car:", e?.message);
+      }
+    }
+
     // Text whoever is on call, so a reply doesn't sit unseen in the web app. Awaited rather than
     // fired-and-forgotten because serverless can freeze the instance as soon as we respond to
     // Twilio — but it never throws, so a failed alert can't make Twilio retry the message.

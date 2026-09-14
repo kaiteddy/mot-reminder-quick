@@ -186,6 +186,7 @@ function PriceSources({ data }: { data: any }) {
       {oil?.litres ? (
         <span>
           oil {oil.litres} L{oil.grade ? ` of ${oil.grade}` : ""}{oil.pricePerLitre != null ? ` at ${amount(oil.pricePerLitre)}/L` : ""} — capacity from {oil.source}
+          {oil.estimated ? <strong className="text-amber-700"> (estimate, please check)</strong> : null}
         </span>
       ) : null}
       {sources.map(([name, s]) => (

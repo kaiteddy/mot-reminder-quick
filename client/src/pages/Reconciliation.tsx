@@ -1,5 +1,6 @@
 import { Fragment as Frag, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { normRegKey } from "@shared/vehicleIdentity";
 import { useReactToPrint } from "react-to-print";
 import { round2 } from "@/lib/utils";
 import { toast } from "sonner";
@@ -1272,7 +1273,7 @@ function CarTradingTab() {
       if (noFeesOnly && r.feeBreakdown) continue;
       if (monthFilter && String(r.purchaseDate || "").slice(0, 7) !== monthFilter) continue;
       if (needsData && r.purchaseCost != null && r.purchaseDate != null) continue;
-      if (cq && !(r.registration || "").toLowerCase().includes(cq) && !(r.description || "").toLowerCase().includes(cq)) continue;
+      if (cq && !normRegKey(r.registration || "").includes(normRegKey(cq)) && !(r.description || "").toLowerCase().includes(cq)) continue;
       s.add(r.id);
     }
     return s;
@@ -1734,7 +1735,7 @@ function CarPicker({ cars, value, onChange, allowDelivery }: { cars: any[]; valu
   const label = current ? `${current.registration || "(no reg)"} · ${current.description || ""}` : "— unassigned —";
   const needle = q.trim().toLowerCase();
   const shown = needle
-    ? cars.filter((d) => `${d.registration || ""} ${d.description || ""} ${d.status === "sold" ? "sold" : "in stock"}`.toLowerCase().includes(needle))
+    ? cars.filter((d) => `${d.registration || ""} ${d.description || ""} ${d.status === "sold" ? "sold" : "in stock"}`.toLowerCase().includes(needle) || (!!normRegKey(needle) && normRegKey(d.registration || "").includes(normRegKey(needle))))
     : cars;
   const deliv = !!allowDelivery && mode === "delivery";
   const pick = (id: number | null) => { onChange(id, deliv ? "delivery" : "purchase"); setOpen(false); setQ(""); setMode("purchase"); };

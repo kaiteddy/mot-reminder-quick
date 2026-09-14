@@ -533,8 +533,20 @@ async function triageStragglers(): Promise<number> {
     for (const m of rows) {
       const hasMedia = Array.isArray(m.mediaUrls) ? m.mediaUrls.length > 0 : !!m.mediaUrls;
       const t = await triageMessage({ body: m.messageBody, hasMedia });
+      // A car the customer says isn't theirs comes off the reminder list here too, as when the
+      // webhook judges the reply itself (services/notOwnerReplies); the saved reason says so.
+      let reason = t.reason;
+      if (t.kind === "not_owner" && (db as any).$client) {
+        try {
+          const { switchOffCarForNotOwnerReply } = await import("./notOwnerReplies");
+          const car = await switchOffCarForNotOwnerReply((q, p) => (db as any).$client.query(q, p), { id: Number(m.id) });
+          if (car) reason = `${t.reason} Reminders switched off for ${car.registration}.`;
+        } catch (e: any) {
+          console.warn("[Unanswered] could not switch off the disowned car:", e?.message);
+        }
+      }
       await db.execute(sql`UPDATE "customerMessages"
-                              SET "replyNeeded" = ${t.needsReply ? 1 : 0}, "triageKind" = ${t.kind}, "triageReason" = ${t.reason}
+                              SET "replyNeeded" = ${t.needsReply ? 1 : 0}, "triageKind" = ${t.kind}, "triageReason" = ${reason}
                             WHERE id = ${m.id}`);
       done++;
     }

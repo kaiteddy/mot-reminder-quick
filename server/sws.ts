@@ -479,12 +479,15 @@ export async function fetchRichVehicleData(vrm: string, includeUKVD: boolean = f
             yearNum
         );
 
+        // Flagged, because nothing else tells these apart from SWS data once saved: every screen
+        // that shows an oil amount marks a guessed one as an estimate to check
+        // (shared/serviceParts isEstimatedLubricant).
         if (!result.lubricants || result.lubricants.length === 0) {
-            result.lubricants = heuristics.lubricants.map(l => ({ ...l, capacity: `${l.capacity} L` }));
+            result.lubricants = heuristics.lubricants.map(l => ({ ...l, capacity: `${l.capacity} L`, estimated: true }));
         }
 
         if (!result.aircon || Object.keys(result.aircon).length === 0) {
-            result.aircon = { type: heuristics.aircon.type, quantity: `${heuristics.aircon.capacity} g` };
+            result.aircon = { type: heuristics.aircon.type, quantity: `${heuristics.aircon.capacity} g`, estimated: true };
         }
     }
 
