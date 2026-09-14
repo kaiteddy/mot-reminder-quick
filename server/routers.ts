@@ -2412,16 +2412,11 @@ export const appRouter = router({
             });
             messageContent = input.customMessage;
           } else if (messageType === "UrgentFollowUp") {
-            const { sendUrgentFollowUpWithTemplate, generateFullUrgentFollowUpTemplateContent } = await import("./smsService");
+            const { sendUrgentFollowUpWithTemplate } = await import("./smsService");
+            const { followUpMessage } = await import("../shared/motFollowUpMessage");
             
-            const isExpired = expiryDate < new Date();
-            messageContent = generateFullUrgentFollowUpTemplateContent({
-              customerName,
-              registration,
-              motExpiryDate: expiryDate,
-              isExpired,
-              daysLeft: daysUntil,
-            });
+            // The preview and the log show exactly what the approved template sends.
+            messageContent = followUpMessage({ customerName, registration, motExpiryDate: expiryDate }).text;
 
             result = input.preview ? { success: true } : await sendUrgentFollowUpWithTemplate({
               to: input.phoneNumber,
@@ -2493,7 +2488,10 @@ export const appRouter = router({
           now.setHours(0, 0, 0, 0);
           const expDate = new Date(expiryDate);
           expDate.setHours(0, 0, 0, 0);
-          const isExpired = expDate < now;
+          // A follow-up is filed as urgent_expired / urgent_expiring by the same UK-day rule that picked its template.
+          const isExpired = messageType === "UrgentFollowUp"
+            ? (await import("../shared/motFollowUpMessage")).followUpMessage({ customerName, registration, motExpiryDate: expiryDate }).isExpired
+            : expDate < now;
 
           // Who this went to. The reminder screens send by VEHICLE and don't pass a customer,
           // so the log used to be filed against nobody — and a message filed against nobody

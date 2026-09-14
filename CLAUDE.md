@@ -72,6 +72,9 @@ change a tripwire only when Adam changes the rule. Each came from a real fault f
   The midnight check (`server/services/motExpiryCheck.ts`; crons `mot-expiry-check` at 23:59 and
   `mot-expiry-check-after-midnight` at 00:01 London time) asks DVSA again so a car tested elsewhere drops off.
   Every MOT refresh goes through `server/services/motRefreshRun.ts`.
+- **The follow-up WhatsApp** uses only the two Meta-approved UTILITY templates in `shared/motFollowUpMessage.ts`
+  (name, registration, date — three variables, no days left). New wording means a new template approved by Meta
+  first; its SID and body then change there together.
 - **Tests never touch the live database**: DB tests need the sandbox `TEST_DATABASE_URL`; anything in the build
   gate must need no database at all.
 

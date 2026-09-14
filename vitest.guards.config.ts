@@ -35,6 +35,7 @@ export default defineConfig({
       "server/workshopData.test.ts",
       "server/motFollowUp.test.ts",
       "server/motExpiryCheck.test.ts",
+      "server/motFollowUpMessage.test.ts",
     ],
   },
 });

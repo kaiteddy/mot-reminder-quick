@@ -4,6 +4,7 @@
  */
 import { carReadyRoute } from "../shared/carReadyMessage";
 import { normalizePhoneNumber } from "./utils/phoneUtils";
+import { followUpMessage } from "../shared/motFollowUpMessage";
 
 
 interface SMSConfig {
@@ -433,36 +434,8 @@ export async function sendServiceReminderWithTemplate(params: {
 }
 
 /**
- * Generate full Urgent Follow-Up template content (for display/storage)
- */
-export function generateFullUrgentFollowUpTemplateContent(params: {
-  customerName: string;
-  registration: string;
-  motExpiryDate: Date;
-  isExpired: boolean;
-  daysLeft?: number;
-}): string {
-  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-
-  const header = "🚗 *Eli Motors Ltd* - MOT Reminder";
-
-  const body = params.isExpired
-    ? `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT expired on ${formattedDate}.\nPlease do call us to book your car in or notify us if you no longer own the vehicle.`
-    : `Hi ${params.customerName},\n\nYour vehicle ${params.registration} MOT is due to expire on ${formattedDate} (in ${params.daysLeft} days).\nPlease do call us to book your car in or notify us if you no longer own the vehicle.`;
-
-  const callToAction = `📅 Book your MOT test today\n📞 Call: 0208 203 6449\n🌐 Visit: www.elimotors.co.uk\n📍 Hendon, London`;
-
-  const footer = `✨ Serving Hendon since 1979 ✨\n\nReply STOP to opt out.`;
-
-  return `${header}\n\n${body}\n\n${callToAction}\n\n${footer}`;
-}
-
-/**
- * Send Urgent Follow-Up reminder using WhatsApp template
+ * Send the MOT follow-up: a reminder went out and the MOT still hasn't been done.
+ * The template, its variables and the wording all come from shared/motFollowUpMessage.ts.
  */
 export async function sendUrgentFollowUpWithTemplate(params: {
   to: string;
@@ -470,51 +443,14 @@ export async function sendUrgentFollowUpWithTemplate(params: {
   registration: string;
   motExpiryDate: Date;
 }): Promise<SendSMSResult> {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-
-  const expiryDate = new Date(params.motExpiryDate);
-  expiryDate.setHours(0, 0, 0, 0);
-
-  const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  const isExpired = expiryDate < now;
-
-  const formattedDate = params.motExpiryDate.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-
-  // Use the approved SIDs provided by the user in Twilio console
-  const templateSid = isExpired
-    ? process.env.TWILIO_URGENT_EXPIRED_TEMPLATE_SID || 'HXe190fe9ce0c696e1631a32319f8eb783' // mot_expired
-    : process.env.TWILIO_URGENT_EXPIRING_TEMPLATE_SID || 'HXd3903b97116a1967f51c87a233a052c6'; // mot_expiring
-
-  const templateVariables: Record<string, string> = isExpired ? {
-    '1': params.customerName,
-    '2': params.registration,
-    '3': formattedDate,
-  } : {
-    '1': params.customerName,
-    '2': params.registration,
-    '3': formattedDate,
-    '4': daysLeft.toString(),
-  };
-
-  const fallbackMessage = generateFullUrgentFollowUpTemplateContent({
-    customerName: params.customerName,
-    registration: params.registration,
-    motExpiryDate: params.motExpiryDate,
-    isExpired,
-    daysLeft,
-  });
+  const followUp = followUpMessage(params);
 
   return sendSMS({
     to: params.to,
     useTemplate: true,
-    templateSid,
-    templateVariables,
-    fallbackMessage,
+    templateSid: followUp.templateSid,
+    templateVariables: followUp.variables,
+    fallbackMessage: followUp.text,
   });
 }
 
