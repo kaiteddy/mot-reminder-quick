@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Truck } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { ReturnDialog } from "@/components/ReturnDialog";
 
 // Normalise a registration for comparison — vehicles.registration is stored solid (no space),
 // and WISMO returns the reg as customer_order_ref; strip spaces and upper-case both sides.
@@ -66,7 +67,10 @@ export function OmnipartOrdersCard({ registration }: { registration?: string | n
                 {o.numberOfItems ?? "?"} item{o.numberOfItems === 1 ? "" : "s"} · {money(o.totalIncTax)}
               </span>
             </div>
-            <OrderStatusBadge status={o.status} />
+            <div className="flex items-center gap-2">
+              <OrderStatusBadge status={o.status} />
+              <ReturnDialog orderRef={o.orderRef} orderId={o.dbOrderId} />
+            </div>
           </div>
         ))}
       </CardContent>
