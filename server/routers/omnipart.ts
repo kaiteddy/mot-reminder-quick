@@ -555,7 +555,7 @@ export const omnipartRouter = router({
         const o = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.values(raw)[0] : null;
         if (!o || typeof o !== "object") return { parts: [], deliveryStatus: null, eta: null, orderStatus: null };
         const oo = o as any;
-        const parts: Array<{ code: string | null; name: string | null; quantity: number | null; status: string | null }> = [];
+        const parts: Array<{ code: string | null; name: string | null; brand: string | null; quantity: number | null; status: string | null }> = [];
         let deliveryStatus: string | null = null, eta: string | null = null;
         for (const dv of Object.values(oo.deliveries || {}) as any[]) {
           if (dv && typeof dv === "object") {
@@ -564,13 +564,28 @@ export const omnipartRouter = router({
             for (const ln of Object.values(dv.lines || {}) as any[]) {
               parts.push({
                 code: ln.product_code || ln.sku || null,
-                name: ln.description || ln.product_name || ln.name || ln.product_code || null,
+                name: null,
+                brand: null,
                 quantity: ln.quantity ?? ln.qty ?? null,
                 status: ln.status || ln.line_status || null,
               });
             }
           }
         }
+        // Resolve friendly product names for each SKU (the delivery line only carries the code).
+        await Promise.all(parts.map(async (p) => {
+          if (!p.code) return;
+          try {
+            const s = await omnipartFetch("GET", `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${encodeURIComponent(p.code)}`, headers);
+            const raw2 = s?.products || s?.["hydra:member"] || s?.searchResults?.products || [];
+            const arr = Array.isArray(raw2) ? raw2 : Object.values(raw2 || {});
+            const first: any = arr[0];
+            if (first) {
+              p.name = first.name || first.updatedProductName || null;
+              p.brand = (first.brand && typeof first.brand === "object" ? first.brand.name : first.brand) || null;
+            }
+          } catch { /* keep the bare code */ }
+        }));
         return { parts, deliveryStatus, eta, orderStatus: oo.order_status || null };
       } catch (e: any) {
         // best-effort — surface an empty result rather than breaking the row
