@@ -28,7 +28,7 @@ import {
     PhoneCall
 } from "lucide-react";
 import { Link } from "wouter";
-import type { FollowUp } from "@shared/motFollowUp";
+import { whenAgo, type FollowUp } from "@shared/motFollowUp";
 
 interface Vehicle {
     id: number;
@@ -212,10 +212,6 @@ export function ComprehensiveVehicleTable({
     const iconButton = "h-7 w-7";
     const shortDate = (d: Date | string) =>
         new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "Europe/London" });
-    const daysAgo = (d: Date | string) => {
-        const days = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
-        return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
-    };
     const sortHead = (field: SortField, label: string) => (
         <TableHead className={`${HEAD} cursor-pointer select-none`} onClick={() => toggleSort(field)}>
             <span className="inline-flex items-center">{label}{getSortIcon(field)}</span>
@@ -334,22 +330,29 @@ export function ComprehensiveVehicleTable({
                                             <span className="flex max-w-[260px] min-w-0 items-center gap-1.5">
                                                 <span className={`shrink-0 font-semibold ${FOLLOW_UP_LABEL[fu.stage].tone}`}>{FOLLOW_UP_LABEL[fu.stage].text}</span>
                                                 <span className="truncate text-slate-500">
-                                                    {fu.followedUpAt
-                                                        ? `${fu.followedUpHow === "call" ? "called" : "messaged"} ${ukDayMonth(fu.followedUpAt)}`
-                                                        : fu.bookedFor
-                                                            ? `booked ${ukDayMonth(fu.bookedFor)}`
-                                                            : `reminded ${ukDayMonth(fu.remindedAt)}${fu.reminderStatus ? `, ${fu.reminderStatus}` : ""}`}
+                                                    {fu.followedUpAt ? (
+                                                        `${fu.followedUpHow === "call" ? "called" : "messaged"} ${whenAgo(fu.followedUpAt)}`
+                                                    ) : fu.bookedFor ? (
+                                                        `booked for ${ukDayMonth(fu.bookedFor)}`
+                                                    ) : (
+                                                        <>
+                                                            reminded {whenAgo(fu.remindedAt)}
+                                                            {fu.reminderStatus && (
+                                                                <> · <span className={/failed|undelivered/.test(fu.reminderStatus) ? "text-red-600" : undefined}>{fu.reminderStatus}</span></>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </span>
                                             </span>
                                         ) : <span className="text-slate-400">—</span>}
                                     </TableCell>
                                 ) : (
                                     <TableCell
-                                        className={`${CELL} tabular-nums`}
-                                        title={vehicle.lastReminderSent ? `${daysAgo(vehicle.lastReminderSent)}${vehicle.lastReminderStatus ? `, ${vehicle.lastReminderStatus}` : ""}` : undefined}
+                                        className={CELL}
+                                        title={vehicle.lastReminderSent ? `Sent ${shortDate(vehicle.lastReminderSent)}${vehicle.lastReminderStatus ? `, ${vehicle.lastReminderStatus}` : ""}` : undefined}
                                     >
                                         {vehicle.lastReminderSent ? (
-                                            <span className="inline-flex items-center gap-1">{shortDate(vehicle.lastReminderSent)}{getDeliveryStatusIcon(vehicle.lastReminderStatus)}</span>
+                                            <span className="inline-flex items-center gap-1">{whenAgo(vehicle.lastReminderSent)}{getDeliveryStatusIcon(vehicle.lastReminderStatus)}</span>
                                         ) : <span className="text-slate-400">Never</span>}
                                     </TableCell>
                                 )}
@@ -360,8 +363,8 @@ export function ComprehensiveVehicleTable({
                                         </span>
                                     ) : <span className="text-slate-400">—</span>}
                                 </TableCell>
-                                <TableCell className={`${CELL} tabular-nums text-slate-600`} title={vehicle.lastVisit ? daysAgo(vehicle.lastVisit) : undefined}>
-                                    {vehicle.lastVisit ? shortDate(vehicle.lastVisit) : <span className="text-slate-400">Never</span>}
+                                <TableCell className={`${CELL} text-slate-600`} title={vehicle.lastVisit ? shortDate(vehicle.lastVisit) : undefined}>
+                                    {vehicle.lastVisit ? whenAgo(vehicle.lastVisit) : <span className="text-slate-400">Never</span>}
                                 </TableCell>
                                 <TableCell className={`${CELL} pr-3`}>
                                     <div className="flex items-center justify-end gap-0.5">

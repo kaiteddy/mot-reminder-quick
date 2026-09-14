@@ -51,6 +51,27 @@ export const ukDay = (d: Date | string) => new Date(d).toLocaleDateString("en-CA
 const daysBetween = (later: string, earlier: string) =>
   Math.round((Date.parse(`${later}T00:00:00Z`) - Date.parse(`${earlier}T00:00:00Z`)) / 86_400_000);
 
+/** Whole UK calendar days from a moment until now: 0 = today, 1 = yesterday. */
+export const daysSince = (d: Date | string, now: Date = new Date()) => daysBetween(ukDay(now), ukDay(d));
+
+/**
+ * How long ago, in plain words: "today", "yesterday", "3 days ago", "last week", "2 weeks ago",
+ * "last month", "3 months ago", "last year", "11 years ago". Adam, 14/09/2026, on "reminded 08/09":
+ * "make this easier like last 3 days, 2 weeks, month".
+ */
+export function whenAgo(d: Date | string, now: Date = new Date()): string {
+  const days = daysSince(d, now);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "last week";
+  if (days < 28) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 60) return "last month";
+  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? "last year" : `${years} years ago`;
+}
+
 export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp | null {
   if (!car.motExpiryDate || !car.lastMotReminderAt) return null;
   const expiry = ukDay(car.motExpiryDate);

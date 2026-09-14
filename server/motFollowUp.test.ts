@@ -2,10 +2,31 @@
  * The follow-up list: cars sent an MOT reminder whose MOT hasn't been renewed. Pure.
  */
 import { describe, it, expect } from "vitest";
-import { followUpFor, ukDay } from "../shared/motFollowUp";
+import { daysSince, followUpFor, ukDay, whenAgo } from "../shared/motFollowUp";
 
 // Tuesday 15/09/2026, 09:00 in the UK.
 const NOW = new Date("2026-09-15T08:00:00Z");
+
+describe("whenAgo", () => {
+  it("says how long ago in plain words", () => {
+    expect(whenAgo("2026-09-15T07:00:00Z", NOW)).toBe("today");
+    expect(whenAgo("2026-09-14T23:30:00Z", NOW)).toBe("today");        // 00:30 on the 15th in the UK
+    expect(whenAgo("2026-09-14T09:00:00Z", NOW)).toBe("yesterday");
+    expect(whenAgo("2026-09-12T09:00:00Z", NOW)).toBe("3 days ago");
+    expect(whenAgo("2026-09-08T09:00:00Z", NOW)).toBe("last week");
+    expect(whenAgo("2026-08-31T09:00:00Z", NOW)).toBe("2 weeks ago");
+    expect(whenAgo("2026-08-20T09:00:00Z", NOW)).toBe("3 weeks ago");
+    expect(whenAgo("2026-08-08T09:00:00Z", NOW)).toBe("last month");
+    expect(whenAgo("2026-06-01T09:00:00Z", NOW)).toBe("3 months ago");
+    expect(whenAgo("2025-09-10T09:00:00Z", NOW)).toBe("last year");
+    expect(whenAgo("2015-02-13T00:00:00Z", NOW)).toBe("11 years ago");
+  });
+
+  it("counts UK calendar days", () => {
+    expect(daysSince("2026-09-12T10:00:00Z", NOW)).toBe(3);
+    expect(daysSince("2026-09-14T23:01:00Z", NOW)).toBe(0);
+  });
+});
 
 describe("ukDay", () => {
   it("gives the UK calendar day, however the time was stored", () => {

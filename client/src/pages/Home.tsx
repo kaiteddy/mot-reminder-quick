@@ -37,7 +37,7 @@ import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { reminderBlocks, type ReminderBlock } from "@shared/reminderEligibility";
-import { followUpFor, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
+import { daysSince, followUpFor, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -124,6 +124,8 @@ export default function Home() {
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "follow-up" ? "followup" : "all");
   const [followUpStages, setFollowUpStages] = useState<Set<FollowUpStage>>(new Set());
   const [showHandled, setShowHandled] = useState(false);
+  // How long ago the reminder went, picked in plain terms: last 3 days, 2 weeks, a month, or longer.
+  const [remindedWithin, setRemindedWithin] = useState<"any" | "3d" | "14d" | "31d" | "older">("any");
   const toggleStage = (stage: FollowUpStage) => setFollowUpStages((prev) => {
     const next = new Set(prev);
     next.has(stage) ? next.delete(stage) : next.add(stage);
@@ -481,17 +483,21 @@ export default function Home() {
     if (!fu) return false;
     if (fu.handled && !showHandled) return false;
     if (followUpStages.size > 0 && !followUpStages.has(fu.stage)) return false;
+    if (remindedWithin !== "any") {
+      const days = daysSince(fu.remindedAt);
+      if (remindedWithin === "older" ? days <= 31 : days > ({ "3d": 3, "14d": 14, "31d": 31 } as const)[remindedWithin]) return false;
+    }
     const term = searchTerm.toLowerCase();
     return normRegKey(vehicle.registration).includes(normRegKey(searchTerm))
       || (vehicle.customerName?.toLowerCase() || "").includes(term)
       || (vehicle.make?.toLowerCase() || "").includes(term);
-  }), [vehicles, followUps, showHandled, followUpStages, searchTerm]);
+  }), [vehicles, followUps, showHandled, followUpStages, remindedWithin, searchTerm]);
   const listed = view === "followup" ? followUpVehicles : filteredAndSortedVehicles;
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled, remindedWithin]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
@@ -606,6 +612,13 @@ export default function Home() {
                 <FilterChip active={followUpStages.has("missed")} onClick={() => toggleStage("missed")} title="The MOT has run out, and a check since shows no new MOT">Missed MOT ({followUpCounts.missed})</FilterChip>
                 <FilterChip active={followUpStages.has("expired_unchecked")} onClick={() => toggleStage("expired_unchecked")} title="The MOT has run out but the car hasn't been checked since; tonight's check will confirm it">Expired, checking ({followUpCounts.expired_unchecked})</FilterChip>
                 <FilterChip active={followUpStages.has("due")} onClick={() => toggleStage("due")} title="Reminder sent, MOT runs out within 14 days, not booked">Reminded, not done ({followUpCounts.due})</FilterChip>
+              </FilterRow>
+              <FilterRow label="Reminded">
+                <FilterChip active={remindedWithin === "any"} onClick={() => setRemindedWithin("any")}>Any time</FilterChip>
+                <FilterChip active={remindedWithin === "3d"} onClick={() => setRemindedWithin("3d")}>Last 3 days</FilterChip>
+                <FilterChip active={remindedWithin === "14d"} onClick={() => setRemindedWithin("14d")}>Last 2 weeks</FilterChip>
+                <FilterChip active={remindedWithin === "31d"} onClick={() => setRemindedWithin("31d")}>Last month</FilterChip>
+                <FilterChip active={remindedWithin === "older"} onClick={() => setRemindedWithin("older")}>Over a month ago</FilterChip>
               </FilterRow>
               <FilterRow label="Show">
                 <FilterChip active={showHandled} onClick={() => setShowHandled(!showHandled)} title="Cars already sent a follow-up, called, or booked in since their reminder">Already followed up ({followUpCounts.handled})</FilterChip>
