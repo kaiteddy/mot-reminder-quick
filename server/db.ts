@@ -15,7 +15,7 @@ import {
 import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
 import { odometerReading, carChangePoints, mileageOutliers } from "../shared/mileage";
-import { buildServiceSets, parseVehOil, priceListMatch, type ServiceSet } from "../shared/serviceParts";
+import { buildServiceSets, isEstimatedLubricant, parseVehOil, priceListMatch, type ServiceSet } from "../shared/serviceParts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -3347,7 +3347,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
           await db.update(vehicles).set(updates).where(eq(vehicles.id, v.id));
           const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
           if (oil || sws?.aircon) {
-            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
+            v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, oilEstimated: isEstimatedLubricant(oil), airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
           }
         } catch { /* SWS unavailable — keep stored record */ }
       }
@@ -3445,7 +3445,7 @@ export async function lookupVehicleForReg(registration: string, opts?: { force?:
     }
     const oil = (sws?.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
     if (oil || sws?.aircon) {
-      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
+      v.technical = { oilSpec: oil?.specification || null, oilCapacity: oil?.capacity || null, oilEstimated: isEstimatedLubricant(oil), airconType: sws?.aircon?.type || null, airconCapacity: sws?.aircon?.quantity ?? sws?.aircon?.capacity ?? null, transmission: sws?.ukvd?.transmission ?? null, tyres: (sws as any)?.tyres ?? null };
     }
   } catch (e) { /* SWS/UKVD unavailable */ }
   try {
@@ -3519,10 +3519,13 @@ export async function liveVehicleTech(registration: string) {
     } else {
       console.log(`[liveVehicleTech] tech cache HIT for ${reg} — no paid API call`);
     }
-    const oils = (ctd?.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const allOils = (ctd?.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+    const realOils = allOils.filter((l: any) => !isEstimatedLubricant(l));
+    const oils = realOils.length ? realOils : allOils;
     const oil = oils[0];
     out.oilSpec = oil?.specification ?? null;
     out.oilCapacity = oil?.capacity ?? null;
+    out.oilEstimated = !!oil && isEstimatedLubricant(oil); // the app's make-level guess, not SWS
     // distinct SAE grades the engine accepts (preferred first) so callers can print every option
     const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
     const prefG = Array.from(new Set(oils.filter((o: any) => /preferred/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
@@ -5486,9 +5489,14 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       }
     } catch { /* no tyre data available - the sheet prints without the box */ }
   }
-  const recOil = (td.lubricants || []).find((l: any) => /engine oil/i.test(l?.description || ""));
+  const recOilRows = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+  const recOil = recOilRows.find((l: any) => !isEstimatedLubricant(l)) || recOilRows[0];
   const oilSpec = lt?.oilSpec || recOil?.specification || "";
   const oilCap = lt?.oilCapacity || recOil?.capacity || "";
+  // The app's make-level guess when SWS had nothing: the printed job sheet tells the mechanic to
+  // check it. Only the job sheet; a customer's invoice or estimate never carries the note.
+  const oilGuessNote = (lt?.oilCapacity ? !!lt?.oilEstimated : isEstimatedLubricant(recOil)) && String(doc.docType || "").toUpperCase() === "JS"
+    ? " (estimate, please check)" : "";
   // All distinct grades the engine accepts (for the job sheet) — prefer the live tech result,
   // fall back to deriving from the cached record's lubricants, then to the single spec.
   const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
@@ -5544,10 +5552,10 @@ export async function getRichPDF(documentId: number, opts?: { customerCopyOnly?:
       return rows.length || spare ? { rows, spare, allSame } : null;
     })(),
     // boxed tech row
-    engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}` : ''}` : '',
+    engine_oil: oilSpec ? `${oilSpec}${oilCap ? ` ${oilCap}${oilGuessNote}` : ''}` : '',
     oil_grades: oilGrades,
     oil_preferred: oilPreferred,
-    oil_capacity: oilCap || '',
+    oil_capacity: oilCap ? `${oilCap}${oilGuessNote}` : '',
     air_con: airType ? `${airType}${airQty ? ` ${airQty}` : ''}` : '',
     mot_expiry: motExp,
     tax_info: taxStatus ? `${taxStatus}${taxDue ? ` · due ${taxDue}` : ''}` : (taxDue ? `Due ${taxDue}` : ''),
@@ -6364,12 +6372,19 @@ function priceServiceSet(set: ServiceSet) {
   };
 }
 
-/** Engine-oil capacity for a car with no tech data of its own, borrowed from cars that have it:
+/** Engine-oil capacity for a car with no SWS figure of its own, borrowed from cars that have one:
  * the same make, engine size and fuel first (the same engine, so the same sump), then any engine
- * within 50cc on the same fuel, then anything within 150cc. Most of the fleet holds no tech data
- * of its own — 513 of the 1,717 cars serviced in the two years to 09/2026 — so without this the
- * quote couldn't price the oil for most cars; the same-engine match alone covers another 908.
- * Ties go to the larger capacity, so a borrowed figure can't be what under-quotes. */
+ * within 50cc on the same fuel, then anything within 150cc.
+ *
+ * A car that has been on a web job sheet already holds its own figure — the job sheet's
+ * liveVehicleTech buys it once and saves it (205 of 209 such cars had one on 11/09/2026) — so this
+ * is for quoting a car before it has ever been looked up, mostly customers last seen on GA4.
+ * "Price it" deliberately doesn't buy the data itself: Adam, 11/09/2026, won't pay for lookups on
+ * calls that may never book.
+ *
+ * Only real SWS figures (a bracketed "(l)" capacity) are borrowed: the app's make-level guesses
+ * (isEstimatedLubricant) would only pass one guess on to another car. Ties go to the larger
+ * capacity, so a borrowed figure can't be what under-quotes. */
 async function estimateOilCapacity(make: string, cc: number, fuelType?: string | null) {
   const db = await getDb();
   if (!db || !cc) return null;
@@ -6380,7 +6395,8 @@ async function estimateOilCapacity(make: string, cc: number, fuelType?: string |
              (SELECT substring(l->>'capacity' from '([0-9]+([.][0-9]+)?)')::numeric
                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof((v."comprehensiveTechnicalData")::jsonb->'lubricants') = 'array'
                      THEN (v."comprehensiveTechnicalData")::jsonb->'lubricants' ELSE '[]'::jsonb END) l
-               WHERE l->>'description' ILIKE 'engine oil%' LIMIT 1) litres
+               WHERE l->>'description' ILIKE 'engine oil%' AND position('(l)' in COALESCE(l->>'capacity', '')) > 0
+               LIMIT 1) litres
         FROM vehicles v
        WHERE v."comprehensiveTechnicalData" IS NOT NULL
          AND v."engineCC" BETWEEN ${cc - 150} AND ${cc + 150}
@@ -6395,7 +6411,7 @@ async function estimateOilCapacity(make: string, cc: number, fuelType?: string |
     ORDER BY 1`);
   const BASIS: Record<number, string> = { 1: "the same engine", 2: "a similar engine (within 50cc)", 3: "a similar-sized engine (within 150cc)" };
   const hit = rows.rows.find((r: any) => Number(r.n) > 0 && Number(r.litres) > 0);
-  return hit ? { litres: Number(hit.litres), basis: BASIS[Number(hit.tier)], n: Number(hit.n) } : null;
+  return hit ? { litres: Number(hit.litres), basis: BASIS[Number(hit.tier)], n: Number(hit.n), tier: Number(hit.tier) } : null;
 }
 
 type PartPriceSource = { price: number; basis: "model" | "make" | "all"; n: number; lastCharged: string | null; docNo: string | null };
@@ -6518,11 +6534,15 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   // interim / £310 full on 10/09/2026, against £279.54 / £354.24 built from the car.
   const vehInfo = parseVehOil(vehicle);
   const ownLitres = parseFloat(String(vehInfo.oilCapacity ?? "").replace(/[^\d.]/g, "")) || 0;
+  // The car's own figure only counts when it came from SWS. A make-level guess saved in its place
+  // gives way to a real figure from the same engine, but not to a similar-sized engine of another
+  // make: that turned a Mercedes 1.6's 4.5 L guess into 3.3 L on 11/09/2026, so the guess stands.
+  const ownReal = ownLitres > 0 && !vehInfo.oilEstimated;
   const [fullBands, priceList, partPrices, estimated] = await Promise.all([
     getServiceLabourBands("fullService"),
     listPartsPriceList(),
     getRecentServicePartPrices({ make, modelWord: model, cc, fuelType: vehicle.fuelType }),
-    ownLitres ? Promise.resolve(null) : estimateOilCapacity(make, cc, vehicle.fuelType),
+    ownReal ? Promise.resolve(null) : estimateOilCapacity(make, cc, vehicle.fuelType),
   ]);
   const fullLabourBand = pickLabourBand(fullBands, cc);
   // The Major Service tick's labour. A car with no engine size on file takes the lowest band, the
@@ -6531,7 +6551,10 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
   // The full service quote doesn't take it: it would pass a guess off as "this car" and under-quote
   // anything over 2.0L, so the page still quotes that car from history.
   const tickLabourBand = fullLabourBand ?? (!cc && fullBands.length ? fullBands[0] : null);
-  const litres = ownLitres || estimated?.litres || 0;
+  const sameEngine = estimated?.tier === 1 ? estimated : null;
+  const litres = ownReal ? ownLitres : sameEngine ? sameEngine.litres : ownLitres || estimated?.litres || 0;
+  // Anything short of an SWS figure for this engine is an estimate for staff to check on the car.
+  const oilEstimated = litres > 0 && !ownReal && !sameEngine;
   const servicePartPrices = Object.fromEntries(Object.entries(partPrices).map(([name, p]) => [name, p.price]));
   const sets = buildServiceSets({
     vehInfo: { ...vehInfo, oilCapacity: litres || undefined },
@@ -6545,11 +6568,14 @@ export async function getPriceGuideForRegistration(registration: string, opts?: 
     litres,
     grade: vehInfo.oilGrades[0] || null,
     pricePerLitre: sets.small.parts[0]?.unitPrice ?? null,
-    // Most cars hold no tech data of their own, so the capacity is often borrowed — and a quote
-    // resting on a borrowed figure says where it came from.
-    source: ownLitres ? "this car's tech data"
+    // A car quoted before it has been on a web job sheet has no SWS figure of its own, so the
+    // capacity is borrowed or guessed — and the page says which, flagging an estimate to check.
+    source: ownReal ? "this car's tech data"
+      : sameEngine ? `${sameEngine.basis} on ${sameEngine.n} other car${sameEngine.n === 1 ? "" : "s"}`
+      : ownLitres ? "a rough guess for this make"
       : estimated ? `${estimated.basis} on ${estimated.n} other car${estimated.n === 1 ? "" : "s"}`
       : null,
+    estimated: oilEstimated,
   };
   // No capacity anywhere means no oil figure, and a quote without its oil is the very under-quote
   // this replaces — so none is given and the page falls back to history, labelled as such.

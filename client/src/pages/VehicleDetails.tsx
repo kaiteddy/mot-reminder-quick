@@ -60,22 +60,27 @@ import {
 } from "@/components/ui/dialog";
 import { Smartphone, QrCode, ChevronDown, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isEstimatedLubricant } from "@shared/serviceParts";
 
 
 // SWS lubricant extraction, condensed to one line per fluid for the Specifications & Status
 // tiles (engine oil grade+capacity, coolant/brake fluid spec+capacity, gear oil spec).
-function engineOilInfo(lubricants: any): { grades: string; capacity: string } | null {
+function engineOilInfo(lubricants: any): { grades: string; capacity: string; estimated: boolean } | null {
     const lubes = Array.isArray(lubricants) ? lubricants : [];
     const isOil = (l: any) => /ENGINE OIL/i.test(String(l?.description || ""));
     const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || String(s || "").trim();
-    const oils = lubes.filter(isOil);
+    const allOils = lubes.filter(isOil);
+    // A real SWS row beats the app's make-level guess; a guess on its own is shown as an estimate.
+    const realOils = allOils.filter((o: any) => !isEstimatedLubricant(o));
+    const oils = realOils.length ? realOils : allOils;
     if (!oils.length) return null;
     const prefG = Array.from(new Set(oils.filter((o: any) => /PREFERRED/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean)));
     const allG = Array.from(new Set(oils.map((o: any) => gradeOf(o.specification)).filter(Boolean)));
     const grades = [...prefG, ...allG.filter((g) => !prefG.includes(g))];
     const cap = oils.find((o: any) => o?.capacity)?.capacity;
-    const capStr = cap ? String(cap).replace(/\s*\(l\)\s*/i, "").trim() : "";
-    return { grades: grades.length ? grades.slice(0, 2).join(" / ") : (oils[0]?.specification || "N/A"), capacity: capStr ? `${capStr} L` : "" };
+    // SWS writes "5.0 (l)"; the guess wrote "6.5 L", which used to come out as "6.5 L L".
+    const capStr = cap ? String(cap).replace(/\s*\(l\)\s*/i, "").replace(/\s*L$/i, "").trim() : "";
+    return { grades: grades.length ? grades.slice(0, 2).join(" / ") : (oils[0]?.specification || "N/A"), capacity: capStr ? `${capStr} L` : "", estimated: !realOils.length };
 }
 function findLubricant(lubricants: any, matcher: RegExp): { spec: string; capacity: string } | null {
     const lubes = Array.isArray(lubricants) ? lubricants : [];
@@ -1239,7 +1244,7 @@ export default function VehicleDetails() {
                                                 <SpecTile label="Engine Oil" tone="blue" icon={<Droplet className={`w-3 h-3 ${SPEC_TONE_ICON.blue}`} />} value={
                                                     <>
                                                         <span className="block truncate">{oilInfo.grades}</span>
-                                                        {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}</span>}
+                                                        {oilInfo.capacity && <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">{oilInfo.capacity}{oilInfo.estimated && <span className="font-semibold text-amber-700"> — estimate, please check</span>}</span>}
                                                     </>
                                                 } />
                                             )}

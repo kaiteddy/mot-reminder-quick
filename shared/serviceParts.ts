@@ -29,6 +29,8 @@ export type VehOilInfo = {
   oilGrades: string[];
   oilPreferred: string[];
   oilCapacity?: any;
+  /** The oil figures are the app's make-level guess, not SWS data for this car (isEstimatedLubricant). */
+  oilEstimated?: boolean;
   airconType?: any;
   airconCapacity?: any;
 };
@@ -64,12 +66,28 @@ export function bandedServiceLabour(cc: number, bands: any[] | undefined): numbe
   return Number(hit?.labour ?? SERVICE_LABOUR_FALLBACK_BANDS[SERVICE_LABOUR_FALLBACK_BANDS.length - 1].labour);
 }
 
+/** A lubricant row the app made up rather than read from SWS. When SWS returns no lubricants for a
+ * car, server/sws.ts fills in a guess by make alone — every Mercedes 6.5 L, every BMW 5.2 L, every
+ * VW-group car 4.3 L, anything else 4.5 L — and it used to be saved looking exactly like real data
+ * (54 cars on 11/09/2026). Rows saved since then carry `estimated: true`. Older ones still give
+ * themselves away: SWS writes "Engine oil (…)" with a bracketed unit ("5.0 (l)"), while the guess
+ * wrote "Engine Oil" with "6.5 L" or a bare number. Adam, 11/09/2026: show a guessed amount as an
+ * estimate to check, never as the car's own figure. */
+export function isEstimatedLubricant(row: any): boolean {
+  if (!row) return false;
+  if (row.estimated === true) return true;
+  return String(row.description ?? "").trim() === "Engine Oil" && !String(row.capacity ?? "").includes("(");
+}
+
 /** Oil + aircon facts from a vehicle row's SWS tech data (vehicles.comprehensiveTechnicalData).
  * SWS lists one engine-oil row per ACEA/API standard; collapse to the distinct SAE grades
- * (e.g. 5W-30, 0W-30, 0W-20), preferred first, so every grade the engine accepts is visible. */
+ * (e.g. 5W-30, 0W-30, 0W-20), preferred first, so every grade the engine accepts is visible.
+ * A real SWS row always wins over a guessed one. */
 export function parseVehOil(vehicle: any): VehOilInfo {
   const td = (vehicle?.comprehensiveTechnicalData as any) || {};
-  const oils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+  const allOils = (td.lubricants || []).filter((l: any) => /engine oil/i.test(l?.description || ""));
+  const realOils = allOils.filter((l: any) => !isEstimatedLubricant(l));
+  const oils = realOils.length ? realOils : allOils;
   const oil = oils[0];
   const gradeOf = (s: any) => (String(s).match(/\b\d+W[-\s]?\d+\b/i) || [])[0]?.toUpperCase().replace(/\s+/g, "") || "";
   const prefG = Array.from(new Set(oils.filter((o: any) => /preferred/i.test(o?.description || "")).map((o: any) => gradeOf(o.specification)).filter(Boolean))) as string[];
@@ -79,6 +97,7 @@ export function parseVehOil(vehicle: any): VehOilInfo {
     oilGrades: [...prefG, ...allG.filter((g) => !prefG.includes(g))],
     oilPreferred: prefG,
     oilCapacity: oil?.capacity,
+    oilEstimated: !!oil && isEstimatedLubricant(oil),
     airconType: td.aircon?.type,
     airconCapacity: td.aircon?.quantity ?? td.aircon?.capacity,
   };

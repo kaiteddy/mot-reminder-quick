@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Droplet, Wrench, Thermometer, Box, Activity, ChevronRight, ArrowLeft, Loader2, Gauge, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isEstimatedLubricant } from "@shared/serviceParts";
 
 interface SWSDeepIntelEmbedProps {
     registration: string;
@@ -143,8 +144,14 @@ export function SWSDeepIntelEmbed({ registration, vehicle, onDataFetched }: SWSD
                                                 </td>
                                                 <td className="px-3 md:px-5 py-3 text-right whitespace-nowrap text-xs md:text-sm">
                                                     {item.capacity ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-black">
-                                                            {item.capacity} L
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            {/* SWS writes "5.0 (l)" and the make-level guess "6.5 L"; both used to print a second "L". */}
+                                                            <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-black">
+                                                                {String(item.capacity).replace(/\s*\(l\)\s*/i, "").replace(/\s*L$/i, "").trim()} L
+                                                            </span>
+                                                            {isEstimatedLubricant(item) && (
+                                                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold">estimate, please check</span>
+                                                            )}
                                                         </span>
                                                     ) : (
                                                         <span className="text-slate-400 font-medium text-xs">N/A</span>
