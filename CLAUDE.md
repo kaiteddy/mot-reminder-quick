@@ -76,7 +76,8 @@ change a tripwire only when Adam changes the rule. Each came from a real fault f
   `CALL_AFTER_DAYS` (14) after a follow-up that reached them once a check since shows no MOT, or at once if it never
   arrived. `reminders.sendWhatsApp` refuses a second follow-up message for the same MOT (`repeatFollowUpBlock`). The
   06:00 check (`server/services/followUpRecheck.ts`, cron `mot-follow-up-recheck`) re-asks DVSA about those cars and
-  about reminded cars whose MOT runs out within 14 days.
+  about reminded cars whose MOT runs out within 14 days. The follow-up itself is only asked for `FOLLOW_UP_AFTER_DAYS`
+  (7) after the reminder, or once the MOT has run out; until then the car is "Waiting", hidden from the to-do list.
 - **The follow-up WhatsApp** uses only the two Meta-approved UTILITY templates in `shared/motFollowUpMessage.ts`
   (name, registration, date — three variables, no days left). New wording means a new template approved by Meta
   first; its SID and body then change there together.

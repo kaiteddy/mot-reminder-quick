@@ -2,7 +2,7 @@
  * After the follow-up: a phone call, never a third message; and the morning re-check behind it. Pure.
  */
 import { describe, it, expect } from "vitest";
-import { CALL_AFTER_DAYS, followUpFor, repeatFollowUpBlock } from "../shared/motFollowUp";
+import { CALL_AFTER_DAYS, FOLLOW_UP_AFTER_DAYS, followUpFor, repeatFollowUpBlock } from "../shared/motFollowUp";
 import type { DeliveryState } from "../shared/messageDelivery";
 import { isFollowUpRecheckTime, runFollowUpRecheck } from "./services/followUpRecheck";
 
@@ -38,6 +38,24 @@ describe("what to do next on the Follow up tab", () => {
   it("is done once they're called or booked in", () => {
     expect(followUpFor({ ...followedUp, lastFollowUpHow: "call", lastChecked: "2026-09-28T05:01:00Z" }, at("2026-09-28T08:00:00Z"))).toMatchObject({ todo: null });
     expect(followUpFor({ ...car, motBookedDate: "2026-09-18T00:00:00Z" }, at("2026-09-15T08:00:00Z"))).toMatchObject({ todo: null });
+  });
+});
+
+describe("giving them time to book after the reminder", () => {
+  // MOT runs out 28/09; reminded 14/09 at 11:46, two weeks before.
+  const fresh = { motExpiryDate: "2026-09-28T00:00:00Z", lastMotReminderAt: "2026-09-14T10:46:00Z" };
+
+  it("waits 7 days before asking for the follow-up", () => {
+    expect(FOLLOW_UP_AFTER_DAYS).toBe(7);
+    expect(followUpFor(fresh, at("2026-09-14T12:00:00Z"))).toMatchObject({ todo: "wait", handled: false, followUpFrom: "2026-09-21" });
+    expect(followUpFor(fresh, at("2026-09-20T20:00:00Z"))).toMatchObject({ todo: "wait" });   // 21:00 on the 20th in the UK
+    expect(followUpFor(fresh, at("2026-09-21T07:00:00Z"))).toMatchObject({ todo: "message" });
+  });
+
+  it("asks straight away once the MOT has run out", () => {
+    const late = { motExpiryDate: "2026-09-16T00:00:00Z", lastMotReminderAt: "2026-09-14T10:46:00Z" };
+    expect(followUpFor(late, at("2026-09-16T20:00:00Z"))).toMatchObject({ todo: "wait", followUpFrom: "2026-09-17" });
+    expect(followUpFor(late, at("2026-09-17T07:00:00Z"))).toMatchObject({ todo: "message" });
   });
 });
 

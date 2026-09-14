@@ -24,6 +24,12 @@ export const REMINDER_LEAD_DAYS = 60;
  * (server/services/followUpRecheck.ts) asks DVSA about those cars on the day they fall due.
  */
 export const CALL_AFTER_DAYS = 14;
+/**
+ * The follow-up is asked for this many days after the reminder, so the customer has a chance to book first, or as
+ * soon as the MOT has run out if that comes sooner. Until then the car is "Waiting". Adam, 14/09/2026: cars sent
+ * their reminder that morning were already asking for a follow-up.
+ */
+export const FOLLOW_UP_AFTER_DAYS = 7;
 
 export type FollowUpStage = "missed" | "expired_unchecked" | "due";
 
@@ -54,11 +60,14 @@ export type FollowUp = {
   reminderDelivery: Delivery | null;
   followUpDelivery: Delivery | null;
   bookedFor: Date | null;
+  /** The UK day (YYYY-MM-DD) the follow-up falls due: FOLLOW_UP_AFTER_DAYS after the reminder, or sooner once the MOT has run out. */
+  followUpFrom: string;
   /**
-   * What to do now: send the follow-up message, phone them, or nothing (null). A call is due when the follow-up
-   * never arrived, or when it went CALL_AFTER_DAYS or more ago and a check since shows no new MOT.
+   * What to do now: send the follow-up message, wait (reminded too recently), phone them, or nothing (null). A call
+   * is due when the follow-up never arrived, or when it went CALL_AFTER_DAYS or more ago and a check since shows no
+   * new MOT.
    */
-  todo: "message" | "call" | null;
+  todo: "message" | "wait" | "call" | null;
   /** Nothing to do for now: booked in, called, or sent a follow-up that arrived less than CALL_AFTER_DAYS ago. */
   handled: boolean;
 };
@@ -118,9 +127,12 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
   const bookedFor = car.motBookedDate && ukDay(car.motBookedDate) >= remindedDay ? new Date(car.motBookedDate) : null;
   const followedUpHow = followedUpAt ? (car.lastFollowUpHow ?? "message") : null;
   const followUpDelivery = followedUpHow === "message" ? car.lastFollowUpDelivery ?? null : null;
+  // Give them time to act on the reminder: the follow-up is due FOLLOW_UP_AFTER_DAYS after it, or the day after
+  // the MOT runs out if that is sooner.
+  const followUpFrom = [addDays(remindedDay, FOLLOW_UP_AFTER_DAYS), addDays(expiry, 1)].sort()[0];
   let todo: FollowUp["todo"];
   if (bookedFor || followedUpHow === "call") todo = null;
-  else if (!followedUpAt) todo = "message";
+  else if (!followedUpAt) todo = ukDay(now) >= followUpFrom ? "message" : "wait";
   // A follow-up message that never arrived hasn't reached them: phone instead (or fix the number and resend).
   else if (followUpDelivery?.state === "not_received") todo = "call";
   else {
@@ -139,6 +151,7 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
     reminderDelivery: car.lastMotReminderDelivery ?? null,
     followUpDelivery,
     bookedFor,
+    followUpFrom,
     todo,
     handled: todo === null,
   };

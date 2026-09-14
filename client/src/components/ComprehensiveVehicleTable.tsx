@@ -239,6 +239,9 @@ export function ComprehensiveVehicleTable({
             ? `Followed up ${ukDayMonth(fu.followedUpAt)} at ${ukTime(fu.followedUpAt)} by ${fu.followedUpHow === "call" ? "phone" : "message"}.${fu.followUpDelivery ? ` ${fu.followUpDelivery.note}` : ""}`
             : "",
         fu.bookedFor ? `Booked for ${ukDayMonth(fu.bookedFor)}.` : "",
+        fu.todo === "wait"
+            ? `Giving them time to book: follow up from ${fu.followUpFrom.slice(8, 10)}/${fu.followUpFrom.slice(5, 7)} if there's still no MOT.`
+            : "",
         fu.todo === "call"
             ? fu.followUpDelivery?.state === "not_received"
                 ? "The follow-up didn't arrive: give them a call, or fix the number and send it again."
