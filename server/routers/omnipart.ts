@@ -29,6 +29,17 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
     }
 }
 
+// Native-fetch call to the Omnipart API for the WISMO / order-tracking / returns endpoints.
+// Replaces the shell-exec curl (crawlWithCurl) for these: no command-line length limit, no shell
+// quoting, no intermittent HTTP/2 curl exit failures. fetch reaches these endpoints fine (same as
+// the token refresher). Throws on an HTML/edge block; returns parsed JSON (or raw text) otherwise.
+async function omnipartFetch(method: string, url: string, headers: Record<string, string>, body?: string): Promise<any> {
+  const res = await fetch(url, { method, headers, ...(body != null ? { body } : {}) });
+  const text = await res.text();
+  if (text.trim().startsWith("<")) throw new Error(`Euro Car Parts edge blocked the request (HTTP ${res.status}).`);
+  try { return JSON.parse(text); } catch { return text || null; }
+}
+
 // Self-heal the session on read: if the jar's bearer is expired or within 5 min of expiry, renew it
 // server-side via /token/refresh (which rotates the refresh_token) and persist the fresh jar. This
 // keeps the tracker working the moment it's opened, even if the scheduled refresh lapsed (e.g. the
@@ -41,7 +52,7 @@ async function refreshJarIfStale(jar: string): Promise<string> {
   const rt = jar.match(/refresh_token=([0-9a-fA-F]+)/);
   if (!rt) return jar;
   try {
-    const data = await crawlWithCurl(
+    const data = await omnipartFetch(
       "POST",
       "https://api.omnipart.eurocarparts.com/token/refresh",
       {
@@ -96,7 +107,9 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
     "Origin": "https://omnipart.eurocarparts.com",
     "Referer": referer,
   };
-  if (authHeader) h["Authorization"] = authHeader;
+  // Cookie-only auth: the WISMO/returns endpoints validate the bearer= cookie; adding an
+  // Authorization header has caused 403/500 responses, so we deliberately omit it here.
+  void authHeader;
   if (cookieHeader) h["Cookie"] = cookieHeader;
   return h;
 }
@@ -416,7 +429,7 @@ export const omnipartRouter = router({
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
         // Empty body returns the recent set; sending limit/page as ints triggers a 422.
-        const raw = await crawlWithCurl(
+        const raw = await omnipartFetch(
           "POST",
           "https://api.omnipart.eurocarparts.com/account/wismo-order-list",
           apiHeaders,
@@ -523,7 +536,7 @@ export const omnipartRouter = router({
     .query(async ({ input }) => {
       try {
         const headers = await omnipartHeaders(input?.token, "https://omnipart.eurocarparts.com/account/order-tracking");
-        const data = await crawlWithCurl("GET", "https://api.omnipart.eurocarparts.com/digital-return-reasons", headers);
+        const data = await omnipartFetch("GET", "https://api.omnipart.eurocarparts.com/digital-return-reasons", headers);
         return Array.isArray(data) ? data : [];
       } catch (error: any) {
         const message = error.message || "Failed to fetch digital return reasons";
@@ -538,7 +551,7 @@ export const omnipartRouter = router({
       try {
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
         const url = `https://api.omnipart.eurocarparts.com/orders/${encodeURIComponent(input.orderId)}/digital-return-products`;
-        const data = await crawlWithCurl("GET", url, headers);
+        const data = await omnipartFetch("GET", url, headers);
         if (data && (data["@type"] === "hydra:Error" || data.detail)) {
             throw new Error(data.detail || "No returnable items for this order.");
         }
@@ -569,7 +582,7 @@ export const omnipartRouter = router({
       try {
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
         const body = JSON.stringify({ order_id: input.orderId, items: input.items });
-        const data = await crawlWithCurl("POST", "https://api.omnipart.eurocarparts.com/digital-returns", headers, body);
+        const data = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/digital-returns", headers, body);
         if (data && (data["@type"] === "hydra:Error" || data.detail)) {
             throw new Error(data.detail || "Digital return was rejected by Euro Car Parts.");
         }
