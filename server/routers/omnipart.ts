@@ -468,6 +468,15 @@ export const omnipartRouter = router({
               numberOfItems: o?.number_of_items ?? null,
               totalIncTax: o?.totals?.total_inc_tax ?? null,
               dbOrderId: o?.db_order_id || null,
+              branchId: o?.branch_id ?? null,
+              // How long ago it was ordered, and whether it needs chasing (placed >24h ago, still not
+              // delivered) — so a stuck order surfaces at a glance instead of going unnoticed.
+              ageHours: o?.order_date ? Math.max(0, Math.round((Date.now() - new Date(o.order_date).getTime()) / 3600000)) : null,
+              needsAttention: (() => {
+                const delivered = String(o?.order_status || "").toLowerCase().includes("deliver");
+                const ah = o?.order_date ? (Date.now() - new Date(o.order_date).getTime()) / 3600000 : null;
+                return !delivered && ah != null && ah >= 24;
+              })(),
               // filled in below by the reg+date job match (null if no job sheet found)
               jobSheet: null as null | { id: number; docNo: string | null; ga4Number: string | null; docType: string | null; date: Date | string | null },
             };
@@ -522,6 +531,46 @@ export const omnipartRouter = router({
             throw new TRPCError({ code: "UNAUTHORIZED", message });
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      }
+    }),
+
+  // Per-order detail: the parts on an order + its delivery stage. Called when a row is expanded.
+  // The WISMO detail endpoint can be flaky, so this returns an empty parts list rather than erroring.
+  getOrderDetail: protectedProcedure
+    .input(z.object({
+      ref: z.string(),
+      orderId: z.number().nullable().optional(),
+      branchId: z.number().nullable().optional(),
+      token: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      try {
+        const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
+        const body = JSON.stringify({ ref: input.ref, orderId: input.orderId ?? undefined, branchId: input.branchId ?? undefined });
+        const raw = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/account/wismo-order", headers, body);
+        const o = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.values(raw)[0] : null;
+        if (!o || typeof o !== "object") return { parts: [], deliveryStatus: null, eta: null, orderStatus: null };
+        const oo = o as any;
+        const parts: Array<{ code: string | null; name: string | null; quantity: number | null; status: string | null }> = [];
+        let deliveryStatus: string | null = null, eta: string | null = null;
+        for (const dv of Object.values(oo.deliveries || {}) as any[]) {
+          if (dv && typeof dv === "object") {
+            if (dv.delivery_status && !deliveryStatus) deliveryStatus = dv.delivery_status;
+            if (dv.eta && !eta) eta = dv.eta;
+            for (const ln of Object.values(dv.lines || {}) as any[]) {
+              parts.push({
+                code: ln.product_code || ln.sku || null,
+                name: ln.description || ln.product_name || ln.name || ln.product_code || null,
+                quantity: ln.quantity ?? ln.qty ?? null,
+                status: ln.status || ln.line_status || null,
+              });
+            }
+          }
+        }
+        return { parts, deliveryStatus, eta, orderStatus: oo.order_status || null };
+      } catch (e: any) {
+        // best-effort — surface an empty result rather than breaking the row
+        return { parts: [], deliveryStatus: null, eta: null, orderStatus: null, error: e?.message || "unavailable" };
       }
     }),
 

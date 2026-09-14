@@ -25,8 +25,15 @@ export default function OmnipartOrders() {
   const orders = useMemo(() => {
     const all = data?.orders || [];
     const needle = normReg(q);
-    return needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
+    const filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
+    // orders that need chasing float to the top so a stuck one is never missed
+    return [...filtered].sort((a: any, b: any) =>
+      (b.needsAttention ? 1 : 0) - (a.needsAttention ? 1 : 0) ||
+      String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
   }, [data, q]);
+  const chasing = (data?.orders || []).filter((o: any) => o.needsAttention).length;
+  const agoShort = (h: number | null | undefined) =>
+    h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 
   return (
     <DashboardLayout>
@@ -34,6 +41,11 @@ export default function OmnipartOrders() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Truck className="w-6 h-6" /> Parts Orders
+            {chasing > 0 && (
+              <span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-3 py-0.5">
+                ⚠ {chasing} need chasing
+              </span>
+            )}
           </h1>
           <div className="flex items-center gap-2">
             <div className="relative">
@@ -84,7 +96,7 @@ export default function OmnipartOrders() {
                     {orders.map((o) => {
                       const vehicle = [o.make, o.model, o.year].filter(Boolean).join(" ");
                       return (
-                        <TableRow key={o.orderRef}>
+                        <TableRow key={o.orderRef} className={(o as any).needsAttention ? "bg-amber-50" : ""}>
                           <TableCell className="font-medium">{o.orderRef}</TableCell>
                           <TableCell>
                             {o.reg ? (
@@ -111,7 +123,14 @@ export default function OmnipartOrders() {
                             {o.orderDate ? new Date(o.orderDate).toLocaleDateString("en-GB") : "—"}
                           </TableCell>
                           <TableCell>
-                            <OrderStatusBadge status={o.status} />
+                            <div className="flex flex-col gap-0.5">
+                              <OrderStatusBadge status={o.status} />
+                              {o.status && !String(o.status).toLowerCase().includes("deliver") && (
+                                <span className={"text-xs " + ((o as any).needsAttention ? "text-amber-700 font-semibold" : "text-muted-foreground")}>
+                                  {(o as any).needsAttention ? "⚠ " : ""}ordered {agoShort((o as any).ageHours)}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
