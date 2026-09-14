@@ -37,6 +37,7 @@ export default defineConfig({
       "server/motExpiryCheck.test.ts",
       "server/motFollowUpMessage.test.ts",
       "server/messageDelivery.test.ts",
+      "server/followUpCall.test.ts",
     ],
   },
 });

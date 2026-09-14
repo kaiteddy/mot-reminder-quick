@@ -226,6 +226,43 @@ cronRouter.get("/mot-expiry-check", motExpiryCheck);
 cronRouter.get("/mot-expiry-check-after-midnight", motExpiryCheck);
 
 /**
+ * Morning follow-up check (server/services/followUpRecheck.ts): at 06:00 London time ask DVSA and DVLA again about
+ * reminded cars whose MOT runs out in the next 14 days, and cars whose follow-up is 14 days old, so the Follow up
+ * tab drops a car tested early elsewhere and only says "Call" when there's still no MOT. Scheduled at both UTC
+ * hours (vercel.json); the one that isn't 06:00 in London skips. `?run=1` runs it now, `?dry=1` lists the plates.
+ */
+cronRouter.get("/mot-follow-up-recheck", async (req: any, res: any) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  try {
+    const { getDb } = await import("../db");
+    const { refreshPlates } = await import("../services/motRefreshRun");
+    const { runFollowUpRecheck, isFollowUpRecheckTime } = await import("../services/followUpRecheck");
+    const db: any = await getDb();
+    if (!db?.$client) throw new Error("Database not available");
+    const now = new Date();
+    const dry = String(req.query.dry || "") === "1";
+    if (!dry && String(req.query.run || "") !== "1" && !isFollowUpRecheckTime(now)) {
+      return res.json({ ok: true, skipped: "not 06:00 in London", at: now.toISOString() });
+    }
+    const s = await runFollowUpRecheck((t, p) => db.$client.query(t, p), (regs) => refreshPlates(regs), { now, apply: !dry });
+    console.log(`[CRON mot-follow-up-recheck] ${dry ? "DRY" : "LIVE"} ${s.day}: ${s.plates.length} plates, renewed ${s.renewed}, still out ${s.stillOut}, not answered ${s.notAnswered}`);
+    res.json({
+      ok: true, dry, day: s.day, plates: s.plates.length, checked: s.checked,
+      renewed: s.renewed, stillOut: s.stillOut, notAnswered: s.notAnswered,
+      cars: dry
+        ? s.plates.map((reg) => ({ reg }))
+        : s.results.map((r) => ({ reg: r.registration, mot: r.motExpiryDate?.slice(0, 10) ?? null, error: r.error })),
+    });
+  } catch (e: any) {
+    console.error("[CRON mot-follow-up-recheck] failed:", e?.message || e);
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+/**
  * First-MOT dates: ask DVSA (free) about cars with no MOT expiry, mostly new cars, and store the date
  * their first MOT falls due so they come into the reminder list like any other car. A car DVSA shows
  * as already tested gets its blank MOT expiry filled. Daily at 05:10, before the off-road and

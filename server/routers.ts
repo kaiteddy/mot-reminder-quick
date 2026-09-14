@@ -2414,6 +2414,15 @@ export const appRouter = router({
           } else if (messageType === "UrgentFollowUp") {
             const { sendUrgentFollowUpWithTemplate } = await import("./smsService");
             const { followUpMessage } = await import("../shared/motFollowUpMessage");
+            // One follow-up message per MOT (Adam, 14/09/2026); after that the Follow up tab asks for a call.
+            // Another goes only when the last one never arrived.
+            if (input.vehicleId) {
+              const { getFollowUpHistory } = await import("./db");
+              const { repeatFollowUpBlock } = await import("../shared/motFollowUp");
+              const history = await getFollowUpHistory(input.vehicleId);
+              const repeat = history && repeatFollowUpBlock(history.lastFollowUp, history.motExpiryDate ?? expiryDate, registration);
+              if (repeat) throw new Error(repeat);
+            }
             
             // The preview and the log show exactly what the approved template sends.
             messageContent = followUpMessage({ customerName, registration, motExpiryDate: expiryDate }).text;

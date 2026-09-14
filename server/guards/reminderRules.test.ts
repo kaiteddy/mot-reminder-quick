@@ -99,10 +99,12 @@ describe("refreshing a car's MOT records everything, in batches the page can sho
     const routers = read("server/routers.ts");
     expect(callsIn(routers, "refreshPlates"), "bulkVerifyMOT must refresh through server/services/motRefreshRun.ts").toBeGreaterThanOrEqual(1);
     expect(callsIn(routers, "motRefreshFor"), "Don't refresh cars inline in routers.ts: use refreshPlates(), so every refresh records a car the same way").toBe(0);
-    expect(callsIn(read("server/routes/cron.ts"), "refreshPlates"), "The midnight MOT check must refresh through refreshPlates()").toBeGreaterThanOrEqual(1);
+    expect(callsIn(read("server/routes/cron.ts"), "refreshPlates"), "The midnight and morning MOT checks must refresh through refreshPlates()").toBeGreaterThanOrEqual(2);
     const crons = JSON.parse(read("vercel.json")).crons.map((c: any) => c.path);
     expect(crons, "Adam, 14/09/2026: expired cars are checked at 23:59 and 00:01 so one tested elsewhere isn't chased")
       .toEqual(expect.arrayContaining(["/api/cron/mot-expiry-check", "/api/cron/mot-expiry-check-after-midnight"]));
+    expect(crons, "The 06:00 check keeps the Follow up list current: early renewals drop off, and 'Call' only shows for a car still without an MOT")
+      .toContain("/api/cron/mot-follow-up-recheck");
   });
 });
 
@@ -121,6 +123,14 @@ describe("a message preview never sends", () => {
     expect(sends.filter((line) => !line.includes("input.preview ?")),
       "The Preview Message dialog once sent the WhatsApp as it opened, then again on Confirm & Send (14/09/2026). Guard each send with input.preview.")
       .toEqual([]);
+  });
+});
+
+describe("one follow-up message per MOT", () => {
+  it("is refused on the server, not just hidden on the page", () => {
+    expect(callsIn(read("server/routers.ts"), "repeatFollowUpBlock"),
+      "Adam, 14/09/2026: after the follow-up it's a phone call, never a third message. reminders.sendWhatsApp must check repeatFollowUpBlock() from shared/motFollowUp.ts.")
+      .toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -72,6 +72,11 @@ change a tripwire only when Adam changes the rule. Each came from a real fault f
   The midnight check (`server/services/motExpiryCheck.ts`; crons `mot-expiry-check` at 23:59 and
   `mot-expiry-check-after-midnight` at 00:01 London time) asks DVSA again so a car tested elsewhere drops off.
   Every MOT refresh goes through `server/services/motRefreshRun.ts`.
+- **After the follow-up it's a phone call**, never a third message. `followUpFor().todo` asks for a call
+  `CALL_AFTER_DAYS` (14) after a follow-up that reached them once a check since shows no MOT, or at once if it never
+  arrived. `reminders.sendWhatsApp` refuses a second follow-up message for the same MOT (`repeatFollowUpBlock`). The
+  06:00 check (`server/services/followUpRecheck.ts`, cron `mot-follow-up-recheck`) re-asks DVSA about those cars and
+  about reminded cars whose MOT runs out within 14 days.
 - **The follow-up WhatsApp** uses only the two Meta-approved UTILITY templates in `shared/motFollowUpMessage.ts`
   (name, registration, date — three variables, no days left). New wording means a new template approved by Meta
   first; its SID and body then change there together.

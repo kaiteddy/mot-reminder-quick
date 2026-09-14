@@ -18,6 +18,12 @@ export const DUE_AHEAD_DAYS = 14;
 export const MISSED_KEEP_DAYS = 60;
 /** A reminder belongs to this MOT if it was sent no more than this many days before it ran out. */
 export const REMINDER_LEAD_DAYS = 60;
+/**
+ * One follow-up message per MOT; after that it's a phone call (Adam, 14/09/2026). A follow-up that reached them
+ * comes back as "Call" this many days on, once a check since then still shows no new MOT. The morning check
+ * (server/services/followUpRecheck.ts) asks DVSA about those cars on the day they fall due.
+ */
+export const CALL_AFTER_DAYS = 14;
 
 export type FollowUpStage = "missed" | "expired_unchecked" | "due";
 
@@ -48,7 +54,12 @@ export type FollowUp = {
   reminderDelivery: Delivery | null;
   followUpDelivery: Delivery | null;
   bookedFor: Date | null;
-  /** Nothing left to do: followed up since the reminder (a call, or a message that wasn't lost), or booked in. */
+  /**
+   * What to do now: send the follow-up message, phone them, or nothing (null). A call is due when the follow-up
+   * never arrived, or when it went CALL_AFTER_DAYS or more ago and a check since shows no new MOT.
+   */
+  todo: "message" | "call" | null;
+  /** Nothing to do for now: booked in, called, or sent a follow-up that arrived less than CALL_AFTER_DAYS ago. */
   handled: boolean;
 };
 
@@ -57,6 +68,7 @@ export const ukDay = (d: Date | string) => new Date(d).toLocaleDateString("en-CA
 
 const daysBetween = (later: string, earlier: string) =>
   Math.round((Date.parse(`${later}T00:00:00Z`) - Date.parse(`${earlier}T00:00:00Z`)) / 86_400_000);
+const addDays = (day: string, days: number) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 /** Whole UK calendar days from a moment until now: 0 = today, 1 = yesterday. */
 export const daysSince = (d: Date | string, now: Date = new Date()) => daysBetween(ukDay(now), ukDay(d));
@@ -106,8 +118,16 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
   const bookedFor = car.motBookedDate && ukDay(car.motBookedDate) >= remindedDay ? new Date(car.motBookedDate) : null;
   const followedUpHow = followedUpAt ? (car.lastFollowUpHow ?? "message") : null;
   const followUpDelivery = followedUpHow === "message" ? car.lastFollowUpDelivery ?? null : null;
-  // A follow-up message that never arrived hasn't reached them: the car stays on the list, marked Not received.
-  const reachedThem = !!followedUpAt && followUpDelivery?.state !== "not_received";
+  let todo: FollowUp["todo"];
+  if (bookedFor || followedUpHow === "call") todo = null;
+  else if (!followedUpAt) todo = "message";
+  // A follow-up message that never arrived hasn't reached them: phone instead (or fix the number and resend).
+  else if (followUpDelivery?.state === "not_received") todo = "call";
+  else {
+    // It reached them. CALL_AFTER_DAYS on, if a check since then still shows no new MOT, phone them.
+    const callDay = addDays(ukDay(followedUpAt), CALL_AFTER_DAYS);
+    todo = ukDay(now) >= callDay && !!car.lastChecked && ukDay(car.lastChecked) >= callDay ? "call" : null;
+  }
   return {
     stage,
     daysLeft,
@@ -119,8 +139,26 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
     reminderDelivery: car.lastMotReminderDelivery ?? null,
     followUpDelivery,
     bookedFor,
-    handled: reachedThem || !!bookedFor,
+    todo,
+    handled: todo === null,
   };
+}
+
+/**
+ * Why another follow-up message for this MOT is refused, or null when it may go. One follow-up message per MOT,
+ * then a phone call. Another is allowed only when the last one never arrived (a wrong number, since fixed).
+ */
+export function repeatFollowUpBlock(
+  last: { at: Date | string; delivery: Delivery } | null | undefined,
+  motExpiryDate: Date | string | null | undefined,
+  registration: string,
+): string | null {
+  if (!last || !motExpiryDate) return null;
+  if (last.delivery.state === "not_received") return null;
+  // Sent long before this MOT's reminder window: that follow-up was about an earlier MOT.
+  if (daysBetween(ukDay(motExpiryDate), ukDay(last.at)) > REMINDER_LEAD_DAYS) return null;
+  const when = new Date(last.at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/London" });
+  return `${registration} was already sent a follow-up for this MOT on ${when} (${last.delivery.note.replace(/\.$/, "")}). Give them a call instead.`;
 }
 
 /** The message a Follow up row's status is about: the follow-up if one went, else the reminder (none once booked). */

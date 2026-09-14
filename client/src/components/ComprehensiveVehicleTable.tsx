@@ -239,6 +239,11 @@ export function ComprehensiveVehicleTable({
             ? `Followed up ${ukDayMonth(fu.followedUpAt)} at ${ukTime(fu.followedUpAt)} by ${fu.followedUpHow === "call" ? "phone" : "message"}.${fu.followUpDelivery ? ` ${fu.followUpDelivery.note}` : ""}`
             : "",
         fu.bookedFor ? `Booked for ${ukDayMonth(fu.bookedFor)}.` : "",
+        fu.todo === "call"
+            ? fu.followUpDelivery?.state === "not_received"
+                ? "The follow-up didn't arrive: give them a call, or fix the number and send it again."
+                : `Still no MOT ${whenAgo(fu.followedUpAt!)} after the follow-up: give them a call.`
+            : "",
     ].filter(Boolean).join(" ");
 
     return (
@@ -340,6 +345,7 @@ export function ComprehensiveVehicleTable({
                                                         : fu.bookedFor ? `booked for ${ukDayMonth(fu.bookedFor)}` : `reminded ${whenAgo(fu.remindedAt)}`}
                                                 </span>
                                                 {shownDelivery && deliveryPill(shownDelivery)}
+                                                {fu.todo === "call" && tag("Call", "bg-amber-100 text-amber-800", "One follow-up message per MOT; the next step is a phone call")}
                                             </span>
                                         ) : <span className="text-slate-400">—</span>}
                                     </TableCell>

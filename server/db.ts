@@ -1346,6 +1346,36 @@ export async function updateReminderLogStatus(messageSid: string, status: string
   await db.update(reminderLogs).set(updateData).where(eq(reminderLogs.messageSid, messageSid));
 }
 
+/**
+ * A car's last follow-up message, with how it arrived, and its MOT date: what reminders.sendWhatsApp needs to
+ * refuse a second follow-up message for the same MOT (repeatFollowUpBlock in shared/motFollowUp.ts).
+ */
+export async function getFollowUpHistory(vehicleId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const since = new Date(Date.now() - 400 * 86_400_000);
+  const logs = await db
+    .select({
+      vehicleId: reminderLogs.vehicleId,
+      sentAt: reminderLogs.sentAt,
+      status: reminderLogs.status,
+      messageType: reminderLogs.messageType,
+      templateUsed: reminderLogs.templateUsed,
+      messageSid: reminderLogs.messageSid,
+    })
+    .from(reminderLogs)
+    .where(and(eq(reminderLogs.vehicleId, vehicleId), gte(reminderLogs.sentAt, since)))
+    .orderBy(desc(reminderLogs.sentAt));
+  const [car] = await db
+    .select({ motExpiryDate: vehicles.motExpiryDate, firstMotDue: vehicles.firstMotDue })
+    .from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1);
+  const { summariseReminderLogs } = await import("../shared/messageDelivery");
+  return {
+    lastFollowUp: summariseReminderLogs(logs).lastFollowUp.get(vehicleId) ?? null,
+    motExpiryDate: car?.motExpiryDate ?? car?.firstMotDue ?? null,
+  };
+}
+
 export async function bulkUpdateVehicleMOT(updates: Array<{
   id: number;
   motExpiryDate?: Date | null;

@@ -37,7 +37,7 @@ import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { reminderBlocks, type ReminderBlock } from "@shared/reminderEligibility";
-import { daysSince, followUpFor, followUpShownDelivery, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
+import { CALL_AFTER_DAYS, daysSince, followUpFor, followUpShownDelivery, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
 import { deliveryGroup, type MessageGroup } from "@shared/messageDelivery";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -136,6 +136,8 @@ export default function Home() {
   const [showHandled, setShowHandled] = useState(false);
   // How long ago the reminder went, picked in plain terms: last 3 days, 2 weeks, a month, or longer.
   const [remindedWithin, setRemindedWithin] = useState<"any" | "3d" | "14d" | "31d" | "older">("any");
+  // What to do next: send the follow-up message, or phone them (shared/motFollowUp.ts, FollowUp.todo).
+  const [todoFilter, setTodoFilter] = useState<"any" | "message" | "call">("any");
   // Did they get it (Adam, 14/09/2026: "allow me to filter by status"). Several can be picked at once.
   const [messageGroups, setMessageGroups] = useState<Set<MessageGroup>>(new Set());
   const toggleMessageGroup = (group: MessageGroup) => setMessageGroups((prev) => {
@@ -489,10 +491,10 @@ export default function Home() {
     return map;
   }, [vehicles]);
   const followUpCounts = useMemo(() => {
-    const counts = { open: 0, handled: 0, missed: 0, expired_unchecked: 0, due: 0 };
+    const counts = { open: 0, handled: 0, missed: 0, expired_unchecked: 0, due: 0, message: 0, call: 0 };
     followUps.forEach((fu) => {
-      if (fu.handled) counts.handled++;
-      else { counts.open++; counts[fu.stage]++; }
+      if (!fu.todo) counts.handled++;
+      else { counts.open++; counts[fu.stage]++; counts[fu.todo]++; }
     });
     return counts;
   }, [followUps]);
@@ -501,6 +503,7 @@ export default function Home() {
     if (!fu) return false;
     if (fu.handled && !showHandled) return false;
     if (followUpStages.size > 0 && !followUpStages.has(fu.stage)) return false;
+    if (todoFilter !== "any" && fu.todo !== todoFilter) return false;
     if (remindedWithin !== "any") {
       const days = daysSince(fu.remindedAt);
       if (remindedWithin === "older" ? days <= 31 : days > ({ "3d": 3, "14d": 14, "31d": 31 } as const)[remindedWithin]) return false;
@@ -509,7 +512,7 @@ export default function Home() {
     return normRegKey(vehicle.registration).includes(normRegKey(searchTerm))
       || (vehicle.customerName?.toLowerCase() || "").includes(term)
       || (vehicle.make?.toLowerCase() || "").includes(term);
-  }), [vehicles, followUps, showHandled, followUpStages, remindedWithin, searchTerm]);
+  }), [vehicles, followUps, showHandled, followUpStages, todoFilter, remindedWithin, searchTerm]);
   const unfilteredListed = view === "followup" ? followUpVehicles : filteredAndSortedVehicles;
   // The status beside each row: on Follow up the follow-up message, or the reminder if none has gone yet;
   // on All cars the last message sent. The Message filter and its counts use exactly that.
@@ -541,7 +544,7 @@ export default function Home() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled, remindedWithin, messageGroups]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled, todoFilter, remindedWithin, messageGroups]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
@@ -649,8 +652,14 @@ export default function Home() {
             {view === "followup" ? (
             <div className="space-y-2 border-t pt-3">
               <p className="text-xs text-muted-foreground">
-                Sent a reminder, still no MOT. Re-checked with DVSA at 23:59 and 00:01 on the day it runs out, so a car tested elsewhere drops off.
+                Sent a reminder, still no MOT: send one follow-up. Still no MOT {CALL_AFTER_DAYS} days after it, or it didn't arrive: phone them.
+                Checked with DVSA every morning and at midnight when the MOT runs out, so a car tested elsewhere drops off.
               </p>
+              <FilterRow label="To do">
+                <FilterChip active={todoFilter === "any"} onClick={() => setTodoFilter("any")}>All ({followUpCounts.open})</FilterChip>
+                <FilterChip active={todoFilter === "message"} onClick={() => setTodoFilter("message")} title="Reminded, no follow-up yet: send the follow-up message">Send follow-up ({followUpCounts.message})</FilterChip>
+                <FilterChip active={todoFilter === "call"} onClick={() => setTodoFilter("call")} title={`The follow-up didn't arrive, or went ${CALL_AFTER_DAYS}+ days ago and there's still no MOT: phone them`}>Call ({followUpCounts.call})</FilterChip>
+              </FilterRow>
               <FilterRow label="Stage">
                 <FilterChip active={followUpStages.size === 0} onClick={() => setFollowUpStages(new Set())}>All ({followUpCounts.open})</FilterChip>
                 <FilterChip active={followUpStages.has("missed")} onClick={() => toggleStage("missed")} title="The MOT has run out, and a check since shows no new MOT">Missed MOT ({followUpCounts.missed})</FilterChip>
@@ -666,7 +675,7 @@ export default function Home() {
               </FilterRow>
               {messageRow}
               <FilterRow label="Show">
-                <FilterChip active={showHandled} onClick={() => setShowHandled(!showHandled)} title="Cars already sent a follow-up, called, or booked in since their reminder">Already followed up ({followUpCounts.handled})</FilterChip>
+                <FilterChip active={showHandled} onClick={() => setShowHandled(!showHandled)} title={`Booked in, called, or sent a follow-up that arrived less than ${CALL_AFTER_DAYS} days ago`}>Already followed up ({followUpCounts.handled})</FilterChip>
               </FilterRow>
             </div>
             ) : (
