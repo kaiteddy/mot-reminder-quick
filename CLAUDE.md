@@ -75,6 +75,9 @@ change a tripwire only when Adam changes the rule. Each came from a real fault f
 - **The follow-up WhatsApp** uses only the two Meta-approved UTILITY templates in `shared/motFollowUpMessage.ts`
   (name, registration, date — three variables, no days left). New wording means a new template approved by Meta
   first; its SID and body then change there together.
+- **Message status** on the MOT Reminders page (Read / Delivered / Sent / Not received / Sent as SMS / SMS delivered)
+  is worked out only by `shared/messageDelivery.ts`. A rescue text (`rescue-sms:<SID>`) is how its original message
+  arrived, never a message of its own; a follow-up that was not received does not count as followed up.
 - **Tests never touch the live database**: DB tests need the sandbox `TEST_DATABASE_URL`; anything in the build
   gate must need no database at all.
 

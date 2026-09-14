@@ -18,10 +18,6 @@ import {
     CalendarDays,
     Trash2,
     Loader2,
-    Eye,
-    CheckCircle2,
-    Clock,
-    XCircle,
     AlertTriangle,
     History,
     CalendarCheck,
@@ -29,6 +25,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { whenAgo, type FollowUp } from "@shared/motFollowUp";
+import type { Delivery, DeliveryState } from "@shared/messageDelivery";
 
 interface Vehicle {
     id: number;
@@ -52,6 +49,7 @@ interface Vehicle {
     lastChecked?: Date | string | null;
     lastReminderSent: Date | string | null;
     lastReminderStatus: string | null;
+    lastReminderDelivery?: Delivery | null;
     lastVisit?: Date | string | null;
 }
 
@@ -85,6 +83,21 @@ const FOLLOW_UP_LABEL: Record<FollowUp["stage"], { text: string; tone: string }>
     expired_unchecked: { text: "Expired, checking", tone: "text-amber-700" },
     due: { text: "Reminded, not done", tone: "text-blue-700" },
 };
+// Did they get it (shared/messageDelivery.ts). Adam, 14/09/2026: "a little status update next to these so we
+// know if delivered, read, not received, sent as SMS".
+const DELIVERY_LABEL: Record<DeliveryState, { text: string; tone: string }> = {
+    read: { text: "Read", tone: "bg-blue-50 text-blue-700" },
+    delivered: { text: "Delivered", tone: "bg-green-50 text-green-700" },
+    sent: { text: "Sent", tone: "bg-slate-100 text-slate-600" },
+    not_received: { text: "Not received", tone: "bg-red-50 text-red-700" },
+    sms_sent: { text: "Sent as SMS", tone: "bg-violet-50 text-violet-700" },
+    sms_delivered: { text: "SMS delivered", tone: "bg-violet-50 text-violet-700" },
+};
+const deliveryPill = (d: Delivery) => (
+    <span className={`shrink-0 rounded px-1.5 py-px text-[11px] font-medium leading-4 ${DELIVERY_LABEL[d.state].tone}`} title={d.note}>
+        {DELIVERY_LABEL[d.state].text}
+    </span>
+);
 const ukDayMonth = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", timeZone: "Europe/London" });
 const ukTime = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
 
@@ -185,17 +198,6 @@ export function ComprehensiveVehicleTable({
         });
     }, [vehicles, sortField, sortDirection]);
 
-    const getDeliveryStatusIcon = (status: string | null | undefined) => {
-        if (!status) return null;
-        switch (status) {
-            case "read": return <span title="Read"><Eye className="w-3.5 h-3.5 text-blue-600" /></span>;
-            case "delivered": return <span title="Delivered"><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /></span>;
-            case "sent": return <span title="Sent"><Clock className="w-3.5 h-3.5 text-yellow-600" /></span>;
-            case "failed": return <span title="Failed"><XCircle className="w-3.5 h-3.5 text-red-600" /></span>;
-            default: return <span title="Queued"><Clock className="w-3.5 h-3.5 text-gray-400" /></span>;
-        }
-    };
-
     if (isLoading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -229,11 +231,13 @@ export function ComprehensiveVehicleTable({
         return <span className="text-[11px] text-slate-400">No data</span>;
     };
     const followUpNote = (fu: FollowUp) => [
-        `Reminder sent ${ukDayMonth(fu.remindedAt)} at ${ukTime(fu.remindedAt)}${fu.reminderStatus ? ` (${fu.reminderStatus})` : ""}.`,
+        `Reminder sent ${ukDayMonth(fu.remindedAt)} at ${ukTime(fu.remindedAt)}.${fu.reminderDelivery ? ` ${fu.reminderDelivery.note}` : ""}`,
         fu.checkedAfterExpiry
             ? `Checked ${ukDayMonth(fu.checkedAfterExpiry)} at ${ukTime(fu.checkedAfterExpiry)}: no new MOT.`
             : fu.stage === "expired_unchecked" ? "Not checked since the MOT ran out; the midnight check will confirm." : "",
-        fu.followedUpAt ? `Followed up ${ukDayMonth(fu.followedUpAt)} by ${fu.followedUpHow === "call" ? "phone" : "message"}.` : "",
+        fu.followedUpAt
+            ? `Followed up ${ukDayMonth(fu.followedUpAt)} at ${ukTime(fu.followedUpAt)} by ${fu.followedUpHow === "call" ? "phone" : "message"}.${fu.followUpDelivery ? ` ${fu.followUpDelivery.note}` : ""}`
+            : "",
         fu.bookedFor ? `Booked for ${ukDayMonth(fu.bookedFor)}.` : "",
     ].filter(Boolean).join(" ");
 
@@ -327,32 +331,29 @@ export function ComprehensiveVehicleTable({
                                 {followUps ? (
                                     <TableCell className={CELL} title={fu ? followUpNote(fu) : undefined}>
                                         {fu ? (
-                                            <span className="flex max-w-[260px] min-w-0 items-center gap-1.5">
+                                            <span className="flex max-w-[320px] min-w-0 items-center gap-1.5">
                                                 <span className={`shrink-0 font-semibold ${FOLLOW_UP_LABEL[fu.stage].tone}`}>{FOLLOW_UP_LABEL[fu.stage].text}</span>
                                                 <span className="truncate text-slate-500">
-                                                    {fu.followedUpAt ? (
-                                                        `${fu.followedUpHow === "call" ? "called" : "messaged"} ${whenAgo(fu.followedUpAt)}`
-                                                    ) : fu.bookedFor ? (
-                                                        `booked for ${ukDayMonth(fu.bookedFor)}`
-                                                    ) : (
-                                                        <>
-                                                            reminded {whenAgo(fu.remindedAt)}
-                                                            {fu.reminderStatus && (
-                                                                <> · <span className={/failed|undelivered/.test(fu.reminderStatus) ? "text-red-600" : undefined}>{fu.reminderStatus}</span></>
-                                                            )}
-                                                        </>
-                                                    )}
+                                                    {fu.followedUpAt
+                                                        ? `${fu.followedUpHow === "call" ? "called" : "messaged"} ${whenAgo(fu.followedUpAt)}`
+                                                        : fu.bookedFor ? `booked for ${ukDayMonth(fu.bookedFor)}` : `reminded ${whenAgo(fu.remindedAt)}`}
                                                 </span>
+                                                {fu.followedUpAt
+                                                    ? fu.followUpDelivery && deliveryPill(fu.followUpDelivery)
+                                                    : !fu.bookedFor && fu.reminderDelivery && deliveryPill(fu.reminderDelivery)}
                                             </span>
                                         ) : <span className="text-slate-400">—</span>}
                                     </TableCell>
                                 ) : (
                                     <TableCell
                                         className={CELL}
-                                        title={vehicle.lastReminderSent ? `Sent ${shortDate(vehicle.lastReminderSent)}${vehicle.lastReminderStatus ? `, ${vehicle.lastReminderStatus}` : ""}` : undefined}
+                                        title={vehicle.lastReminderSent ? `Sent ${shortDate(vehicle.lastReminderSent)}.${vehicle.lastReminderDelivery ? ` ${vehicle.lastReminderDelivery.note}` : ""}` : undefined}
                                     >
                                         {vehicle.lastReminderSent ? (
-                                            <span className="inline-flex items-center gap-1">{whenAgo(vehicle.lastReminderSent)}{getDeliveryStatusIcon(vehicle.lastReminderStatus)}</span>
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {whenAgo(vehicle.lastReminderSent)}
+                                                {vehicle.lastReminderDelivery && deliveryPill(vehicle.lastReminderDelivery)}
+                                            </span>
                                         ) : <span className="text-slate-400">Never</span>}
                                     </TableCell>
                                 )}

@@ -10,6 +10,7 @@
  * so a car tested somewhere else that day gets its new date and drops off rather than being chased by
  * mistake. Until that check has happened the car shows as "Expired, checking".
  */
+import type { Delivery } from "./messageDelivery";
 
 /** Reminded cars whose MOT runs out within this many days show as "Reminded, not done". */
 export const DUE_AHEAD_DAYS = 14;
@@ -26,6 +27,9 @@ export type FollowUpCar = {
   lastMotReminderStatus?: string | null;
   lastFollowUpAt?: Date | string | null;
   lastFollowUpHow?: "message" | "call" | null;
+  /** How the last MOT reminder and the last follow-up message arrived (shared/messageDelivery.ts). */
+  lastMotReminderDelivery?: Delivery | null;
+  lastFollowUpDelivery?: Delivery | null;
   motBookedDate?: Date | string | null;
   lastChecked?: Date | string | null;
 };
@@ -40,8 +44,11 @@ export type FollowUp = {
   checkedAfterExpiry: Date | null;
   followedUpAt: Date | null;
   followedUpHow: "message" | "call" | null;
+  /** How the reminder arrived, and the follow-up message if there was one (not for a call). */
+  reminderDelivery: Delivery | null;
+  followUpDelivery: Delivery | null;
   bookedFor: Date | null;
-  /** Nothing left to do: followed up since the reminder, or booked in. */
+  /** Nothing left to do: followed up since the reminder (a call, or a message that wasn't lost), or booked in. */
   handled: boolean;
 };
 
@@ -97,6 +104,10 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
   const remindedAt = new Date(car.lastMotReminderAt);
   const followedUpAt = car.lastFollowUpAt && new Date(car.lastFollowUpAt) > remindedAt ? new Date(car.lastFollowUpAt) : null;
   const bookedFor = car.motBookedDate && ukDay(car.motBookedDate) >= remindedDay ? new Date(car.motBookedDate) : null;
+  const followedUpHow = followedUpAt ? (car.lastFollowUpHow ?? "message") : null;
+  const followUpDelivery = followedUpHow === "message" ? car.lastFollowUpDelivery ?? null : null;
+  // A follow-up message that never arrived hasn't reached them: the car stays on the list, marked Not received.
+  const reachedThem = !!followedUpAt && followUpDelivery?.state !== "not_received";
   return {
     stage,
     daysLeft,
@@ -104,8 +115,10 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
     reminderStatus: car.lastMotReminderStatus ?? null,
     checkedAfterExpiry,
     followedUpAt,
-    followedUpHow: followedUpAt ? (car.lastFollowUpHow ?? "message") : null,
+    followedUpHow,
+    reminderDelivery: car.lastMotReminderDelivery ?? null,
+    followUpDelivery,
     bookedFor,
-    handled: !!(followedUpAt || bookedFor),
+    handled: reachedThem || !!bookedFor,
   };
 }
