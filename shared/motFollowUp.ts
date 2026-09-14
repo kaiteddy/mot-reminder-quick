@@ -122,3 +122,7 @@ export function followUpFor(car: FollowUpCar, now: Date = new Date()): FollowUp 
     handled: reachedThem || !!bookedFor,
   };
 }
+
+/** The message a Follow up row's status is about: the follow-up if one went, else the reminder (none once booked). */
+export const followUpShownDelivery = (fu: FollowUp): Delivery | null =>
+  fu.followedUpAt ? fu.followUpDelivery : fu.bookedFor ? null : fu.reminderDelivery;

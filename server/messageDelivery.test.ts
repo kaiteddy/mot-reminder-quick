@@ -2,8 +2,8 @@
  * Did the customer get it: the status beside each message on the MOT Reminders page. Pure.
  */
 import { describe, it, expect } from "vitest";
-import { deliveryOf, summariseReminderLogs, type DeliveryState, type SentLog } from "../shared/messageDelivery";
-import { followUpFor } from "../shared/motFollowUp";
+import { deliveryGroup, deliveryOf, summariseReminderLogs, type DeliveryState, type SentLog } from "../shared/messageDelivery";
+import { followUpFor, followUpShownDelivery } from "../shared/motFollowUp";
 
 const state = (log: Partial<SentLog>, rescue?: { status: string | null }) =>
   deliveryOf({ status: null, templateUsed: null, messageSid: null, ...log }, rescue).state;
@@ -73,5 +73,27 @@ describe("a follow-up that never arrived", () => {
 
   it("counts a phone call whatever happened to the messages", () => {
     expect(followUpFor({ ...car, lastFollowUpHow: "call", lastFollowUpDelivery: null }, NOW)).toMatchObject({ handled: true, followUpDelivery: null });
+  });
+});
+
+describe("the Message filter", () => {
+  const d = (state: DeliveryState) => ({ state, note: "" });
+
+  it("puts both kinds of text under By SMS", () => {
+    expect(deliveryGroup(d("sms_sent"))).toBe("sms");
+    expect(deliveryGroup(d("sms_delivered"))).toBe("sms");
+    expect(deliveryGroup(d("not_received"))).toBe("not_received");
+    expect(deliveryGroup(d("read"))).toBe("read");
+    expect(deliveryGroup(null)).toBe("none");
+  });
+
+  it("filters a Follow up row on the same message its status shows", () => {
+    const NOW = new Date("2026-09-15T08:00:00Z");
+    const car = { motExpiryDate: "2026-09-09T00:00:00Z", lastMotReminderAt: "2026-08-20T09:00:00Z", lastMotReminderDelivery: d("read") };
+    const followedUp = { ...car, lastFollowUpAt: "2026-09-14T10:30:00Z" };
+    expect(followUpShownDelivery(followUpFor(car, NOW)!)?.state).toBe("read");
+    expect(followUpShownDelivery(followUpFor({ ...followedUp, lastFollowUpHow: "message", lastFollowUpDelivery: d("not_received") }, NOW)!)?.state).toBe("not_received");
+    expect(followUpShownDelivery(followUpFor({ ...followedUp, lastFollowUpHow: "call" }, NOW)!)).toBeNull();
+    expect(followUpShownDelivery(followUpFor({ ...car, motBookedDate: "2026-09-18T00:00:00Z" }, NOW)!)).toBeNull();
   });
 });

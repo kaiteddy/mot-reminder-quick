@@ -24,7 +24,7 @@ import {
     PhoneCall
 } from "lucide-react";
 import { Link } from "wouter";
-import { whenAgo, type FollowUp } from "@shared/motFollowUp";
+import { followUpShownDelivery, whenAgo, type FollowUp } from "@shared/motFollowUp";
 import type { Delivery, DeliveryState } from "@shared/messageDelivery";
 
 interface Vehicle {
@@ -274,6 +274,7 @@ export function ComprehensiveVehicleTable({
                     sortedVehicles.map((vehicle) => {
                         const { status, daysLeft } = getMOTStatus(vehicle.motExpiryDate);
                         const fu = followUps?.get(vehicle.id);
+                        const shownDelivery = fu ? followUpShownDelivery(fu) : null;
                         const year = vehicle.dateOfRegistration ? new Date(vehicle.dateOfRegistration).getFullYear() : null;
                         const vehicleTitle = `${[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unknown"}${year ? ` (${year})` : ""}`;
 
@@ -338,9 +339,7 @@ export function ComprehensiveVehicleTable({
                                                         ? `${fu.followedUpHow === "call" ? "called" : "messaged"} ${whenAgo(fu.followedUpAt)}`
                                                         : fu.bookedFor ? `booked for ${ukDayMonth(fu.bookedFor)}` : `reminded ${whenAgo(fu.remindedAt)}`}
                                                 </span>
-                                                {fu.followedUpAt
-                                                    ? fu.followUpDelivery && deliveryPill(fu.followUpDelivery)
-                                                    : !fu.bookedFor && fu.reminderDelivery && deliveryPill(fu.reminderDelivery)}
+                                                {shownDelivery && deliveryPill(shownDelivery)}
                                             </span>
                                         ) : <span className="text-slate-400">—</span>}
                                     </TableCell>

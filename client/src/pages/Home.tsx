@@ -37,7 +37,8 @@ import { MOTRefreshButtonLive } from "@/components/MOTRefreshButtonLive";
 import { trpc } from "@/lib/trpc";
 import { normRegKey } from "@shared/vehicleIdentity";
 import { reminderBlocks, type ReminderBlock } from "@shared/reminderEligibility";
-import { daysSince, followUpFor, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
+import { daysSince, followUpFor, followUpShownDelivery, type FollowUp, type FollowUpStage } from "@shared/motFollowUp";
+import { deliveryGroup, type MessageGroup } from "@shared/messageDelivery";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -54,6 +55,15 @@ const MOT_WINDOWS: [string, string][] = [
 ];
 
 /** One labelled line of the filter panel: the label sits left on a wide screen, above on a phone. */
+// The Message filter: the same words as the status beside each row (shared/messageDelivery.ts).
+const MESSAGE_GROUPS: { key: Exclude<MessageGroup, "none">; label: string; title: string }[] = [
+  { key: "read", label: "Read", title: "Opened on WhatsApp" },
+  { key: "delivered", label: "Delivered", title: "On their phone, not opened yet" },
+  { key: "sent", label: "Sent", title: "WhatsApp has it, but it isn't on their phone yet" },
+  { key: "sms", label: "By SMS", title: "Not on WhatsApp, so it went as a text" },
+  { key: "not_received", label: "Not received", title: "Didn't arrive by WhatsApp or by text" },
+];
+
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
@@ -126,6 +136,13 @@ export default function Home() {
   const [showHandled, setShowHandled] = useState(false);
   // How long ago the reminder went, picked in plain terms: last 3 days, 2 weeks, a month, or longer.
   const [remindedWithin, setRemindedWithin] = useState<"any" | "3d" | "14d" | "31d" | "older">("any");
+  // Did they get it (Adam, 14/09/2026: "allow me to filter by status"). Several can be picked at once.
+  const [messageGroups, setMessageGroups] = useState<Set<MessageGroup>>(new Set());
+  const toggleMessageGroup = (group: MessageGroup) => setMessageGroups((prev) => {
+    const next = new Set(prev);
+    next.has(group) ? next.delete(group) : next.add(group);
+    return next;
+  });
   const toggleStage = (stage: FollowUpStage) => setFollowUpStages((prev) => {
     const next = new Set(prev);
     next.has(stage) ? next.delete(stage) : next.add(stage);
@@ -136,9 +153,10 @@ export default function Home() {
   const showBlocked = (block: ReminderBlock) =>
     block === "reminders_off" ? !hideRemindersOff : block === "trade" ? !hideTrade : false;
   const filtersAtDefault = !searchTerm && motWindows.size === 0 && !showDeadVehicles && hideMissingPhone && hideSorn
-    && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff && hideTrade;
+    && hideReadAndExpired && !showOnlyNeverSent && hideNoData && hideRemindersOff && hideTrade && messageGroups.size === 0;
   const resetFilters = () => {
     setSearchTerm("");
+    setMessageGroups(new Set());
     setMotWindows(new Set());
     setShowDeadVehicles(false);
     setHideMissingPhone(true);
@@ -492,12 +510,38 @@ export default function Home() {
       || (vehicle.customerName?.toLowerCase() || "").includes(term)
       || (vehicle.make?.toLowerCase() || "").includes(term);
   }), [vehicles, followUps, showHandled, followUpStages, remindedWithin, searchTerm]);
-  const listed = view === "followup" ? followUpVehicles : filteredAndSortedVehicles;
+  const unfilteredListed = view === "followup" ? followUpVehicles : filteredAndSortedVehicles;
+  // The status beside each row: on Follow up the follow-up message, or the reminder if none has gone yet;
+  // on All cars the last message sent. The Message filter and its counts use exactly that.
+  const shownDelivery = (vehicle: (typeof unfilteredListed)[number]) => {
+    if (view !== "followup") return vehicle.lastReminderDelivery ?? null;
+    const fu = followUps.get(vehicle.id);
+    return fu ? followUpShownDelivery(fu) : null;
+  };
+  const messageCounts = useMemo(() => {
+    const counts: Record<MessageGroup, number> = { read: 0, delivered: 0, sent: 0, sms: 0, not_received: 0, none: 0 };
+    for (const vehicle of unfilteredListed) counts[deliveryGroup(shownDelivery(vehicle))]++;
+    return counts;
+  }, [unfilteredListed, followUps, view]);
+  const listed = useMemo(() => messageGroups.size === 0
+    ? unfilteredListed
+    : unfilteredListed.filter((vehicle) => messageGroups.has(deliveryGroup(shownDelivery(vehicle)))),
+  [unfilteredListed, messageGroups, followUps, view]);
+  const messageRow = (
+    <FilterRow label="Message">
+      <FilterChip active={messageGroups.size === 0} onClick={() => setMessageGroups(new Set())}>Any</FilterChip>
+      {MESSAGE_GROUPS.map(({ key, label, title }) => (
+        <FilterChip key={key} active={messageGroups.has(key)} onClick={() => toggleMessageGroup(key)} title={title}>
+          {label} ({messageCounts[key]})
+        </FilterChip>
+      ))}
+    </FilterRow>
+  );
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled, remindedWithin]);
+  }, [searchTerm, motStatusFilter, taxStatusFilter, motWindows, hideRemindersOff, hideTrade, view, followUpStages, showHandled, remindedWithin, messageGroups]);
 
   // Keep the selection in sync with the filtered list — drop any selected vehicles that are no
   // longer in view, so "N selected" / the send count always matches what's actually on screen.
@@ -620,6 +664,7 @@ export default function Home() {
                 <FilterChip active={remindedWithin === "31d"} onClick={() => setRemindedWithin("31d")}>Last month</FilterChip>
                 <FilterChip active={remindedWithin === "older"} onClick={() => setRemindedWithin("older")}>Over a month ago</FilterChip>
               </FilterRow>
+              {messageRow}
               <FilterRow label="Show">
                 <FilterChip active={showHandled} onClick={() => setShowHandled(!showHandled)} title="Cars already sent a follow-up, called, or booked in since their reminder">Already followed up ({followUpCounts.handled})</FilterChip>
               </FilterRow>
@@ -632,6 +677,7 @@ export default function Home() {
                   <FilterChip key={key} active={motWindows.has(key)} onClick={() => toggleWindow(key, !motWindows.has(key))}>{label}</FilterChip>
                 ))}
               </FilterRow>
+              {messageRow}
               <FilterRow label="Hide">
                 <FilterChip active={hideMissingPhone} onClick={() => setHideMissingPhone(!hideMissingPhone)} title="Customers with no mobile number, who can't be sent a reminder">No phone</FilterChip>
                 <FilterChip active={hideSorn} onClick={() => setHideSorn(!hideSorn)} title="Declared off the road with DVLA">SORN</FilterChip>

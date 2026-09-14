@@ -90,3 +90,8 @@ export function summariseReminderLogs(logs: SentLog[]) {
   }
   return { last, lastMot, lastFollowUp };
 }
+
+/** The MOT Reminders page's Message filter: both kinds of text are one choice, "By SMS". */
+export type MessageGroup = "read" | "delivered" | "sent" | "sms" | "not_received" | "none";
+export const deliveryGroup = (d: Delivery | null | undefined): MessageGroup =>
+  !d ? "none" : d.state === "sms_sent" || d.state === "sms_delivered" ? "sms" : d.state;
