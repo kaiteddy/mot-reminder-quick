@@ -56,9 +56,9 @@ const MOT_WINDOWS: [string, string][] = [
 /** One labelled line of the filter panel: the label sits left on a wide screen, above on a phone. */
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-      <div className="flex flex-wrap gap-2">{children}</div>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+      <span className="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
   );
 }
@@ -71,7 +71,7 @@ function FilterChip({ active, onClick, title, children }: { active: boolean; onC
       aria-pressed={active}
       onClick={onClick}
       title={title}
-      className={`inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+      className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -79,6 +79,16 @@ function FilterChip({ active, onClick, title, children }: { active: boolean; onC
     >
       {children}
     </button>
+  );
+}
+
+/** One figure in the summary strip above the list. */
+function StatItem({ label, value, tone = "text-slate-900" }: { label: string; value: number; tone?: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className={`text-lg font-semibold tabular-nums ${tone}`}>{value.toLocaleString("en-GB")}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+    </span>
   );
 }
 
@@ -142,7 +152,7 @@ export default function Home() {
   const [showUpload, setShowUpload] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 50;
+  const ITEMS_PER_PAGE = 100;
 
   // History State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -451,7 +461,8 @@ export default function Home() {
   const followUps = useMemo(() => {
     const map = new Map<number, FollowUp>();
     for (const vehicle of vehicles || []) {
-      if (reminderBlocks(vehicle).length) continue;
+      // No phone number: nobody to message or call, so nothing to follow up.
+      if (reminderBlocks(vehicle).length || !vehicle.customerPhone) continue;
       const fu = followUpFor(vehicle);
       if (fu) map.set(vehicle.id, fu);
     }
@@ -518,71 +529,77 @@ export default function Home() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight">{APP_TITLE}</h1>
-            <p className="text-muted-foreground mt-2">Dashboard Overview</p>
-          </div>
-          <div className="flex gap-2">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">MOT Reminders</h1>
+          <div className="flex flex-wrap gap-2">
             <Link href="/workshop">
-              <Button variant="outline" className="border-slate-300 font-semibold">
-                <Smartphone className="w-4 h-4 mr-2" /> Workshop Mode
+              <Button variant="outline" size="sm">
+                <Smartphone className="w-4 h-4 mr-1.5" /> Workshop mode
               </Button>
             </Link>
-            <Button onClick={() => setShowUpload(!showUpload)}>
-              <Search className="w-4 h-4 mr-2" /> Upload Screenshot
+            <Button variant="outline" size="sm" onClick={() => setShowUpload(!showUpload)}>
+              <Search className="w-4 h-4 mr-1.5" /> Upload screenshot
             </Button>
-            <MOTRefreshButtonLive registrations={listed.map(v => v.registration).filter(Boolean)} label="Refresh Visible" onComplete={refetch} />
+            <MOTRefreshButtonLive registrations={listed.map(v => v.registration).filter(Boolean)} label="Refresh visible" size="sm" onComplete={refetch} />
           </div>
         </div>
 
         {showUpload && <ImageUpload onImageUpload={handleImageUpload} isProcessing={isProcessing} />}
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card><CardHeader className="pb-3"><CardDescription>Total</CardDescription><CardTitle className="text-3xl">{stats.total}</CardTitle></CardHeader></Card>
-          <Card className="bg-red-50"><CardHeader className="pb-3"><CardDescription>Expired</CardDescription><CardTitle className="text-red-600 text-3xl">{stats.expired}</CardTitle></CardHeader></Card>
-          <Card className="bg-orange-50"><CardHeader className="pb-3"><CardDescription>Due Soon</CardDescription><CardTitle className="text-orange-600 text-3xl">{stats.due}</CardTitle></CardHeader></Card>
-          <Card className="bg-green-50"><CardHeader className="pb-3"><CardDescription>Valid</CardDescription><CardTitle className="text-green-600 text-3xl">{stats.valid}</CardTitle></CardHeader></Card>
-          <Card><CardHeader className="pb-3"><CardDescription>No Data</CardDescription><CardTitle className="text-3xl">{stats.noData}</CardTitle></CardHeader></Card>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border bg-card px-4 py-2">
+          <StatItem label="cars" value={stats.total} />
+          <StatItem label="expired" value={stats.expired} tone="text-red-600" />
+          <StatItem label="due soon" value={stats.due} tone="text-orange-600" />
+          <StatItem label="valid" value={stats.valid} tone="text-green-700" />
+          <StatItem label="no MOT date" value={stats.noData} tone="text-slate-500" />
         </div>
 
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Which cars to show">
-              <Button role="tab" aria-selected={view === "all"} variant={view === "all" ? "default" : "outline"} size="sm" onClick={() => setView("all")}>
-                All cars
-              </Button>
-              <Button role="tab" aria-selected={view === "followup"} variant={view === "followup" ? "default" : "outline"} size="sm" onClick={() => setView("followup")}>
-                Follow up
-                <span className={`ml-2 rounded-full px-1.5 text-xs tabular-nums ${view === "followup" ? "bg-primary-foreground/20" : "bg-red-100 text-red-700"}`}>{followUpCounts.open}</span>
-              </Button>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Card className="gap-0 py-0">
+          <CardContent className="space-y-3 px-4 py-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="flex shrink-0 items-center gap-0.5 rounded-md bg-slate-100 p-0.5" role="tablist" aria-label="Which cars to show">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === "all"}
+                  onClick={() => setView("all")}
+                  className={`rounded px-3 py-1 text-sm font-medium transition-colors ${view === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  All cars
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === "followup"}
+                  onClick={() => setView("followup")}
+                  className={`inline-flex items-center rounded px-3 py-1 text-sm font-medium transition-colors ${view === "followup" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  Follow up
+                  <span className="ml-1.5 rounded-full bg-red-100 px-1.5 text-xs tabular-nums text-red-700">{followUpCounts.open}</span>
+                </button>
+              </div>
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <DebouncedInput
                   placeholder="Search registration, customer or make…"
                   value={searchTerm}
                   onChange={(val) => setSearchTerm(val)}
-                  className="pl-10"
+                  className="h-8 pl-8 text-sm"
                 />
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="text-sm text-muted-foreground tabular-nums">
-                  {listed.length.toLocaleString("en-GB")} {listed.length === 1 ? "car" : "cars"} shown
-                </span>
+              <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
+                <span className="tabular-nums">{listed.length.toLocaleString("en-GB")} {listed.length === 1 ? "car" : "cars"}</span>
                 {view === "all" && !filtersAtDefault && (
-                  <Button variant="ghost" size="sm" onClick={resetFilters}>Reset filters</Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={resetFilters}>Reset filters</Button>
                 )}
               </div>
             </div>
 
             {view === "followup" ? (
-            <div className="space-y-2.5 border-t pt-4">
-              <p className="text-sm text-muted-foreground max-w-3xl">
-                Cars sent an MOT reminder that haven't had their MOT. Each is checked with DVSA at 23:59 on the day
-                its MOT runs out and again at 00:01, so a car tested somewhere else drops off instead of being chased.
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs text-muted-foreground">
+                Sent a reminder, still no MOT. Re-checked with DVSA at 23:59 and 00:01 on the day it runs out, so a car tested elsewhere drops off.
               </p>
               <FilterRow label="Stage">
                 <FilterChip active={followUpStages.size === 0} onClick={() => setFollowUpStages(new Set())}>All ({followUpCounts.open})</FilterChip>
@@ -595,7 +612,7 @@ export default function Home() {
               </FilterRow>
             </div>
             ) : (
-            <div className="space-y-2.5 border-t pt-4">
+            <div className="space-y-2 border-t pt-3">
               <FilterRow label="MOT due">
                 <FilterChip active={motWindows.size === 0} onClick={() => setMotWindows(new Set())}>Any</FilterChip>
                 {MOT_WINDOWS.map(([key, label]) => (
@@ -620,9 +637,9 @@ export default function Home() {
         </Card>
 
         {selectedVehicleIds.size > 0 && (
-          <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5">
             <span className="text-sm font-semibold text-primary">{selectedVehicleIds.size} selected</span>
-            <Button onClick={handleBatchSend} disabled={isSendingBatch} className="ml-auto">
+            <Button size="sm" onClick={handleBatchSend} disabled={isSendingBatch} className="ml-auto">
               {isSendingBatch ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               {view === "followup" ? "Send follow-up" : "Send MOT Reminders"} ({selectedVehicleIds.size})
             </Button>
@@ -630,8 +647,8 @@ export default function Home() {
           </div>
         )}
 
-        <Card>
-          <CardContent className="p-0 overflow-x-auto">
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardContent className="p-0">
             <ComprehensiveVehicleTable
               key={view}
               followUps={view === "followup" ? followUps : undefined}
@@ -657,14 +674,15 @@ export default function Home() {
 
           {/* Pagination Controls */}
           {!isLoading && listed.length > 0 && (
-            <div className="flex items-center justify-between px-4 py-4 border-t">
-              <div className="text-sm text-slate-500">
-                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, listed.length)} of {listed.length} entries
+            <div className="flex items-center justify-between border-t px-3 py-1.5">
+              <div className="text-xs text-slate-500 tabular-nums">
+                {((currentPage - 1) * ITEMS_PER_PAGE) + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, listed.length)} of {listed.length.toLocaleString("en-GB")}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-7 px-2.5 text-xs"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                 >
@@ -673,6 +691,7 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-7 px-2.5 text-xs"
                   onClick={() => setCurrentPage(p => p + 1)}
                   disabled={currentPage * ITEMS_PER_PAGE >= listed.length}
                 >
