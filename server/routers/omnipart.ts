@@ -549,7 +549,8 @@ export const omnipartRouter = router({
     .query(async ({ input }) => {
       try {
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
-        const body = JSON.stringify({ ref: input.ref, orderId: input.orderId ?? undefined, branchId: input.branchId ?? undefined });
+        // The endpoint accepts {ref} (optionally {ref, branchId}); including orderId makes it 422.
+        const body = JSON.stringify({ ref: input.ref, ...(input.branchId != null ? { branchId: input.branchId } : {}) });
         const raw = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/account/wismo-order", headers, body);
         const o = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.values(raw)[0] : null;
         if (!o || typeof o !== "object") return { parts: [], deliveryStatus: null, eta: null, orderStatus: null };
