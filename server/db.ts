@@ -6003,6 +6003,32 @@ export async function unarchiveDocuments(ids: number[]) {
   return { success: true, unarchived: clean.length };
 }
 
+/** Job sheets (serviceHistory) for a set of registrations, normalised (spaces stripped, upper-cased).
+ * Used to match Euro Car Parts orders to the job they were ordered against — the reg is the join key,
+ * carried on the order as customer_order_ref and on the job sheet as registration. */
+export async function getJobSheetsByRegs(regs: string[]) {
+  const db = await getDb();
+  if (!db || !regs?.length) return [] as Array<{
+    id: number; docType: string | null; docNo: string | null; ga4Number: string | null;
+    registration: string | null; dateCreated: Date | null; dateIssued: Date | null; description: string | null;
+  }>;
+  const norm = Array.from(new Set(regs.map((r) => (r || "").toUpperCase().replace(/[^A-Z0-9]/g, "")))).filter(Boolean);
+  if (!norm.length) return [];
+  return db
+    .select({
+      id: serviceHistory.id,
+      docType: serviceHistory.docType,
+      docNo: serviceHistory.docNo,
+      ga4Number: serviceHistory.ga4Number,
+      registration: serviceHistory.registration,
+      dateCreated: serviceHistory.dateCreated,
+      dateIssued: serviceHistory.dateIssued,
+      description: serviceHistory.description,
+    })
+    .from(serviceHistory)
+    .where(sql`upper(replace(${serviceHistory.registration}, ' ', '')) in (${sql.join(norm.map((r) => sql`${r}`), sql`, `)})`);
+}
+
 export async function getAppSetting(keyName: string) {
   const db = await getDb();
   if (!db) return null;
