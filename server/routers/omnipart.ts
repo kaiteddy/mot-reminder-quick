@@ -516,6 +516,29 @@ export const omnipartRouter = router({
           console.error("Omnipart job-match error:", e?.message);
         }
 
+        // Merge the garage's own facts: whether each part was fitted/returned/spare, and the
+        // Car-job vs General-workshop category. Category is auto (a job matched, or the ref looks
+        // like a plate = car; otherwise general) unless the order carries a manual override.
+        try {
+          const { getOmnipartOrderMeta } = await import("../db");
+          const meta = await getOmnipartOrderMeta(orders.map((o) => o.orderRef));
+          const looksLikeReg = (s: string | null) => {
+            const k = (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            return k.length >= 5 && k.length <= 8 && /[0-9]/.test(k) && /[A-Z]/.test(k);
+          };
+          for (const o of orders as any[]) {
+            const m = meta.get(o.orderRef);
+            const autoCategory = (o.jobSheet || looksLikeReg(o.reg)) ? "car" : "general";
+            o.autoCategory = autoCategory;
+            o.categoryOverride = m?.category ?? null;               // what the user pinned (null = auto)
+            o.category = m?.category ?? autoCategory;                // effective category used for filtering
+            const states = m?.partStates || {};
+            for (const p of o.parts as any[]) p.usage = (p.code && states[p.code]) || null;
+          }
+        } catch (e: any) {
+          console.error("Omnipart meta-merge error:", e?.message);
+        }
+
         return { count: orders.length, orders };
       } catch (error: any) {
         const message = error.message || "Failed to fetch Omnipart order tracking";
@@ -525,6 +548,31 @@ export const omnipartRouter = router({
         }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
       }
+    }),
+
+  // Mark a part fitted / returned / spare (usage=null clears it). Local garage state, no ECP call.
+  setPartUsage: protectedProcedure
+    .input(z.object({
+      orderRef: z.string(),
+      code: z.string(),
+      usage: z.enum(["fitted", "returned", "spare"]).nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartPartState } = await import("../db");
+      await setOmnipartPartState(input.orderRef, input.code, input.usage);
+      return { ok: true };
+    }),
+
+  // Pin an order as a Car job or a General/workshop order (null = fall back to the auto guess).
+  setOrderCategory: protectedProcedure
+    .input(z.object({
+      orderRef: z.string(),
+      category: z.enum(["car", "general"]).nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartCategory } = await import("../db");
+      await setOmnipartCategory(input.orderRef, input.category);
+      return { ok: true };
     }),
 
   // Per-order detail: the parts on an order + its delivery stage. Called when a row is expanded.

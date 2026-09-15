@@ -427,6 +427,20 @@ export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
 /**
+ * Local, garage-side facts about a parts order (ECP or eBay) that the supplier feed doesn't hold:
+ * whether each part was actually FITTED / RETURNED / kept as a SPARE, and a manual Car-job vs
+ * General-workshop category override when the auto reg-match guesses wrong. One row per order.
+ */
+export const omnipartOrderMeta = pgTable("omnipartOrderMeta", {
+  orderRef: varchar("orderRef", { length: 64 }).primaryKey(),
+  category: varchar("category", { length: 16 }),                 // manual override: 'car' | 'general' | null (null = auto)
+  partStates: jsonb("partStates").$type<Record<string, string>>().default({}), // product code -> 'fitted' | 'returned' | 'spare'
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+export type OmnipartOrderMeta = typeof omnipartOrderMeta.$inferSelect;
+
+/**
  * Autodata Requests table - Queue for Browser Drone Proxy
  */
 export const autodataRequests = pgTable("autodataRequests", {

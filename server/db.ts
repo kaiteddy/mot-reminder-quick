@@ -10,6 +10,7 @@ import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
   descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool, partsPriceList,
+  omnipartOrderMeta,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -6055,6 +6056,47 @@ export async function saveAppSetting(keyName: string, value: any) {
     await db.update(appSettings).set({ value }).where(eq(appSettings.keyName, keyName));
   } else {
     await db.insert(appSettings).values({ keyName, value });
+  }
+}
+
+// ---- Parts-order local state (fitted/returned/spare + car-vs-general override) ----
+// One row per order in omnipartOrderMeta. Read-side returns a plain map so the router can merge it
+// onto the live supplier feed without a per-order query.
+export async function getOmnipartOrderMeta(refs?: string[]) {
+  const db = await getDb();
+  const out = new Map<string, { category: string | null; partStates: Record<string, string> }>();
+  if (!db) return out;
+  const rows = refs && refs.length
+    ? await db.select().from(omnipartOrderMeta).where(
+        sql`${omnipartOrderMeta.orderRef} in (${sql.join(refs.map((r) => sql`${r}`), sql`, `)})`)
+    : await db.select().from(omnipartOrderMeta);
+  for (const r of rows) out.set(r.orderRef, { category: r.category ?? null, partStates: (r.partStates as Record<string, string>) || {} });
+  return out;
+}
+
+// Mark one part fitted/returned/spare (usage=null clears it). lineKey is the product code.
+export async function setOmnipartPartState(orderRef: string, lineKey: string, usage: string | null) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  const states = { ...((existing?.partStates as Record<string, string>) || {}) };
+  if (usage) states[lineKey] = usage; else delete states[lineKey];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ partStates: states, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, partStates: states });
+  }
+}
+
+// Set/clear the manual Car-vs-General override (category=null falls back to the auto reg-match).
+export async function setOmnipartCategory(orderRef: string, category: string | null) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ category, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, category });
   }
 }
 

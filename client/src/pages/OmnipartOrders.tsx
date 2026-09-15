@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package } from "lucide-react";
+import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -62,6 +62,89 @@ function PartThumb({ src, alt }: { src?: string | null; alt: string }) {
   );
 }
 
+// ---- Optimistic cache patches: update the board in place so a click is instant and doesn't
+// re-hit Euro Car Parts. ----
+function patchPart(old: any, orderRef: string, code: string, usage: string | null) {
+  if (!old?.orders) return old;
+  return { ...old, orders: old.orders.map((o: any) =>
+    o.orderRef !== orderRef ? o : { ...o, parts: (o.parts || []).map((p: any) => p.code === code ? { ...p, usage } : p) }) };
+}
+function patchCategory(old: any, orderRef: string, category: string | null) {
+  if (!old?.orders) return old;
+  return { ...old, orders: old.orders.map((o: any) =>
+    o.orderRef !== orderRef ? o : { ...o, categoryOverride: category, category: category ?? o.autoCategory }) };
+}
+
+const USAGE_OPTS: Array<{ key: "fitted" | "returned" | "spare"; label: string; on: string }> = [
+  { key: "fitted",   label: "Fitted",   on: "bg-green-600 text-white border-green-600" },
+  { key: "returned", label: "Returned", on: "bg-amber-500 text-white border-amber-500" },
+  { key: "spare",    label: "Spare",    on: "bg-slate-600 text-white border-slate-600" },
+];
+
+/** Fitted / Returned / Spare pills for one part. */
+function UsagePicker({ orderRef, code, usage }: { orderRef: string; code: string | null; usage: string | null }) {
+  const utils = trpc.useUtils();
+  const m = trpc.omnipart.setPartUsage.useMutation({
+    onMutate: async (vars) => {
+      await utils.omnipart.getOrderTracking.cancel();
+      const prev = utils.omnipart.getOrderTracking.getData();
+      utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchPart(old, vars.orderRef, vars.code, vars.usage));
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => { if (ctx?.prev) utils.omnipart.getOrderTracking.setData(undefined, ctx.prev); },
+  });
+  if (!code) return null;
+  return (
+    <span className="inline-flex rounded-md border overflow-hidden print:hidden">
+      {USAGE_OPTS.map((opt) => {
+        const active = usage === opt.key;
+        return (
+          <button
+            key={opt.key}
+            onClick={(e) => { e.stopPropagation(); m.mutate({ orderRef, code, usage: active ? null : opt.key }); }}
+            className={"px-2 py-0.5 text-[11px] font-medium border-l first:border-l-0 transition-colors " +
+              (active ? opt.on : "bg-white text-slate-500 hover:bg-slate-50")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Car job vs General/workshop toggle for one order (pins a manual override; clears back to auto). */
+function CategoryToggle({ order }: { order: any }) {
+  const utils = trpc.useUtils();
+  const m = trpc.omnipart.setOrderCategory.useMutation({
+    onMutate: async (vars) => {
+      await utils.omnipart.getOrderTracking.cancel();
+      const prev = utils.omnipart.getOrderTracking.getData();
+      utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchCategory(old, vars.orderRef, vars.category));
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => { if (ctx?.prev) utils.omnipart.getOrderTracking.setData(undefined, ctx.prev); },
+  });
+  const set = (c: "car" | "general") => (e: any) => {
+    e.stopPropagation();
+    m.mutate({ orderRef: order.orderRef, category: order.categoryOverride === c ? null : c });
+  };
+  const pill = (active: boolean, on: string) =>
+    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs " + (active ? on : "bg-white text-slate-500 hover:bg-slate-50");
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-[11px] text-muted-foreground">Type:</span>
+      <button onClick={set("car")} className={pill(order.category === "car", "bg-blue-600 text-white border-blue-600")}>
+        <Car className="w-3 h-3" /> Car job
+      </button>
+      <button onClick={set("general")} className={pill(order.category === "general", "bg-slate-700 text-white border-slate-700")}>
+        <Building2 className="w-3 h-3" /> General
+      </button>
+      <span className="text-[10px] text-muted-foreground">{order.categoryOverride ? "(pinned)" : "(auto)"}</span>
+    </span>
+  );
+}
+
 /** One board row that expands on click to show the parts on the order. */
 function BoardRow({ o, base }: { o: any; base: string }) {
   const [open, setOpen] = useState(false);
@@ -85,7 +168,15 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             </Link>
           ) : "—"}
         </TableCell>
-        <TableCell>{vehicle || "—"}</TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <span>{vehicle || "—"}</span>
+            <span className={"text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 " +
+              (o.category === "general" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200")}>
+              {o.category === "general" ? "General" : "Car"}
+            </span>
+          </div>
+        </TableCell>
         <TableCell onClick={(e) => e.stopPropagation()}>
           {o.jobSheet ? (
             <Link href={`${base}/documents/${o.jobSheet.id}`} className="text-brand-primary hover:underline">
@@ -111,6 +202,9 @@ function BoardRow({ o, base }: { o: any; base: string }) {
         <TableRow className="bg-muted/30">
           <TableCell colSpan={8} className="py-3">
             <div className="px-6 space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CategoryToggle order={o} />
+              </div>
               <OrderProgress status={o.status} />
               <div className="pt-1">
                 {parts.length === 0 && (
@@ -120,13 +214,14 @@ function BoardRow({ o, base }: { o: any; base: string }) {
                   <div key={i} className="flex items-center gap-3 text-sm py-1">
                     <PartThumb src={p.image} alt={p.name || p.code || "part"} />
                     <div className="min-w-0">
-                      <div className="font-medium truncate">
+                      <div className={"font-medium truncate " + (p.usage === "returned" ? "line-through text-muted-foreground" : "")}>
                         {p.name || p.code || "part"}
                         {p.quantity != null && <span className="text-muted-foreground font-normal"> ×{p.quantity}</span>}
                       </div>
                       {p.code && <div className="text-xs text-muted-foreground/70 tabular-nums">{p.code}</div>}
                     </div>
                     <span className="ml-auto flex items-center gap-3 shrink-0">
+                      <UsagePicker orderRef={o.orderRef} code={p.code} usage={p.usage} />
                       {p.status && <span className="text-xs text-muted-foreground/70">{p.status}</span>}
                       {/* Internal cost (ex VAT) — Parts Orders is a staff page; print:hidden as a belt-and-braces guard. */}
                       {p.lineCost != null && (
@@ -159,17 +254,27 @@ export default function OmnipartOrders() {
   const { data, isLoading, error, refetch, isFetching } =
     trpc.omnipart.getOrderTracking.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
   const [q, setQ] = useState("");
+  const [cat, setCat] = useState<"all" | "car" | "general">("all");
 
   const orders = useMemo(() => {
     const all = data?.orders || [];
     const needle = normReg(q);
-    const filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
+    let filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
+    if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
     // orders that need chasing float to the top so a stuck one is never missed
     return [...filtered].sort((a: any, b: any) =>
       (b.needsAttention ? 1 : 0) - (a.needsAttention ? 1 : 0) ||
       String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
-  }, [data, q]);
-  const chasing = (data?.orders || []).filter((o: any) => o.needsAttention).length;
+  }, [data, q, cat]);
+  const allOrders = (data?.orders || []) as any[];
+  const chasing = allOrders.filter((o: any) => o.needsAttention).length;
+  const carCount = allOrders.filter((o: any) => (o.category || "car") === "car").length;
+  const generalCount = allOrders.filter((o: any) => o.category === "general").length;
+  const CAT_TABS: Array<{ k: "all" | "car" | "general"; label: string; n: number }> = [
+    { k: "all", label: "All", n: allOrders.length },
+    { k: "car", label: "Car jobs", n: carCount },
+    { k: "general", label: "General", n: generalCount },
+  ];
 
   return (
     <DashboardLayout>
@@ -208,6 +313,20 @@ export default function OmnipartOrders() {
               </span>
               Omnipart order tracking{typeof data?.count === "number" ? ` · ${orders.length}/${data.count}` : ""}
             </CardTitle>
+            {!error && (
+              <div className="flex items-center gap-1.5 pt-2">
+                {CAT_TABS.map((t) => (
+                  <button
+                    key={t.k}
+                    onClick={() => setCat(t.k)}
+                    className={"px-3 py-1 rounded-full text-xs font-medium border transition-colors " +
+                      (cat === t.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-600 hover:bg-slate-50")}
+                  >
+                    {t.label}{t.n ? ` · ${t.n}` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading && <div className="text-sm text-muted-foreground py-6 text-center">Loading orders…</div>}
