@@ -28,6 +28,7 @@ const VatReturn = lazy(() => import("./pages/VatReturn"));
 const Vehicles = lazy(() => import("./pages/Vehicles"));
 const VehicleDetails = lazy(() => import("./pages/VehicleDetails"));
 const OmnipartOrders = lazy(() => import("./pages/OmnipartOrders"));
+const PartsReport = lazy(() => import("./pages/PartsReport"));
 const Duplicates = lazy(() => import("./pages/Duplicates"));
 const Database = lazy(() => import("./pages/Database"));
 const DiagnoseMOT = lazy(() => import("./pages/DiagnoseMOT"));
@@ -97,6 +98,7 @@ function Router() {
       <Route path="/" component={Documents} />
       <Route path="/mot-reminders" component={Home} />
       <Route path="/vehicles" component={Vehicles} />
+      <Route path="/parts-orders/report" component={PartsReport} />
       <Route path="/parts-orders" component={OmnipartOrders} />
       <Route path="/customers/:id" component={CustomerDetails} />
       <Route path="/customers" component={Customers} />

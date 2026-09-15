@@ -85,6 +85,28 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
   };
 }
 
+// Guess the vehicle an eBay/Amazon item relates to, from its title — used to suggest a car/job to
+// link when the order has no reg of its own. Prefers an explicit "fits/for <Make> <Model>".
+const VEHICLE_MAKES = ["Mercedes-Benz", "Mercedes", "Land Rover", "Volkswagen", "Toyota", "Vauxhall",
+  "Seat", "Ford", "BMW", "Audi", "VW", "Nissan", "Honda", "Kia", "Hyundai", "Peugeot", "Renault",
+  "Citroen", "Skoda", "Mini", "Mazda", "Volvo", "Jaguar", "Fiat", "Suzuki", "Dacia"];
+const MODEL_NOISE = /^(alloy|wheel|centre|center|cap|parts|genuine|new|front|rear|left|right|side|for|to|fits|the|oem|replacement|car|van|used|pair|set|x|kit|locking|bumper|steering|mirror|door|headlight|headlamp|light|bulb|sensor|carplay|android|radio|key|lock|nut|bolt|filter|brake|clutch|indicator|badge|emblem|cover|trim|grille|grill|fog)$/i;
+function detectVehicle(title?: string | null): string | null {
+  if (!title) return null;
+  const t = title.replace(/\s+/g, " ");
+  const makeAlt = VEHICLE_MAKES.map((m) => m.replace(/[- ]/g, "[- ]?")).join("|");
+  // 1) explicit fitment "fits/for <Make> <Model>"
+  let m = t.match(new RegExp(`\\b(?:fits|for)\\s+(${makeAlt})\\s+([A-Za-z][\\w-]{1,})`, "i"));
+  // 2) otherwise first make + the next non-noise token
+  if (!m) m = t.match(new RegExp(`\\b(${makeAlt})\\b\\s+([A-Za-z][\\w-]{1,})`, "i"));
+  if (!m) return null;
+  const make = m[1].replace(/\b\w/g, (c) => c.toUpperCase());
+  let model = m[2];
+  if (MODEL_NOISE.test(model)) return make;                 // make alone if the next word is noise
+  model = model.replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${make} ${model}`;
+}
+
 export const omnipartRouter = router({
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
   lookupVrm: protectedProcedure
@@ -399,13 +421,32 @@ export const omnipartRouter = router({
         if (authHeader) apiHeaders["Authorization"] = authHeader;
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
-        // Empty body returns the recent set; sending limit/page as ints triggers a 422.
-        const raw = await omnipartFetch(
-          "POST",
-          "https://api.omnipart.eurocarparts.com/account/wismo-order-list",
-          apiHeaders,
-          "{}"
-        );
+        // Belt-and-braces against ECP's edge rate-limit: cache the order list in the DB for a short
+        // TTL so many board/margin-card loads (across staff and pages) share ONE ECP call instead of
+        // each hitting the API. On a transient block/outage we also fall back to the last good copy,
+        // so a momentary 403 never blanks the board. Empty body returns the recent set (limit/page
+        // as ints => 422).
+        const { getAppSetting, setAppSetting } = await import("../db");
+        const CACHE_KEY = "omnipart_wismo_cache";
+        const TTL_MS = 60_000;
+        const cached = (await getAppSetting(CACHE_KEY).catch(() => null)) as { at?: number; raw?: any } | null;
+        const fresh = cached?.raw && cached.at && (Date.now() - cached.at) < TTL_MS;
+        let raw: any;
+        let servedStale = false;
+        if (fresh) {
+          raw = cached!.raw;                                       // within TTL — no ECP call at all
+        } else {
+          try {
+            raw = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/account/wismo-order-list", apiHeaders, "{}");
+            if (raw && !(raw["@type"] === "hydra:Error" || raw.detail)) {
+              await setAppSetting(CACHE_KEY, { at: Date.now(), raw }).catch(() => {});
+            }
+          } catch (e: any) {
+            if (cached?.raw) { raw = cached.raw; servedStale = true; }  // ECP blocked/down — serve last good
+            else throw e;
+          }
+        }
+        if (servedStale) console.warn("[omnipart] served stale order list (ECP unreachable)");
 
         if (raw && (raw["@type"] === "hydra:Error" || raw.detail)) {
             throw new Error(raw.detail || raw["hydra:description"] || "Euro Car Parts rejected the order-tracking request.");
@@ -529,7 +570,7 @@ export const omnipartRouter = router({
             const delivered = String(e.status || "").toLowerCase().includes("deliver");
             (orders as any[]).push({
               orderRef: e.orderRef,
-              source: "ebay",
+              source: e.supplier || "ebay",                         // 'ebay' | 'amazon' | …
               reg: null,
               make: null, model: null, year: null, vin: null,
               vehicleText: e.fitsVehicle || null,                    // eBay-detected fitment, if any
@@ -538,6 +579,8 @@ export const omnipartRouter = router({
               status: e.status || null,
               deliveryStatus: e.status || null,
               eta: e.eta || null,
+              tracking: e.tracking || null,
+              courier: e.courier || null,
               numberOfItems: e.quantity ?? 1,
               parts: [{ code: e.itemId || null, name: e.title || "eBay item", quantity: e.quantity ?? 1,
                         status: e.status || null, lineCost: price, image: e.image || null, usage: null }],
@@ -571,11 +614,20 @@ export const omnipartRouter = router({
           };
           for (const o of orders as any[]) {
             const m = meta.get(o.orderRef);
+            o.hidden = !!m?.hidden;                                 // garage-supply / non-parts, hidden from the board
             // A manual job link wins over the reg/date auto-match (and is the only link eBay can have).
             if (m?.jobSheetId && jobById.has(m.jobSheetId)) {
               const j = jobById.get(m.jobSheetId)!;
               o.jobSheet = { id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, docType: j.docType, date: j.dateIssued || j.dateCreated || null };
               o.jobSheetLinked = true;                              // manually linked (vs auto-matched)
+              if (!o.reg && j.registration) o.reg = j.registration; // show the linked car's reg in the Reg column
+              const lv = [j.make, j.model].filter(Boolean).join(" ");
+              if (lv) o.linkedVehicle = lv;                         // the associated car (shown in the Vehicle column)
+            }
+            // For eBay/Amazon orders with no reg, guess the vehicle from the item so the Reg column
+            // shows the associated car and we can suggest a job to link.
+            if ((o.source === "ebay" || o.source === "amazon") && !o.reg) {
+              o.suggestedVehicle = detectVehicle(o.parts?.[0]?.name || o.vehicleText);
             }
             const autoCategory = o.ebayAutoCategory
               ? o.ebayAutoCategory
@@ -666,6 +718,53 @@ export const omnipartRouter = router({
       return { ok: true };
     }),
 
+  // Parts sell (ex VAT) per job — sum of the Part line items' net — for the cost/margin report.
+  jobPartsSell: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()) }))
+    .query(async ({ input }) => {
+      if (!input.ids.length) return {} as Record<number, number>;
+      const { getDb } = await import("../db");
+      const { serviceLineItems } = await import("../../drizzle/schema");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return {};
+      const rows = await db.select({
+        documentId: serviceLineItems.documentId,
+        net: sql<number>`coalesce(sum(case when ${serviceLineItems.itemType} = 'Part' then ${serviceLineItems.subNet} else 0 end), 0)`,
+      }).from(serviceLineItems)
+        .where(sql`${serviceLineItems.documentId} in (${sql.join(input.ids.map((n) => sql`${n}`), sql`, `)})`)
+        .groupBy(serviceLineItems.documentId);
+      const out: Record<number, number> = {};
+      for (const r of rows) out[r.documentId] = Number(r.net) || 0;
+      return out;
+    }),
+
+  // Reg-first linking, step 1: registrations (that have job cards) matching a reg / make / model.
+  searchRegs: protectedProcedure
+    .input(z.object({ q: z.string() }))
+    .query(async ({ input }) => {
+      const { searchRegistrations } = await import("../db");
+      const rows = await searchRegistrations(input.q);
+      return rows.map((r: any) => ({
+        registration: r.registration,
+        vehicle: [r.make, r.model].filter(Boolean).join(" "),
+        jobs: Number(r.jobs) || 0,
+      }));
+    }),
+
+  // Reg-first linking, step 2: the job cards for a chosen registration.
+  jobsForReg: protectedProcedure
+    .input(z.object({ reg: z.string() }))
+    .query(async ({ input }) => {
+      const { jobsForReg } = await import("../db");
+      const rows = await jobsForReg(input.reg);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
+        docType: j.docType, customerName: j.customerName, description: j.description,
+        date: j.dateIssued || j.dateCreated || null,
+      }));
+    }),
+
   // Search job sheets to attach an order to (by reg, doc/GA4 number, or customer).
   searchJobSheets: protectedProcedure
     .input(z.object({ q: z.string() }))
@@ -687,6 +786,28 @@ export const omnipartRouter = router({
       const { setOmnipartJobSheet } = await import("../db");
       await setOmnipartJobSheet(input.orderRef, input.jobSheetId);
       return { ok: true };
+    }),
+
+  // Hide / unhide an order (garage supplies, non-parts buys that shouldn't be on the board).
+  setOrderHidden: protectedProcedure
+    .input(z.object({ orderRef: z.string(), hidden: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartHidden } = await import("../db");
+      await setOmnipartHidden(input.orderRef, input.hidden);
+      return { ok: true };
+    }),
+
+  // Recommend jobs to link an order to, from a guessed vehicle (make/model) or a free query.
+  suggestJobs: protectedProcedure
+    .input(z.object({ vehicle: z.string() }))
+    .query(async ({ input }) => {
+      const { suggestJobsByVehicle } = await import("../db");
+      const rows = await suggestJobsByVehicle(input.vehicle, 8);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
+        customerName: j.customerName, vehicle: [j.make, j.model].filter(Boolean).join(" "),
+        date: j.dateIssued || j.dateCreated || null,
+      }));
     }),
 
   // Per-order detail: the parts on an order + its delivery stage. Called when a row is expanded.

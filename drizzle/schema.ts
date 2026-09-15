@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 
 /**
  * Postgres schema (Neon). Ported from the original MySQL/TiDB schema:
@@ -436,6 +436,7 @@ export const omnipartOrderMeta = pgTable("omnipartOrderMeta", {
   category: varchar("category", { length: 16 }),                 // manual override: 'car' | 'general' | null (null = auto)
   partStates: jsonb("partStates").$type<Record<string, string>>().default({}), // product code -> 'fitted' | 'returned' | 'spare'
   jobSheetId: integer("jobSheetId"),                             // manual link to a serviceHistory job (esp. eBay, which has no reg)
+  hidden: boolean("hidden").default(false),                      // hide non-parts / garage-supply orders from the board
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
@@ -448,7 +449,8 @@ export type OmnipartOrderMeta = typeof omnipartOrderMeta.$inferSelect;
  * Car-vs-General override live in [[omnipartOrderMeta]], keyed by this orderRef.
  */
 export const ebayOrders = pgTable("ebayOrders", {
-  orderRef: varchar("orderRef", { length: 32 }).primaryKey(),  // eBay order number, e.g. 23-15110-46160
+  orderRef: varchar("orderRef", { length: 32 }).primaryKey(),  // supplier order number, e.g. 23-15110-46160 (eBay) / 205-7808265-3434757 (Amazon)
+  supplier: varchar("supplier", { length: 20 }).default("ebay"), // 'ebay' | 'amazon' | …
   itemId: varchar("itemId", { length: 24 }),
   title: text("title"),
   price: numeric("price", { precision: 10, scale: 2 }),
@@ -459,6 +461,8 @@ export const ebayOrders = pgTable("ebayOrders", {
   autoCategory: varchar("autoCategory", { length: 16 }),       // car | general (heuristic from the item)
   image: text("image"),
   eta: varchar("eta", { length: 120 }),
+  tracking: varchar("tracking", { length: 60 }),               // courier tracking number (from the dispatch email)
+  courier: varchar("courier", { length: 40 }),                 // Evri | DPD | Royal Mail | …
   orderDate: timestamp("orderDate", { mode: "date" }),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });

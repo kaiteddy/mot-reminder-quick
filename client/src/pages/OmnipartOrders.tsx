@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2, Link2, X } from "lucide-react";
+import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2, Link2, X, BarChart3, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -17,6 +17,24 @@ function money(v: number | null | undefined) {
 
 const agoShort = (h: number | null | undefined) =>
   h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+
+// Build a live courier tracking URL from the courier + number; unknown courier → a web search.
+const TRACK_URL: Record<string, (n: string) => string> = {
+  evri: (n) => `https://www.evri.com/track/parcel/${n}/details`,
+  hermes: (n) => `https://www.evri.com/track/parcel/${n}/details`,
+  dpd: (n) => `https://track.dpd.co.uk/parcels/${n}`,
+  "royal mail": (n) => `https://www.royalmail.com/track-your-item#/tracking-results/${n}`,
+  parcelforce: (n) => `https://www.parcelforce.com/track-trace?trackNumber=${n}`,
+  yodel: (n) => `https://www.yodel.co.uk/tracking/${n}`,
+  ups: (n) => `https://www.ups.com/track?tracknum=${n}`,
+  dhl: (n) => `https://www.dhl.com/gb-en/home/tracking.html?tracking-id=${n}`,
+  inpost: (n) => `https://inpost.co.uk/tracking/${n}`,
+};
+function trackUrl(courier?: string | null, num?: string | null): string | null {
+  if (!num) return null;
+  const f = TRACK_URL[(courier || "").toLowerCase()];
+  return f ? f(num) : `https://www.google.com/search?q=${encodeURIComponent(`${courier || ""} tracking ${num}`)}`;
+}
 
 // Bucket an order by when it was placed, relative to today.
 const BUCKET_ORDER = ["Today", "Yesterday", "Earlier this week", "Last week", "Older"] as const;
@@ -74,24 +92,106 @@ function patchCategory(old: any, orderRef: string, category: string | null) {
   return { ...old, orders: old.orders.map((o: any) =>
     o.orderRef !== orderRef ? o : { ...o, categoryOverride: category, category: category ?? o.autoCategory }) };
 }
-function patchJob(old: any, orderRef: string, jobSheet: any) {
+function patchJob(old: any, orderRef: string, jobSheet: any, extra?: { reg?: string; vehicle?: string }) {
   if (!old?.orders) return old;
-  return { ...old, orders: old.orders.map((o: any) =>
-    o.orderRef !== orderRef ? o : { ...o, jobSheet, jobSheetLinked: !!jobSheet }) };
+  return { ...old, orders: old.orders.map((o: any) => {
+    if (o.orderRef !== orderRef) return o;
+    const linked = !!jobSheet;
+    const isEmail = o.source === "ebay" || o.source === "amazon";
+    return {
+      ...o, jobSheet, jobSheetLinked: linked,
+      // snap the row to the linked car straight away (eBay/Amazon inherit the job's reg + vehicle)
+      reg: linked ? (extra?.reg ?? o.reg) : (isEmail ? null : o.reg),
+      linkedVehicle: linked ? (extra?.vehicle ?? o.linkedVehicle) : (isEmail ? null : o.linkedVehicle),
+    };
+  }) };
+}
+function patchHidden(old: any, orderRef: string, hidden: boolean) {
+  if (!old?.orders) return old;
+  return { ...old, orders: old.orders.map((o: any) => o.orderRef !== orderRef ? o : { ...o, hidden }) };
 }
 
-/** Attach an order to a job sheet: search by reg / job number / customer and pick one. Works for
- *  eBay orders (which have no reg to auto-match) and can re-point an ECP order too. */
+/** Genuine recommendations: when an eBay/Amazon order has no reg, guess the car from the item and
+ *  offer matching jobs to link in one click. */
+function SuggestedJobs({ order }: { order: any }) {
+  const utils = trpc.useUtils();
+  const q = trpc.omnipart.suggestJobs.useQuery(
+    { vehicle: order.suggestedVehicle || "" },
+    { enabled: !!order.suggestedVehicle && !order.jobSheet, staleTime: 60_000 },
+  );
+  const link = trpc.omnipart.setOrderJobSheet.useMutation();
+  if (order.jobSheet || !order.suggestedVehicle) return null;
+  const apply = (j: any) => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) =>
+      patchJob(old, order.orderRef, { id: j.id, ga4Number: j.ga4Number, docNo: j.docNo }, { reg: j.registration, vehicle: j.vehicle }));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: j.id });
+  };
+  const jobs = q.data || [];
+  return (
+    <div className="text-xs flex flex-wrap items-center gap-1.5">
+      <span className="text-muted-foreground">Looks like a <span className="font-semibold text-slate-700">{order.suggestedVehicle}</span> part.</span>
+      {jobs.length > 0 ? (
+        <>
+          <span className="text-muted-foreground">Link to:</span>
+          {jobs.map((j: any) => (
+            <button key={j.id} onClick={(e) => { e.stopPropagation(); apply(j); }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-700 hover:bg-blue-50 hover:border-blue-300">
+              {j.registration || j.ga4Number || `#${j.id}`}{j.vehicle ? ` · ${j.vehicle}` : ""}
+            </button>
+          ))}
+        </>
+      ) : q.isFetched ? (
+        <span className="text-muted-foreground/70">no {order.suggestedVehicle} on file — search below</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Hide / unhide an order (garage supplies, non-parts buys). */
+function HideButton({ order }: { order: any }) {
+  const utils = trpc.useUtils();
+  const m = trpc.omnipart.setOrderHidden.useMutation({
+    onMutate: async (vars) => {
+      await utils.omnipart.getOrderTracking.cancel();
+      const prev = utils.omnipart.getOrderTracking.getData();
+      utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchHidden(old, vars.orderRef, vars.hidden));
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => { if (ctx?.prev) utils.omnipart.getOrderTracking.setData(undefined, ctx.prev); },
+  });
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); m.mutate({ orderRef: order.orderRef, hidden: !order.hidden }); }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-500 hover:bg-slate-50 text-xs"
+      title={order.hidden ? "Show on the board again" : "Hide — not a customer part (garage supply)"}
+    >
+      {order.hidden ? <><Eye className="w-3 h-3" /> Unhide</> : <><EyeOff className="w-3 h-3" /> Hide</>}
+    </button>
+  );
+}
+
+/** Attach an order to a job sheet in two steps: pick the REGISTRATION, then the correct job card
+ *  for that reg. Works for eBay/Amazon orders (no reg to auto-match) and can re-point an ECP order. */
 function JobLink({ order, base }: { order: any; base: string }) {
   const utils = trpc.useUtils();
   const [editing, setEditing] = useState(false);
   const [q, setQ] = useState("");
-  const results = trpc.omnipart.searchJobSheets.useQuery({ q }, { enabled: editing && q.trim().length >= 2, staleTime: 30_000 });
+  const [reg, setReg] = useState<{ registration: string; vehicle: string } | null>(null);
+  // prefill the reg search with the guessed vehicle so the right car is one keystroke away
+  const regs = trpc.omnipart.searchRegs.useQuery({ q }, { enabled: editing && !reg && q.trim().length >= 2, staleTime: 30_000 });
+  const jobs = trpc.omnipart.jobsForReg.useQuery({ reg: reg?.registration || "" }, { enabled: editing && !!reg, staleTime: 30_000 });
   const link = trpc.omnipart.setOrderJobSheet.useMutation();
-  const apply = (job: any) => {
-    utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, job));
-    link.mutate({ orderRef: order.orderRef, jobSheetId: job ? job.id : null });
-    setEditing(false); setQ("");
+  const reset = () => { setEditing(false); setQ(""); setReg(null); };
+  const applyJob = (job: any) => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) =>
+      patchJob(old, order.orderRef, job, { reg: reg?.registration, vehicle: reg?.vehicle }));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: job.id });
+    reset();
+  };
+  const unlink = () => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, null));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: null });
+    reset();
   };
   const js = order.jobSheet;
   return (
@@ -103,48 +203,66 @@ function JobLink({ order, base }: { order: any; base: string }) {
             {js.ga4Number || js.docNo || js.id}
           </Link>
           <span className="text-[10px] text-muted-foreground">{order.jobSheetLinked ? "(linked)" : "(auto)"}</span>
-          <button onClick={() => apply(null)} className="text-muted-foreground hover:text-red-600" title="Unlink from job">
-            <X className="w-3 h-3" />
-          </button>
+          <button onClick={unlink} className="text-muted-foreground hover:text-red-600" title="Unlink from job"><X className="w-3 h-3" /></button>
         </>
       ) : editing ? (
         <span className="relative">
-          <span className="inline-flex items-center gap-1 border rounded-md px-1.5 py-0.5 bg-white">
-            <Search className="w-3 h-3 text-muted-foreground" />
-            <input
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="reg, job no. or customer…"
-              className="outline-none text-xs w-44"
-            />
-            <button onClick={() => { setEditing(false); setQ(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
-          </span>
-          {q.trim().length >= 2 && (
-            <div className="absolute left-0 top-7 z-50 w-72 max-h-60 overflow-auto rounded-md border bg-white shadow-lg">
-              {results.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>}
-              {!results.isLoading && (results.data || []).length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching jobs.</div>
+          {!reg ? (
+            // Step 1 — pick the registration
+            <>
+              <span className="inline-flex items-center gap-1 border rounded-md px-1.5 py-0.5 bg-white">
+                <Search className="w-3 h-3 text-muted-foreground" />
+                <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+                  placeholder="registration or make/model…" className="outline-none text-xs w-48" />
+                <button onClick={reset} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+              </span>
+              {q.trim().length >= 2 && (
+                <div className="absolute left-0 top-7 z-50 w-72 max-h-60 overflow-auto rounded-md border bg-white shadow-lg">
+                  {regs.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>}
+                  {!regs.isLoading && (regs.data || []).length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching registrations.</div>}
+                  {(regs.data || []).map((r: any) => (
+                    <button key={r.registration} onClick={() => { setReg({ registration: r.registration, vehicle: r.vehicle }); }}
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-blue-50 border-b last:border-b-0">
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <RegPlate reg={r.registration} />
+                        <span className="truncate text-muted-foreground">{r.vehicle}</span>
+                      </span>
+                      <span className="text-muted-foreground/70 shrink-0">{r.jobs} job{r.jobs === 1 ? "" : "s"}</span>
+                    </button>
+                  ))}
+                </div>
               )}
-              {(results.data || []).map((j: any) => (
-                <button
-                  key={j.id}
-                  onClick={() => apply(j)}
-                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50 border-b last:border-b-0"
-                >
-                  <span className="min-w-0">
-                    <span className="font-medium">{j.ga4Number || j.docNo || `#${j.id}`}</span>
-                    {j.registration && <span className="ml-1 text-muted-foreground">{j.registration}</span>}
-                    {j.customerName && <span className="block truncate text-muted-foreground/70">{j.customerName}</span>}
-                  </span>
-                  <span className="text-muted-foreground/70 shrink-0">{j.date ? new Date(j.date).toLocaleDateString("en-GB") : ""}</span>
-                </button>
-              ))}
-            </div>
+            </>
+          ) : (
+            // Step 2 — pick the job card for the chosen reg
+            <>
+              <span className="inline-flex items-center gap-1.5 border rounded-md px-1.5 py-0.5 bg-white">
+                <RegPlate reg={reg.registration} />
+                {reg.vehicle && <span className="text-muted-foreground">{reg.vehicle}</span>}
+                <button onClick={() => setReg(null)} className="text-[10px] text-brand-primary hover:underline ml-1">change</button>
+                <button onClick={reset} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+              </span>
+              <div className="absolute left-0 top-8 z-50 w-80 max-h-64 overflow-auto rounded-md border bg-white shadow-lg">
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/40">Choose the job card</div>
+                {jobs.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Loading job cards…</div>}
+                {!jobs.isLoading && (jobs.data || []).length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No job cards for this reg.</div>}
+                {(jobs.data || []).map((j: any) => (
+                  <button key={j.id} onClick={() => applyJob(j)}
+                    className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50 border-b last:border-b-0">
+                    <span className="min-w-0">
+                      <span className="font-medium">{j.ga4Number || j.docNo || `#${j.id}`}</span>
+                      {j.docType && <span className="ml-1 text-muted-foreground/70">{j.docType}</span>}
+                      {j.description && <span className="block truncate text-muted-foreground/70">{j.description}</span>}
+                    </span>
+                    <span className="text-muted-foreground/70 shrink-0">{j.date ? new Date(j.date).toLocaleDateString("en-GB") : ""}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </span>
       ) : (
-        <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-600 hover:bg-slate-50">
+        <button onClick={() => { setEditing(true); setQ(order.suggestedVehicle || ""); }} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-600 hover:bg-slate-50">
           <Link2 className="w-3 h-3" /> Link to job
         </button>
       )}
@@ -290,15 +408,15 @@ function orderFlags(o: any) {
   };
 }
 
-/** Small ECP / eBay source tag. */
+/** Small supplier source tag (ECP / eBay / Amazon / …). */
+const SOURCE_TAG: Record<string, { label: string; cls: string }> = {
+  ebay: { label: "eBay", cls: "bg-[#e53238]/10 text-[#e53238] border-[#e53238]/30" },
+  amazon: { label: "Amazon", cls: "bg-[#ff9900]/10 text-[#b06f00] border-[#ff9900]/40" },
+  ecp: { label: "ECP", cls: "bg-orange-100 text-orange-700 border-orange-200" },
+};
 function SourceBadge({ source }: { source?: string }) {
-  const ebay = source === "ebay";
-  return (
-    <span className={"text-[9px] font-bold px-1 py-0.5 rounded shrink-0 " +
-      (ebay ? "bg-[#e53238]/10 text-[#e53238] border border-[#e53238]/30" : "bg-orange-100 text-orange-700 border border-orange-200")}>
-      {ebay ? "eBay" : "ECP"}
-    </span>
-  );
+  const m = SOURCE_TAG[source || "ecp"] || SOURCE_TAG.ecp;
+  return <span className={"text-[9px] font-bold px-1 py-0.5 rounded shrink-0 border " + m.cls}>{m.label}</span>;
 }
 
 /** One board row that expands on click to show the parts on the order. */
@@ -307,9 +425,14 @@ function BoardRow({ o, base }: { o: any; base: string }) {
   // Parts come with the board data itself (getOrderTracking reads them from the order list), so the
   // row expands instantly and there's no extra API call to fail or get rate-limited.
   const parts = o.parts || [];
-  const vehicle = o.source === "ebay"
-    ? (o.vehicleText || parts[0]?.name || "eBay item")
+  const isEmail = o.source === "ebay" || o.source === "amazon";
+  const itemTitle = parts[0]?.name || o.vehicleText || null;
+  // Vehicle column shows the associated CAR first. ECP has its own vehicle; eBay/Amazon show the
+  // linked car once linked, otherwise the item itself.
+  const vehicle = isEmail
+    ? (o.linkedVehicle || itemTitle || "eBay item")
     : [o.make, o.model, o.year].filter(Boolean).join(" ");
+  const secondaryItem = isEmail && o.linkedVehicle ? itemTitle : null;
   return (
     <>
       <TableRow className={(o.needsAttention ? "bg-amber-50 " : "") + "cursor-pointer"} onClick={() => setOpen((v) => !v)}>
@@ -325,13 +448,18 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             <Link href={`/view-vehicle/${normReg(o.reg)}`} className="hover:underline">
               <RegPlate reg={o.reg} />
             </Link>
-          ) : o.source === "ebay" && o.seller ? (
-            <span className="text-xs text-muted-foreground">{o.seller}</span>
-          ) : "—"}
+          ) : o.suggestedVehicle ? (
+            <span className="inline-flex items-center gap-1 text-xs text-slate-600" title="Guessed from the item — link it to a job below">
+              <Car className="w-3 h-3 text-muted-foreground" /> {o.suggestedVehicle}<span className="text-muted-foreground/60">?</span>
+            </span>
+          ) : <span className="text-muted-foreground/50">—</span>}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
-            <span>{vehicle || "—"}</span>
+            <div className="min-w-0">
+              <span className="font-medium uppercase tracking-wide">{vehicle || "—"}</span>
+              {secondaryItem && <span className="block text-xs text-muted-foreground truncate normal-case">{secondaryItem}</span>}
+            </div>
             <span className={"text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 " +
               (o.category === "general" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200")}>
               {o.category === "general" ? "General" : "Car"}
@@ -364,10 +492,30 @@ function BoardRow({ o, base }: { o: any; base: string }) {
           <TableCell colSpan={8} className="py-3">
             <div className="px-6 space-y-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <CategoryToggle order={o} />
-                <JobLink order={o} base={base} />
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CategoryToggle order={o} />
+                  {o.seller && <span className="text-xs text-muted-foreground">Seller: <span className="text-slate-600">{o.seller}</span></span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <JobLink order={o} base={base} />
+                  <HideButton order={o} />
+                </div>
               </div>
+              <SuggestedJobs order={o} />
               <OrderProgress status={o.status} />
+              {(o.tracking || o.courier) && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-0.5">
+                  <Truck className="w-3.5 h-3.5 shrink-0" />
+                  {o.courier && <span className="font-medium text-slate-700">{o.courier}</span>}
+                  {o.tracking ? (
+                    <a href={trackUrl(o.courier, o.tracking)!} target="_blank" rel="noreferrer"
+                       className="text-brand-primary hover:underline" onClick={(e) => e.stopPropagation()}>
+                      Track {o.tracking}
+                    </a>
+                  ) : null}
+                  {o.eta && <span className="text-muted-foreground/70">· {o.eta}</span>}
+                </div>
+              )}
               <div className="pt-1">
                 {parts.length === 0 && (
                   <div className="text-xs text-muted-foreground/70">No part detail on this order.</div>
@@ -417,36 +565,44 @@ export default function OmnipartOrders() {
     trpc.omnipart.getOrderTracking.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<"all" | "car" | "general">("all");
-  const [wl, setWl] = useState<"all" | "tofit" | "credit" | "unlinked">("all");
+  const [wl, setWl] = useState<"all" | "tofit" | "credit" | "unlinked" | "hidden">("all");
 
   const orders = useMemo(() => {
     const all = data?.orders || [];
     const needle = normReg(q);
     let filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
-    if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
-    if (wl !== "all") filtered = filtered.filter((o: any) => {
-      const f = orderFlags(o);
-      return wl === "tofit" ? f.toFit : wl === "credit" ? f.awaitingCredit : f.unlinked;
-    });
+    if (wl === "hidden") {
+      filtered = filtered.filter((o: any) => o.hidden);            // the Hidden view shows only hidden
+    } else {
+      filtered = filtered.filter((o: any) => !o.hidden);           // hidden orders are off the board by default
+      if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
+      if (wl !== "all") filtered = filtered.filter((o: any) => {
+        const f = orderFlags(o);
+        return wl === "tofit" ? f.toFit : wl === "credit" ? f.awaitingCredit : f.unlinked;
+      });
+    }
     // orders that need chasing float to the top so a stuck one is never missed
     return [...filtered].sort((a: any, b: any) =>
       (b.needsAttention ? 1 : 0) - (a.needsAttention ? 1 : 0) ||
       String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
   }, [data, q, cat, wl]);
   const allOrders = (data?.orders || []) as any[];
-  const chasing = allOrders.filter((o: any) => o.needsAttention).length;
-  const carCount = allOrders.filter((o: any) => (o.category || "car") === "car").length;
-  const generalCount = allOrders.filter((o: any) => o.category === "general").length;
+  const visible = allOrders.filter((o: any) => !o.hidden);         // counts exclude hidden orders
+  const chasing = visible.filter((o: any) => o.needsAttention).length;
+  const carCount = visible.filter((o: any) => (o.category || "car") === "car").length;
+  const generalCount = visible.filter((o: any) => o.category === "general").length;
+  const hiddenCount = allOrders.filter((o: any) => o.hidden).length;
   const CAT_TABS: Array<{ k: "all" | "car" | "general"; label: string; n: number }> = [
-    { k: "all", label: "All", n: allOrders.length },
+    { k: "all", label: "All", n: visible.length },
     { k: "car", label: "Car jobs", n: carCount },
     { k: "general", label: "General", n: generalCount },
   ];
-  const flagged = allOrders.map(orderFlags);
-  const WL_TABS: Array<{ k: "all" | "tofit" | "credit" | "unlinked"; label: string; n: number; on: string }> = [
+  const flagged = visible.map(orderFlags);
+  const WL_TABS: Array<{ k: "tofit" | "credit" | "unlinked" | "hidden"; label: string; n: number; on: string }> = [
     { k: "tofit", label: "To fit", n: flagged.filter((f) => f.toFit).length, on: "bg-blue-600 text-white border-blue-600" },
     { k: "credit", label: "Awaiting credit", n: flagged.filter((f) => f.awaitingCredit).length, on: "bg-amber-500 text-white border-amber-500" },
     { k: "unlinked", label: "Unlinked", n: flagged.filter((f) => f.unlinked).length, on: "bg-slate-700 text-white border-slate-700" },
+    { k: "hidden", label: "Hidden", n: hiddenCount, on: "bg-slate-500 text-white border-slate-500" },
   ];
 
   return (
@@ -471,6 +627,9 @@ export default function OmnipartOrders() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
+            <Link href={`${base}/parts-orders/report`}>
+              <Button variant="outline" size="sm"><BarChart3 className="w-4 h-4" /> Report</Button>
+            </Link>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
             </Button>
