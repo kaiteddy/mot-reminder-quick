@@ -6138,6 +6138,48 @@ export async function searchJobSheets(q: string, limit = 12) {
     )`).orderBy(desc(serviceHistory.dateCreated)).limit(limit);
 }
 
+// Registrations to choose from when linking an order — regs that actually have job cards, matched
+// by reg or by make/model, with the vehicle and how many jobs each has.
+export async function searchRegistrations(q: string, limit = 12) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const term = (q || "").trim();
+  if (term.length < 2) return [];
+  const regKey = term.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const like = `%${term.toLowerCase()}%`;
+  const conds = [sql`lower(coalesce(${vehicles.make},'') || ' ' || coalesce(${vehicles.model},'')) like ${like}`];
+  if (regKey.length >= 2) conds.push(sql`upper(replace(coalesce(${serviceHistory.registration},''),' ','')) like ${'%' + regKey + '%'}`);
+  return db.select({
+    registration: serviceHistory.registration,
+    make: sql<string>`max(${vehicles.make})`,
+    model: sql<string>`max(${vehicles.model})`,
+    jobs: sql<number>`count(*)`,
+    latest: sql<Date>`max(coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))`,
+  }).from(serviceHistory)
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(and(isNotNull(serviceHistory.registration), or(...conds)))
+    .groupBy(serviceHistory.registration)
+    .orderBy(desc(sql`max(coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))`))
+    .limit(limit);
+}
+
+// All job cards for one registration, newest first — step 2 of the reg→job link.
+export async function jobsForReg(reg: string, limit = 25) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const regKey = (reg || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!regKey) return [];
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, docType: serviceHistory.docType,
+    customerName: serviceHistory.customerName, description: serviceHistory.description,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory)
+    .where(sql`upper(replace(coalesce(${serviceHistory.registration},''),' ','')) = ${regKey}`)
+    .orderBy(desc(sql`coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`))
+    .limit(limit);
+}
+
 // Recommend jobs for a guessed vehicle ("Vauxhall Mokka"): find that make/model's cars and their
 // recent jobs. This is what powers the eBay "no reg" suggestions.
 export async function suggestJobsByVehicle(vehicle: string, limit = 8) {

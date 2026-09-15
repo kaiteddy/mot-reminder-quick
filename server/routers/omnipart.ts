@@ -680,6 +680,32 @@ export const omnipartRouter = router({
       return out;
     }),
 
+  // Reg-first linking, step 1: registrations (that have job cards) matching a reg / make / model.
+  searchRegs: protectedProcedure
+    .input(z.object({ q: z.string() }))
+    .query(async ({ input }) => {
+      const { searchRegistrations } = await import("../db");
+      const rows = await searchRegistrations(input.q);
+      return rows.map((r: any) => ({
+        registration: r.registration,
+        vehicle: [r.make, r.model].filter(Boolean).join(" "),
+        jobs: Number(r.jobs) || 0,
+      }));
+    }),
+
+  // Reg-first linking, step 2: the job cards for a chosen registration.
+  jobsForReg: protectedProcedure
+    .input(z.object({ reg: z.string() }))
+    .query(async ({ input }) => {
+      const { jobsForReg } = await import("../db");
+      const rows = await jobsForReg(input.reg);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
+        docType: j.docType, customerName: j.customerName, description: j.description,
+        date: j.dateIssued || j.dateCreated || null,
+      }));
+    }),
+
   // Search job sheets to attach an order to (by reg, doc/GA4 number, or customer).
   searchJobSheets: protectedProcedure
     .input(z.object({ q: z.string() }))

@@ -161,18 +161,27 @@ function HideButton({ order }: { order: any }) {
   );
 }
 
-/** Attach an order to a job sheet: search by reg / job number / customer and pick one. Works for
- *  eBay orders (which have no reg to auto-match) and can re-point an ECP order too. */
+/** Attach an order to a job sheet in two steps: pick the REGISTRATION, then the correct job card
+ *  for that reg. Works for eBay/Amazon orders (no reg to auto-match) and can re-point an ECP order. */
 function JobLink({ order, base }: { order: any; base: string }) {
   const utils = trpc.useUtils();
   const [editing, setEditing] = useState(false);
   const [q, setQ] = useState("");
-  const results = trpc.omnipart.searchJobSheets.useQuery({ q }, { enabled: editing && q.trim().length >= 2, staleTime: 30_000 });
+  const [reg, setReg] = useState<{ registration: string; vehicle: string } | null>(null);
+  // prefill the reg search with the guessed vehicle so the right car is one keystroke away
+  const regs = trpc.omnipart.searchRegs.useQuery({ q }, { enabled: editing && !reg && q.trim().length >= 2, staleTime: 30_000 });
+  const jobs = trpc.omnipart.jobsForReg.useQuery({ reg: reg?.registration || "" }, { enabled: editing && !!reg, staleTime: 30_000 });
   const link = trpc.omnipart.setOrderJobSheet.useMutation();
-  const apply = (job: any) => {
+  const reset = () => { setEditing(false); setQ(""); setReg(null); };
+  const applyJob = (job: any) => {
     utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, job));
-    link.mutate({ orderRef: order.orderRef, jobSheetId: job ? job.id : null });
-    setEditing(false); setQ("");
+    link.mutate({ orderRef: order.orderRef, jobSheetId: job.id });
+    reset();
+  };
+  const unlink = () => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, null));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: null });
+    reset();
   };
   const js = order.jobSheet;
   return (
@@ -184,48 +193,66 @@ function JobLink({ order, base }: { order: any; base: string }) {
             {js.ga4Number || js.docNo || js.id}
           </Link>
           <span className="text-[10px] text-muted-foreground">{order.jobSheetLinked ? "(linked)" : "(auto)"}</span>
-          <button onClick={() => apply(null)} className="text-muted-foreground hover:text-red-600" title="Unlink from job">
-            <X className="w-3 h-3" />
-          </button>
+          <button onClick={unlink} className="text-muted-foreground hover:text-red-600" title="Unlink from job"><X className="w-3 h-3" /></button>
         </>
       ) : editing ? (
         <span className="relative">
-          <span className="inline-flex items-center gap-1 border rounded-md px-1.5 py-0.5 bg-white">
-            <Search className="w-3 h-3 text-muted-foreground" />
-            <input
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="reg, job no. or customer…"
-              className="outline-none text-xs w-44"
-            />
-            <button onClick={() => { setEditing(false); setQ(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
-          </span>
-          {q.trim().length >= 2 && (
-            <div className="absolute left-0 top-7 z-50 w-72 max-h-60 overflow-auto rounded-md border bg-white shadow-lg">
-              {results.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>}
-              {!results.isLoading && (results.data || []).length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching jobs.</div>
+          {!reg ? (
+            // Step 1 — pick the registration
+            <>
+              <span className="inline-flex items-center gap-1 border rounded-md px-1.5 py-0.5 bg-white">
+                <Search className="w-3 h-3 text-muted-foreground" />
+                <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+                  placeholder="registration or make/model…" className="outline-none text-xs w-48" />
+                <button onClick={reset} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+              </span>
+              {q.trim().length >= 2 && (
+                <div className="absolute left-0 top-7 z-50 w-72 max-h-60 overflow-auto rounded-md border bg-white shadow-lg">
+                  {regs.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>}
+                  {!regs.isLoading && (regs.data || []).length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching registrations.</div>}
+                  {(regs.data || []).map((r: any) => (
+                    <button key={r.registration} onClick={() => { setReg({ registration: r.registration, vehicle: r.vehicle }); }}
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-blue-50 border-b last:border-b-0">
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <RegPlate reg={r.registration} />
+                        <span className="truncate text-muted-foreground">{r.vehicle}</span>
+                      </span>
+                      <span className="text-muted-foreground/70 shrink-0">{r.jobs} job{r.jobs === 1 ? "" : "s"}</span>
+                    </button>
+                  ))}
+                </div>
               )}
-              {(results.data || []).map((j: any) => (
-                <button
-                  key={j.id}
-                  onClick={() => apply(j)}
-                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50 border-b last:border-b-0"
-                >
-                  <span className="min-w-0">
-                    <span className="font-medium">{j.ga4Number || j.docNo || `#${j.id}`}</span>
-                    {j.registration && <span className="ml-1 text-muted-foreground">{j.registration}</span>}
-                    {j.customerName && <span className="block truncate text-muted-foreground/70">{j.customerName}</span>}
-                  </span>
-                  <span className="text-muted-foreground/70 shrink-0">{j.date ? new Date(j.date).toLocaleDateString("en-GB") : ""}</span>
-                </button>
-              ))}
-            </div>
+            </>
+          ) : (
+            // Step 2 — pick the job card for the chosen reg
+            <>
+              <span className="inline-flex items-center gap-1.5 border rounded-md px-1.5 py-0.5 bg-white">
+                <RegPlate reg={reg.registration} />
+                {reg.vehicle && <span className="text-muted-foreground">{reg.vehicle}</span>}
+                <button onClick={() => setReg(null)} className="text-[10px] text-brand-primary hover:underline ml-1">change</button>
+                <button onClick={reset} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+              </span>
+              <div className="absolute left-0 top-8 z-50 w-80 max-h-64 overflow-auto rounded-md border bg-white shadow-lg">
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/40">Choose the job card</div>
+                {jobs.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Loading job cards…</div>}
+                {!jobs.isLoading && (jobs.data || []).length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No job cards for this reg.</div>}
+                {(jobs.data || []).map((j: any) => (
+                  <button key={j.id} onClick={() => applyJob(j)}
+                    className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50 border-b last:border-b-0">
+                    <span className="min-w-0">
+                      <span className="font-medium">{j.ga4Number || j.docNo || `#${j.id}`}</span>
+                      {j.docType && <span className="ml-1 text-muted-foreground/70">{j.docType}</span>}
+                      {j.description && <span className="block truncate text-muted-foreground/70">{j.description}</span>}
+                    </span>
+                    <span className="text-muted-foreground/70 shrink-0">{j.date ? new Date(j.date).toLocaleDateString("en-GB") : ""}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </span>
       ) : (
-        <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-600 hover:bg-slate-50">
+        <button onClick={() => { setEditing(true); setQ(order.suggestedVehicle || ""); }} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-600 hover:bg-slate-50">
           <Link2 className="w-3 h-3" /> Link to job
         </button>
       )}
