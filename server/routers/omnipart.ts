@@ -33,10 +33,18 @@ async function crawlWithCurl(method: string, url: string, headers: Record<string
 // Replaces the shell-exec curl (crawlWithCurl) for these: no command-line length limit, no shell
 // quoting, no intermittent HTTP/2 curl exit failures. fetch reaches these endpoints fine (same as
 // the token refresher). Throws on an HTML/edge block; returns parsed JSON (or raw text) otherwise.
-async function omnipartFetch(method: string, url: string, headers: Record<string, string>, body?: string): Promise<any> {
+async function omnipartFetch(method: string, url: string, headers: Record<string, string>, body?: string, retries = 1): Promise<any> {
   const res = await fetch(url, { method, headers, ...(body != null ? { body } : {}) });
   const text = await res.text();
-  if (text.trim().startsWith("<")) throw new Error(`Euro Car Parts edge blocked the request (HTTP ${res.status}).`);
+  // ECP's WAF answers a tripped rate-limit with a tiny HTML 403 page. It's transient — a short
+  // wait clears it — so retry once before surfacing the block, so one burst doesn't blank a row.
+  if (text.trim().startsWith("<")) {
+    if (retries > 0) {
+      await new Promise((r) => setTimeout(r, 900));
+      return omnipartFetch(method, url, headers, body, retries - 1);
+    }
+    throw new Error(`Euro Car Parts edge blocked the request (HTTP ${res.status}).`);
+  }
   try { return JSON.parse(text); } catch { return text || null; }
 }
 // Resolve Omnipart request headers from a raw token or the stored jar. Auth is cookie-based: the
@@ -519,35 +527,42 @@ export const omnipartRouter = router({
         const o = raw && typeof raw === "object" && !Array.isArray(raw) ? Object.values(raw)[0] : null;
         if (!o || typeof o !== "object") return { parts: [], deliveryStatus: null, eta: null, orderStatus: null };
         const oo = o as any;
-        const parts: Array<{ code: string | null; name: string | null; brand: string | null; quantity: number | null; status: string | null }> = [];
+        const parts: Array<{ code: string | null; name: string | null; brand: string | null; quantity: number | null; status: string | null; unitCost: number | null; lineCost: number | null }> = [];
         let deliveryStatus: string | null = null, eta: string | null = null;
         for (const dv of Object.values(oo.deliveries || {}) as any[]) {
           if (dv && typeof dv === "object") {
             if (dv.delivery_status && !deliveryStatus) deliveryStatus = dv.delivery_status;
             if (dv.eta && !eta) eta = dv.eta;
             for (const ln of Object.values(dv.lines || {}) as any[]) {
+              // The delivery line already carries the friendly name AND the cost — no extra lookup
+              // needed. (The old per-SKU storefront-search fan-out both slowed the expand and, being
+              // one API hit per part, was the burst most likely to trip ECP's WAF and blank the row.)
+              const lineStatus =
+                ln.product_line_delivery_status === true ? "Delivered"
+                : ln.product_line_delivery_status === false ? "Pending"
+                : (ln.status || ln.line_status || null);
               parts.push({
                 code: ln.product_code || ln.sku || null,
-                name: null,
+                name: ln.product_name || ln.name || null,
                 brand: null,
                 quantity: ln.quantity ?? ln.qty ?? null,
-                status: ln.status || ln.line_status || null,
+                status: lineStatus,
+                unitCost: ln.price?.unit_cost ?? null,
+                lineCost: ln.price?.total_cost ?? null,
               });
             }
           }
         }
-        // Resolve friendly product names for each SKU (the delivery line only carries the code).
-        await Promise.all(parts.map(async (p) => {
-          if (!p.code) return;
+        // Fallback name lookup ONLY for the rare line missing an inline product_name — kept tiny so
+        // it never becomes a burst again.
+        const unnamed = parts.filter((p) => !p.name && p.code).slice(0, 3);
+        await Promise.all(unnamed.map(async (p) => {
           try {
-            const s = await omnipartFetch("GET", `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${encodeURIComponent(p.code)}`, headers);
+            const s = await omnipartFetch("GET", `https://api.omnipart.eurocarparts.com/storefront/search?keywords=${encodeURIComponent(p.code!)}`, headers);
             const raw2 = s?.products || s?.["hydra:member"] || s?.searchResults?.products || [];
             const arr = Array.isArray(raw2) ? raw2 : Object.values(raw2 || {});
             const first: any = arr[0];
-            if (first) {
-              p.name = first.name || first.updatedProductName || null;
-              p.brand = (first.brand && typeof first.brand === "object" ? first.brand.name : first.brand) || null;
-            }
+            if (first) p.name = first.name || first.updatedProductName || null;
           } catch { /* keep the bare code */ }
         }));
         return { parts, deliveryStatus, eta, orderStatus: oo.order_status || null };
