@@ -17,8 +17,15 @@ export function JobMarginCard({ documentId, partsSellNet }: { documentId: number
 
   const orders = (data?.orders || []).filter((o: any) => o.jobSheet && o.jobSheet.id === documentId);
   const hasCost = orders.length > 0;
-  const ecpCost = orders.reduce((a: number, o: any) => a + (Number(o.totalExcTax) || 0), 0);
-  const margin = partsSellNet - ecpCost;
+  // ECP cost is already ex-VAT. eBay prices are gross (inc VAT), so estimate net at ÷1.2 to compare
+  // like-for-like against the ex-VAT sell price.
+  const ecpOrders = orders.filter((o: any) => o.source !== "ebay");
+  const ebayOrders = orders.filter((o: any) => o.source === "ebay");
+  const ecpCost = ecpOrders.reduce((a: number, o: any) => a + (Number(o.totalExcTax) || 0), 0);
+  const ebayGross = ebayOrders.reduce((a: number, o: any) => a + (Number(o.totalIncTax) || 0), 0);
+  const ebayNet = ebayGross / 1.2;
+  const totalCost = ecpCost + ebayNet;
+  const margin = partsSellNet - totalCost;
   const marginPct = partsSellNet > 0 ? (margin / partsSellNet) * 100 : null;
 
   return (
@@ -34,14 +41,22 @@ export function JobMarginCard({ documentId, partsSellNet }: { documentId: number
       {!isLoading && !error && hasCost && (
         <div className="mt-1 space-y-0.5 text-[13px]">
           <div className="flex justify-between"><span className="text-slate-600">Parts sell (ex VAT)</span><span>{money(partsSellNet)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-600">ECP parts cost (ex VAT)</span><span>{money(ecpCost)}</span></div>
+          {ecpOrders.length > 0 && (
+            <div className="flex justify-between"><span className="text-slate-600">ECP cost (ex VAT)</span><span>{money(ecpCost)}</span></div>
+          )}
+          {ebayOrders.length > 0 && (
+            <div className="flex justify-between"><span className="text-slate-600">eBay cost (ex VAT est.)</span><span>{money(ebayNet)}</span></div>
+          )}
           <div className="flex justify-between font-semibold border-t pt-0.5">
             <span>Margin</span>
             <span className={margin >= 0 ? "text-green-700" : "text-red-600"}>
               {money(margin)}{marginPct != null ? ` · ${marginPct.toFixed(0)}%` : ""}
             </span>
           </div>
-          <div className="text-[11px] text-muted-foreground pt-0.5">from {orders.map((o: any) => o.orderRef).join(", ")}</div>
+          <div className="text-[11px] text-muted-foreground pt-0.5">
+            from {orders.map((o: any) => o.orderRef).join(", ")}
+            {ebayOrders.length > 0 && <span className="block">eBay prices are gross; ex-VAT estimated at ÷1.2.</span>}
+          </div>
         </div>
       )}
     </div>
