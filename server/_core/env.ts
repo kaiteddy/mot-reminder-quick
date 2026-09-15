@@ -8,5 +8,9 @@ export const ENV = {
   autodataDroneSecret: process.env.AUTODATA_DRONE_SECRET ?? "",
   oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  // GSF trade portal (trade.gsfcarparts.com). GSF send no order email at all, so this is the only
+  // route to those orders. NOT the consumer gsfcarparts.com login -- separate account stores.
+  gsfUsername: process.env.GSF_USERNAME ?? "",
+  gsfPassword: process.env.GSF_PASSWORD ?? "",
   isProduction: process.env.NODE_ENV === "production",
 };
