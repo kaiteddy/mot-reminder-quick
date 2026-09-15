@@ -9,11 +9,17 @@ import { Undo2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 
-// One returnable line, defensively typed — the ECP payload shape isn't fully pinned yet, so we
-// read a few likely field names and fall back gracefully.
+// One returnable line.
+//
+// `productIri` and `unitPriceExcTax` are NOT display fields — the submit body is built from them,
+// so a line without a product IRI cannot be returned and is dropped here rather than failing at
+// the API with a violation naming a sku nobody can place.
 type Line = {
   sku: string;
   name: string;
+  productIri: string;
+  unitPriceExcTax: number;
+  surcharge: number;
   available: number;
   selected: boolean;
   quantity: number;
@@ -21,14 +27,31 @@ type Line = {
   additionalInfo: string;
 };
 
+/** The "/products/<digits>" substring of an item's @id — what the submit body wants, not the sku. */
+function productIriOf(it: any): string {
+  const raw = String(it?.product?.["@id"] ?? it?.["@id"] ?? "");
+  return raw.match(/\/products\/\d+/)?.[0] ?? "";
+}
+
 function coerceLines(raw: any): Line[] {
   const arr = Array.isArray(raw) ? raw : raw?.items || raw?.["hydra:member"] || [];
   return (arr as any[]).map((it) => {
     const sku = it.sku || it.SKU || it.productSku || it.code || "";
     const name = it.name || it.description || it.productName || sku;
     const available = Number(it.quantity ?? it.availableQuantity ?? it.qty ?? 1) || 1;
-    return { sku, name, available, selected: false, quantity: available, reason: "", additionalInfo: "" };
-  }).filter((l) => l.sku);
+    return {
+      sku,
+      name,
+      productIri: productIriOf(it),
+      unitPriceExcTax: Number(it?.unitPrice?.excTax ?? it?.unitPriceExcTax ?? 0),
+      surcharge: Number(it?.surcharge ?? 0),
+      available,
+      selected: false,
+      quantity: available,
+      reason: "",
+      additionalInfo: "",
+    };
+  }).filter((l) => l.sku && l.productIri);
 }
 
 /**
@@ -43,9 +66,11 @@ export function ReturnDialog({ orderRef, orderId }: { orderRef: string; orderId?
   const reasonsQ = trpc.omnipart.getDigitalReturnReasons.useQuery(undefined, {
     enabled: open, staleTime: 60 * 60 * 1000, retry: false,
   });
+  // The two returns calls take DIFFERENT identifiers off the same order: this one wants the order
+  // REF, while the submit below wants the numeric db id. Passing the db id here 404s.
   const itemsQ = trpc.omnipart.getReturnableItems.useQuery(
-    { orderId: idStr },
-    { enabled: open && !!idStr, retry: false },
+    { orderRef },
+    { enabled: open && !!orderRef, retry: false },
   );
   const submit = trpc.omnipart.submitDigitalReturn.useMutation();
 
@@ -65,15 +90,21 @@ export function ReturnDialog({ orderRef, orderId }: { orderRef: string; orderId?
   }
 
   async function onSubmit() {
-    const items = chosen.map((l) => ({
-      sku: l.sku,
+    if (!idStr) {
+      toast.error("This order has no internal id, so a return cannot be submitted for it.");
+      return;
+    }
+    const lines = chosen.map((l) => ({
+      productIri: l.productIri,
       quantity: l.quantity,
-      returnLineId: `${l.sku}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-      returnReason: l.reason,
+      reasonCode: l.reason,
+      unitPriceExcTax: l.unitPriceExcTax,
+      surcharge: l.surcharge,
       additionalInfo: l.additionalInfo || undefined,
     }));
     try {
-      await submit.mutateAsync({ orderId: idStr, items });
+      // dbOrderId, not the ref — see the note on the items query above.
+      await submit.mutateAsync({ dbOrderId: idStr, lines });
       toast.success(`Return submitted for ${orderRef}`);
       setOpen(false);
       setLines([]);
