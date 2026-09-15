@@ -630,6 +630,27 @@ export const omnipartRouter = router({
       return { ok: true };
     }),
 
+  // Parts sell (ex VAT) per job — sum of the Part line items' net — for the cost/margin report.
+  jobPartsSell: protectedProcedure
+    .input(z.object({ ids: z.array(z.number()) }))
+    .query(async ({ input }) => {
+      if (!input.ids.length) return {} as Record<number, number>;
+      const { getDb } = await import("../db");
+      const { serviceLineItems } = await import("../../drizzle/schema");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return {};
+      const rows = await db.select({
+        documentId: serviceLineItems.documentId,
+        net: sql<number>`coalesce(sum(case when ${serviceLineItems.itemType} = 'Part' then ${serviceLineItems.subNet} else 0 end), 0)`,
+      }).from(serviceLineItems)
+        .where(sql`${serviceLineItems.documentId} in (${sql.join(input.ids.map((n) => sql`${n}`), sql`, `)})`)
+        .groupBy(serviceLineItems.documentId);
+      const out: Record<number, number> = {};
+      for (const r of rows) out[r.documentId] = Number(r.net) || 0;
+      return out;
+    }),
+
   // Search job sheets to attach an order to (by reg, doc/GA4 number, or customer).
   searchJobSheets: protectedProcedure
     .input(z.object({ q: z.string() }))
