@@ -94,9 +94,24 @@ function BoardRow({ o, base }: { o: any; base: string }) {
                     <span className="font-medium">{p.name || p.code || "part"}</span>
                     {p.code && p.name && p.name !== p.code && <span className="text-xs text-muted-foreground/70">({p.code})</span>}
                     {p.quantity != null && <span className="text-xs text-muted-foreground">×{p.quantity}</span>}
-                    {p.status && <span className="ml-auto text-xs text-muted-foreground/70">{p.status}</span>}
+                    <span className="ml-auto flex items-center gap-3">
+                      {p.status && <span className="text-xs text-muted-foreground/70">{p.status}</span>}
+                      {/* Internal cost (ex VAT) — Parts Orders is a staff page; print:hidden as a belt-and-braces guard. */}
+                      {p.lineCost != null && (
+                        <span className="text-xs tabular-nums text-slate-600 w-16 text-right print:hidden">{money(p.lineCost)}</span>
+                      )}
+                    </span>
                   </div>
                 ))}
+                {(() => {
+                  const total = parts.reduce((a: number, p: any) => a + (Number(p.lineCost) || 0), 0);
+                  return total > 0 ? (
+                    <div className="flex items-center justify-end gap-3 pt-1.5 mt-1 border-t print:hidden">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Parts cost · ex VAT · internal</span>
+                      <span className="text-sm tabular-nums font-semibold w-16 text-right">{money(total)}</span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           </TableCell>
