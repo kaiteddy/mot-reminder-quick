@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2 } from "lucide-react";
+import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2, Link2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -73,6 +73,83 @@ function patchCategory(old: any, orderRef: string, category: string | null) {
   if (!old?.orders) return old;
   return { ...old, orders: old.orders.map((o: any) =>
     o.orderRef !== orderRef ? o : { ...o, categoryOverride: category, category: category ?? o.autoCategory }) };
+}
+function patchJob(old: any, orderRef: string, jobSheet: any) {
+  if (!old?.orders) return old;
+  return { ...old, orders: old.orders.map((o: any) =>
+    o.orderRef !== orderRef ? o : { ...o, jobSheet, jobSheetLinked: !!jobSheet }) };
+}
+
+/** Attach an order to a job sheet: search by reg / job number / customer and pick one. Works for
+ *  eBay orders (which have no reg to auto-match) and can re-point an ECP order too. */
+function JobLink({ order, base }: { order: any; base: string }) {
+  const utils = trpc.useUtils();
+  const [editing, setEditing] = useState(false);
+  const [q, setQ] = useState("");
+  const results = trpc.omnipart.searchJobSheets.useQuery({ q }, { enabled: editing && q.trim().length >= 2, staleTime: 30_000 });
+  const link = trpc.omnipart.setOrderJobSheet.useMutation();
+  const apply = (job: any) => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, job));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: job ? job.id : null });
+    setEditing(false); setQ("");
+  };
+  const js = order.jobSheet;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs relative" onClick={(e) => e.stopPropagation()}>
+      <span className="text-[11px] text-muted-foreground">Job:</span>
+      {js ? (
+        <>
+          <Link href={`${base}/documents/${js.id}`} className="text-brand-primary hover:underline font-medium">
+            {js.ga4Number || js.docNo || js.id}
+          </Link>
+          <span className="text-[10px] text-muted-foreground">{order.jobSheetLinked ? "(linked)" : "(auto)"}</span>
+          <button onClick={() => apply(null)} className="text-muted-foreground hover:text-red-600" title="Unlink from job">
+            <X className="w-3 h-3" />
+          </button>
+        </>
+      ) : editing ? (
+        <span className="relative">
+          <span className="inline-flex items-center gap-1 border rounded-md px-1.5 py-0.5 bg-white">
+            <Search className="w-3 h-3 text-muted-foreground" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="reg, job no. or customer…"
+              className="outline-none text-xs w-44"
+            />
+            <button onClick={() => { setEditing(false); setQ(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+          </span>
+          {q.trim().length >= 2 && (
+            <div className="absolute left-0 top-7 z-50 w-72 max-h-60 overflow-auto rounded-md border bg-white shadow-lg">
+              {results.isLoading && <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching…</div>}
+              {!results.isLoading && (results.data || []).length === 0 && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching jobs.</div>
+              )}
+              {(results.data || []).map((j: any) => (
+                <button
+                  key={j.id}
+                  onClick={() => apply(j)}
+                  className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50 border-b last:border-b-0"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium">{j.ga4Number || j.docNo || `#${j.id}`}</span>
+                    {j.registration && <span className="ml-1 text-muted-foreground">{j.registration}</span>}
+                    {j.customerName && <span className="block truncate text-muted-foreground/70">{j.customerName}</span>}
+                  </span>
+                  <span className="text-muted-foreground/70 shrink-0">{j.date ? new Date(j.date).toLocaleDateString("en-GB") : ""}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+      ) : (
+        <button onClick={() => setEditing(true)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-600 hover:bg-slate-50">
+          <Link2 className="w-3 h-3" /> Link to job
+        </button>
+      )}
+    </span>
+  );
 }
 
 const USAGE_OPTS: Array<{ key: "fitted" | "returned" | "spare"; label: string; on: string }> = [
@@ -220,6 +297,7 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             <div className="px-6 space-y-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CategoryToggle order={o} />
+                <JobLink order={o} base={base} />
               </div>
               <OrderProgress status={o.status} />
               <div className="pt-1">

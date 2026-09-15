@@ -558,14 +558,24 @@ export const omnipartRouter = router({
         // Car-job vs General-workshop category. Category is auto (eBay: from the item; ECP: a job
         // matched or the ref looks like a plate = car; otherwise general) unless manually overridden.
         try {
-          const { getOmnipartOrderMeta } = await import("../db");
+          const { getOmnipartOrderMeta, getJobSheetsByIds } = await import("../db");
           const meta = await getOmnipartOrderMeta(orders.map((o) => o.orderRef));
+          // Resolve any manual order→job links in one query.
+          const linkedIds = Array.from(meta.values()).map((m) => m.jobSheetId).filter((n): n is number => !!n);
+          const linkedJobs = linkedIds.length ? await getJobSheetsByIds(linkedIds) : [];
+          const jobById = new Map(linkedJobs.map((j) => [j.id, j]));
           const looksLikeReg = (s: string | null) => {
             const k = (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
             return k.length >= 5 && k.length <= 8 && /[0-9]/.test(k) && /[A-Z]/.test(k);
           };
           for (const o of orders as any[]) {
             const m = meta.get(o.orderRef);
+            // A manual job link wins over the reg/date auto-match (and is the only link eBay can have).
+            if (m?.jobSheetId && jobById.has(m.jobSheetId)) {
+              const j = jobById.get(m.jobSheetId)!;
+              o.jobSheet = { id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, docType: j.docType, date: j.dateIssued || j.dateCreated || null };
+              o.jobSheetLinked = true;                              // manually linked (vs auto-matched)
+            }
             const autoCategory = o.ebayAutoCategory
               ? o.ebayAutoCategory
               : ((o.jobSheet || looksLikeReg(o.reg)) ? "car" : "general");
@@ -615,6 +625,29 @@ export const omnipartRouter = router({
     .mutation(async ({ input }) => {
       const { setOmnipartCategory } = await import("../db");
       await setOmnipartCategory(input.orderRef, input.category);
+      return { ok: true };
+    }),
+
+  // Search job sheets to attach an order to (by reg, doc/GA4 number, or customer).
+  searchJobSheets: protectedProcedure
+    .input(z.object({ q: z.string() }))
+    .query(async ({ input }) => {
+      const { searchJobSheets } = await import("../db");
+      const rows = await searchJobSheets(input.q);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
+        docType: j.docType, customerName: j.customerName,
+        date: j.dateIssued || j.dateCreated || null,
+      }));
+    }),
+
+  // Manually link an order to a job sheet (jobSheetId=null unlinks). The board then shows the job
+  // and the job's internal margin can include this order's cost.
+  setOrderJobSheet: protectedProcedure
+    .input(z.object({ orderRef: z.string(), jobSheetId: z.number().nullable() }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartJobSheet } = await import("../db");
+      await setOmnipartJobSheet(input.orderRef, input.jobSheetId);
       return { ok: true };
     }),
 

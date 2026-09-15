@@ -6064,14 +6064,65 @@ export async function saveAppSetting(keyName: string, value: any) {
 // onto the live supplier feed without a per-order query.
 export async function getOmnipartOrderMeta(refs?: string[]) {
   const db = await getDb();
-  const out = new Map<string, { category: string | null; partStates: Record<string, string> }>();
+  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null }>();
   if (!db) return out;
   const rows = refs && refs.length
     ? await db.select().from(omnipartOrderMeta).where(
         sql`${omnipartOrderMeta.orderRef} in (${sql.join(refs.map((r) => sql`${r}`), sql`, `)})`)
     : await db.select().from(omnipartOrderMeta);
-  for (const r of rows) out.set(r.orderRef, { category: r.category ?? null, partStates: (r.partStates as Record<string, string>) || {} });
+  for (const r of rows) out.set(r.orderRef, {
+    category: r.category ?? null,
+    partStates: (r.partStates as Record<string, string>) || {},
+    jobSheetId: r.jobSheetId ?? null,
+  });
   return out;
+}
+
+// Manually link an order to a job sheet (jobSheetId=null unlinks). Used mainly for eBay orders,
+// which carry no reg to auto-match, but can override an ECP order's auto-match too.
+export async function setOmnipartJobSheet(orderRef: string, jobSheetId: number | null) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ jobSheetId, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, jobSheetId });
+  }
+}
+
+// Look up specific job sheets by id (to resolve a manual order→job link).
+export async function getJobSheetsByIds(ids: number[]) {
+  const db = await getDb();
+  if (!db || !ids?.length) return [] as Array<{ id: number; docNo: string | null; ga4Number: string | null; registration: string | null; docType: string | null; dateIssued: Date | null; dateCreated: Date | null }>;
+  const uniq = Array.from(new Set(ids.filter((n) => Number.isFinite(n))));
+  if (!uniq.length) return [];
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, docType: serviceHistory.docType,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory).where(sql`${serviceHistory.id} in (${sql.join(uniq.map((n) => sql`${n}`), sql`, `)})`);
+}
+
+// Search job sheets to link an order to — by registration, doc number or GA4 number.
+export async function searchJobSheets(q: string, limit = 12) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const term = (q || "").trim();
+  if (term.length < 2) return [];
+  const like = `%${term.toLowerCase()}%`;
+  const regKey = term.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, docType: serviceHistory.docType,
+    customerName: serviceHistory.customerName,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory).where(sql`(
+      upper(replace(coalesce(${serviceHistory.registration},''), ' ', '')) like ${'%' + regKey + '%'}
+      or lower(coalesce(${serviceHistory.docNo},'')) like ${like}
+      or lower(coalesce(${serviceHistory.ga4Number},'')) like ${like}
+      or lower(coalesce(${serviceHistory.customerName},'')) like ${like}
+    )`).orderBy(desc(serviceHistory.dateCreated)).limit(limit);
 }
 
 // Mark one part fitted/returned/spare (usage=null clears it). lineKey is the product code.

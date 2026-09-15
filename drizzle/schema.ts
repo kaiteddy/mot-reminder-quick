@@ -435,6 +435,7 @@ export const omnipartOrderMeta = pgTable("omnipartOrderMeta", {
   orderRef: varchar("orderRef", { length: 64 }).primaryKey(),
   category: varchar("category", { length: 16 }),                 // manual override: 'car' | 'general' | null (null = auto)
   partStates: jsonb("partStates").$type<Record<string, string>>().default({}), // product code -> 'fitted' | 'returned' | 'spare'
+  jobSheetId: integer("jobSheetId"),                             // manual link to a serviceHistory job (esp. eBay, which has no reg)
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
