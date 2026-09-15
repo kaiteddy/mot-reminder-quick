@@ -422,7 +422,7 @@ export const omnipartRouter = router({
             // product_name and price inline). So we read them straight off the list here — no
             // per-order follow-up call, which means nothing extra to be WAF-blocked and the parts
             // show instantly when a row expands.
-            const parts: Array<{ code: string | null; name: string | null; quantity: number | null; status: string | null; lineCost: number | null }> = [];
+            const parts: Array<{ code: string | null; name: string | null; quantity: number | null; status: string | null; lineCost: number | null; image: string | null }> = [];
             for (const v of Object.values(deliveries)) {
               if (v && typeof v === "object") {
                 const dv = v as any;
@@ -437,6 +437,7 @@ export const omnipartRouter = router({
                           : ln.product_line_delivery_status === false ? "Pending"
                           : (ln.status || null),
                     lineCost: ln.price?.total_cost ?? null,
+                    image: ln.product_image || null,                 // ECP product photo (may 404 for some SKUs)
                   });
                 }
               }

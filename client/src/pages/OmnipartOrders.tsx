@@ -34,6 +34,34 @@ function bucketOf(dateStr?: string | null): (typeof BUCKET_ORDER)[number] {
   return "Older";
 }
 
+/** A part's ECP photo — small thumbnail that enlarges on hover. Falls back to a box icon when the
+ *  product has no image (some SKUs 404 on the ECP image CDN). */
+function PartThumb({ src, alt }: { src?: string | null; alt: string }) {
+  const [ok, setOk] = useState(!!src);
+  if (!src || !ok) {
+    return (
+      <span className="w-11 h-11 shrink-0 rounded border bg-muted/40 flex items-center justify-center">
+        <Package className="w-4 h-4 text-muted-foreground" />
+      </span>
+    );
+  }
+  return (
+    <span className="relative group/thumb shrink-0">
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onError={() => setOk(false)}
+        className="w-11 h-11 rounded border object-contain bg-white"
+      />
+      <span className="pointer-events-none hidden group-hover/thumb:flex absolute left-0 top-12 z-50 p-1.5 rounded-lg border bg-white shadow-xl flex-col items-center gap-1">
+        <img src={src} alt={alt} className="w-52 h-52 object-contain bg-white" />
+        <span className="text-xs font-medium text-slate-700 max-w-52 text-center">{alt}</span>
+      </span>
+    </span>
+  );
+}
+
 /** One board row that expands on click to show the parts on the order. */
 function BoardRow({ o, base }: { o: any; base: string }) {
   const [open, setOpen] = useState(false);
@@ -89,12 +117,16 @@ function BoardRow({ o, base }: { o: any; base: string }) {
                   <div className="text-xs text-muted-foreground/70">No part detail on this order.</div>
                 )}
                 {parts.map((p: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 text-sm py-0.5">
-                    <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="font-medium">{p.name || p.code || "part"}</span>
-                    {p.code && p.name && p.name !== p.code && <span className="text-xs text-muted-foreground/70">({p.code})</span>}
-                    {p.quantity != null && <span className="text-xs text-muted-foreground">×{p.quantity}</span>}
-                    <span className="ml-auto flex items-center gap-3">
+                  <div key={i} className="flex items-center gap-3 text-sm py-1">
+                    <PartThumb src={p.image} alt={p.name || p.code || "part"} />
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">
+                        {p.name || p.code || "part"}
+                        {p.quantity != null && <span className="text-muted-foreground font-normal"> ×{p.quantity}</span>}
+                      </div>
+                      {p.code && <div className="text-xs text-muted-foreground/70 tabular-nums">{p.code}</div>}
+                    </div>
+                    <span className="ml-auto flex items-center gap-3 shrink-0">
                       {p.status && <span className="text-xs text-muted-foreground/70">{p.status}</span>}
                       {/* Internal cost (ex VAT) — Parts Orders is a staff page; print:hidden as a belt-and-braces guard. */}
                       {p.lineCost != null && (
