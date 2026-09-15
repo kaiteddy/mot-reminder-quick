@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDebouncedValue, looksLikeCompleteReg } from "@/hooks/useDebouncedValue";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
+import { JobMarginCard } from "@/components/JobMarginCard";
 import MergeCustomersDialog from "@/components/MergeCustomersDialog";
 import ServicingTab from "@/components/ServicingTab";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
@@ -1437,6 +1438,8 @@ export default function DocumentDetails() {
               )}
             </div>
           )}
+          {/* INTERNAL margin — staff only, never printed (print:hidden + PDF templates carry no cost) */}
+          <JobMarginCard documentId={id} partsSellNet={sumNetOf(items, "Part")} />
         </Panel>
       )}
     </>

@@ -429,6 +429,7 @@ export const omnipartRouter = router({
               eta: o?.eta ?? deliveryEta ?? null,
               numberOfItems: o?.number_of_items ?? null,
               totalIncTax: o?.totals?.total_inc_tax ?? null,
+              totalExcTax: o?.totals?.total_exc_tax ?? null,   // ELI's ex-VAT parts cost — for internal margin
               dbOrderId: o?.db_order_id || null,
               branchId: o?.branch_id ?? null,
               // How long ago it was ordered, and whether it needs chasing — flagged once it hasn't
