@@ -1439,7 +1439,11 @@ export default function DocumentDetails() {
             </div>
           )}
           {/* INTERNAL margin — staff only, never printed (print:hidden + PDF templates carry no cost) */}
-          <JobMarginCard documentId={id} partsSellNet={sumNetOf(items, "Part")} />
+          <JobMarginCard
+            documentId={id}
+            partsSellNet={sumNetOf(items, "Part")}
+            onAddPart={editing ? (p) => setItemsDirty((prev) => [...prev, recalc({ itemType: "Part", partNumber: p.partNumber, description: p.description, quantity: p.quantity, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]) : undefined}
+          />
         </Panel>
       )}
     </>

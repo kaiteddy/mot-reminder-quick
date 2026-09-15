@@ -6064,7 +6064,7 @@ export async function saveAppSetting(keyName: string, value: any) {
 // onto the live supplier feed without a per-order query.
 export async function getOmnipartOrderMeta(refs?: string[]) {
   const db = await getDb();
-  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null }>();
+  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null; hidden: boolean }>();
   if (!db) return out;
   const rows = refs && refs.length
     ? await db.select().from(omnipartOrderMeta).where(
@@ -6074,8 +6074,21 @@ export async function getOmnipartOrderMeta(refs?: string[]) {
     category: r.category ?? null,
     partStates: (r.partStates as Record<string, string>) || {},
     jobSheetId: r.jobSheetId ?? null,
+    hidden: !!r.hidden,
   });
   return out;
+}
+
+// Hide (or unhide) an order — for garage supplies / non-parts buys that shouldn't clutter the board.
+export async function setOmnipartHidden(orderRef: string, hidden: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ hidden, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, hidden });
+  }
 }
 
 // Manually link an order to a job sheet (jobSheetId=null unlinks). Used mainly for eBay orders,
@@ -6091,17 +6104,20 @@ export async function setOmnipartJobSheet(orderRef: string, jobSheetId: number |
   }
 }
 
-// Look up specific job sheets by id (to resolve a manual order→job link).
+// Look up specific job sheets by id (to resolve a manual order→job link), incl. the vehicle.
 export async function getJobSheetsByIds(ids: number[]) {
   const db = await getDb();
-  if (!db || !ids?.length) return [] as Array<{ id: number; docNo: string | null; ga4Number: string | null; registration: string | null; docType: string | null; dateIssued: Date | null; dateCreated: Date | null }>;
+  if (!db || !ids?.length) return [] as Array<{ id: number; docNo: string | null; ga4Number: string | null; registration: string | null; docType: string | null; make: string | null; model: string | null; dateIssued: Date | null; dateCreated: Date | null }>;
   const uniq = Array.from(new Set(ids.filter((n) => Number.isFinite(n))));
   if (!uniq.length) return [];
   return db.select({
     id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
     registration: serviceHistory.registration, docType: serviceHistory.docType,
+    make: vehicles.make, model: vehicles.model,
     dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
-  }).from(serviceHistory).where(sql`${serviceHistory.id} in (${sql.join(uniq.map((n) => sql`${n}`), sql`, `)})`);
+  }).from(serviceHistory)
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(sql`${serviceHistory.id} in (${sql.join(uniq.map((n) => sql`${n}`), sql`, `)})`);
 }
 
 // Search job sheets to link an order to — by registration, doc number or GA4 number.
@@ -6123,6 +6139,71 @@ export async function searchJobSheets(q: string, limit = 12) {
       or lower(coalesce(${serviceHistory.ga4Number},'')) like ${like}
       or lower(coalesce(${serviceHistory.customerName},'')) like ${like}
     )`).orderBy(desc(serviceHistory.dateCreated)).limit(limit);
+}
+
+// Registrations to choose from when linking an order — regs that actually have job cards, matched
+// by reg or by make/model, with the vehicle and how many jobs each has.
+export async function searchRegistrations(q: string, limit = 12) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const term = (q || "").trim();
+  if (term.length < 2) return [];
+  const regKey = term.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const like = `%${term.toLowerCase()}%`;
+  const conds = [sql`lower(coalesce(${vehicles.make},'') || ' ' || coalesce(${vehicles.model},'')) like ${like}`];
+  if (regKey.length >= 2) conds.push(sql`upper(replace(coalesce(${serviceHistory.registration},''),' ','')) like ${'%' + regKey + '%'}`);
+  return db.select({
+    registration: serviceHistory.registration,
+    make: sql<string>`max(${vehicles.make})`,
+    model: sql<string>`max(${vehicles.model})`,
+    jobs: sql<number>`count(*)`,
+    latest: sql<Date>`max(coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))`,
+  }).from(serviceHistory)
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(and(isNotNull(serviceHistory.registration), or(...conds)))
+    .groupBy(serviceHistory.registration)
+    .orderBy(desc(sql`max(coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated}))`))
+    .limit(limit);
+}
+
+// All job cards for one registration, newest first — step 2 of the reg→job link.
+export async function jobsForReg(reg: string, limit = 25) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const regKey = (reg || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!regKey) return [];
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, docType: serviceHistory.docType,
+    customerName: serviceHistory.customerName, description: serviceHistory.description,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory)
+    .where(sql`upper(replace(coalesce(${serviceHistory.registration},''),' ','')) = ${regKey}`)
+    .orderBy(desc(sql`coalesce(${serviceHistory.dateIssued}, ${serviceHistory.dateCreated})`))
+    .limit(limit);
+}
+
+// Recommend jobs for a guessed vehicle ("Vauxhall Mokka"): find that make/model's cars and their
+// recent jobs. This is what powers the eBay "no reg" suggestions.
+export async function suggestJobsByVehicle(vehicle: string, limit = 8) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const words = (vehicle || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const make = words[0].toLowerCase();
+  const model = words[1] ? words[1].toLowerCase() : null;
+  const conds = [sql`lower(coalesce(${vehicles.make},'')) like ${'%' + make + '%'}`];
+  if (model) conds.push(sql`lower(coalesce(${vehicles.model},'')) like ${'%' + model + '%'}`);
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, customerName: serviceHistory.customerName,
+    make: vehicles.make, model: vehicles.model,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory)
+    .innerJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(and(...conds))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(limit);
 }
 
 // Mark one part fitted/returned/spare (usage=null clears it). lineKey is the product code.
@@ -6164,6 +6245,7 @@ export async function upsertEbayOrders(rows: Array<{
   orderRef: string; itemId?: string | null; title?: string | null; price?: string | number | null;
   quantity?: number | null; seller?: string | null; status?: string | null; fitsVehicle?: string | null;
   autoCategory?: string | null; image?: string | null; eta?: string | null; orderDate?: string | Date | null;
+  tracking?: string | null; courier?: string | null; supplier?: string | null;
 }>) {
   const db = await getDb();
   if (!db || !rows?.length) return { upserted: 0 };
@@ -6188,15 +6270,18 @@ export async function upsertEbayOrders(rows: Array<{
         autoCategory: r.autoCategory ?? existing.autoCategory,
         image: r.image ?? existing.image,
         eta: r.eta ?? existing.eta,
+        tracking: r.tracking ?? existing.tracking,
+        courier: r.courier ?? existing.courier,
         orderDate: orderDate ?? existing.orderDate,
         updatedAt: new Date(),
       }).where(eq(ebayOrders.orderRef, r.orderRef));
     } else {
       await db.insert(ebayOrders).values({
-        orderRef: r.orderRef, itemId: r.itemId ?? null, title: r.title ?? null, price,
+        orderRef: r.orderRef, supplier: r.supplier ?? "ebay", itemId: r.itemId ?? null, title: r.title ?? null, price,
         quantity: r.quantity ?? 1, seller: r.seller ?? null, status: r.status ?? null,
         fitsVehicle: r.fitsVehicle ?? null, autoCategory: r.autoCategory ?? null,
-        image: r.image ?? null, eta: r.eta ?? null, orderDate,
+        image: r.image ?? null, eta: r.eta ?? null,
+        tracking: r.tracking ?? null, courier: r.courier ?? null, orderDate,
       });
     }
     n++;

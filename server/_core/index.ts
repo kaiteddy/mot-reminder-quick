@@ -185,7 +185,14 @@ function setupApp(app: Express) {
           return res.status(401).json({ success: false, error: "bad secret" });
         }
         const orders = Array.isArray(req.body?.orders) ? req.body.orders : [];
-        const clean = orders.filter((o: any) => typeof o?.orderRef === "string" && /^\d{2}-\d{5}-\d{5}$/.test(o.orderRef));
+        // Accept known supplier order-ref shapes: eBay NN-NNNNN-NNNNN, Amazon NNN-NNNNNNN-NNNNNNN.
+        const clean = orders.filter((o: any) => {
+          if (typeof o?.orderRef !== "string") return false;
+          const s = (o.supplier || "ebay").toLowerCase();
+          if (s === "ebay") return /^\d{2}-\d{5}-\d{5}$/.test(o.orderRef);
+          if (s === "amazon") return /^\d{3}-\d{7}-\d{7}$/.test(o.orderRef);
+          return o.orderRef.length >= 5 && o.orderRef.length <= 32;   // other suppliers: sane length
+        });
         const { upsertEbayOrders } = await import("../db");
         const result = await upsertEbayOrders(clean);
         console.log(`[EBAY INGEST] received ${orders.length}, accepted ${clean.length}, upserted ${result.upserted}`);
