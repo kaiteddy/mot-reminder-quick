@@ -39,6 +39,7 @@ export default defineConfig({
       "server/messageDelivery.test.ts",
       "server/followUpCall.test.ts",
       "server/digitalReturnBody.test.ts",
+      "server/partUsage.test.ts",
     ],
   },
 });

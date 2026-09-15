@@ -17,6 +17,7 @@ import { ENV } from './_core/env';
 import { vehicleIdentityForSave, looksLikeRegistration } from "../shared/vehicleIdentity";
 import { odometerReading, carChangePoints, mileageOutliers } from "../shared/mileage";
 import { buildServiceSets, isEstimatedLubricant, parseVehOil, priceListMatch, type ServiceSet } from "../shared/serviceParts";
+import { makeUsage, compactUsage, type StoredUsage } from "../shared/partUsage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let _pool: Pool | null = null;
@@ -6064,7 +6065,8 @@ export async function saveAppSetting(keyName: string, value: any) {
 // onto the live supplier feed without a per-order query.
 export async function getOmnipartOrderMeta(refs?: string[]) {
   const db = await getDb();
-  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null; hidden: boolean }>();
+  // StoredUsage, not string: a part line can be split (3 fitted, 1 going back). `hidden` is main's.
+  const out = new Map<string, { category: string | null; partStates: Record<string, StoredUsage>; jobSheetId: number | null; hidden: boolean }>();
   if (!db) return out;
   const rows = refs && refs.length
     ? await db.select().from(omnipartOrderMeta).where(
@@ -6072,7 +6074,7 @@ export async function getOmnipartOrderMeta(refs?: string[]) {
     : await db.select().from(omnipartOrderMeta);
   for (const r of rows) out.set(r.orderRef, {
     category: r.category ?? null,
-    partStates: (r.partStates as Record<string, string>) || {},
+    partStates: (r.partStates as Record<string, StoredUsage>) || {},
     jobSheetId: r.jobSheetId ?? null,
     hidden: !!r.hidden,
   });
@@ -6213,6 +6215,34 @@ export async function setOmnipartPartState(orderRef: string, lineKey: string, us
   const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
   const states = { ...((existing?.partStates as Record<string, string>) || {}) };
   if (usage) states[lineKey] = usage; else delete states[lineKey];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ partStates: states, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, partStates: states });
+  }
+}
+
+/**
+ * Record how much of one part was fitted, returned or left spare.
+ *
+ * The quantity-aware sibling of setOmnipartPartState above. A line of four can be three fitted and
+ * one going back, which a single state cannot say — see shared/partUsage.ts for why that matters.
+ *
+ * Writes the SAME shape as the old setter whenever the line is all one thing, so nothing needs
+ * migrating and a row written either way reads correctly through readUsage().
+ */
+export async function setOmnipartPartQuantities(
+  orderRef: string,
+  lineKey: string,
+  input: { fitted?: number; returned?: number; spare?: number },
+  quantityOrdered = 1,
+) {
+  const db = await getDb();
+  if (!db) return;
+  const value = compactUsage(makeUsage(input, quantityOrdered), quantityOrdered);
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  const states = { ...((existing?.partStates as Record<string, any>) || {}) };
+  if (value) states[lineKey] = value; else delete states[lineKey];
   if (existing) {
     await db.update(omnipartOrderMeta).set({ partStates: states, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
   } else {

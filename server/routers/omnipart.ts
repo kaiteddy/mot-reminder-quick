@@ -1,5 +1,6 @@
 import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
+import { readUsage } from "../../shared/partUsage";
 import { z } from "zod";
 import * as cp from "child_process";
 import { promisify } from "util";
@@ -693,7 +694,14 @@ export const omnipartRouter = router({
             o.categoryOverride = m?.category ?? null;               // what the user pinned (null = auto)
             o.category = m?.category ?? autoCategory;                // effective category used for filtering
             const states = m?.partStates || {};
-            for (const p of o.parts as any[]) p.usage = (p.code && states[p.code]) || null;
+            for (const p of o.parts as any[]) {
+              const stored = (p.code && (states as any)[p.code]) || null;
+              // `usage` stays a bare state for anything already reading it. `usageDetail` carries
+              // the split, which a single state cannot express on a line of more than one.
+              const detail = readUsage(stored, Number(p.quantity ?? 1) || 1);
+              p.usage = typeof stored === "string" ? stored : detail.state;
+              p.usageDetail = detail;
+            }
           }
         } catch (e: any) {
           console.error("Omnipart meta-merge error:", e?.message);
@@ -723,6 +731,36 @@ export const omnipartRouter = router({
     .mutation(async ({ input }) => {
       const { setOmnipartPartState } = await import("../db");
       await setOmnipartPartState(input.orderRef, input.code, input.usage);
+      return { ok: true };
+    }),
+
+  /**
+   * Record how much of a part was fitted, returned or left spare.
+   *
+   * The quantity-aware sibling of setPartUsage. Four bought, three fitted, one going back is the
+   * case the whole parts system was asked for, and a single state has to round it to
+   * all-or-nothing — charging the customer for four, or losing the credit on the fourth.
+   *
+   * Counts are clamped server-side against the quantity ordered, so no client can claim back more
+   * than was bought.
+   */
+  setPartQuantities: protectedProcedure
+    .input(z.object({
+      orderRef: z.string(),
+      code: z.string(),
+      quantityOrdered: z.number().int().min(1).default(1),
+      fitted: z.number().int().min(0).default(0),
+      returned: z.number().int().min(0).default(0),
+      spare: z.number().int().min(0).default(0),
+    }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartPartQuantities } = await import("../db");
+      await setOmnipartPartQuantities(
+        input.orderRef,
+        input.code,
+        { fitted: input.fitted, returned: input.returned, spare: input.spare },
+        input.quantityOrdered,
+      );
       return { ok: true };
     }),
 
