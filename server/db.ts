@@ -6064,7 +6064,7 @@ export async function saveAppSetting(keyName: string, value: any) {
 // onto the live supplier feed without a per-order query.
 export async function getOmnipartOrderMeta(refs?: string[]) {
   const db = await getDb();
-  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null }>();
+  const out = new Map<string, { category: string | null; partStates: Record<string, string>; jobSheetId: number | null; hidden: boolean }>();
   if (!db) return out;
   const rows = refs && refs.length
     ? await db.select().from(omnipartOrderMeta).where(
@@ -6074,8 +6074,21 @@ export async function getOmnipartOrderMeta(refs?: string[]) {
     category: r.category ?? null,
     partStates: (r.partStates as Record<string, string>) || {},
     jobSheetId: r.jobSheetId ?? null,
+    hidden: !!r.hidden,
   });
   return out;
+}
+
+// Hide (or unhide) an order — for garage supplies / non-parts buys that shouldn't clutter the board.
+export async function setOmnipartHidden(orderRef: string, hidden: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = (await db.select().from(omnipartOrderMeta).where(eq(omnipartOrderMeta.orderRef, orderRef)).limit(1))[0];
+  if (existing) {
+    await db.update(omnipartOrderMeta).set({ hidden, updatedAt: new Date() }).where(eq(omnipartOrderMeta.orderRef, orderRef));
+  } else {
+    await db.insert(omnipartOrderMeta).values({ orderRef, hidden });
+  }
 }
 
 // Manually link an order to a job sheet (jobSheetId=null unlinks). Used mainly for eBay orders,
@@ -6123,6 +6136,29 @@ export async function searchJobSheets(q: string, limit = 12) {
       or lower(coalesce(${serviceHistory.ga4Number},'')) like ${like}
       or lower(coalesce(${serviceHistory.customerName},'')) like ${like}
     )`).orderBy(desc(serviceHistory.dateCreated)).limit(limit);
+}
+
+// Recommend jobs for a guessed vehicle ("Vauxhall Mokka"): find that make/model's cars and their
+// recent jobs. This is what powers the eBay "no reg" suggestions.
+export async function suggestJobsByVehicle(vehicle: string, limit = 8) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const words = (vehicle || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const make = words[0].toLowerCase();
+  const model = words[1] ? words[1].toLowerCase() : null;
+  const conds = [sql`lower(coalesce(${vehicles.make},'')) like ${'%' + make + '%'}`];
+  if (model) conds.push(sql`lower(coalesce(${vehicles.model},'')) like ${'%' + model + '%'}`);
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    registration: serviceHistory.registration, customerName: serviceHistory.customerName,
+    make: vehicles.make, model: vehicles.model,
+    dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
+  }).from(serviceHistory)
+    .innerJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(and(...conds))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(limit);
 }
 
 // Mark one part fitted/returned/spare (usage=null clears it). lineKey is the product code.

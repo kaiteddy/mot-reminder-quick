@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2, Link2, X, BarChart3 } from "lucide-react";
+import { Truck, Search, RefreshCw, ChevronDown, ChevronRight, Package, Car, Building2, Link2, X, BarChart3, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -96,6 +96,69 @@ function patchJob(old: any, orderRef: string, jobSheet: any) {
   if (!old?.orders) return old;
   return { ...old, orders: old.orders.map((o: any) =>
     o.orderRef !== orderRef ? o : { ...o, jobSheet, jobSheetLinked: !!jobSheet }) };
+}
+function patchHidden(old: any, orderRef: string, hidden: boolean) {
+  if (!old?.orders) return old;
+  return { ...old, orders: old.orders.map((o: any) => o.orderRef !== orderRef ? o : { ...o, hidden }) };
+}
+
+/** Genuine recommendations: when an eBay/Amazon order has no reg, guess the car from the item and
+ *  offer matching jobs to link in one click. */
+function SuggestedJobs({ order }: { order: any }) {
+  const utils = trpc.useUtils();
+  const q = trpc.omnipart.suggestJobs.useQuery(
+    { vehicle: order.suggestedVehicle || "" },
+    { enabled: !!order.suggestedVehicle && !order.jobSheet, staleTime: 60_000 },
+  );
+  const link = trpc.omnipart.setOrderJobSheet.useMutation();
+  if (order.jobSheet || !order.suggestedVehicle) return null;
+  const apply = (j: any) => {
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) =>
+      patchJob(old, order.orderRef, { id: j.id, ga4Number: j.ga4Number, docNo: j.docNo }));
+    link.mutate({ orderRef: order.orderRef, jobSheetId: j.id });
+  };
+  const jobs = q.data || [];
+  return (
+    <div className="text-xs flex flex-wrap items-center gap-1.5">
+      <span className="text-muted-foreground">Looks like a <span className="font-semibold text-slate-700">{order.suggestedVehicle}</span> part.</span>
+      {jobs.length > 0 ? (
+        <>
+          <span className="text-muted-foreground">Link to:</span>
+          {jobs.map((j: any) => (
+            <button key={j.id} onClick={(e) => { e.stopPropagation(); apply(j); }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-700 hover:bg-blue-50 hover:border-blue-300">
+              {j.registration || j.ga4Number || `#${j.id}`}{j.vehicle ? ` · ${j.vehicle}` : ""}
+            </button>
+          ))}
+        </>
+      ) : q.isFetched ? (
+        <span className="text-muted-foreground/70">no {order.suggestedVehicle} on file — search below</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Hide / unhide an order (garage supplies, non-parts buys). */
+function HideButton({ order }: { order: any }) {
+  const utils = trpc.useUtils();
+  const m = trpc.omnipart.setOrderHidden.useMutation({
+    onMutate: async (vars) => {
+      await utils.omnipart.getOrderTracking.cancel();
+      const prev = utils.omnipart.getOrderTracking.getData();
+      utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchHidden(old, vars.orderRef, vars.hidden));
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => { if (ctx?.prev) utils.omnipart.getOrderTracking.setData(undefined, ctx.prev); },
+  });
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); m.mutate({ orderRef: order.orderRef, hidden: !order.hidden }); }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border bg-white text-slate-500 hover:bg-slate-50 text-xs"
+      title={order.hidden ? "Show on the board again" : "Hide — not a customer part (garage supply)"}
+    >
+      {order.hidden ? <><Eye className="w-3 h-3" /> Unhide</> : <><EyeOff className="w-3 h-3" /> Hide</>}
+    </button>
+  );
 }
 
 /** Attach an order to a job sheet: search by reg / job number / customer and pick one. Works for
@@ -286,9 +349,11 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             <Link href={`/view-vehicle/${normReg(o.reg)}`} className="hover:underline">
               <RegPlate reg={o.reg} />
             </Link>
-          ) : o.source === "ebay" && o.seller ? (
-            <span className="text-xs text-muted-foreground">{o.seller}</span>
-          ) : "—"}
+          ) : o.suggestedVehicle ? (
+            <span className="inline-flex items-center gap-1 text-xs text-slate-600" title="Guessed from the item — link it to a job below">
+              <Car className="w-3 h-3 text-muted-foreground" /> {o.suggestedVehicle}<span className="text-muted-foreground/60">?</span>
+            </span>
+          ) : <span className="text-muted-foreground/50">—</span>}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
@@ -325,9 +390,16 @@ function BoardRow({ o, base }: { o: any; base: string }) {
           <TableCell colSpan={8} className="py-3">
             <div className="px-6 space-y-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <CategoryToggle order={o} />
-                <JobLink order={o} base={base} />
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CategoryToggle order={o} />
+                  {o.seller && <span className="text-xs text-muted-foreground">Seller: <span className="text-slate-600">{o.seller}</span></span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <JobLink order={o} base={base} />
+                  <HideButton order={o} />
+                </div>
               </div>
+              <SuggestedJobs order={o} />
               <OrderProgress status={o.status} />
               {(o.tracking || o.courier) && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground pt-0.5">
@@ -391,36 +463,44 @@ export default function OmnipartOrders() {
     trpc.omnipart.getOrderTracking.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<"all" | "car" | "general">("all");
-  const [wl, setWl] = useState<"all" | "tofit" | "credit" | "unlinked">("all");
+  const [wl, setWl] = useState<"all" | "tofit" | "credit" | "unlinked" | "hidden">("all");
 
   const orders = useMemo(() => {
     const all = data?.orders || [];
     const needle = normReg(q);
     let filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
-    if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
-    if (wl !== "all") filtered = filtered.filter((o: any) => {
-      const f = orderFlags(o);
-      return wl === "tofit" ? f.toFit : wl === "credit" ? f.awaitingCredit : f.unlinked;
-    });
+    if (wl === "hidden") {
+      filtered = filtered.filter((o: any) => o.hidden);            // the Hidden view shows only hidden
+    } else {
+      filtered = filtered.filter((o: any) => !o.hidden);           // hidden orders are off the board by default
+      if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
+      if (wl !== "all") filtered = filtered.filter((o: any) => {
+        const f = orderFlags(o);
+        return wl === "tofit" ? f.toFit : wl === "credit" ? f.awaitingCredit : f.unlinked;
+      });
+    }
     // orders that need chasing float to the top so a stuck one is never missed
     return [...filtered].sort((a: any, b: any) =>
       (b.needsAttention ? 1 : 0) - (a.needsAttention ? 1 : 0) ||
       String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
   }, [data, q, cat, wl]);
   const allOrders = (data?.orders || []) as any[];
-  const chasing = allOrders.filter((o: any) => o.needsAttention).length;
-  const carCount = allOrders.filter((o: any) => (o.category || "car") === "car").length;
-  const generalCount = allOrders.filter((o: any) => o.category === "general").length;
+  const visible = allOrders.filter((o: any) => !o.hidden);         // counts exclude hidden orders
+  const chasing = visible.filter((o: any) => o.needsAttention).length;
+  const carCount = visible.filter((o: any) => (o.category || "car") === "car").length;
+  const generalCount = visible.filter((o: any) => o.category === "general").length;
+  const hiddenCount = allOrders.filter((o: any) => o.hidden).length;
   const CAT_TABS: Array<{ k: "all" | "car" | "general"; label: string; n: number }> = [
-    { k: "all", label: "All", n: allOrders.length },
+    { k: "all", label: "All", n: visible.length },
     { k: "car", label: "Car jobs", n: carCount },
     { k: "general", label: "General", n: generalCount },
   ];
-  const flagged = allOrders.map(orderFlags);
-  const WL_TABS: Array<{ k: "all" | "tofit" | "credit" | "unlinked"; label: string; n: number; on: string }> = [
+  const flagged = visible.map(orderFlags);
+  const WL_TABS: Array<{ k: "tofit" | "credit" | "unlinked" | "hidden"; label: string; n: number; on: string }> = [
     { k: "tofit", label: "To fit", n: flagged.filter((f) => f.toFit).length, on: "bg-blue-600 text-white border-blue-600" },
     { k: "credit", label: "Awaiting credit", n: flagged.filter((f) => f.awaitingCredit).length, on: "bg-amber-500 text-white border-amber-500" },
     { k: "unlinked", label: "Unlinked", n: flagged.filter((f) => f.unlinked).length, on: "bg-slate-700 text-white border-slate-700" },
+    { k: "hidden", label: "Hidden", n: hiddenCount, on: "bg-slate-500 text-white border-slate-500" },
   ];
 
   return (

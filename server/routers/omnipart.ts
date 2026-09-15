@@ -84,6 +84,28 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
   };
 }
 
+// Guess the vehicle an eBay/Amazon item relates to, from its title — used to suggest a car/job to
+// link when the order has no reg of its own. Prefers an explicit "fits/for <Make> <Model>".
+const VEHICLE_MAKES = ["Mercedes-Benz", "Mercedes", "Land Rover", "Volkswagen", "Toyota", "Vauxhall",
+  "Seat", "Ford", "BMW", "Audi", "VW", "Nissan", "Honda", "Kia", "Hyundai", "Peugeot", "Renault",
+  "Citroen", "Skoda", "Mini", "Mazda", "Volvo", "Jaguar", "Fiat", "Suzuki", "Dacia"];
+const MODEL_NOISE = /^(alloy|wheel|centre|center|cap|parts|genuine|new|front|rear|left|right|side|for|to|fits|the|oem|replacement|car|van|used|pair|set|x|kit|locking|bumper|steering|mirror|door|headlight|headlamp|light|bulb|sensor|carplay|android|radio|key|lock|nut|bolt|filter|brake|clutch|indicator|badge|emblem|cover|trim|grille|grill|fog)$/i;
+function detectVehicle(title?: string | null): string | null {
+  if (!title) return null;
+  const t = title.replace(/\s+/g, " ");
+  const makeAlt = VEHICLE_MAKES.map((m) => m.replace(/[- ]/g, "[- ]?")).join("|");
+  // 1) explicit fitment "fits/for <Make> <Model>"
+  let m = t.match(new RegExp(`\\b(?:fits|for)\\s+(${makeAlt})\\s+([A-Za-z][\\w-]{1,})`, "i"));
+  // 2) otherwise first make + the next non-noise token
+  if (!m) m = t.match(new RegExp(`\\b(${makeAlt})\\b\\s+([A-Za-z][\\w-]{1,})`, "i"));
+  if (!m) return null;
+  const make = m[1].replace(/\b\w/g, (c) => c.toUpperCase());
+  let model = m[2];
+  if (MODEL_NOISE.test(model)) return make;                 // make alone if the next word is noise
+  model = model.replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${make} ${model}`;
+}
+
 export const omnipartRouter = router({
   // Lookup Vehicle by VRM to get Omnipart's internal vehicleId
   lookupVrm: protectedProcedure
@@ -572,11 +594,18 @@ export const omnipartRouter = router({
           };
           for (const o of orders as any[]) {
             const m = meta.get(o.orderRef);
+            o.hidden = !!m?.hidden;                                 // garage-supply / non-parts, hidden from the board
             // A manual job link wins over the reg/date auto-match (and is the only link eBay can have).
             if (m?.jobSheetId && jobById.has(m.jobSheetId)) {
               const j = jobById.get(m.jobSheetId)!;
               o.jobSheet = { id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, docType: j.docType, date: j.dateIssued || j.dateCreated || null };
               o.jobSheetLinked = true;                              // manually linked (vs auto-matched)
+              if (!o.reg && j.registration) o.reg = j.registration; // show the linked car's reg in the Reg column
+            }
+            // For eBay/Amazon orders with no reg, guess the vehicle from the item so the Reg column
+            // shows the associated car and we can suggest a job to link.
+            if ((o.source === "ebay" || o.source === "amazon") && !o.reg) {
+              o.suggestedVehicle = detectVehicle(o.parts?.[0]?.name || o.vehicleText);
             }
             const autoCategory = o.ebayAutoCategory
               ? o.ebayAutoCategory
@@ -672,6 +701,28 @@ export const omnipartRouter = router({
       const { setOmnipartJobSheet } = await import("../db");
       await setOmnipartJobSheet(input.orderRef, input.jobSheetId);
       return { ok: true };
+    }),
+
+  // Hide / unhide an order (garage supplies, non-parts buys that shouldn't be on the board).
+  setOrderHidden: protectedProcedure
+    .input(z.object({ orderRef: z.string(), hidden: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const { setOmnipartHidden } = await import("../db");
+      await setOmnipartHidden(input.orderRef, input.hidden);
+      return { ok: true };
+    }),
+
+  // Recommend jobs to link an order to, from a guessed vehicle (make/model) or a free query.
+  suggestJobs: protectedProcedure
+    .input(z.object({ vehicle: z.string() }))
+    .query(async ({ input }) => {
+      const { suggestJobsByVehicle } = await import("../db");
+      const rows = await suggestJobsByVehicle(input.vehicle, 8);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
+        customerName: j.customerName, vehicle: [j.make, j.model].filter(Boolean).join(" "),
+        date: j.dateIssued || j.dateCreated || null,
+      }));
     }),
 
   // Per-order detail: the parts on an order + its delivery stage. Called when a row is expanded.

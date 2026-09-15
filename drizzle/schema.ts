@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 
 /**
  * Postgres schema (Neon). Ported from the original MySQL/TiDB schema:
@@ -436,6 +436,7 @@ export const omnipartOrderMeta = pgTable("omnipartOrderMeta", {
   category: varchar("category", { length: 16 }),                 // manual override: 'car' | 'general' | null (null = auto)
   partStates: jsonb("partStates").$type<Record<string, string>>().default({}), // product code -> 'fitted' | 'returned' | 'spare'
   jobSheetId: integer("jobSheetId"),                             // manual link to a serviceHistory job (esp. eBay, which has no reg)
+  hidden: boolean("hidden").default(false),                      // hide non-parts / garage-supply orders from the board
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
