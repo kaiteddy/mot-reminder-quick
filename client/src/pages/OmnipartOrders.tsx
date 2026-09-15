@@ -251,15 +251,15 @@ function orderFlags(o: any) {
   };
 }
 
-/** Small ECP / eBay source tag. */
+/** Small supplier source tag (ECP / eBay / Amazon / …). */
+const SOURCE_TAG: Record<string, { label: string; cls: string }> = {
+  ebay: { label: "eBay", cls: "bg-[#e53238]/10 text-[#e53238] border-[#e53238]/30" },
+  amazon: { label: "Amazon", cls: "bg-[#ff9900]/10 text-[#b06f00] border-[#ff9900]/40" },
+  ecp: { label: "ECP", cls: "bg-orange-100 text-orange-700 border-orange-200" },
+};
 function SourceBadge({ source }: { source?: string }) {
-  const ebay = source === "ebay";
-  return (
-    <span className={"text-[9px] font-bold px-1 py-0.5 rounded shrink-0 " +
-      (ebay ? "bg-[#e53238]/10 text-[#e53238] border border-[#e53238]/30" : "bg-orange-100 text-orange-700 border border-orange-200")}>
-      {ebay ? "eBay" : "ECP"}
-    </span>
-  );
+  const m = SOURCE_TAG[source || "ecp"] || SOURCE_TAG.ecp;
+  return <span className={"text-[9px] font-bold px-1 py-0.5 rounded shrink-0 border " + m.cls}>{m.label}</span>;
 }
 
 /** One board row that expands on click to show the parts on the order. */

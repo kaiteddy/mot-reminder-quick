@@ -6164,7 +6164,7 @@ export async function upsertEbayOrders(rows: Array<{
   orderRef: string; itemId?: string | null; title?: string | null; price?: string | number | null;
   quantity?: number | null; seller?: string | null; status?: string | null; fitsVehicle?: string | null;
   autoCategory?: string | null; image?: string | null; eta?: string | null; orderDate?: string | Date | null;
-  tracking?: string | null; courier?: string | null;
+  tracking?: string | null; courier?: string | null; supplier?: string | null;
 }>) {
   const db = await getDb();
   if (!db || !rows?.length) return { upserted: 0 };
@@ -6196,7 +6196,7 @@ export async function upsertEbayOrders(rows: Array<{
       }).where(eq(ebayOrders.orderRef, r.orderRef));
     } else {
       await db.insert(ebayOrders).values({
-        orderRef: r.orderRef, itemId: r.itemId ?? null, title: r.title ?? null, price,
+        orderRef: r.orderRef, supplier: r.supplier ?? "ebay", itemId: r.itemId ?? null, title: r.title ?? null, price,
         quantity: r.quantity ?? 1, seller: r.seller ?? null, status: r.status ?? null,
         fitsVehicle: r.fitsVehicle ?? null, autoCategory: r.autoCategory ?? null,
         image: r.image ?? null, eta: r.eta ?? null,

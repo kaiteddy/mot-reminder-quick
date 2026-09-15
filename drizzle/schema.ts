@@ -448,7 +448,8 @@ export type OmnipartOrderMeta = typeof omnipartOrderMeta.$inferSelect;
  * Car-vs-General override live in [[omnipartOrderMeta]], keyed by this orderRef.
  */
 export const ebayOrders = pgTable("ebayOrders", {
-  orderRef: varchar("orderRef", { length: 32 }).primaryKey(),  // eBay order number, e.g. 23-15110-46160
+  orderRef: varchar("orderRef", { length: 32 }).primaryKey(),  // supplier order number, e.g. 23-15110-46160 (eBay) / 205-7808265-3434757 (Amazon)
+  supplier: varchar("supplier", { length: 20 }).default("ebay"), // 'ebay' | 'amazon' | …
   itemId: varchar("itemId", { length: 24 }),
   title: text("title"),
   price: numeric("price", { precision: 10, scale: 2 }),

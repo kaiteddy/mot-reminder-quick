@@ -528,7 +528,7 @@ export const omnipartRouter = router({
             const delivered = String(e.status || "").toLowerCase().includes("deliver");
             (orders as any[]).push({
               orderRef: e.orderRef,
-              source: "ebay",
+              source: e.supplier || "ebay",                         // 'ebay' | 'amazon' | …
               reg: null,
               make: null, model: null, year: null, vin: null,
               vehicleText: e.fitsVehicle || null,                    // eBay-detected fitment, if any
