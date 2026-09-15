@@ -9,8 +9,10 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/png" sizes="192x192" href="/app-icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png" />
-    <!-- Add to Home Screen: opens standalone, without browser chrome -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Add to Home Screen: opens standalone, without browser chrome. No href on purpose:
+         src/lib/installApp.ts sets it before the first render, to the workshop manifest on
+         workshop screens, so a phone set up there is never handed the office app. -->
+    <link rel="manifest" />
     <meta name="theme-color" content="#c8102e" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

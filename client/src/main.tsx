@@ -6,7 +6,12 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { getLoginRoute } from "./const";
+import { captureInstallPrompt, syncAppManifest } from "./lib/installApp";
 import "./index.css";
+
+// Before the first render, so a phone never reads the wrong home-screen app (see lib/installApp).
+syncAppManifest(window.location.pathname + window.location.search);
+captureInstallPrompt();
 
 // Swift navigation: serve cached data instantly instead of refetching on every mount/tab-focus.
 // Mutations still call utils.*.invalidate(), so edits force a fresh fetch — this only stops the

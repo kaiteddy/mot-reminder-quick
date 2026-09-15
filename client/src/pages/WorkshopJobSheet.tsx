@@ -358,8 +358,8 @@ function WorkshopJobSheetInner() {
   const sum = (rows: Line[]) => rows.reduce((s, l) => s + lineTotal(l), 0);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col pb-24">
-      <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center gap-3">
+    <div className="min-h-screen bg-slate-100 flex flex-col pb-[calc(6rem_+_env(safe-area-inset-bottom))]">
+      <div className="bg-slate-900 text-white p-4 pt-[calc(1rem_+_env(safe-area-inset-top))] shadow-md sticky top-0 z-50 flex items-center gap-3">
         <Link href={`/workshop?reg=${encodeURIComponent(reg)}`}>
           <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all"><Home className="w-5 h-5" /></div>
         </Link>
@@ -485,7 +485,7 @@ function WorkshopJobSheetInner() {
       )}
 
       {!savedId && (
-        <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 z-50" style={{ boxShadow: "0 -2px 10px rgba(0,0,0,0.06)" }}>
+        <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] z-50" style={{ boxShadow: "0 -2px 10px rgba(0,0,0,0.06)" }}>
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <div className="text-xs text-slate-500">Total (inc VAT)</div>
