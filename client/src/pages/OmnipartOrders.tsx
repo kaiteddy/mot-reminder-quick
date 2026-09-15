@@ -222,6 +222,17 @@ function CategoryToggle({ order }: { order: any }) {
   );
 }
 
+// Per-order worklist flags, all derived from data already on the board.
+function orderFlags(o: any) {
+  const delivered = String(o.status || "").toLowerCase().includes("deliver");
+  const parts = o.parts || [];
+  return {
+    toFit: delivered && parts.some((p: any) => !p.usage),          // arrived but not yet marked fitted/returned/spare
+    awaitingCredit: parts.some((p: any) => p.usage === "returned"), // sent back, credit not reconciled
+    unlinked: !o.jobSheet,                                          // not attached to a job (mostly eBay)
+  };
+}
+
 /** Small ECP / eBay source tag. */
 function SourceBadge({ source }: { source?: string }) {
   const ebay = source === "ebay";
@@ -349,17 +360,22 @@ export default function OmnipartOrders() {
     trpc.omnipart.getOrderTracking.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<"all" | "car" | "general">("all");
+  const [wl, setWl] = useState<"all" | "tofit" | "credit" | "unlinked">("all");
 
   const orders = useMemo(() => {
     const all = data?.orders || [];
     const needle = normReg(q);
     let filtered = needle ? all.filter((o) => normReg(o.reg).includes(needle)) : all;
     if (cat !== "all") filtered = filtered.filter((o: any) => (o.category || "car") === cat);
+    if (wl !== "all") filtered = filtered.filter((o: any) => {
+      const f = orderFlags(o);
+      return wl === "tofit" ? f.toFit : wl === "credit" ? f.awaitingCredit : f.unlinked;
+    });
     // orders that need chasing float to the top so a stuck one is never missed
     return [...filtered].sort((a: any, b: any) =>
       (b.needsAttention ? 1 : 0) - (a.needsAttention ? 1 : 0) ||
       String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
-  }, [data, q, cat]);
+  }, [data, q, cat, wl]);
   const allOrders = (data?.orders || []) as any[];
   const chasing = allOrders.filter((o: any) => o.needsAttention).length;
   const carCount = allOrders.filter((o: any) => (o.category || "car") === "car").length;
@@ -368,6 +384,12 @@ export default function OmnipartOrders() {
     { k: "all", label: "All", n: allOrders.length },
     { k: "car", label: "Car jobs", n: carCount },
     { k: "general", label: "General", n: generalCount },
+  ];
+  const flagged = allOrders.map(orderFlags);
+  const WL_TABS: Array<{ k: "all" | "tofit" | "credit" | "unlinked"; label: string; n: number; on: string }> = [
+    { k: "tofit", label: "To fit", n: flagged.filter((f) => f.toFit).length, on: "bg-blue-600 text-white border-blue-600" },
+    { k: "credit", label: "Awaiting credit", n: flagged.filter((f) => f.awaitingCredit).length, on: "bg-amber-500 text-white border-amber-500" },
+    { k: "unlinked", label: "Unlinked", n: flagged.filter((f) => f.unlinked).length, on: "bg-slate-700 text-white border-slate-700" },
   ];
 
   return (
@@ -408,13 +430,25 @@ export default function OmnipartOrders() {
               Omnipart order tracking{typeof data?.count === "number" ? ` · ${orders.length}/${data.count}` : ""}
             </CardTitle>
             {!error && (
-              <div className="flex items-center gap-1.5 pt-2">
+              <div className="flex items-center gap-1.5 pt-2 flex-wrap">
                 {CAT_TABS.map((t) => (
                   <button
                     key={t.k}
                     onClick={() => setCat(t.k)}
                     className={"px-3 py-1 rounded-full text-xs font-medium border transition-colors " +
                       (cat === t.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-600 hover:bg-slate-50")}
+                  >
+                    {t.label}{t.n ? ` · ${t.n}` : ""}
+                  </button>
+                ))}
+                <span className="w-px h-5 bg-slate-200 mx-0.5" />
+                {WL_TABS.map((t) => (
+                  <button
+                    key={t.k}
+                    onClick={() => setWl(wl === t.k ? "all" : t.k)}
+                    className={"px-3 py-1 rounded-full text-xs font-medium border transition-colors " +
+                      (wl === t.k ? t.on : "bg-white text-slate-600 hover:bg-slate-50")}
+                    title="Worklist filter — click again to clear"
                   >
                     {t.label}{t.n ? ` · ${t.n}` : ""}
                   </button>
