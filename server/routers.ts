@@ -947,9 +947,9 @@ export const appRouter = router({
         const { sendCarReady } = await import("./services/carReady");
         return sendCarReady(input);
       }),
-    /** From the job sheet, before the invoice: what its MOT found, and what would the customer like done? */
+    /** What its MOT found, from a job sheet or MOT-only invoice: a fail asks what they want done, a pass (`passed`) offers to look at the advisories. */
     sendMotUpdate: protectedProcedure
-      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().min(1).max(2000) }))
+      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().min(1).max(2000), passed: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         const { sendMotUpdate } = await import("./services/carReady");
         return sendMotUpdate(input);
@@ -957,7 +957,7 @@ export const appRouter = router({
     /** A plain-English note on what the car's MOT found, for staff to check and send with the message. */
     motNote: protectedProcedure
       .input(z.object({
-        kind: z.enum(["ready", "mot_update"]).optional(),
+        kind: z.enum(["ready", "mot_update", "mot_passed"]).optional(),
         testDate: z.string().optional(),
         testResult: z.string().optional(),
         items: z.array(z.object({

@@ -1,6 +1,6 @@
 /**
  * The plain-English MOT note that goes out with "your car is ready to collect", and in the MOT
- * update a job sheet sends before the invoice.
+ * update a job sheet or MOT-only invoice sends after a fail or a pass with advisories.
  *
  * "Nearside Rear Tyre worn close to legal limit/worn on edge (5.2.3 (e))" tells a customer nothing,
  * and the questions come back by phone. This turns what the tester recorded into two or three
@@ -91,6 +91,14 @@ const AROUND_NOTE: Record<CarTextKind, string> = {
   ready: `The text has already told them their car is ready to collect, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it says "${MOT_NOTE_CLOSE}"`,
   // The car is still with us and nothing is decided yet, so the note must never read as if it were ready.
   mot_update: `The text has already told them their car has had its MOT, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it asks what they would like us to do, and says nothing is done without their go-ahead.`,
+  mot_passed: `The text has already told them their car has passed its MOT, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it offers to look at any of it if they would like, and says nothing is done without their go-ahead.`,
+};
+
+/** How the note opens. The pass update has already said the car passed, so it goes straight to what the tester recorded. */
+const OPENING: Record<CarTextKind, string> = {
+  ready: `Open with the result in a few words, e.g. "It passed, but ..." or "It failed because ...".`,
+  mot_update: `Open with the result in a few words, e.g. "It passed, but ..." or "It failed because ...".`,
+  mot_passed: `The text has already said it passed, so never say that again: start with the most important thing the tester recorded.`,
 };
 
 /** The model's instructions for a note inside the given text. */
@@ -99,7 +107,7 @@ export function noteInstructions(kind: CarTextKind): string {
 
 Rules:
 - At most ${MOT_NOTE_MAX} characters including spaces. Aim for 120-220. It is a text message, so be brief.
-- Normal sentences, each starting with a capital letter. Open with the result in a few words, e.g. "It passed, but ..." or "It failed because ...".
+- Normal sentences, each starting with a capital letter. ${OPENING[kind]}
 - Plain English. No jargon and no abbreviations: say "tyre pressure warning light", never "TPMS". When a part has a technical name, say what it is instead: a side repeater is the small indicator light on the side of the car, a sub-frame is part of the car's underbody frame. No reference numbers, no prices, no sales pressure, no capitals for emphasis.
 - "(both sides)" means the item was recorded on the left and the right: say "both".
 - Sides: nearside means left and offside means right, so "n/s/f" is front left and "o/s/r" is rear right. Write "front left tyre" or "both rear tyres". Never write nearside, offside or those abbreviations.

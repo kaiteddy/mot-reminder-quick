@@ -34,7 +34,7 @@ import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { buildServiceSets, isEstimatedLubricant } from "@shared/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
-import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, motUpdateRoute, smsSegments, withMotNote, type CarTextKind } from "@shared/carReadyMessage";
+import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, motPassed, motUpdateRoute, smsSegments, withMotNote, type CarTextKind } from "@shared/carReadyMessage";
 import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -459,9 +459,9 @@ export default function DocumentDetails() {
   const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", message: "" });
   // "Car is ready" — opens a confirm dialog rather than firing on the click, so a wrong number or
   // clumsy wording can be caught before it reaches the customer. The same dialog sends the MOT
-  // update from a job sheet: what its MOT found, and what would the customer like done?
+  // update: what its MOT found and, after a fail, what would the customer like done?
   const [readyOpen, setReadyOpen] = useState(false);
-  const [readyKind, setReadyKind] = useState<CarTextKind>("ready");
+  const [readyKind, setReadyKind] = useState<"ready" | "mot_update">("ready");
   const isMotUpdate = readyKind === "mot_update";
   const [readyForm, setReadyForm] = useState({ to: "", message: "" });
   const readyPreview = trpc.carReady.preview.useQuery({ docId: id, kind: readyKind }, { enabled: readyOpen });
@@ -482,6 +482,10 @@ export default function DocumentDetails() {
   const readyTests = ((readyMot.data as any[]) || []);
   const readyTest: any = readyTests[readyTestIdx];
   const readyItems: any[] = readyTest?.defects || [];
+  // An MOT update speaks to the result of the chosen test: after a fail it asks what they want done,
+  // after a pass with advisories it offers to look at them. Each has its own wording and template.
+  const readyPassed = isMotUpdate && !!readyTest && motPassed(readyTest.testResult, readyItems);
+  const readyTextKind: CarTextKind = !isMotUpdate ? "ready" : readyPassed ? "mot_passed" : "mot_update";
   // Tick a recent test's items — that MOT is this visit. An older test may describe work done
   // since, so it starts unticked unless staff chose it on purpose from the MOT Adv. tab. PRS items
   // were repaired during the test and are never sent.
@@ -490,11 +494,15 @@ export default function DocumentDetails() {
     const recent = !!readyTest.completedDate && Date.now() - new Date(readyTest.completedDate).getTime() < 30 * 86_400_000;
     setReadyPicked(Object.fromEntries(readyItems.map((d: any, i: number) => [i, (readyTickAll || recent) && String(d.type || "").toUpperCase() !== "PRS"])));
   }, [readyOpen, readyTestIdx, readyMot.data, readyTickAll]);
-  // Fill the form once the preview lands, but never overwrite wording already being edited.
+  // Fill the form once the preview lands, but never overwrite wording already being edited. An MOT
+  // update swaps between its fail and pass wording as the chosen test changes — unless reworded.
   useEffect(() => {
     const d = readyPreview.data as any;
-    if (readyOpen && d) setReadyForm((f) => (f.message ? f : { to: d.to || "", message: d.message || "" }));
-  }, [readyOpen, readyPreview.data]);
+    if (!readyOpen || !d) return;
+    const wanted = (readyTextKind === "mot_passed" ? d.passedMessage : d.message) || "";
+    const other = readyTextKind === "mot_passed" ? d.message : d.passedMessage;
+    setReadyForm((f) => (!f.message ? { to: d.to || "", message: wanted } : other && f.message === other ? { ...f, message: wanted } : f));
+  }, [readyOpen, readyPreview.data, readyTextKind]);
   const issueMut = trpc.documents.issue.useMutation();
   const createExcessMut = trpc.documents.createExcess.useMutation();
   const delMut = trpc.documents.delete.useMutation();
@@ -1245,7 +1253,7 @@ export default function DocumentDetails() {
   const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   /** Opens the dialog; the MOT Adv. tab passes the index of the test whose items should go with it. */
-  function openCarReady(testIdx?: unknown, kind: CarTextKind = "ready") {
+  function openCarReady(testIdx?: unknown, kind: "ready" | "mot_update" = "ready") {
     setReadyKind(kind);
     setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
     const chosen = typeof testIdx === "number";
@@ -1261,7 +1269,7 @@ export default function DocumentDetails() {
     if (!items.length) { toast.error("Tick at least one item to explain"); return; }
     try {
       const r = await readyNoteMut.mutateAsync({
-        kind: readyKind,
+        kind: readyTextKind,
         testDate: readyTest?.completedDate ? new Date(readyTest.completedDate).toLocaleDateString("en-GB") : undefined,
         testResult: readyTest?.testResult || undefined,
         items,
@@ -1278,8 +1286,8 @@ export default function DocumentDetails() {
       if (isMotUpdate) {
         // The note is the update: without it the customer would only hear that the car had its MOT.
         if (!cleanMotNote(motNote)) { toast.error("Write the note on what its MOT found first"); return; }
-        await motUpdateMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote });
-        toast.success(`Sent the MOT update, asking what they would like done (${to})`);
+        await motUpdateMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote, passed: readyPassed });
+        toast.success(readyPassed ? `Sent the MOT update: it passed, with the advisories (${to})` : `Sent the MOT update, asking what they would like done (${to})`);
       } else {
         await readyMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote: motNote || undefined });
         toast.success(`Told the customer their car is ready${motNote ? ", with notes from its MOT," : ""} (${to})`);
@@ -1291,9 +1299,9 @@ export default function DocumentDetails() {
   // the invoice is what the customer collects against. SI is the ordinary invoice, XS the
   // policy-excess one.
   const isCollectable = ["SI", "XS"].includes((data as any)?.doc?.docType);
-  // The MOT update belongs to the work in progress instead — a job sheet or an estimate — while the
-  // customer still has to say what gets done.
-  const isPreInvoice = ["JS", "ES"].includes((data as any)?.doc?.docType);
+  // The MOT update goes wherever the MOT is the news: a job sheet or estimate while the work is being
+  // decided, and an invoice, because an MOT-only job is often invoiced as soon as it passes.
+  const canMotUpdate = ["JS", "ES", "SI"].includes((data as any)?.doc?.docType);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
   // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
@@ -1511,7 +1519,7 @@ export default function DocumentDetails() {
                   {isCollectable && (
                     <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
                   )}
-                  {isPreInvoice && (
+                  {canMotUpdate && (
                     <button onClick={() => openCarReady(undefined, "mot_update")} title="Text the customer what its MOT found and ask what they would like done" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><ShieldCheck className="w-4 h-4 text-amber-600" /> MOT update</button>
                   )}
                 </>
@@ -1615,7 +1623,7 @@ export default function DocumentDetails() {
               <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
               {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
               {!isNew && isCollectable && <button className="js-action-button" onClick={openCarReady}>Car ready</button>}
-              {!isNew && isPreInvoice && <button className="js-action-button" onClick={() => openCarReady(undefined, "mot_update")}>MOT update</button>}
+              {!isNew && canMotUpdate && <button className="js-action-button" onClick={() => openCarReady(undefined, "mot_update")}>MOT update</button>}
               <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
               {!isNew && (
                 <div className="relative">
@@ -2131,7 +2139,7 @@ export default function DocumentDetails() {
                       registration={form.registration}
                       make={form.make || undefined} model={form.model || undefined}
                       busy={partsForDefects.isPending}
-                      onTextCustomer={isCollectable ? (testIdx: number) => openCarReady(testIdx) : isPreInvoice ? (testIdx: number) => openCarReady(testIdx, "mot_update") : undefined}
+                      onTextCustomer={isCollectable ? (testIdx: number) => openCarReady(testIdx) : canMotUpdate ? (testIdx: number) => openCarReady(testIdx, "mot_update") : undefined}
                       onUse={async (texts) => {
                         if (!texts.length) return;
                         // 1) put the MOT defect wording into the job Description
@@ -2349,7 +2357,11 @@ export default function DocumentDetails() {
                 ) : (
                   <>
                     {isMotUpdate && (
-                      <p className="text-[12.5px] text-slate-600">Tells the customer what its MOT found, and asks what they would like us to do.</p>
+                      <p className="text-[12.5px] text-slate-600">
+                        {readyPassed
+                          ? "It passed: tells the customer what the tester advised, and offers to look at any of it."
+                          : "Tells the customer what its MOT found, and asks what they would like us to do."}
+                      </p>
                     )}
                     {readyPreview.data?.reason && (
                       <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">{readyPreview.data.reason}</p>
@@ -2443,7 +2455,7 @@ export default function DocumentDetails() {
                     {readyNoteShown && cleanMotNote(readyNote) && (
                       <div>
                         <label className="text-xs text-muted-foreground">What the customer gets</label>
-                        <div className="mt-0.5 whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 text-[12.5px] text-slate-700">{withMotNote(readyForm.message, readyNote, readyKind)}</div>
+                        <div className="mt-0.5 whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 text-[12.5px] text-slate-700">{withMotNote(readyForm.message, readyNote, readyTextKind)}</div>
                       </div>
                     )}
                     <p className="text-[11px] text-slate-400 -mt-1">
@@ -2451,10 +2463,11 @@ export default function DocumentDetails() {
                         const hasNote = readyNoteShown && !!cleanMotNote(readyNote);
                         if (isMotUpdate) {
                           if (!hasNote) return "Tick what the tester found and write the note first: the note is the update.";
-                          const segs = smsSegments(withMotNote(readyForm.message, readyNote, "mot_update"));
-                          return motUpdateRoute({ updateTemplate: !!readyPreview.data?.updateTemplate }).channel === "template"
-                            ? `Sends on WhatsApp as the approved MOT update template, falling back to this text by SMS (${segs} SMS segments).`
-                            : `Sends as a text (${segs} SMS segments): on WhatsApp if they have messaged us in the last 24 hours, otherwise by SMS. The WhatsApp template for MOT updates isn't approved yet.`;
+                          const segs = smsSegments(withMotNote(readyForm.message, readyNote, readyTextKind));
+                          const which = readyPassed ? "MOT pass" : "MOT update";
+                          return motUpdateRoute({ passed: readyPassed, updateTemplate: !!readyPreview.data?.updateTemplate, passedTemplate: !!readyPreview.data?.passedTemplate }).channel === "template"
+                            ? `Sends on WhatsApp as the approved ${which} template, falling back to this text by SMS (${segs} SMS segments).`
+                            : `Sends as a text (${segs} SMS segments): on WhatsApp if they have messaged us in the last 24 hours, otherwise by SMS. The WhatsApp template for the ${which} isn't approved yet.`;
                         }
                         const route = carReadyRoute({ hasNote, readyTemplate: !!readyPreview.data?.usingTemplate, notesTemplate: !!readyPreview.data?.notesTemplate });
                         const segs = smsSegments(withMotNote(readyForm.message, hasNote ? readyNote : ""));

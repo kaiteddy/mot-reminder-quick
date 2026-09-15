@@ -1,6 +1,7 @@
 /**
  * "Your car is ready to collect" — the message the workshop sends when a job is finished — and the
- * MOT update, which tells the customer what the car's MOT found and asks what they would like done.
+ * MOT update, which tells the customer what the car's MOT found: after a fail it asks what they would
+ * like done, after a pass with advisories it offers to look at them.
  *
  * Kept separate from the reminder flows in smsService because these are triggered by hand from a
  * job sheet or invoice rather than by the nightly sweep, and neither chases the customer for a booking.
@@ -23,10 +24,12 @@ export const CAR_READY_TEMPLATE_KEY = "carReadyTemplateSid";
 export const CAR_READY_MOT_TEMPLATE_KEY = "carReadyMotTemplateSid";
 
 /**
- * The ContentSid of the approved MOT update template (scripts/create-mot-update-template.ts), once
- * WhatsApp approves one. Until then an MOT update goes as plain text.
+ * The ContentSids of the approved MOT update templates (scripts/create-mot-update-template.ts): the
+ * fail wording (mot_update_call) and the pass-with-advisories wording (mot_passed_call, --passed).
+ * Until the one for a result is approved, that update goes as plain text.
  */
 export const MOT_UPDATE_TEMPLATE_KEY = "motUpdateTemplateSid";
+export const MOT_PASSED_TEMPLATE_KEY = "motPassedTemplateSid";
 
 async function loadDoc(docId: number) {
   const db = await getDb();
@@ -77,17 +80,19 @@ function pickName(row: any): string {
 
 export async function getCarReadyPreview(docId: number, kind: CarTextKind = "ready") {
   const row = await loadDoc(docId);
-  const [companyName, phone, templateSid, motTemplateSid, updateTemplateSid] = (await Promise.all([
+  const [companyName, phone, templateSid, motTemplateSid, updateTemplateSid, passedTemplateSid] = (await Promise.all([
     getAppSetting("companyName"),
     getAppSetting("companyPhone"),
     getAppSetting(CAR_READY_TEMPLATE_KEY),
     getAppSetting(CAR_READY_MOT_TEMPLATE_KEY),
     getAppSetting(MOT_UPDATE_TEMPLATE_KEY),
+    getAppSetting(MOT_PASSED_TEMPLATE_KEY),
   ])).map(asText);
   const to = pickPhone(row);
   const customerName = pickName(row);
   const vehicle = [row.make, row.model].filter(Boolean).join(" ").trim();
   const wording = { customerName, registration: row.registration || "", vehicle, companyName, phone };
+  const isUpdate = kind !== "ready";
 
   return {
     docId,
@@ -96,7 +101,10 @@ export async function getCarReadyPreview(docId: number, kind: CarTextKind = "rea
     customerName,
     registration: row.registration || "",
     vehicle,
-    message: kind === "mot_update" ? generateMotUpdateMessage(wording) : generateCarReadyMessage(wording),
+    message: isUpdate ? generateMotUpdateMessage(wording) : generateCarReadyMessage(wording),
+    // An MOT update has a second wording, for a pass with advisories; the dialog picks by the result
+    // of the test staff are sending about.
+    passedMessage: isUpdate ? generateMotUpdateMessage({ ...wording, passed: true }) : null,
     // Surfaced so the dialog can say why it can't send, rather than failing on the click.
     canSend: !!to && !isOwnNumber(to),
     reason: !to
@@ -107,6 +115,7 @@ export async function getCarReadyPreview(docId: number, kind: CarTextKind = "rea
     usingTemplate: !!templateSid,
     notesTemplate: !!motTemplateSid,
     updateTemplate: !!updateTemplateSid,
+    passedTemplate: !!passedTemplateSid,
   };
 }
 
@@ -144,10 +153,11 @@ export async function sendCarReady(params: { docId: number; to: string; message:
 }
 
 /**
- * Tell the customer what the car's MOT found and ask what they would like done — from the job
- * sheet, before anything is invoiced. The note is the update, so one never goes out without it.
+ * Tell the customer what the car's MOT found — from a job sheet or MOT-only invoice. After a fail it
+ * asks what they would like done; after a pass (`passed`) it offers to look at the advisories. The
+ * note is the update, so one never goes out without it.
  */
-export async function sendMotUpdate(params: { docId: number; to: string; message: string; motNote: string }) {
+export async function sendMotUpdate(params: { docId: number; to: string; message: string; motNote: string; passed?: boolean }) {
   const row = await loadDoc(params.docId);
   const to = params.to.trim();
   // Re-checked here for the same reasons as in sendCarReady.
@@ -155,9 +165,13 @@ export async function sendMotUpdate(params: { docId: number; to: string; message
   const motNote = cleanMotNote(params.motNote);
   if (!motNote) throw new Error("Write the note on what its MOT found first — the note is the update");
 
-  const templateSid = asText(await getAppSetting(MOT_UPDATE_TEMPLATE_KEY));
-  const message = withMotNote(params.message, motNote, "mot_update");
-  const route = motUpdateRoute({ updateTemplate: !!templateSid });
+  const passed = !!params.passed;
+  const [updateTemplateSid, passedTemplateSid] = (await Promise.all([
+    getAppSetting(MOT_UPDATE_TEMPLATE_KEY),
+    getAppSetting(MOT_PASSED_TEMPLATE_KEY),
+  ])).map(asText);
+  const message = withMotNote(params.message, motNote, passed ? "mot_passed" : "mot_update");
+  const route = motUpdateRoute({ passed, updateTemplate: !!updateTemplateSid, passedTemplate: !!passedTemplateSid });
   const result = await sendMotUpdateMessage({
     to,
     customerName: pickName(row),
@@ -165,7 +179,7 @@ export async function sendMotUpdate(params: { docId: number; to: string; message
     vehicle: [row.make, row.model].filter(Boolean).join(" ").trim(),
     message,
     motNote,
-    templateSid,
+    templateSid: route.channel === "template" ? (passed ? passedTemplateSid : updateTemplateSid) : null,
   });
   if (!result.success) throw new Error(result.error || "Message failed to send");
 

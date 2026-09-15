@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MOT_NOTE_CLOSE, MOT_NOTE_MAX, carReadyRoute, cleanMotNote, insertAfterLeadSentence, insertAfterReadySentence, motNoteBlock,
-  motUpdateRoute, smsSegments, withMotNote,
+  motPassed, motUpdateRoute, smsSegments, withMotNote,
 } from "../shared/carReadyMessage";
 import { generateCarReadyMessage, generateMotUpdateMessage } from "./smsService";
 import { itemsForNote, noteInstructions, plainSides, resultForNote, withNetworkRetry } from "./services/motCustomerNote";
@@ -53,8 +53,80 @@ describe("the MOT update", () => {
   });
 
   it("goes as the template once WhatsApp approves it, and as text until then", () => {
-    expect(motUpdateRoute({ updateTemplate: true })).toEqual({ channel: "template", template: "mot_update" });
-    expect(motUpdateRoute({ updateTemplate: false })).toEqual({ channel: "text" });
+    expect(motUpdateRoute({ passed: false, updateTemplate: true, passedTemplate: false })).toEqual({ channel: "template", template: "mot_update" });
+    expect(motUpdateRoute({ passed: false, updateTemplate: false, passedTemplate: true })).toEqual({ channel: "text" });
+  });
+});
+
+/** The MOT pass template body, built exactly as scripts/create-mot-update-template.ts --passed submits it. */
+const PASSED_TEMPLATE = insertAfterLeadSentence(
+  generateMotUpdateMessage({ customerName: "{{1}}", registration: "", vehicle: "{{2}}", passed: true }),
+  motNoteBlock("{{3}}", "mot_passed"),
+  "mot_passed",
+);
+
+describe("the MOT update after a pass with advisories", () => {
+  const advised = "Both rear tyres are getting close to the legal limit, so they are worth replacing in the next few weeks.";
+  const smith = { customerName: "Mr Sam Smith", registration: "AB12CDE", vehicle: "FORD Focus", passed: true };
+
+  it("says it passed, what the tester advised, and offers to look at it", () => {
+    expect(withMotNote(generateMotUpdateMessage(smith), advised, "mot_passed")).toBe(
+      "Hi Sam, your FORD Focus AB12CDE has passed its MOT at ELI MOTORS.\n\n"
+      + "Notes from its MOT: Both rear tyres are getting close to the legal limit, so they are worth replacing in the next few weeks.\n\n"
+      + "If you would like us to look at any of this, just reply to this message or call us on 020 8203 6449. Nothing is done without your go-ahead.");
+  });
+
+  it("the template, filled in, is exactly the text an SMS carries", () => {
+    const rendered = PASSED_TEMPLATE.replace("{{1}}", "Sam").replace("{{2}}", "FORD Focus AB12CDE").replace("{{3}}", advised);
+    expect(rendered).toBe(withMotNote(generateMotUpdateMessage(smith), advised, "mot_passed"));
+  });
+
+  it("obeys WhatsApp's placement rules for variables, and never says ready to collect", () => {
+    expect(PASSED_TEMPLATE.startsWith("{{")).toBe(false);
+    expect(PASSED_TEMPLATE.endsWith("}}")).toBe(false);
+    expect(PASSED_TEMPLATE).not.toMatch(/\}\}\s*\{\{/);
+    expect([...PASSED_TEMPLATE.matchAll(/\{\{(\d+)\}\}/g)].map((m) => m[1])).toEqual(["1", "2", "3"]);
+    expect(PASSED_TEMPLATE).not.toMatch(/ready to collect/i);
+  });
+
+  it("never borrows the fail template, whose fixed words would disagree with the text", () => {
+    expect(motUpdateRoute({ passed: true, updateTemplate: true, passedTemplate: false })).toEqual({ channel: "text" });
+    expect(motUpdateRoute({ passed: true, updateTemplate: true, passedTemplate: true })).toEqual({ channel: "template", template: "mot_passed" });
+    expect(motUpdateRoute({ passed: false, updateTemplate: true, passedTemplate: true })).toEqual({ channel: "template", template: "mot_update" });
+  });
+
+  it("its note goes straight to the advisories instead of saying again that it passed", () => {
+    const opening = 'Open with the result in a few words, e.g. "It passed, but ..." or "It failed because ...".';
+    expect(noteInstructions("mot_passed")).toContain("has passed its MOT");
+    expect(noteInstructions("mot_passed")).not.toContain(opening);
+    expect(noteInstructions("mot_update")).toContain(opening);
+    expect(noteInstructions("ready")).toContain(opening);
+  });
+});
+
+describe("motPassed", () => {
+  it("counts a fail whose only failures were put right during the test as a pass", () => {
+    expect(motPassed("PASSED")).toBe(true);
+    expect(motPassed("FAILED", [{ type: "MAJOR" }])).toBe(false);
+    expect(motPassed("FAILED", [{ type: "ADVISORY" }, { type: "PRS" }])).toBe(true);
+    expect(motPassed("FAILED", [{ type: "PRS" }, { type: "MAJOR" }])).toBe(false);
+    expect(motPassed("FAILED", [{ type: "PRS" }, { type: "ADVISORY", dangerous: true }])).toBe(false);
+    expect(motPassed("ABANDONED")).toBe(false);
+    expect(motPassed(null)).toBe(false);
+  });
+
+  it("reads a test exactly as the note's result line does", () => {
+    const cases: [string, { type: string; text: string; dangerous?: boolean }[]][] = [
+      ["PASSED", [{ type: "ADVISORY", text: "Nearside Rear Tyre worn close to legal limit/worn on edge (5.2.3 (e))" }]],
+      ["FAILED", [{ type: "MAJOR", text: "Nearside Front Tyre tread depth below requirements of 1.6mm (5.2.3 (e))" }]],
+      ["FAILED", [{ type: "ADVISORY", text: "Exhaust emits black smoke during acceleration (8.2.1.2 (g))" }, { type: "PRS", text: "Engine MIL inoperative or indicates a malfunction (8.2.1.2 (h))" }]],
+      ["FAILED", [{ type: "PRS", text: "Offside Headlamp aim too high (4.1.2 (a) (ii))" }, { type: "MAJOR", text: "Offside Front Side repeater not working (4.4.1 (a) (ii))" }]],
+      ["FAILED", [{ type: "PRS", text: "Offside Headlamp aim too high (4.1.2 (a) (ii))" }, { type: "ADVISORY", text: "Brake pipe corroded", dangerous: true }]],
+      ["ABANDONED", []],
+    ];
+    for (const [result, items] of cases) {
+      expect(motPassed(result, items)).toBe(/^PASSED/.test(resultForNote(result, items) ?? ""));
+    }
   });
 });
 

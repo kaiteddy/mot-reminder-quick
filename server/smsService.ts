@@ -2,7 +2,7 @@
  * SMS Service using Twilio
  * Sends SMS reminders to customers
  */
-import { carReadyRoute, motUpdateRoute } from "../shared/carReadyMessage";
+import { carReadyRoute } from "../shared/carReadyMessage";
 import { normalizePhoneNumber } from "./utils/phoneUtils";
 import { followUpMessage } from "../shared/motFollowUpMessage";
 
@@ -542,10 +542,10 @@ export function generateCarReadyMessage(params: {
 }
 
 /**
- * "Your car has had its MOT — what would you like us to do?" Sent from the job sheet, before the
- * invoice, when the MOT needs the customer's decision. The plain text and the mot_update template
- * both carry the MOT note straight after the first sentence (withMotNote). Like the car-ready text
- * it quotes no money: nothing has been agreed yet.
+ * "Your car has had its MOT." Sent from a job sheet or MOT-only invoice with the MOT note straight
+ * after the first sentence (withMotNote). After a fail it asks what the customer would like done;
+ * after a pass with advisories (`passed`) it offers to look at them. Each wording has its own
+ * template, and like the car-ready text neither quotes money: nothing has been agreed yet.
  */
 export function generateMotUpdateMessage(params: {
   customerName: string;
@@ -553,19 +553,26 @@ export function generateMotUpdateMessage(params: {
   vehicle?: string | null;
   companyName?: string | null;
   phone?: string | null;
+  passed?: boolean;
 }): string {
   const { firstName, vehicle } = carReadyParts(params);
   const who = params.companyName || "ELI MOTORS";
   const tel = params.phone || "020 8203 6449";
   // Plain ASCII only, for the same reason as generateCarReadyMessage.
+  if (params.passed) {
+    return `Hi ${firstName}, your ${vehicle} has passed its MOT at ${who}. `
+      + `If you would like us to look at any of this, just reply to this message or call us on ${tel}. `
+      + `Nothing is done without your go-ahead.`;
+  }
   return `Hi ${firstName}, your ${vehicle} has had its MOT at ${who}. `
     + `Please let us know what you would like us to do: reply to this message or call us on ${tel}. `
     + `Nothing is done without your go-ahead.`;
 }
 
 /**
- * Send the MOT update. `message` is the whole text, note included: what goes out as plain text, and
- * what a failed template send falls back to. See motUpdateRoute.
+ * Send an MOT update. `message` is the whole text, note included: what goes out as plain text, and
+ * what a failed template send falls back to. `templateSid` is the approved template for this
+ * result, or nothing; motUpdateRoute decides which.
  */
 export async function sendMotUpdateMessage(params: {
   to: string;
@@ -578,11 +585,11 @@ export async function sendMotUpdateMessage(params: {
   templateSid?: string | null;
 }): Promise<SendSMSResult> {
   const parts = carReadyParts(params);
-  if (motUpdateRoute({ updateTemplate: !!params.templateSid }).channel === "template") {
+  if (params.templateSid) {
     return sendSMS({
       to: params.to,
       useTemplate: true,
-      templateSid: params.templateSid!,
+      templateSid: params.templateSid,
       templateVariables: { '1': parts.firstName, '2': parts.vehicle, '3': params.motNote },
       fallbackMessage: params.message,
     });

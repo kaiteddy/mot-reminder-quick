@@ -1,6 +1,7 @@
 /**
  * "Your car is ready to collect" + a plain-English note on what its MOT found — and the MOT update,
- * which carries the same note from a job sheet and asks the customer what they would like done.
+ * which carries the same note from a job sheet: after a fail it asks the customer what they would
+ * like done, after a pass with advisories it offers to look at them.
  *
  * Shared by the server, which sends them, and the document's Car ready / MOT update dialog, which
  * previews them, so what staff read is what the customer gets. Pure functions only — nothing here
@@ -81,31 +82,47 @@ export function cleanMotNote(raw: string | null | undefined, max = MOT_NOTE_MAX)
 }
 
 /**
- * Which text the note travels in: "your car is ready to collect", sent from the invoice, or the MOT
- * update, sent from the job sheet before there is an invoice — usually because the car failed and
- * the customer has to say what they want done.
+ * Which text the note travels in: "your car is ready to collect", sent from the invoice, or one of
+ * the two MOT updates — "mot_update" after a fail, asking what the customer wants done, and
+ * "mot_passed" after a pass with advisories, offering to look at them.
  */
-export type CarTextKind = "ready" | "mot_update";
+export type CarTextKind = "ready" | "mot_update" | "mot_passed";
+
+/**
+ * Did the car pass? DVSA records a test as FAILED even when the only failing items were put right
+ * during the test (PRS) and the car left with a pass, so a fail with nothing still failing counts as
+ * a pass — the same reading as resultForNote in server/services/motCustomerNote.ts. Anything that
+ * is not a clear pass (abandoned, aborted, blank) is not one.
+ */
+export function motPassed(result: string | null | undefined, items: { type?: string | null; dangerous?: boolean | null }[] = []): boolean {
+  const r = String(result || "").trim().toUpperCase();
+  if (/PASS/.test(r)) return true;
+  if (!/FAIL/.test(r)) return false;
+  const types = items.map((i) => String(i.type || "").trim().toUpperCase());
+  const stillFailing = items.some((i, n) => types[n] !== "PRS" && (!!i.dangerous || ["MAJOR", "DANGEROUS", "FAIL"].includes(types[n])));
+  return types.includes("PRS") && !stillFailing;
+}
 
 /**
  * The paragraph that carries the note. Takes the note as given — clean it first. The car-ready text
- * closes it with reassurance; the MOT update doesn't, because its own last paragraph asks the
+ * closes it with reassurance; the MOT updates don't, because their own last paragraph asks the
  * customer what they would like done.
  */
 export function motNoteBlock(note: string, kind: CarTextKind = "ready"): string {
-  return kind === "mot_update" ? `${MOT_NOTE_LEAD} ${note}` : `${MOT_NOTE_LEAD} ${note} ${MOT_NOTE_CLOSE}`;
+  return kind === "ready" ? `${MOT_NOTE_LEAD} ${note} ${MOT_NOTE_CLOSE}` : `${MOT_NOTE_LEAD} ${note}`;
 }
 
 /** The sentence each text's note goes straight after. */
 const LEAD_SENTENCE: Record<CarTextKind, RegExp> = {
   ready: /ready to collect[^.!?]*[.!?]/i,
   mot_update: /had its MOT[^.!?]*[.!?]/i,
+  mot_passed: /passed its MOT[^.!?]*[.!?]/i,
 };
 
 /**
  * Put a paragraph in straight after the text's opening sentence — "...is ready to collect from ELI
- * MOTORS." or "...has had its MOT at ELI MOTORS." A message reworded so that sentence can't be
- * found gets it at the end instead — the note is never lost.
+ * MOTORS.", "...has had its MOT at ELI MOTORS." or "...has passed its MOT at ELI MOTORS." A message
+ * reworded so that sentence can't be found gets it at the end instead — the note is never lost.
  */
 export function insertAfterLeadSentence(message: string, block: string, kind: CarTextKind): string {
   const base = String(message ?? "").trim();
@@ -128,14 +145,17 @@ export function withMotNote(message: string, note: string | null | undefined, ki
   return clean ? insertAfterLeadSentence(message, motNoteBlock(clean, kind), kind) : String(message ?? "").trim();
 }
 
-export type MotUpdateRoute = { channel: "template"; template: "mot_update" } | { channel: "text" };
+export type MotUpdateRoute = { channel: "template"; template: "mot_update" | "mot_passed" } | { channel: "text" };
 
 /**
  * How an MOT update goes out. It always carries a note — the note is the update — so the only
- * question is whether its template is approved yet. Until it is, the update goes as text: WhatsApp
- * takes that inside the 24-hour window, and the status callback re-sends it as an SMS outside it.
+ * question is whether the template for its result is approved yet. A pass never borrows the fail
+ * template, whose fixed words would disagree with the text. Until the right one is approved the
+ * update goes as text: WhatsApp takes that inside the 24-hour window, and the status callback
+ * re-sends it as an SMS outside it.
  */
-export function motUpdateRoute(p: { updateTemplate: boolean }): MotUpdateRoute {
+export function motUpdateRoute(p: { passed: boolean; updateTemplate: boolean; passedTemplate: boolean }): MotUpdateRoute {
+  if (p.passed) return p.passedTemplate ? { channel: "template", template: "mot_passed" } : { channel: "text" };
   return p.updateTemplate ? { channel: "template", template: "mot_update" } : { channel: "text" };
 }
 

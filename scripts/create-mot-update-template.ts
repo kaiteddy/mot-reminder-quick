@@ -1,42 +1,49 @@
 /**
- * Create the MOT update WhatsApp template in Twilio and submit it for approval.
+ * Create an MOT update WhatsApp template in Twilio and submit it for approval.
  *
- *   npx tsx scripts/create-mot-update-template.ts            # DRY RUN — prints exactly what would be submitted
- *   npx tsx scripts/create-mot-update-template.ts --go       # creates it in Twilio and asks WhatsApp to approve it
- *   npx tsx scripts/create-mot-update-template.ts --status   # approval status of the template by this name
+ *   npx tsx scripts/create-mot-update-template.ts [--passed]            # DRY RUN — prints exactly what would be submitted
+ *   npx tsx scripts/create-mot-update-template.ts [--passed] --go       # creates it in Twilio and asks WhatsApp to approve it
+ *   npx tsx scripts/create-mot-update-template.ts [--passed] --status   # approval status of the template by this name
  *
- * The MOT update is what a job sheet sends when the car's MOT needs the customer to decide what
- * happens next — usually a fail. It can't go through the car-ready templates: those tell the
- * customer the car is ready to collect, which is exactly what a failed car isn't.
+ * The MOT update is what a job sheet or MOT-only invoice sends when the car's MOT is the news. It has
+ * two wordings, and each needs its own template because an approved template's words are fixed:
+ *   - mot_update_call (default): after a fail, asks what the customer would like done;
+ *   - mot_passed_call (--passed): after a pass with advisories, offers to look at them.
+ * Neither can go through the car-ready templates, which tell the customer the car is ready to collect.
  *
  * The body is built from the very functions the app sends with (generateMotUpdateMessage and
  * shared/carReadyMessage.ts), so the WhatsApp message and the SMS text cannot drift apart. That
  * holds while the companyName / companyPhone app settings stay unset, as they are today.
  *
  * Like car_ready_mot_notes_call it carries a "Call us" button. Once WhatsApp approves it, point the
- * app at it by setting the app setting motUpdateTemplateSid to the HX... SID this prints. Until
- * then an MOT update goes as plain text, which the app already handles.
+ * app at it by setting the app setting this prints (motUpdateTemplateSid or motPassedTemplateSid) to
+ * the HX... SID. Until then that update goes as plain text, which the app already handles.
  */
 import "dotenv/config";
 import { generateMotUpdateMessage } from "../server/smsService";
 import { MOT_NOTE_MAX, insertAfterLeadSentence, motNoteBlock } from "../shared/carReadyMessage";
 
-const NAME = "mot_update_call";
+const PASSED = process.argv.includes("--passed");
+const KIND = PASSED ? "mot_passed" : "mot_update";
+const NAME = PASSED ? "mot_passed_call" : "mot_update_call";
+const SETTING = PASSED ? "motPassedTemplateSid" : "motUpdateTemplateSid";
 const LANGUAGE = "en_GB";      // as the car-ready templates
 const CATEGORY = "UTILITY";    // as the car-ready templates: about a job the customer booked
 // The same button as the approved car_ready_mot_notes_call.
 const CALL_US = { type: "PHONE_NUMBER", title: "Call us", phone: "+442082036449" };
 
 const body = insertAfterLeadSentence(
-  generateMotUpdateMessage({ customerName: "{{1}}", registration: "", vehicle: "{{2}}" }),
-  motNoteBlock("{{3}}", "mot_update"),
-  "mot_update",
+  generateMotUpdateMessage({ customerName: "{{1}}", registration: "", vehicle: "{{2}}", passed: PASSED }),
+  motNoteBlock("{{3}}", KIND),
+  KIND,
 );
 // WhatsApp reviews templates against their sample values, so these read like a real send.
 const variables: Record<string, string> = {
   "1": "Sam",
   "2": "FORD Focus AB12CDE",
-  "3": "It failed because the front left tyre tread is below the legal limit, so it has to be replaced for the car to pass. The rear brake pads are getting thin, so they are worth replacing in the next few months.",
+  "3": PASSED
+    ? "Both rear tyres are getting close to the legal limit, so they are worth replacing in the next few weeks. The front brake discs have some light rust, which is nothing to worry about yet."
+    : "It failed because the front left tyre tread is below the legal limit, so it has to be replaced for the car to pass. The rear brake pads are getting thin, so they are worth replacing in the next few months.",
 };
 
 // What WhatsApp rejects on sight, checked before anything is sent.
@@ -114,5 +121,5 @@ const content = await api("POST", "https://content.twilio.com/v1/Content", {
 console.log(`\ncreated ${content.sid}`);
 const approval = await api("POST", `https://content.twilio.com/v1/Content/${content.sid}/ApprovalRequests/whatsapp`, { name: NAME, category: CATEGORY });
 console.log(`submitted to WhatsApp: status=${approval.status || "?"}`);
-console.log(`\nWhen --status shows approved, set the app setting motUpdateTemplateSid to "${content.sid}".`);
+console.log(`\nWhen --status shows approved, set the app setting ${SETTING} to "${content.sid}".`);
 process.exit(0);
