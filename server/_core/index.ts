@@ -210,6 +210,26 @@ function setupApp(app: Express) {
       res.status(200).end();
     });
 
+    // GSF trade credentials — save once (works for local AND production, no Vercel env step). The
+    // password is stored in appSettings and used only to sign in to trade.gsfcarparts.com; it is
+    // validated by a real login before we confirm success, and never echoed back.
+    app.post("/api/webhooks/gsf-credentials", async (req, res) => {
+      try {
+        const username = String(req.body?.username || "").trim();
+        const password = String(req.body?.password || "");
+        if (!username || !password) return res.status(400).json({ success: false, error: "username and password required" });
+        const { setAppSetting } = await import("../db");
+        await setAppSetting("gsf_credentials", { username, password });
+        const gsf = await import("../gsf");
+        gsf._clearGsfCredCache();
+        const test = await gsf.gsfSelfTest();
+        console.log(`[GSF] credentials saved for ${username.replace(/(.).*(@.*)/, "$1***$2")} — login ${test.ok ? "OK" : "FAILED"}`);
+        res.json({ success: test.ok, storedButLoginFailed: !test.ok, ...(test.ok ? {} : { error: test.error }) });
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
 
     // Browser Drone Poll Endpoint
     app.get("/api/webhooks/autodata/poll", async (req, res) => {

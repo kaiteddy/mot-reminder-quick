@@ -23,9 +23,21 @@ function absorb(jar: Map<string, string>, res: Response) {
 }
 const cookieHeader = (jar: Map<string, string>) => Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
 
-function scrubber() {
-  const pw = process.env.GSF_PASSWORD || "";
-  const em = process.env.GSF_USERNAME || "";
+// Credentials come from the DB (set once via the webhook — works for local AND production with no
+// Vercel/env step), falling back to GSF_USERNAME / GSF_PASSWORD env vars if you prefer those.
+let _credCache: { username?: string; password?: string } | null = null;
+async function gsfCreds(): Promise<{ username?: string; password?: string }> {
+  if (process.env.GSF_USERNAME && process.env.GSF_PASSWORD) {
+    return { username: process.env.GSF_USERNAME, password: process.env.GSF_PASSWORD };
+  }
+  if (_credCache) return _credCache;
+  const c = (await getAppSetting("gsf_credentials").catch(() => null)) as { username?: string; password?: string } | null;
+  _credCache = c || {};
+  return _credCache;
+}
+export function _clearGsfCredCache() { _credCache = null; }
+
+function scrubber(pw?: string, em?: string) {
   return (s: string) => {
     let out = String(s);
     if (pw) out = out.split(pw).join("<password>");
@@ -36,10 +48,9 @@ function scrubber() {
 
 // Fresh sign-in → returns the cookie header for the session, and caches it.
 async function gsfLogin(): Promise<string> {
-  const email = process.env.GSF_USERNAME;
-  const password = process.env.GSF_PASSWORD;
-  const scrub = scrubber();
-  if (!email || !password) throw new Error("GSF credentials not configured — set GSF_USERNAME and GSF_PASSWORD.");
+  const { username: email, password } = await gsfCreds();
+  const scrub = scrubber(password, email);
+  if (!email || !password) throw new Error("GSF credentials not configured — save them once via /api/webhooks/gsf-credentials.");
   const jar = new Map<string, string>();
   try {
     // 1) CSRF
@@ -78,10 +89,20 @@ async function gsfCookie(force = false): Promise<string> {
   return gsfLogin();
 }
 
+/** Confirm the stored credentials work (a real sign-in). Used by the setup webhook. */
+export async function gsfSelfTest(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await gsfLogin();
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e).slice(0, 160) };
+  }
+}
+
 /** Recent GSF orders (raw customerOrders). Cached 60 s; re-logs in on an expired session. */
 export async function gsfGetOrders(days = 90): Promise<any[]> {
-  const configured = !!(process.env.GSF_USERNAME && process.env.GSF_PASSWORD);
-  if (!configured) return [];                                     // GSF not set up — quietly contribute nothing
+  const creds = await gsfCreds();
+  if (!creds.username || !creds.password) return [];             // GSF not set up — quietly contribute nothing
   const cached = (await getAppSetting(ORDERS_KEY).catch(() => null)) as { at?: number; orders?: any[] } | null;
   if (cached?.orders && cached.at && Date.now() - cached.at < 60_000) return cached.orders;
 
@@ -107,7 +128,7 @@ export async function gsfGetOrders(days = 90): Promise<any[]> {
     return orders;
   } catch (e: any) {
     if (cached?.orders) return cached.orders;                     // stale-fallback, like ECP
-    console.error("[gsf] order fetch failed:", scrubber()(e?.message || String(e)));
+    console.error("[gsf] order fetch failed:", scrubber(creds.password, creds.username)(e?.message || String(e)));
     return [];                                                    // never break the board over GSF
   }
 }
