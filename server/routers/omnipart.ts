@@ -50,41 +50,30 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
     if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
     rawToken = dbToken as string;
   }
-  let clean = rawToken;
-  let authHeader = "";
-  let cookieHeader = "";
-  if (clean.startsWith("COOKIE_JAR:")) {
-    cookieHeader = clean.substring(11).trim();
-    // One-login mode: ride the live browser session (kept fresh by the harvester extension whenever
-    // Omnipart is used). We deliberately do NOT refresh/rotate the token ourselves — rotation would
-    // invalidate the browser's own session. If the harvested bearer has expired, surface a clear
-    // "open Omnipart" message instead of silently failing.
-    const bm = cookieHeader.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
-    let expired = false;
-    if (bm) {
-      try { const p = JSON.parse(Buffer.from(bm[1].split(".")[1], "base64").toString()); expired = !!p.exp && p.exp < Date.now() / 1000; } catch { /* unparseable → let the call fail normally */ }
-      if (!expired) authHeader = `Bearer ${bm[1]}`;
-    }
-    if (expired) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
-  } else {
-    clean = clean.replace(/^["']|["']$/g, '').trim().replace(/[\n\r]| /g, '');
-    const lc = clean.toLowerCase();
-    if (lc.startsWith("authorization:bearer")) clean = clean.substring(20);
-    else if (lc.startsWith("bearer")) clean = clean.substring(6);
-    if (clean.startsWith("ey")) { authHeader = `Bearer ${clean}`; cookieHeader = `bearer=${clean}`; }
-  }
-  const h: Record<string, string> = {
+  // The harvester may store the FULL cookie jar ("COOKIE_JAR:bearer=...; refresh_token=...; …") OR
+  // just the raw bearer JWT. Normalise to a Cookie header carrying a bearer= cookie either way.
+  // One-login mode: we ride the live browser session and never rotate the token; if the bearer has
+  // expired, surface a clear "open Omnipart" message. Auth is cookie-only (an Authorization header
+  // causes 403/500 on these endpoints).
+  let val = String(rawToken).trim().replace(/^["']|["']$/g, "");
+  if (val.startsWith("COOKIE_JAR:")) val = val.slice("COOKIE_JAR:".length).trim();
+  const jwtMatch =
+    val.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/) ||
+    val.match(/(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+  if (!jwtMatch) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
+  try {
+    const p = JSON.parse(Buffer.from(jwtMatch[1].split(".")[1], "base64").toString());
+    if (p.exp && p.exp < Date.now() / 1000) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
+  } catch (e: any) { if (String(e?.message || "").includes("expired")) throw e; }
+  const cookieHeader = /bearer=/.test(val) ? val : `bearer=${jwtMatch[1]}`;
+  return {
     "Content-Type": "application/json",
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Origin": "https://omnipart.eurocarparts.com",
     "Referer": referer,
+    "Cookie": cookieHeader,
   };
-  // Cookie-only auth: the WISMO/returns endpoints validate the bearer= cookie; adding an
-  // Authorization header has caused 403/500 responses, so we deliberately omit it here.
-  void authHeader;
-  if (cookieHeader) h["Cookie"] = cookieHeader;
-  return h;
 }
 
 export const omnipartRouter = router({
