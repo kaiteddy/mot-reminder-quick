@@ -84,6 +84,19 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
   };
 }
 
+/**
+ * API Platform collections arrive as `{ "hydra:member": [...] }`, not as a bare array.
+ *
+ * `Array.isArray(envelope)` is false, so a plain isArray check silently yields an empty list —
+ * which is what made the return-reasons dropdown always empty, and therefore made a return
+ * impossible to submit at all. Accept either shape and never return a non-list.
+ */
+function hydraMembers(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  const members = data?.["hydra:member"] ?? data?.member;
+  return Array.isArray(members) ? members : [];
+}
+
 // Guess the vehicle an eBay/Amazon item relates to, from its title — used to suggest a car/job to
 // link when the order has no reg of its own. Prefers an explicit "fits/for <Make> <Model>".
 const VEHICLE_MAKES = ["Mercedes-Benz", "Mercedes", "Land Rover", "Volkswagen", "Toyota", "Vauxhall",
@@ -893,7 +906,10 @@ export const omnipartRouter = router({
       try {
         const headers = await omnipartHeaders(input?.token, "https://omnipart.eurocarparts.com/account/order-tracking");
         const data = await omnipartFetch("GET", "https://api.omnipart.eurocarparts.com/digital-return-reasons", headers);
-        return Array.isArray(data) ? data : [];
+        // API Platform answers with a hydra envelope, not a bare array. Array.isArray() on the
+        // envelope is false, so the old code returned [] every time: no reason could be chosen,
+        // and the dialog could never be submitted at all. Accept either shape.
+        return hydraMembers(data);
       } catch (error: any) {
         const message = error.message || "Failed to fetch digital return reasons";
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
@@ -901,17 +917,21 @@ export const omnipartRouter = router({
     }),
 
   // The items on a given order that are eligible for a digital return.
+  //
+  // TAKES THE ORDER REF ('311-00005706664'), NOT the numeric db_order_id. The two returns calls
+  // use DIFFERENT identifiers off the same order and passing the wrong one 404s — the parameter
+  // is named orderRef so the mix-up cannot be made silently.
   getReturnableItems: protectedProcedure
-    .input(z.object({ orderId: z.string(), token: z.string().optional() }))
+    .input(z.object({ orderRef: z.string(), token: z.string().optional() }))
     .query(async ({ input }) => {
       try {
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
-        const url = `https://api.omnipart.eurocarparts.com/orders/${encodeURIComponent(input.orderId)}/digital-return-products`;
+        const url = `https://api.omnipart.eurocarparts.com/orders/${encodeURIComponent(input.orderRef)}/digital-return-products`;
         const data = await omnipartFetch("GET", url, headers);
         if (data && (data["@type"] === "hydra:Error" || data.detail)) {
             throw new Error(data.detail || "No returnable items for this order.");
         }
-        return data;
+        return hydraMembers(data);
       } catch (error: any) {
         const message = error.message || "Failed to fetch returnable items";
         throw new TRPCError({ code: message.toLowerCase().includes("not found") ? "NOT_FOUND" : "INTERNAL_SERVER_ERROR", message });
@@ -919,25 +939,81 @@ export const omnipartRouter = router({
     }),
 
   // WRITE — submits a digital return, creating a credit request at Euro Car Parts.
+  //
   // GATING: call this ONLY from an explicit user action (a confirm button). Never call it on load,
-  // in a loop, or as a side effect. The body shape mirrors the Omnipart UI (per-line sku/qty/reason);
-  // confirm it against one real button-press before treating returns as fire-and-forget.
+  // in a loop, or as a side effect.
+  //
+  // BODY SHAPE. Decoded from Omnipart's own client bundle, not guessed. The previous shape
+  // ({ order_id, items: [{ sku, ... }] }) was wrong on every key and would have been rejected:
+  //
+  //   { lines: [{ product: "/products/123",
+  //               reason: "/digital-return-reasons/4",
+  //               unitPriceExcTax: 11.39, quantity: 1, additionalInformation: "" }],
+  //     order: "/orders/98765" }
+  //
+  // Two details their code does deliberately:
+  //   - `product` is the "/products/<digits>" substring of the returnable item's @id. NOT the sku.
+  //   - when the chosen reason code is exactly "Surcharge", the price sent is the item's surcharge
+  //     rather than its unitPrice.excTax.
+  //
+  // `dbOrderId` is the NUMERIC order id (db_order_id, already captured off the wismo list), NOT
+  // the order ref that getReturnableItems above takes.
+  //
+  // VERIFIED 15 Sep against a real return captured from Omnipart's own site (HAR, POST
+  // /digital-returns -> 201, /digital-returns/5212). The body below matches it key for key,
+  // including that unitPriceExcTax is passed through EXACTLY as the returnable-items response
+  // gives it — that response reported excTax 835 and the site sent 835, so no unit conversion
+  // anywhere. Multiplying or dividing by 100 here would credit 100x the right amount.
   submitDigitalReturn: protectedProcedure
     .input(z.object({
-      orderId: z.string(),
-      items: z.array(z.object({
-        sku: z.string(),
-        quantity: z.number(),
-        returnLineId: z.string(),
-        returnReason: z.string(),
+      dbOrderId: z.union([z.string(), z.number()]),
+      lines: z.array(z.object({
+        // "/products/123", taken from the returnable item's product["@id"].
+        productIri: z.string().regex(/^\/products\/\d+$/, "product must be /products/<id>"),
+        quantity: z.number().positive(),
+        // The reason CODE; resolved to its IRI server-side so the client cannot send a stale one.
+        reasonCode: z.string().min(1),
+        unitPriceExcTax: z.number(),
+        surcharge: z.number().optional(),
         additionalInfo: z.string().optional(),
       })).min(1),
       token: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       try {
+        // The order REF ('311-00005677556') and the db order id ('5677556') are different values,
+        // and this endpoint wants the second. Passing the ref would build "/orders/311-00005677556"
+        // and return somebody else's stock, or nothing. Refuse rather than send it.
+        const dbOrderId = String(input.dbOrderId).trim();
+        if (!/^\d+$/.test(dbOrderId)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Expected the numeric order id, got "${dbOrderId}". That looks like the order reference.`,
+          });
+        }
+
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
-        const body = JSON.stringify({ order_id: input.orderId, items: input.items });
+
+        // Resolve reason codes to IRIs against the live list rather than trusting the client.
+        const reasons = hydraMembers(
+          await omnipartFetch("GET", "https://api.omnipart.eurocarparts.com/digital-return-reasons", headers)
+        );
+        const iriFor = (code: string) =>
+          (reasons.find((r: any) => r?.code === code) as any)?.["@id"];
+
+        const lines = input.lines.map((l) => {
+          const reason = iriFor(l.reasonCode);
+          if (!reason) throw new Error(`Unknown return reason: ${l.reasonCode}`);
+          return {
+            product: l.productIri,
+            reason,
+            unitPriceExcTax: l.reasonCode === "Surcharge" ? (l.surcharge ?? 0) : l.unitPriceExcTax,
+            quantity: l.quantity,
+            additionalInformation: l.additionalInfo || "",
+          };
+        });
+
+        const body = JSON.stringify({ lines, order: `/orders/${dbOrderId}` });
         const data = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/digital-returns", headers, body);
         if (data && (data["@type"] === "hydra:Error" || data.detail)) {
             throw new Error(data.detail || "Digital return was rejected by Euro Car Parts.");
