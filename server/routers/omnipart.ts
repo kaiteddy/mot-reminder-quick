@@ -51,6 +51,39 @@ async function omnipartFetch(method: string, url: string, headers: Record<string
 // Resolve Omnipart request headers from a raw token or the stored jar. Auth is cookie-based: the
 // bearer= cookie inside the harvested COOKIE_JAR is what the API validates (Authorization is a
 // best-effort extra). Used by the order-tracking + digital-returns procedures below.
+const OMNIPART_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// Self-heal the ECP session: when the bearer is expiring, use the refresh_token to mint a new one
+// (server-side, no browser, no CAPTCHA), splice it back into the jar and save it — the same idea
+// that keeps GSF alive. Returns the fresh jar, or null if it couldn't (e.g. the refresh_token has
+// also lapsed after a long gap — then a one-off browser re-login is still needed).
+async function refreshEcpJar(jar: string): Promise<string | null> {
+  const rt = jar.match(/refresh_token=([0-9a-fA-F]+)/);
+  if (!rt) return null;
+  try {
+    const res = await fetch("https://api.omnipart.eurocarparts.com/token/refresh", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json", "Accept": "application/json",
+        "Origin": "https://omnipart.eurocarparts.com", "Referer": "https://omnipart.eurocarparts.com/",
+        "User-Agent": OMNIPART_UA, "Cookie": jar,
+      },
+      body: JSON.stringify({ refresh_token: rt[1] }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data?.token || !data?.refresh_token) return null;
+    try { const p = JSON.parse(Buffer.from(String(data.token).split(".")[1], "base64").toString()); if (p.guest_user) return null; } catch {}
+    let newJar = jar;
+    newJar = /bearer=/.test(newJar) ? newJar.replace(/bearer=[^;]*/, `bearer=${data.token}`) : `${newJar}; bearer=${data.token}`;
+    newJar = newJar.replace(/refresh_token=[^;]*/, `refresh_token=${data.refresh_token}`);
+    const { saveAppSetting } = await import("../db");
+    await saveAppSetting("omnipart_jwt_token", "COOKIE_JAR:" + newJar).catch(() => {});
+    console.log("[omnipart] session self-refreshed via refresh_token");
+    return newJar;
+  } catch { return null; }
+}
+
 async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.eurocarparts.com/"): Promise<Record<string, string>> {
   let rawToken = inputToken || "auto";
   if (!rawToken || rawToken === "auto") {
@@ -70,11 +103,25 @@ async function omnipartHeaders(inputToken?: string, referer = "https://omnipart.
     val.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/) ||
     val.match(/(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
   if (!jwtMatch) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
-  try {
-    const p = JSON.parse(Buffer.from(jwtMatch[1].split(".")[1], "base64").toString());
-    if (p.exp && p.exp < Date.now() / 1000) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
-  } catch (e: any) { if (String(e?.message || "").includes("expired")) throw e; }
-  const cookieHeader = /bearer=/.test(val) ? val : `bearer=${jwtMatch[1]}`;
+  // If the bearer is expired or about to be (<2 min), self-heal via the refresh_token first; only if
+  // that fails (refresh_token also lapsed) do we ask for a browser re-login.
+  let bearerJwt = jwtMatch[1];
+  let expSoon = false;
+  try { const p = JSON.parse(Buffer.from(bearerJwt.split(".")[1], "base64").toString()); expSoon = !!(p.exp && p.exp < Date.now() / 1000 + 120); } catch {}
+  if (expSoon) {
+    const refreshed = await refreshEcpJar(val);
+    if (refreshed) {
+      val = refreshed;
+      const nm = val.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+      if (nm) bearerJwt = nm[1];
+    } else {
+      try {
+        const p = JSON.parse(Buffer.from(bearerJwt.split(".")[1], "base64").toString());
+        if (p.exp && p.exp < Date.now() / 1000) throw new Error("Omnipart session expired — open an Omnipart page in your browser to refresh it.");
+      } catch (e: any) { if (String(e?.message || "").includes("expired")) throw e; }
+    }
+  }
+  const cookieHeader = /bearer=/.test(val) ? val : `bearer=${bearerJwt}`;
   return {
     "Content-Type": "application/json",
     "Accept": "application/json",
@@ -135,6 +182,17 @@ export const omnipartRouter = router({
             const dbToken = await getAppSetting('omnipart_jwt_token');
             if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
             rawToken = dbToken as string;
+        }
+
+        // Self-heal an expiring ECP session before use — refresh_token, server-side, no browser.
+        if (typeof rawToken === "string") {
+          const jarVal = rawToken.startsWith("COOKIE_JAR:") ? rawToken.slice(11).trim() : rawToken;
+          const bm = jarVal.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+          if (bm) {
+            let soon = false;
+            try { const p = JSON.parse(Buffer.from(bm[1].split(".")[1], "base64").toString()); soon = !!(p.exp && p.exp < Date.now() / 1000 + 120); } catch {}
+            if (soon) { const r = await refreshEcpJar(jarVal); if (r) rawToken = "COOKIE_JAR:" + r; }
+          }
         }
 
         let clean = rawToken;
@@ -243,6 +301,17 @@ export const omnipartRouter = router({
             const dbToken = await getAppSetting('omnipart_jwt_token');
             if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
             rawToken = dbToken as string;
+        }
+
+        // Self-heal an expiring ECP session before use — refresh_token, server-side, no browser.
+        if (typeof rawToken === "string") {
+          const jarVal = rawToken.startsWith("COOKIE_JAR:") ? rawToken.slice(11).trim() : rawToken;
+          const bm = jarVal.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+          if (bm) {
+            let soon = false;
+            try { const p = JSON.parse(Buffer.from(bm[1].split(".")[1], "base64").toString()); soon = !!(p.exp && p.exp < Date.now() / 1000 + 120); } catch {}
+            if (soon) { const r = await refreshEcpJar(jarVal); if (r) rawToken = "COOKIE_JAR:" + r; }
+          }
         }
 
         let clean = rawToken;
@@ -407,6 +476,17 @@ export const omnipartRouter = router({
             const dbToken = await getAppSetting('omnipart_jwt_token');
             if (!dbToken) throw new Error("No automatic token found in database. Please configure manually.");
             rawToken = dbToken as string;
+        }
+
+        // Self-heal an expiring ECP session before use — refresh_token, server-side, no browser.
+        if (typeof rawToken === "string") {
+          const jarVal = rawToken.startsWith("COOKIE_JAR:") ? rawToken.slice(11).trim() : rawToken;
+          const bm = jarVal.match(/bearer=(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+          if (bm) {
+            let soon = false;
+            try { const p = JSON.parse(Buffer.from(bm[1].split(".")[1], "base64").toString()); soon = !!(p.exp && p.exp < Date.now() / 1000 + 120); } catch {}
+            if (soon) { const r = await refreshEcpJar(jarVal); if (r) rawToken = "COOKIE_JAR:" + r; }
+          }
         }
 
         let clean = rawToken;
