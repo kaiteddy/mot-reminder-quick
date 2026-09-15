@@ -6164,6 +6164,7 @@ export async function upsertEbayOrders(rows: Array<{
   orderRef: string; itemId?: string | null; title?: string | null; price?: string | number | null;
   quantity?: number | null; seller?: string | null; status?: string | null; fitsVehicle?: string | null;
   autoCategory?: string | null; image?: string | null; eta?: string | null; orderDate?: string | Date | null;
+  tracking?: string | null; courier?: string | null;
 }>) {
   const db = await getDb();
   if (!db || !rows?.length) return { upserted: 0 };
@@ -6188,6 +6189,8 @@ export async function upsertEbayOrders(rows: Array<{
         autoCategory: r.autoCategory ?? existing.autoCategory,
         image: r.image ?? existing.image,
         eta: r.eta ?? existing.eta,
+        tracking: r.tracking ?? existing.tracking,
+        courier: r.courier ?? existing.courier,
         orderDate: orderDate ?? existing.orderDate,
         updatedAt: new Date(),
       }).where(eq(ebayOrders.orderRef, r.orderRef));
@@ -6196,7 +6199,8 @@ export async function upsertEbayOrders(rows: Array<{
         orderRef: r.orderRef, itemId: r.itemId ?? null, title: r.title ?? null, price,
         quantity: r.quantity ?? 1, seller: r.seller ?? null, status: r.status ?? null,
         fitsVehicle: r.fitsVehicle ?? null, autoCategory: r.autoCategory ?? null,
-        image: r.image ?? null, eta: r.eta ?? null, orderDate,
+        image: r.image ?? null, eta: r.eta ?? null,
+        tracking: r.tracking ?? null, courier: r.courier ?? null, orderDate,
       });
     }
     n++;

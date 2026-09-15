@@ -459,6 +459,8 @@ export const ebayOrders = pgTable("ebayOrders", {
   autoCategory: varchar("autoCategory", { length: 16 }),       // car | general (heuristic from the item)
   image: text("image"),
   eta: varchar("eta", { length: 120 }),
+  tracking: varchar("tracking", { length: 60 }),               // courier tracking number (from the dispatch email)
+  courier: varchar("courier", { length: 40 }),                 // Evri | DPD | Royal Mail | …
   orderDate: timestamp("orderDate", { mode: "date" }),
   updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
 });

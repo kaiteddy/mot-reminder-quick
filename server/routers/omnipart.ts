@@ -537,6 +537,8 @@ export const omnipartRouter = router({
               status: e.status || null,
               deliveryStatus: e.status || null,
               eta: e.eta || null,
+              tracking: e.tracking || null,
+              courier: e.courier || null,
               numberOfItems: e.quantity ?? 1,
               parts: [{ code: e.itemId || null, name: e.title || "eBay item", quantity: e.quantity ?? 1,
                         status: e.status || null, lineCost: price, image: e.image || null, usage: null }],

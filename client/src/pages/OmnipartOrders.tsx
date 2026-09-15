@@ -18,6 +18,24 @@ function money(v: number | null | undefined) {
 const agoShort = (h: number | null | undefined) =>
   h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
 
+// Build a live courier tracking URL from the courier + number; unknown courier → a web search.
+const TRACK_URL: Record<string, (n: string) => string> = {
+  evri: (n) => `https://www.evri.com/track/parcel/${n}/details`,
+  hermes: (n) => `https://www.evri.com/track/parcel/${n}/details`,
+  dpd: (n) => `https://track.dpd.co.uk/parcels/${n}`,
+  "royal mail": (n) => `https://www.royalmail.com/track-your-item#/tracking-results/${n}`,
+  parcelforce: (n) => `https://www.parcelforce.com/track-trace?trackNumber=${n}`,
+  yodel: (n) => `https://www.yodel.co.uk/tracking/${n}`,
+  ups: (n) => `https://www.ups.com/track?tracknum=${n}`,
+  dhl: (n) => `https://www.dhl.com/gb-en/home/tracking.html?tracking-id=${n}`,
+  inpost: (n) => `https://inpost.co.uk/tracking/${n}`,
+};
+function trackUrl(courier?: string | null, num?: string | null): string | null {
+  if (!num) return null;
+  const f = TRACK_URL[(courier || "").toLowerCase()];
+  return f ? f(num) : `https://www.google.com/search?q=${encodeURIComponent(`${courier || ""} tracking ${num}`)}`;
+}
+
 // Bucket an order by when it was placed, relative to today.
 const BUCKET_ORDER = ["Today", "Yesterday", "Earlier this week", "Last week", "Older"] as const;
 function bucketOf(dateStr?: string | null): (typeof BUCKET_ORDER)[number] {
@@ -311,6 +329,19 @@ function BoardRow({ o, base }: { o: any; base: string }) {
                 <JobLink order={o} base={base} />
               </div>
               <OrderProgress status={o.status} />
+              {(o.tracking || o.courier) && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-0.5">
+                  <Truck className="w-3.5 h-3.5 shrink-0" />
+                  {o.courier && <span className="font-medium text-slate-700">{o.courier}</span>}
+                  {o.tracking ? (
+                    <a href={trackUrl(o.courier, o.tracking)!} target="_blank" rel="noreferrer"
+                       className="text-brand-primary hover:underline" onClick={(e) => e.stopPropagation()}>
+                      Track {o.tracking}
+                    </a>
+                  ) : null}
+                  {o.eta && <span className="text-muted-foreground/70">· {o.eta}</span>}
+                </div>
+              )}
               <div className="pt-1">
                 {parts.length === 0 && (
                   <div className="text-xs text-muted-foreground/70">No part detail on this order.</div>
