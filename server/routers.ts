@@ -932,14 +932,14 @@ export const appRouter = router({
     }),
   }),
 
-  /** Tell a customer their car is ready to collect. */
+  /** Text a customer about their car: it is ready to collect, or its MOT needs their decision. */
   carReady: router({
     /** Everything the confirm dialog needs: who it's going to, and the wording to send. */
     preview: protectedProcedure
-      .input(z.object({ docId: z.number() }))
+      .input(z.object({ docId: z.number(), kind: z.enum(["ready", "mot_update"]).optional() }))
       .query(async ({ input }) => {
         const { getCarReadyPreview } = await import("./services/carReady");
-        return getCarReadyPreview(input.docId);
+        return getCarReadyPreview(input.docId, input.kind);
       }),
     send: protectedProcedure
       .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().max(2000).optional() }))
@@ -947,9 +947,17 @@ export const appRouter = router({
         const { sendCarReady } = await import("./services/carReady");
         return sendCarReady(input);
       }),
+    /** From the job sheet, before the invoice: what its MOT found, and what would the customer like done? */
+    sendMotUpdate: protectedProcedure
+      .input(z.object({ docId: z.number(), to: z.string().min(6), message: z.string().min(1), motNote: z.string().min(1).max(2000) }))
+      .mutation(async ({ input }) => {
+        const { sendMotUpdate } = await import("./services/carReady");
+        return sendMotUpdate(input);
+      }),
     /** A plain-English note on what the car's MOT found, for staff to check and send with the message. */
     motNote: protectedProcedure
       .input(z.object({
+        kind: z.enum(["ready", "mot_update"]).optional(),
         testDate: z.string().optional(),
         testResult: z.string().optional(),
         items: z.array(z.object({

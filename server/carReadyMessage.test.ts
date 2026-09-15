@@ -6,10 +6,57 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  MOT_NOTE_MAX, carReadyRoute, cleanMotNote, insertAfterReadySentence, motNoteBlock, smsSegments, withMotNote,
+  MOT_NOTE_CLOSE, MOT_NOTE_MAX, carReadyRoute, cleanMotNote, insertAfterLeadSentence, insertAfterReadySentence, motNoteBlock,
+  motUpdateRoute, smsSegments, withMotNote,
 } from "../shared/carReadyMessage";
-import { generateCarReadyMessage } from "./smsService";
-import { itemsForNote, plainSides, resultForNote, withNetworkRetry } from "./services/motCustomerNote";
+import { generateCarReadyMessage, generateMotUpdateMessage } from "./smsService";
+import { itemsForNote, noteInstructions, plainSides, resultForNote, withNetworkRetry } from "./services/motCustomerNote";
+
+/** The MOT update template body, built exactly as scripts/create-mot-update-template.ts submits it. */
+const UPDATE_TEMPLATE = insertAfterLeadSentence(
+  generateMotUpdateMessage({ customerName: "{{1}}", registration: "", vehicle: "{{2}}" }),
+  motNoteBlock("{{3}}", "mot_update"),
+  "mot_update",
+);
+
+describe("the MOT update", () => {
+  const failed = "It failed because the front left tyre tread is below the legal limit.";
+  const smith = { customerName: "Mr Sam Smith", registration: "AB12CDE", vehicle: "FORD Focus" };
+
+  it("says what the MOT found, then asks what the customer would like done", () => {
+    expect(withMotNote(generateMotUpdateMessage(smith), failed, "mot_update")).toBe(
+      "Hi Sam, your FORD Focus AB12CDE has had its MOT at ELI MOTORS.\n\n"
+      + "Notes from its MOT: It failed because the front left tyre tread is below the legal limit.\n\n"
+      + "Please let us know what you would like us to do: reply to this message or call us on 020 8203 6449. Nothing is done without your go-ahead.");
+  });
+
+  it("never tells the customer that a car waiting on their decision is ready to collect", () => {
+    expect(UPDATE_TEMPLATE).not.toMatch(/ready to collect/i);
+    expect(noteInstructions("mot_update")).not.toMatch(/ready to collect/i);
+    expect(noteInstructions("ready")).toContain(MOT_NOTE_CLOSE);
+  });
+
+  it("the template, filled in, is exactly the text an SMS carries", () => {
+    const rendered = UPDATE_TEMPLATE.replace("{{1}}", "Sam").replace("{{2}}", "FORD Focus AB12CDE").replace("{{3}}", failed);
+    expect(rendered).toBe(withMotNote(generateMotUpdateMessage(smith), failed, "mot_update"));
+  });
+
+  it("obeys WhatsApp's placement rules for variables", () => {
+    expect(UPDATE_TEMPLATE.startsWith("{{")).toBe(false);
+    expect(UPDATE_TEMPLATE.endsWith("}}")).toBe(false);
+    expect(UPDATE_TEMPLATE).not.toMatch(/\}\}\s*\{\{/);
+    expect([...UPDATE_TEMPLATE.matchAll(/\{\{(\d+)\}\}/g)].map((m) => m[1])).toEqual(["1", "2", "3"]);
+  });
+
+  it("still carries the note when staff reworded the message", () => {
+    expect(withMotNote("Hi Sam, give us a ring.", "It failed.", "mot_update")).toBe("Hi Sam, give us a ring.\n\nNotes from its MOT: It failed.");
+  });
+
+  it("goes as the template once WhatsApp approves it, and as text until then", () => {
+    expect(motUpdateRoute({ updateTemplate: true })).toEqual({ channel: "template", template: "mot_update" });
+    expect(motUpdateRoute({ updateTemplate: false })).toEqual({ channel: "text" });
+  });
+});
 
 /** The approved vehicle_ready template body, read back from Twilio on 10/09/2026. */
 const APPROVED_READY = "Hi {{1}}, your {{2}} is ready to collect from ELI MOTORS. We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. Any questions, call us on 020 8203 6449.";

@@ -327,7 +327,7 @@ export async function loadLatestInbound(lookbackDays: number): Promise<WaitingRo
                     OR regexp_replace(regexp_replace(COALESCE(r.recipient,''), '[^0-9]', '', 'g'), '^(44|0)', '')
                      = regexp_replace(regexp_replace(COALESCE(l."customerPhone",''), '[^0-9]', '', 'g'), '^(44|0)', ''))
                AND (r."templateUsed" IN ('freeform', 'freeform-sms', 'vehicle_ready')
-                    OR r."messageType" IN ('Other', 'car_ready'))) AS "repliedAt"
+                    OR r."messageType" IN ('Other', 'car_ready', 'mot_update'))) AS "repliedAt"
       FROM latest l
      ORDER BY l."receivedAt" ASC`);
   const rows: any[] = res?.rows ?? res ?? [];

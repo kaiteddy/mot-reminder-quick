@@ -34,7 +34,7 @@ import { openPartslink24 } from "@/lib/partslink24";
 import { DOC_TYPE_TAILWIND, displayDocNo } from "@/lib/docType";
 import { buildServiceSets, isEstimatedLubricant } from "@shared/serviceParts";
 import { normRegKey } from "@shared/vehicleIdentity";
-import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, smsSegments, withMotNote } from "@shared/carReadyMessage";
+import { MOT_NOTE_MAX, carReadyRoute, cleanMotNote, motUpdateRoute, smsSegments, withMotNote, type CarTextKind } from "@shared/carReadyMessage";
 import { DefectExplainButton } from "@/components/DefectExplainer";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -458,11 +458,15 @@ export default function DocumentDetails() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", cc: "", subject: "", message: "" });
   // "Car is ready" — opens a confirm dialog rather than firing on the click, so a wrong number or
-  // clumsy wording can be caught before it reaches the customer.
+  // clumsy wording can be caught before it reaches the customer. The same dialog sends the MOT
+  // update from a job sheet: what its MOT found, and what would the customer like done?
   const [readyOpen, setReadyOpen] = useState(false);
+  const [readyKind, setReadyKind] = useState<CarTextKind>("ready");
+  const isMotUpdate = readyKind === "mot_update";
   const [readyForm, setReadyForm] = useState({ to: "", message: "" });
-  const readyPreview = trpc.carReady.preview.useQuery({ docId: id }, { enabled: readyOpen });
+  const readyPreview = trpc.carReady.preview.useQuery({ docId: id, kind: readyKind }, { enabled: readyOpen });
   const readyMut = trpc.carReady.send.useMutation();
+  const motUpdateMut = trpc.carReady.sendMotUpdate.useMutation();
   // Notes from its MOT — which test, which of its items, and the note staff will send. Kept apart
   // from readyForm so rewording the message never loses the note, and the other way round.
   const [readyTestIdx, setReadyTestIdx] = useState(0);
@@ -1241,7 +1245,8 @@ export default function DocumentDetails() {
   const excessDeduction = isExcess ? 0 : fullVatToCustomer ? +(excessNetOnly + liveTotals.vat).toFixed(2) : (Number((data as any)?.doc?.excessGross) || 0);
   const docBalance = +(liveTotals.gross - excessDeduction - docReceipts).toFixed(2);
   /** Opens the dialog; the MOT Adv. tab passes the index of the test whose items should go with it. */
-  function openCarReady(testIdx?: unknown) {
+  function openCarReady(testIdx?: unknown, kind: CarTextKind = "ready") {
+    setReadyKind(kind);
     setReadyForm({ to: "", message: "" });   // filled from the preview once it lands
     const chosen = typeof testIdx === "number";
     setReadyTestIdx(chosen ? testIdx : 0);
@@ -1256,6 +1261,7 @@ export default function DocumentDetails() {
     if (!items.length) { toast.error("Tick at least one item to explain"); return; }
     try {
       const r = await readyNoteMut.mutateAsync({
+        kind: readyKind,
         testDate: readyTest?.completedDate ? new Date(readyTest.completedDate).toLocaleDateString("en-GB") : undefined,
         testResult: readyTest?.testResult || undefined,
         items,
@@ -1269,8 +1275,15 @@ export default function DocumentDetails() {
     if (to.replace(/\D/g, "").length < 10) { toast.error("Enter a valid mobile number"); return; }
     const motNote = readyNoteShown ? readyNote.trim() : "";
     try {
-      await readyMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote: motNote || undefined });
-      toast.success(`Told the customer their car is ready${motNote ? ", with notes from its MOT," : ""} (${to})`);
+      if (isMotUpdate) {
+        // The note is the update: without it the customer would only hear that the car had its MOT.
+        if (!cleanMotNote(motNote)) { toast.error("Write the note on what its MOT found first"); return; }
+        await motUpdateMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote });
+        toast.success(`Sent the MOT update, asking what they would like done (${to})`);
+      } else {
+        await readyMut.mutateAsync({ docId: id, to, message: readyForm.message, motNote: motNote || undefined });
+        toast.success(`Told the customer their car is ready${motNote ? ", with notes from its MOT," : ""} (${to})`);
+      }
       setReadyOpen(false);
     } catch (e: any) { toast.error("Message failed: " + (e.message || "")); }
   }
@@ -1278,6 +1291,9 @@ export default function DocumentDetails() {
   // the invoice is what the customer collects against. SI is the ordinary invoice, XS the
   // policy-excess one.
   const isCollectable = ["SI", "XS"].includes((data as any)?.doc?.docType);
+  // The MOT update belongs to the work in progress instead — a job sheet or an estimate — while the
+  // customer still has to say what gets done.
+  const isPreInvoice = ["JS", "ES"].includes((data as any)?.doc?.docType);
   const docStatusLabel = (data as any)?.doc?.dateIssued ? ((data as any)?.doc?.docStatus || "Issued") : "Not Issued";
 
   // Additional Info / Extras / Account / Totals — shared between modern (rendered inline
@@ -1495,6 +1511,9 @@ export default function DocumentDetails() {
                   {isCollectable && (
                     <button onClick={openCarReady} title="Text the customer that their car is ready to collect" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><CheckCircle2 className="w-4 h-4 text-green-600" /> Car ready</button>
                   )}
+                  {isPreInvoice && (
+                    <button onClick={() => openCarReady(undefined, "mot_update")} title="Text the customer what its MOT found and ask what they would like done" className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent"><ShieldCheck className="w-4 h-4 text-amber-600" /> MOT update</button>
+                  )}
                 </>
               )}
               <button onClick={handlePrint} disabled={printing || isNew} title={isNew ? "Save first by entering details" : undefined} className="inline-flex items-center gap-1.5 border rounded px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Print</button>
@@ -1596,6 +1615,7 @@ export default function DocumentDetails() {
               <button className="js-action-button" onClick={handlePrint} disabled={printing || isNew}>Print</button>
               {!isNew && <button className="js-action-button" onClick={openEmail}>Email</button>}
               {!isNew && isCollectable && <button className="js-action-button" onClick={openCarReady}>Car ready</button>}
+              {!isNew && isPreInvoice && <button className="js-action-button" onClick={() => openCarReady(undefined, "mot_update")}>MOT update</button>}
               <button className="js-action-button" onClick={() => toast.message("Extras menu isn't available in Classic view yet — see the Extras panel below.")}>Extras <ChevronDown className="w-3 h-3" /></button>
               {!isNew && (
                 <div className="relative">
@@ -2111,7 +2131,7 @@ export default function DocumentDetails() {
                       registration={form.registration}
                       make={form.make || undefined} model={form.model || undefined}
                       busy={partsForDefects.isPending}
-                      onTextCustomer={isCollectable ? (testIdx: number) => openCarReady(testIdx) : undefined}
+                      onTextCustomer={isCollectable ? (testIdx: number) => openCarReady(testIdx) : isPreInvoice ? (testIdx: number) => openCarReady(testIdx, "mot_update") : undefined}
                       onUse={async (texts) => {
                         if (!texts.length) return;
                         // 1) put the MOT defect wording into the job Description
@@ -2311,12 +2331,14 @@ export default function DocumentDetails() {
           </div>
         )}
 
-        {/* "car is ready" — confirm before it goes to the customer */}
+        {/* "car is ready" or the MOT update — confirm before it goes to the customer */}
         {readyOpen && (
           <div className="fixed inset-0 z-[100] bg-black/40 flex items-start justify-center p-4 overflow-auto" onClick={() => setReadyOpen(false)}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl mt-16" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b">
-                <h3 className="text-lg font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-600" /> Car is ready</h3>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  {isMotUpdate ? <><ShieldCheck className="w-5 h-5 text-amber-600" /> MOT update</> : <><CheckCircle2 className="w-5 h-5 text-green-600" /> Car is ready</>}
+                </h3>
                 <button onClick={() => setReadyOpen(false)} className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-4 h-4" /></button>
               </div>
               <div className="p-4 space-y-3">
@@ -2326,6 +2348,9 @@ export default function DocumentDetails() {
                   <p className="py-6 text-center text-red-600 text-sm">{readyPreview.error.message}</p>
                 ) : (
                   <>
+                    {isMotUpdate && (
+                      <p className="text-[12.5px] text-slate-600">Tells the customer what its MOT found, and asks what they would like us to do.</p>
+                    )}
                     {readyPreview.data?.reason && (
                       <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">{readyPreview.data.reason}</p>
                     )}
@@ -2344,6 +2369,17 @@ export default function DocumentDetails() {
                     </div>
 
                     {/* Notes from its MOT: what the tester recorded, in words the customer understands. */}
+                    {isMotUpdate && !readyMot.isLoading && (() => {
+                      // DVSA usually has a test within minutes, but an update about an old MOT would be worse
+                      // than none — so say plainly when today's test isn't on record yet.
+                      const when = readyTests[0]?.completedDate ? new Date(readyTests[0].completedDate) : null;
+                      if (when && Date.now() - when.getTime() < 3 * 86_400_000) return null;
+                      return (
+                        <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">
+                          {when ? `Its latest MOT on record is from ${when.toLocaleDateString("en-GB")}.` : "No MOT on record for this car yet."} If it was tested today, DVSA may not have the result yet: close this and try again in a few minutes.
+                        </p>
+                      );
+                    })()}
                     {readyMot.isLoading ? (
                       <p className="text-[12px] text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1.5" />Checking its MOT history…</p>
                     ) : readyTest && readyItems.length === 0 ? (
@@ -2407,12 +2443,19 @@ export default function DocumentDetails() {
                     {readyNoteShown && cleanMotNote(readyNote) && (
                       <div>
                         <label className="text-xs text-muted-foreground">What the customer gets</label>
-                        <div className="mt-0.5 whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 text-[12.5px] text-slate-700">{withMotNote(readyForm.message, readyNote)}</div>
+                        <div className="mt-0.5 whitespace-pre-wrap rounded border bg-slate-50 px-2 py-1.5 text-[12.5px] text-slate-700">{withMotNote(readyForm.message, readyNote, readyKind)}</div>
                       </div>
                     )}
                     <p className="text-[11px] text-slate-400 -mt-1">
                       {(() => {
                         const hasNote = readyNoteShown && !!cleanMotNote(readyNote);
+                        if (isMotUpdate) {
+                          if (!hasNote) return "Tick what the tester found and write the note first: the note is the update.";
+                          const segs = smsSegments(withMotNote(readyForm.message, readyNote, "mot_update"));
+                          return motUpdateRoute({ updateTemplate: !!readyPreview.data?.updateTemplate }).channel === "template"
+                            ? `Sends on WhatsApp as the approved MOT update template, falling back to this text by SMS (${segs} SMS segments).`
+                            : `Sends as a text (${segs} SMS segments): on WhatsApp if they have messaged us in the last 24 hours, otherwise by SMS. The WhatsApp template for MOT updates isn't approved yet.`;
+                        }
                         const route = carReadyRoute({ hasNote, readyTemplate: !!readyPreview.data?.usingTemplate, notesTemplate: !!readyPreview.data?.notesTemplate });
                         const segs = smsSegments(withMotNote(readyForm.message, hasNote ? readyNote : ""));
                         if (route.channel === "template") return hasNote
@@ -2425,9 +2468,10 @@ export default function DocumentDetails() {
                     </p>
                     <div className="flex justify-end gap-2 pt-1">
                       <button onClick={() => setReadyOpen(false)} className="border rounded px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>
-                      <button onClick={sendCarReady} disabled={readyMut.isPending || !readyForm.to.trim() || !readyForm.message.trim()}
+                      <button onClick={sendCarReady}
+                        disabled={readyMut.isPending || motUpdateMut.isPending || !readyForm.to.trim() || !readyForm.message.trim() || (isMotUpdate && !(readyNoteShown && cleanMotNote(readyNote)))}
                         className="bg-green-700 text-white rounded px-4 py-1.5 text-sm hover:bg-green-800 disabled:opacity-50 inline-flex items-center gap-1.5">
-                        {readyMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />} Send{readyForm.to.trim() ? ` to ${readyForm.to.trim()}` : ""}
+                        {readyMut.isPending || motUpdateMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />} Send{readyForm.to.trim() ? ` to ${readyForm.to.trim()}` : ""}
                       </button>
                     </div>
                   </>
@@ -3801,7 +3845,7 @@ function MOTAdvisoriesTab({ registration, onUse, busy, make, model, onTextCustom
               {defects.length > 0 && (
                 <div className="flex items-center gap-3">
                   {onTextCustomer && (
-                    <button type="button" onClick={() => onTextCustomer(ti)} title="Open Car ready with these items explained in plain English"
+                    <button type="button" onClick={() => onTextCustomer(ti)} title="Text the customer these items, explained in plain English"
                       className="inline-flex items-center gap-1 text-[12px] text-green-700 hover:underline"><MessageSquare className="w-3.5 h-3.5" /> Text to customer</button>
                   )}
                   <button type="button" disabled={busy} onClick={() => onUse(defects.map((d: any) => d.text))} className="text-[12px] text-violet-700 hover:underline disabled:opacity-50">+ Add all ({defects.length})</button>

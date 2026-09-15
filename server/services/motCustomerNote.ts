@@ -1,5 +1,6 @@
 /**
- * The plain-English MOT note that goes out with "your car is ready to collect".
+ * The plain-English MOT note that goes out with "your car is ready to collect", and in the MOT
+ * update a job sheet sends before the invoice.
  *
  * "Nearside Rear Tyre worn close to legal limit/worn on edge (5.2.3 (e))" tells a customer nothing,
  * and the questions come back by phone. This turns what the tester recorded into two or three
@@ -14,7 +15,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { AI_MODEL_GUIDE, getRuntimeProvider, hasAIKey } from "./aiProvider";
-import { MOT_NOTE_CLOSE, MOT_NOTE_LEAD, MOT_NOTE_MAX, cleanMotNote, toPlainText } from "../../shared/carReadyMessage";
+import { type CarTextKind, MOT_NOTE_CLOSE, MOT_NOTE_LEAD, MOT_NOTE_MAX, cleanMotNote, toPlainText } from "../../shared/carReadyMessage";
 
 export type MotItem = { type?: string | null; text: string; dangerous?: boolean | null };
 export type MotNoteUrgency = "monitor" | "plan" | "soon" | "urgent";
@@ -85,7 +86,16 @@ export function resultForNote(result: string | null | undefined, items: MotItem[
   return /FAIL/.test(r) && repaired && !stillFailing ? "PASSED (a fault was put right during the test)" : r;
 }
 
-const SYSTEM = `You write one short note for a text message from a UK family garage to a customer who knows nothing about cars. The text has already told them their car is ready to collect, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it says "${MOT_NOTE_CLOSE}" Write only the middle: what the MOT tester recorded, in plain everyday English, and whether they need to do anything.
+/** What the text says either side of the note, so the model writes only the middle. */
+const AROUND_NOTE: Record<CarTextKind, string> = {
+  ready: `The text has already told them their car is ready to collect, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it says "${MOT_NOTE_CLOSE}"`,
+  // The car is still with us and nothing is decided yet, so the note must never read as if it were ready.
+  mot_update: `The text has already told them their car has had its MOT, and introduces your note with "${MOT_NOTE_LEAD}". Straight after your note it asks what they would like us to do, and says nothing is done without their go-ahead.`,
+};
+
+/** The model's instructions for a note inside the given text. */
+export function noteInstructions(kind: CarTextKind): string {
+  return `You write one short note for a text message from a UK family garage to a customer who knows nothing about cars. ${AROUND_NOTE[kind]} Write only the middle: what the MOT tester recorded, in plain everyday English, and whether they need to do anything.
 
 Rules:
 - At most ${MOT_NOTE_MAX} characters including spaces. Aim for 120-220. It is a text message, so be brief.
@@ -102,6 +112,7 @@ Rules:
 - When space is short, leave minor points out rather than cramming. Drop things that are not faults first, such as a child seat stopping a seat belt being fully checked.
 - No greeting, no sign-off, and do not repeat the lead-in or the closing line.
 - One paragraph: no line breaks, no lists, no emoji. Plain keyboard characters only: straight quotes and apostrophes, hyphens not dashes.`;
+}
 
 const schema = z.object({
   note: z.string(),
@@ -133,7 +144,7 @@ export async function withNetworkRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function writeMotNote(input: { testDate?: string | null; testResult?: string | null; items: MotItem[] }):
+export async function writeMotNote(input: { testDate?: string | null; testResult?: string | null; items: MotItem[]; kind?: CarTextKind }):
   Promise<{ note: string; urgency: MotNoteUrgency; attempts: number; trimmed: boolean }> {
   const items = itemsForNote(input.items);
   if (!items.length) return { note: "", urgency: "monitor", attempts: 0, trimmed: false };
@@ -147,6 +158,7 @@ export async function writeMotNote(input: { testDate?: string | null; testResult
   ].join("\n");
 
   const provider = getRuntimeProvider();
+  const system = noteInstructions(input.kind ?? "ready");
   let last = "";
   let urgency: MotNoteUrgency = "monitor";
   // The limit is hard — Twilio refuses the template variable over 256 characters — and the model
@@ -155,7 +167,7 @@ export async function writeMotNote(input: { testDate?: string | null; testResult
   for (let attempt = 1; attempt <= 2; attempt++) {
     const { object } = await withNetworkRetry(() => generateObject({
       model: provider(AI_MODEL_GUIDE),
-      system: SYSTEM,
+      system,
       prompt: attempt === 1 ? prompt
         : `${prompt}\n\nYour note was ${last.length} characters, over the ${MOT_NOTE_MAX}-character limit:\n"${last}"\nRewrite it in at most ${MOT_NOTE_MAX - 40} characters, leaving out the least important points.`,
       schema,

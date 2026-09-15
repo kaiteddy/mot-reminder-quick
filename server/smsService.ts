@@ -2,7 +2,7 @@
  * SMS Service using Twilio
  * Sends SMS reminders to customers
  */
-import { carReadyRoute } from "../shared/carReadyMessage";
+import { carReadyRoute, motUpdateRoute } from "../shared/carReadyMessage";
 import { normalizePhoneNumber } from "./utils/phoneUtils";
 import { followUpMessage } from "../shared/motFollowUpMessage";
 
@@ -539,6 +539,55 @@ export function generateCarReadyMessage(params: {
   return `Hi ${firstName}, your ${vehicle} is ready to collect from ${who}. `
     + `We are open 8:30am-5:30pm Mon-Fri. If you cannot collect today, please let us know. `
     + `Any questions, call us on ${tel}.`;
+}
+
+/**
+ * "Your car has had its MOT — what would you like us to do?" Sent from the job sheet, before the
+ * invoice, when the MOT needs the customer's decision. The plain text and the mot_update template
+ * both carry the MOT note straight after the first sentence (withMotNote). Like the car-ready text
+ * it quotes no money: nothing has been agreed yet.
+ */
+export function generateMotUpdateMessage(params: {
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+  companyName?: string | null;
+  phone?: string | null;
+}): string {
+  const { firstName, vehicle } = carReadyParts(params);
+  const who = params.companyName || "ELI MOTORS";
+  const tel = params.phone || "020 8203 6449";
+  // Plain ASCII only, for the same reason as generateCarReadyMessage.
+  return `Hi ${firstName}, your ${vehicle} has had its MOT at ${who}. `
+    + `Please let us know what you would like us to do: reply to this message or call us on ${tel}. `
+    + `Nothing is done without your go-ahead.`;
+}
+
+/**
+ * Send the MOT update. `message` is the whole text, note included: what goes out as plain text, and
+ * what a failed template send falls back to. See motUpdateRoute.
+ */
+export async function sendMotUpdateMessage(params: {
+  to: string;
+  customerName: string;
+  registration: string;
+  vehicle?: string | null;
+  message: string;
+  /** The cleaned MOT note — the template's {{3}}. */
+  motNote: string;
+  templateSid?: string | null;
+}): Promise<SendSMSResult> {
+  const parts = carReadyParts(params);
+  if (motUpdateRoute({ updateTemplate: !!params.templateSid }).channel === "template") {
+    return sendSMS({
+      to: params.to,
+      useTemplate: true,
+      templateSid: params.templateSid!,
+      templateVariables: { '1': parts.firstName, '2': parts.vehicle, '3': params.motNote },
+      fallbackMessage: params.message,
+    });
+  }
+  return sendSMS({ to: params.to, message: params.message });
 }
 
 /**
