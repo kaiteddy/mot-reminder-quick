@@ -38,6 +38,7 @@ export default defineConfig({
       "server/motFollowUpMessage.test.ts",
       "server/messageDelivery.test.ts",
       "server/followUpCall.test.ts",
+      "server/attachOrders.test.ts",
     ],
   },
 });
