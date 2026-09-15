@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDebouncedValue, looksLikeCompleteReg } from "@/hooks/useDebouncedValue";
 import { createPortal } from "react-dom";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
-import { JobMarginCard } from "@/components/JobMarginCard";
+import { JobMarginCard, OrderedPartsStrip } from "@/components/JobMarginCard";
 import MergeCustomersDialog from "@/components/MergeCustomersDialog";
 import ServicingTab from "@/components/ServicingTab";
 import { useOpenDocs, upsertOpenDoc, removeOpenDoc } from "@/lib/openDocs";
@@ -2089,7 +2089,13 @@ export default function DocumentDetails() {
                     )}
                     <ItemsEditor items={items} setItems={setItemsDirty} kind="Labour" editing={editing} vehicle={{ make: form.make, model: form.model }} engineCC={form.engineCC} carOilGrade={vehInfo?.oilGrades?.[0]} />
                   </TabsContent>
-                  <TabsContent value="parts" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} engineCC={form.engineCC} carOilGrade={vehInfo?.oilGrades?.[0]} /></TabsContent>
+                  <TabsContent value="parts" className="mt-0">
+                    <OrderedPartsStrip
+                      documentId={id}
+                      onAddPart={editing ? (p) => setItemsDirty((prev) => [...prev, recalc({ itemType: "Part", partNumber: p.partNumber, description: p.description, quantity: p.quantity, unitPrice: 0, vatRate: 20, _k: nextItemKey() })]) : undefined}
+                    />
+                    <ItemsEditor items={items} setItems={setItemsDirty} kind="Part" editing={editing} vehicle={{ make: form.make, model: form.model, vin: form.vin }} engineCC={form.engineCC} carOilGrade={vehInfo?.oilGrades?.[0]} />
+                  </TabsContent>
                   <TabsContent value="advisories" className="mt-0"><ItemsEditor items={items} setItems={setItemsDirty} kind="Other" editing={editing} /></TabsContent>
                   <TabsContent value="partsHistory" className="mt-0"><PrevParts
                     vehicleId={resolvedVehicleId}

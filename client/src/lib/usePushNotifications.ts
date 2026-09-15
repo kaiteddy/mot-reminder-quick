@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { isStandalone } from "@/lib/installApp";
 
 export type PushState =
   | "unsupported"       // browser has no push at all
@@ -17,8 +18,6 @@ export type PushState =
   | "on";
 
 const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
-const isStandalone = () =>
-  window.matchMedia?.("(display-mode: standalone)").matches || (navigator as any).standalone === true;
 
 /** VAPID public keys travel as base64url; PushManager wants raw bytes. */
 function urlBase64ToUint8Array(base64: string): Uint8Array {

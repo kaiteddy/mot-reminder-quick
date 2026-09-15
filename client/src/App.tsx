@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { useEffect } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import { syncAppManifest } from "./lib/installApp";
 import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -204,6 +205,16 @@ function useUpdateWatcher() {
   }, []);
 }
 
+/** A move between screens can cross between the office and workshop apps (see lib/installApp).
+ *  Its own component so a navigation re-renders only this, not the providers around the app. */
+function AppManifestSync() {
+  const [location] = useLocation();
+  useEffect(() => {
+    syncAppManifest(window.location.pathname + window.location.search);
+  }, [location]);
+  return null;
+}
+
 function App() {
   useUpdateWatcher();
   return (
@@ -211,6 +222,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
+          <AppManifestSync />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

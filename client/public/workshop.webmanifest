@@ -1,0 +1,17 @@
+{
+  "id": "/workshop",
+  "name": "ELI Motors Workshop",
+  "short_name": "ELI Workshop",
+  "description": "Workshop Mode — scan a car, check its MOT and start a job sheet",
+  "start_url": "/workshop",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
