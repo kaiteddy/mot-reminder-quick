@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,22 @@ function money(v: number | null | undefined) {
 
 const agoShort = (h: number | null | undefined) =>
   h == null ? "" : h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+
+// Bucket an order by when it was placed, relative to today.
+const BUCKET_ORDER = ["Today", "Yesterday", "Earlier this week", "Last week", "Older"] as const;
+function bucketOf(dateStr?: string | null): (typeof BUCKET_ORDER)[number] {
+  if (!dateStr) return "Older";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((startToday - dDay) / 86400000);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff <= 6) return "Earlier this week";
+  if (diff <= 13) return "Last week";
+  return "Older";
+}
 
 /** One board row that expands on click to show the parts on the order. */
 function BoardRow({ o, base }: { o: any; base: string }) {
@@ -141,8 +157,12 @@ export default function OmnipartOrders() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              Live Omnipart order tracking{typeof data?.count === "number" ? ` · ${orders.length}/${data.count}` : ""}
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                <span className={"w-2 h-2 rounded-full " + (error ? "bg-slate-400" : "bg-green-500 animate-pulse")} />
+                {error ? "OFFLINE" : "LIVE"}
+              </span>
+              Omnipart order tracking{typeof data?.count === "number" ? ` · ${orders.length}/${data.count}` : ""}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -169,9 +189,22 @@ export default function OmnipartOrders() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders.map((o) => (
-                      <BoardRow key={o.orderRef} o={o} base={base} />
-                    ))}
+                    {BUCKET_ORDER.map((bucket) => {
+                      const inBucket = orders.filter((o: any) => bucketOf(o.orderDate) === bucket);
+                      if (inBucket.length === 0) return null;
+                      return (
+                        <Fragment key={bucket}>
+                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableCell colSpan={8} className="py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {bucket} · {inBucket.length}
+                            </TableCell>
+                          </TableRow>
+                          {inBucket.map((o: any) => (
+                            <BoardRow key={o.orderRef} o={o} base={base} />
+                          ))}
+                        </Fragment>
+                      );
+                    })}
                     {orders.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
