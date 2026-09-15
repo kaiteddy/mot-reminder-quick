@@ -11,6 +11,7 @@ function money(v: number) {
 
 const SRC = (s?: string) => (s === "ebay" ? { t: "eBay", c: "bg-[#e53238]/10 text-[#e53238]" } :
   s === "amazon" ? { t: "Amzn", c: "bg-[#ff9900]/15 text-[#b06f00]" } :
+  s === "gsf" ? { t: "GSF", c: "bg-blue-100 text-blue-700" } :
   { t: "ECP", c: "bg-orange-100 text-orange-700" });
 
 export function JobMarginCard({ documentId, partsSellNet, onAddPart }: {
@@ -84,7 +85,7 @@ export function JobMarginCard({ documentId, partsSellNet, onAddPart }: {
           <div className="mt-2 pt-1.5 border-t space-y-0.5 text-[13px]">
             <div className="flex justify-between"><span className="text-slate-600">Parts sell (ex VAT)</span><span>{money(partsSellNet)}</span></div>
             {ecpOrders.length > 0 && (
-              <div className="flex justify-between"><span className="text-slate-600">ECP cost (ex VAT)</span><span>{money(ecpCost)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">ECP/GSF cost (ex VAT)</span><span>{money(ecpCost)}</span></div>
             )}
             {emailOrders.length > 0 && (
               <div className="flex justify-between"><span className="text-slate-600">eBay/Amazon cost (ex VAT est.)</span><span>{money(emailNet)}</span></div>

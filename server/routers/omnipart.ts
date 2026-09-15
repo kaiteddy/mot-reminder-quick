@@ -518,6 +518,51 @@ export const omnipartRouter = router({
           })
           .sort((a, b) => String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
 
+        // Pull in GSF Car Parts trade orders BEFORE the job match, so their PO reg auto-matches to a
+        // job exactly like ECP. GSF is a live server-side login (no email parsing); it contributes
+        // nothing if GSF_USERNAME/GSF_PASSWORD aren't configured, and never breaks the board.
+        try {
+          const { gsfGetOrders } = await import("../gsf");
+          const gsf = await gsfGetOrders();
+          const PLATE = /^([A-Z]{2}[0-9]{2}[A-Z]{3}|[A-Z][0-9]{1,3}[A-Z]{3}|[A-Z]{3}[0-9]{1,3}[A-Z])$/;
+          for (const g of gsf as any[]) {
+            const poRaw = g.purchaseOrderNumber ? String(g.purchaseOrderNumber) : "";
+            const poKey = poRaw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const reg = PLATE.test(poKey) ? poRaw : null;         // only a plate-shaped PO counts as a reg
+            const goods = g.orderTotal != null ? Number(g.orderTotal) : null;
+            const vat = g.orderTotalVat != null ? Number(g.orderTotalVat) : 0;
+            const delivered = String(g.deliveryStatus || "").toLowerCase().includes("deliver");
+            (orders as any[]).push({
+              orderRef: g.documentNumber || poRaw || "GSF",
+              source: "gsf",
+              reg,
+              make: null, model: null, year: null, vin: null,
+              orderDate: g.orderedAt || null,
+              status: g.deliveryStatus || null,
+              deliveryStatus: g.deliveryStatus || null,
+              eta: null,
+              numberOfItems: (g.lines || []).length || null,
+              parts: (g.lines || []).map((l: any) => ({
+                code: l.sku || null, name: l.description || null, quantity: l.quantity ?? null,
+                status: l.credit ? "Credit" : null, lineCost: l.price != null ? Number(l.price) : null, image: null, usage: null,
+              })),
+              totalIncTax: goods != null ? goods + vat : null,
+              totalExcTax: goods,                                 // GSF goods total is ex-VAT (trade cost)
+              dbOrderId: null, branchId: null,
+              ageHours: g.orderedAt ? Math.max(0, Math.round((Date.now() - new Date(g.orderedAt).getTime()) / 3600000)) : null,
+              needsAttention: (() => {
+                if (delivered || !g.orderedAt) return false;
+                const od = new Date(g.orderedAt);
+                const endOfDay = new Date(od.getFullYear(), od.getMonth(), od.getDate(), 18, 0, 0).getTime();
+                return Date.now() > endOfDay;
+              })(),
+              jobSheet: null,
+            });
+          }
+        } catch (e: any) {
+          console.error("GSF merge error:", e?.message);
+        }
+
         // Match each order to the job it was ordered against. The reg is the clean join (the order's
         // customer_order_ref == serviceHistory.registration); the order DATE picks the specific job
         // among that vehicle's several — the one open when the parts were ordered.
