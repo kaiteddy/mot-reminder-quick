@@ -158,8 +158,17 @@ const USAGE_OPTS: Array<{ key: "fitted" | "returned" | "spare"; label: string; o
   { key: "spare",    label: "Spare",    on: "bg-slate-600 text-white border-slate-600" },
 ];
 
-/** Fitted / Returned / Spare pills for one part. */
-function UsagePicker({ orderRef, code, usage }: { orderRef: string; code: string | null; usage: string | null }) {
+/**
+ * Fitted / Returned / Spare for one part.
+ *
+ * A line of one gets the three pills, unchanged. A line of MORE than one also gets a count against
+ * each, because four bought and three fitted is the ordinary case — the pills alone would force it
+ * to all-or-nothing, which either charges the customer for the fourth or loses the credit on it.
+ */
+function UsagePicker(
+  { orderRef, code, usage, quantity, detail }:
+  { orderRef: string; code: string | null; usage: string | null; quantity?: number | null; detail?: any },
+) {
   const utils = trpc.useUtils();
   const m = trpc.omnipart.setPartUsage.useMutation({
     onMutate: async (vars) => {
@@ -170,22 +179,70 @@ function UsagePicker({ orderRef, code, usage }: { orderRef: string; code: string
     },
     onError: (_e, _v, ctx: any) => { if (ctx?.prev) utils.omnipart.getOrderTracking.setData(undefined, ctx.prev); },
   });
+  const qty = Math.max(Number(quantity ?? 1) || 1, 1);
+  const split = trpc.omnipart.setPartQuantities.useMutation({
+    onSettled: () => utils.omnipart.getOrderTracking.invalidate(),
+  });
+
   if (!code) return null;
+
+  const counts = {
+    fitted: Number(detail?.fitted ?? 0),
+    returned: Number(detail?.returned ?? 0),
+    spare: Number(detail?.spare ?? 0),
+  };
+  const undecided = Math.max(qty - counts.fitted - counts.returned - counts.spare, 0);
+
+  const bump = (key: "fitted" | "returned" | "spare", by: number) => {
+    const next = { ...counts, [key]: Math.max(counts[key] + by, 0) };
+    split.mutate({ orderRef, code, quantityOrdered: qty, ...next });
+  };
+
   return (
-    <span className="inline-flex rounded-md border overflow-hidden print:hidden">
-      {USAGE_OPTS.map((opt) => {
-        const active = usage === opt.key;
-        return (
-          <button
-            key={opt.key}
-            onClick={(e) => { e.stopPropagation(); m.mutate({ orderRef, code, usage: active ? null : opt.key }); }}
-            className={"px-2 py-0.5 text-[11px] font-medium border-l first:border-l-0 transition-colors " +
-              (active ? opt.on : "bg-white text-slate-500 hover:bg-slate-50")}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
+    <span className="inline-flex flex-wrap items-center gap-1 print:hidden">
+      <span className="inline-flex rounded-md border overflow-hidden">
+        {USAGE_OPTS.map((opt) => {
+          const active = usage === opt.key;
+          return (
+            <button
+              key={opt.key}
+              onClick={(e) => { e.stopPropagation(); m.mutate({ orderRef, code, usage: active ? null : opt.key }); }}
+              className={"px-2 py-0.5 text-[11px] font-medium border-l first:border-l-0 transition-colors " +
+                (active ? opt.on : "bg-white text-slate-500 hover:bg-slate-50")}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </span>
+
+      {/* Only where a split is possible. On a line of one the pills already say everything. */}
+      {qty > 1 ? (
+        <span className="inline-flex items-center gap-1 rounded-md border bg-white px-1 py-0.5 text-[11px]">
+          {USAGE_OPTS.map((opt) => (
+            <span key={opt.key} className="inline-flex items-center">
+              <button
+                onClick={(e) => { e.stopPropagation(); bump(opt.key, -1); }}
+                disabled={counts[opt.key] === 0 || split.isPending}
+                className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                aria-label={`One fewer ${opt.label.toLowerCase()}`}
+              >−</button>
+              <span className="min-w-[2.6rem] text-center tabular-nums text-slate-600">
+                {counts[opt.key]} {opt.label.toLowerCase()}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); bump(opt.key, +1); }}
+                disabled={undecided === 0 || split.isPending}
+                className="px-1 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                aria-label={`One more ${opt.label.toLowerCase()}`}
+              >+</button>
+            </span>
+          ))}
+          {undecided > 0 ? (
+            <span className="rounded bg-amber-50 px-1 text-amber-700">{undecided} of {qty} not decided</span>
+          ) : null}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -326,7 +383,7 @@ function BoardRow({ o, base }: { o: any; base: string }) {
                       {p.code && <div className="text-xs text-muted-foreground/70 tabular-nums">{p.code}</div>}
                     </div>
                     <span className="ml-auto flex items-center gap-3 shrink-0">
-                      <UsagePicker orderRef={o.orderRef} code={p.code} usage={p.usage} />
+                      <UsagePicker orderRef={o.orderRef} code={p.code} usage={p.usage} quantity={p.quantity} detail={p.usageDetail} />
                       {p.status && <span className="text-xs text-muted-foreground/70">{p.status}</span>}
                       {/* Internal cost (ex VAT) — Parts Orders is a staff page; print:hidden as a belt-and-braces guard. */}
                       {p.lineCost != null && (
