@@ -9,6 +9,7 @@ import { Home, Plus, Trash2, ChevronDown, Loader2, Save, Car, User, Wrench, Pack
 import { trpc } from "@/lib/trpc";
 import { round2 } from "@/lib/utils";
 import { buildServiceSets, parseVehOil } from "@shared/serviceParts";
+import { AttachOrderPicker } from "@/components/AttachOrderPicker";
 import { toast } from "sonner";
 import { printDocumentOnHandheld } from "@/lib/printDocument";
 import { belowPriceFloor, priceAtFloor, priceFloors, type PriceFloor } from "@shared/priceFloors";
@@ -465,6 +466,13 @@ function WorkshopJobSheetInner() {
 
           <Section id="parts" open={open} setOpen={setOpen} icon={Package} title="Parts" summary={parts.length ? `${shortCount(parts) ? `⚠ ${shortCount(parts)} under price` : parts.length} · ${money(sum(parts))}` : undefined}>
             <LineRows rows={parts} kind="Part" upd={upd} rm={rm} add={add} shortOf={shortOf} />
+            {/* What we actually paid, from the supplier's own order. Only once the sheet has been
+                saved: an order attaches to a document, and until then there is nothing to attach to. */}
+            {savedId ? (
+              <div className="pt-3">
+                <AttachOrderPicker documentId={savedId} />
+              </div>
+            ) : null}
           </Section>
 
           <Section id="mot" open={open} setOpen={setOpen} icon={ShieldCheck} title="MOT" summary={motNet > 0 ? money(motNet) : undefined}>

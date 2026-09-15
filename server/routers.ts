@@ -7,6 +7,7 @@ import { diagnosticsRouter } from "./routers/diagnostics";
 import { analyticsRouter } from "./routers/analytics";
 import { aiRouter } from "./routers/ai";
 import { omnipartRouter } from "./routers/omnipart";
+import { partsOrdersRouter } from "./routers/partsOrders";
 import { accountsExportRouter } from "./routers/accountsExport";
 import { expenditureRouter } from "./routers/expenditure";
 import { vehicleSaleRouter } from "./routers/vehicleSale";
@@ -23,6 +24,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   ai: aiRouter,
   omnipart: omnipartRouter,
+  partsOrders: partsOrdersRouter,
   accountsExport: accountsExportRouter,
   expenditure: expenditureRouter,
   vehicleSale: vehicleSaleRouter,
