@@ -420,13 +420,32 @@ export const omnipartRouter = router({
         if (authHeader) apiHeaders["Authorization"] = authHeader;
         if (cookieHeader) apiHeaders["Cookie"] = cookieHeader;
 
-        // Empty body returns the recent set; sending limit/page as ints triggers a 422.
-        const raw = await omnipartFetch(
-          "POST",
-          "https://api.omnipart.eurocarparts.com/account/wismo-order-list",
-          apiHeaders,
-          "{}"
-        );
+        // Belt-and-braces against ECP's edge rate-limit: cache the order list in the DB for a short
+        // TTL so many board/margin-card loads (across staff and pages) share ONE ECP call instead of
+        // each hitting the API. On a transient block/outage we also fall back to the last good copy,
+        // so a momentary 403 never blanks the board. Empty body returns the recent set (limit/page
+        // as ints => 422).
+        const { getAppSetting, setAppSetting } = await import("../db");
+        const CACHE_KEY = "omnipart_wismo_cache";
+        const TTL_MS = 60_000;
+        const cached = (await getAppSetting(CACHE_KEY).catch(() => null)) as { at?: number; raw?: any } | null;
+        const fresh = cached?.raw && cached.at && (Date.now() - cached.at) < TTL_MS;
+        let raw: any;
+        let servedStale = false;
+        if (fresh) {
+          raw = cached!.raw;                                       // within TTL — no ECP call at all
+        } else {
+          try {
+            raw = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/account/wismo-order-list", apiHeaders, "{}");
+            if (raw && !(raw["@type"] === "hydra:Error" || raw.detail)) {
+              await setAppSetting(CACHE_KEY, { at: Date.now(), raw }).catch(() => {});
+            }
+          } catch (e: any) {
+            if (cached?.raw) { raw = cached.raw; servedStale = true; }  // ECP blocked/down — serve last good
+            else throw e;
+          }
+        }
+        if (servedStale) console.warn("[omnipart] served stale order list (ECP unreachable)");
 
         if (raw && (raw["@type"] === "hydra:Error" || raw.detail)) {
             throw new Error(raw.detail || raw["hydra:description"] || "Euro Car Parts rejected the order-tracking request.");
