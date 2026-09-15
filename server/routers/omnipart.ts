@@ -444,6 +444,7 @@ export const omnipartRouter = router({
             }
             return {
               orderRef: o?.order_ref || ref,
+              source: "ecp" as string,                                // ECP (Omnipart) vs eBay
               reg: o?.customer_order_ref || vd.vrm || null,           // the join key to a vehicle/job
               make: vd.make || null,
               model: vd.model || null,
@@ -516,9 +517,46 @@ export const omnipartRouter = router({
           console.error("Omnipart job-match error:", e?.message);
         }
 
+        // Pull in eBay parts orders (captured from order emails) and merge them onto the same board.
+        // They carry their own auto-category (from the item) and have no reg/job link.
+        try {
+          const { getEbayOrders } = await import("../db");
+          const ebay = await getEbayOrders();
+          const STAGE_AGE: Record<string, boolean> = { "Delivered": false };
+          for (const e of ebay as any[]) {
+            const price = e.price != null ? Number(e.price) : null;
+            const delivered = String(e.status || "").toLowerCase().includes("deliver");
+            (orders as any[]).push({
+              orderRef: e.orderRef,
+              source: "ebay",
+              reg: null,
+              make: null, model: null, year: null, vin: null,
+              vehicleText: e.fitsVehicle || null,                    // eBay-detected fitment, if any
+              seller: e.seller || null,
+              orderDate: e.orderDate || null,
+              status: e.status || null,
+              deliveryStatus: e.status || null,
+              eta: e.eta || null,
+              numberOfItems: e.quantity ?? 1,
+              parts: [{ code: e.itemId || null, name: e.title || "eBay item", quantity: e.quantity ?? 1,
+                        status: e.status || null, lineCost: price, image: e.image || null, usage: null }],
+              totalIncTax: price,
+              totalExcTax: null,                                    // eBay price as shown; VAT split unknown
+              dbOrderId: null,
+              branchId: null,
+              ageHours: e.orderDate ? Math.max(0, Math.round((Date.now() - new Date(e.orderDate).getTime()) / 3600000)) : null,
+              needsAttention: false,                                // eBay has no same-day SLA to chase
+              jobSheet: null,
+              ebayAutoCategory: e.autoCategory || "general",        // consumed by the meta-merge below
+            });
+          }
+        } catch (e: any) {
+          console.error("eBay merge error:", e?.message);
+        }
+
         // Merge the garage's own facts: whether each part was fitted/returned/spare, and the
-        // Car-job vs General-workshop category. Category is auto (a job matched, or the ref looks
-        // like a plate = car; otherwise general) unless the order carries a manual override.
+        // Car-job vs General-workshop category. Category is auto (eBay: from the item; ECP: a job
+        // matched or the ref looks like a plate = car; otherwise general) unless manually overridden.
         try {
           const { getOmnipartOrderMeta } = await import("../db");
           const meta = await getOmnipartOrderMeta(orders.map((o) => o.orderRef));
@@ -528,7 +566,9 @@ export const omnipartRouter = router({
           };
           for (const o of orders as any[]) {
             const m = meta.get(o.orderRef);
-            const autoCategory = (o.jobSheet || looksLikeReg(o.reg)) ? "car" : "general";
+            const autoCategory = o.ebayAutoCategory
+              ? o.ebayAutoCategory
+              : ((o.jobSheet || looksLikeReg(o.reg)) ? "car" : "general");
             o.autoCategory = autoCategory;
             o.categoryOverride = m?.category ?? null;               // what the user pinned (null = auto)
             o.category = m?.category ?? autoCategory;                // effective category used for filtering
@@ -538,6 +578,9 @@ export const omnipartRouter = router({
         } catch (e: any) {
           console.error("Omnipart meta-merge error:", e?.message);
         }
+
+        // Final ordering across both sources, newest first (needs-chasing already handled client-side).
+        (orders as any[]).sort((a, b) => String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
 
         return { count: orders.length, orders };
       } catch (error: any) {

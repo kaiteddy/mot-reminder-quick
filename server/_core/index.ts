@@ -173,6 +173,36 @@ function setupApp(app: Express) {
       res.status(200).end();
     });
 
+    // eBay order ingest — the local email parser posts { orders: [...] } here. Only well-formed eBay
+    // order numbers (NN-NNNNN-NNNNN) are accepted, so a stray POST can't write junk.
+    app.post("/api/webhooks/ebay-orders", async (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-ingest-secret');
+      try {
+        const secret = process.env.EBAY_INGEST_SECRET;
+        if (secret && req.headers['x-ingest-secret'] !== secret) {
+          return res.status(401).json({ success: false, error: "bad secret" });
+        }
+        const orders = Array.isArray(req.body?.orders) ? req.body.orders : [];
+        const clean = orders.filter((o: any) => typeof o?.orderRef === "string" && /^\d{2}-\d{5}-\d{5}$/.test(o.orderRef));
+        const { upsertEbayOrders } = await import("../db");
+        const result = await upsertEbayOrders(clean);
+        console.log(`[EBAY INGEST] received ${orders.length}, accepted ${clean.length}, upserted ${result.upserted}`);
+        res.json({ success: true, ...result, accepted: clean.length });
+      } catch (err: any) {
+        console.error("[EBAY INGEST] failed:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    app.options("/api/webhooks/ebay-orders", (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-ingest-secret');
+      res.status(200).end();
+    });
+
 
     // Browser Drone Poll Endpoint
     app.get("/api/webhooks/autodata/poll", async (req, res) => {

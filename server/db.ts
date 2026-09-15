@@ -10,7 +10,7 @@ import {
   users, customers, vehicles, reminders, reminderLogs,
   customerMessages, serviceHistory, serviceLineItems, appointments, appSettings, autodataRequests,
   descriptionPresets, customerLogs, payments, addressLookups, salesStock, ga4NumberPool, partsPriceList,
-  omnipartOrderMeta,
+  omnipartOrderMeta, ebayOrders,
   InsertUser, InsertReminder, InsertCustomer, InsertReminderLog, InsertCustomerLog, InsertPayment
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -6098,6 +6098,59 @@ export async function setOmnipartCategory(orderRef: string, category: string | n
   } else {
     await db.insert(omnipartOrderMeta).values({ orderRef, category });
   }
+}
+
+// ---- eBay parts orders (captured from order emails by the local parser) ----
+export async function getEbayOrders() {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  return db.select().from(ebayOrders);
+}
+
+// Upsert a batch of parsed eBay orders. Status advances by lifecycle rank, so a later dispatch/
+// delivery email never regresses an order that a re-run sees an earlier email for.
+export async function upsertEbayOrders(rows: Array<{
+  orderRef: string; itemId?: string | null; title?: string | null; price?: string | number | null;
+  quantity?: number | null; seller?: string | null; status?: string | null; fitsVehicle?: string | null;
+  autoCategory?: string | null; image?: string | null; eta?: string | null; orderDate?: string | Date | null;
+}>) {
+  const db = await getDb();
+  if (!db || !rows?.length) return { upserted: 0 };
+  const RANK: Record<string, number> = { "Confirmed": 0, "Dispatched": 1, "In transit": 2, "Out for delivery": 3, "Delivered": 4 };
+  let n = 0;
+  for (const r of rows) {
+    if (!r.orderRef) continue;
+    const existing = (await db.select().from(ebayOrders).where(eq(ebayOrders.orderRef, r.orderRef)).limit(1))[0];
+    const price = r.price == null || r.price === "" ? null : String(r.price);
+    const orderDate = r.orderDate ? new Date(r.orderDate) : null;
+    if (existing) {
+      // never regress status; only fill fields the new email actually carries
+      const keepStatus = (RANK[r.status || ""] ?? -1) < (RANK[existing.status || ""] ?? -1);
+      await db.update(ebayOrders).set({
+        itemId: r.itemId ?? existing.itemId,
+        title: r.title ?? existing.title,
+        price: price ?? existing.price,
+        quantity: r.quantity ?? existing.quantity,
+        seller: r.seller ?? existing.seller,
+        status: keepStatus ? existing.status : (r.status ?? existing.status),
+        fitsVehicle: r.fitsVehicle ?? existing.fitsVehicle,
+        autoCategory: r.autoCategory ?? existing.autoCategory,
+        image: r.image ?? existing.image,
+        eta: r.eta ?? existing.eta,
+        orderDate: orderDate ?? existing.orderDate,
+        updatedAt: new Date(),
+      }).where(eq(ebayOrders.orderRef, r.orderRef));
+    } else {
+      await db.insert(ebayOrders).values({
+        orderRef: r.orderRef, itemId: r.itemId ?? null, title: r.title ?? null, price,
+        quantity: r.quantity ?? 1, seller: r.seller ?? null, status: r.status ?? null,
+        fitsVehicle: r.fitsVehicle ?? null, autoCategory: r.autoCategory ?? null,
+        image: r.image ?? null, eta: r.eta ?? null, orderDate,
+      });
+    }
+    n++;
+  }
+  return { upserted: n };
 }
 
 

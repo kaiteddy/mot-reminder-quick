@@ -17,7 +17,7 @@ export function OrderStatusBadge({ status }: { status?: string | null }) {
   const s = (status || "").toLowerCase();
   let cls = "bg-slate-100 text-slate-700 border-slate-200";
   if (s.includes("deliver")) cls = "bg-green-100 text-green-800 border-green-200";
-  else if (s.includes("prepar") || s.includes("picking") || s.includes("process") || s.includes("pending"))
+  else if (s.includes("prepar") || s.includes("picking") || s.includes("process") || s.includes("pending") || s.includes("confirm"))
     cls = "bg-amber-100 text-amber-800 border-amber-200";
   else if (s.includes("dispatch") || s.includes("transit") || s.includes("ready") || s.includes("out for"))
     cls = "bg-blue-100 text-blue-800 border-blue-200";

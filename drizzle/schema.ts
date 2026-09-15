@@ -441,6 +441,30 @@ export const omnipartOrderMeta = pgTable("omnipartOrderMeta", {
 export type OmnipartOrderMeta = typeof omnipartOrderMeta.$inferSelect;
 
 /**
+ * eBay parts purchases, captured from the order-confirmation / dispatch emails (there is no clean
+ * buyer-orders API). Populated by the local email parser via the /api/webhooks/ebay-orders webhook;
+ * surfaced on the same Parts Orders board as the ECP (Omnipart) orders. Fitted/returned/spare and the
+ * Car-vs-General override live in [[omnipartOrderMeta]], keyed by this orderRef.
+ */
+export const ebayOrders = pgTable("ebayOrders", {
+  orderRef: varchar("orderRef", { length: 32 }).primaryKey(),  // eBay order number, e.g. 23-15110-46160
+  itemId: varchar("itemId", { length: 24 }),
+  title: text("title"),
+  price: numeric("price", { precision: 10, scale: 2 }),
+  quantity: integer("quantity").default(1),
+  seller: varchar("seller", { length: 80 }),
+  status: varchar("status", { length: 32 }),                   // Confirmed | Dispatched | In transit | Out for delivery | Delivered
+  fitsVehicle: varchar("fitsVehicle", { length: 120 }),        // eBay-detected fitment, e.g. "2011 Toyota Verso"
+  autoCategory: varchar("autoCategory", { length: 16 }),       // car | general (heuristic from the item)
+  image: text("image"),
+  eta: varchar("eta", { length: 120 }),
+  orderDate: timestamp("orderDate", { mode: "date" }),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).defaultNow().notNull().$onUpdate(() => new Date()),
+});
+
+export type EbayOrder = typeof ebayOrders.$inferSelect;
+
+/**
  * Autodata Requests table - Queue for Browser Drone Proxy
  */
 export const autodataRequests = pgTable("autodataRequests", {

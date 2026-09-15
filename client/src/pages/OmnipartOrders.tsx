@@ -145,19 +145,33 @@ function CategoryToggle({ order }: { order: any }) {
   );
 }
 
+/** Small ECP / eBay source tag. */
+function SourceBadge({ source }: { source?: string }) {
+  const ebay = source === "ebay";
+  return (
+    <span className={"text-[9px] font-bold px-1 py-0.5 rounded shrink-0 " +
+      (ebay ? "bg-[#e53238]/10 text-[#e53238] border border-[#e53238]/30" : "bg-orange-100 text-orange-700 border border-orange-200")}>
+      {ebay ? "eBay" : "ECP"}
+    </span>
+  );
+}
+
 /** One board row that expands on click to show the parts on the order. */
 function BoardRow({ o, base }: { o: any; base: string }) {
   const [open, setOpen] = useState(false);
   // Parts come with the board data itself (getOrderTracking reads them from the order list), so the
   // row expands instantly and there's no extra API call to fail or get rate-limited.
   const parts = o.parts || [];
-  const vehicle = [o.make, o.model, o.year].filter(Boolean).join(" ");
+  const vehicle = o.source === "ebay"
+    ? (o.vehicleText || parts[0]?.name || "eBay item")
+    : [o.make, o.model, o.year].filter(Boolean).join(" ");
   return (
     <>
       <TableRow className={(o.needsAttention ? "bg-amber-50 " : "") + "cursor-pointer"} onClick={() => setOpen((v) => !v)}>
         <TableCell className="font-medium">
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1.5">
             {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            <SourceBadge source={o.source} />
             {o.orderRef}
           </span>
         </TableCell>
@@ -166,6 +180,8 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             <Link href={`/view-vehicle/${normReg(o.reg)}`} className="hover:underline">
               <RegPlate reg={o.reg} />
             </Link>
+          ) : o.source === "ebay" && o.seller ? (
+            <span className="text-xs text-muted-foreground">{o.seller}</span>
           ) : "—"}
         </TableCell>
         <TableCell>
