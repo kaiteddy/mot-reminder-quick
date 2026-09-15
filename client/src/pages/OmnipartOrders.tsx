@@ -92,10 +92,19 @@ function patchCategory(old: any, orderRef: string, category: string | null) {
   return { ...old, orders: old.orders.map((o: any) =>
     o.orderRef !== orderRef ? o : { ...o, categoryOverride: category, category: category ?? o.autoCategory }) };
 }
-function patchJob(old: any, orderRef: string, jobSheet: any) {
+function patchJob(old: any, orderRef: string, jobSheet: any, extra?: { reg?: string; vehicle?: string }) {
   if (!old?.orders) return old;
-  return { ...old, orders: old.orders.map((o: any) =>
-    o.orderRef !== orderRef ? o : { ...o, jobSheet, jobSheetLinked: !!jobSheet }) };
+  return { ...old, orders: old.orders.map((o: any) => {
+    if (o.orderRef !== orderRef) return o;
+    const linked = !!jobSheet;
+    const isEmail = o.source === "ebay" || o.source === "amazon";
+    return {
+      ...o, jobSheet, jobSheetLinked: linked,
+      // snap the row to the linked car straight away (eBay/Amazon inherit the job's reg + vehicle)
+      reg: linked ? (extra?.reg ?? o.reg) : (isEmail ? null : o.reg),
+      linkedVehicle: linked ? (extra?.vehicle ?? o.linkedVehicle) : (isEmail ? null : o.linkedVehicle),
+    };
+  }) };
 }
 function patchHidden(old: any, orderRef: string, hidden: boolean) {
   if (!old?.orders) return old;
@@ -114,7 +123,7 @@ function SuggestedJobs({ order }: { order: any }) {
   if (order.jobSheet || !order.suggestedVehicle) return null;
   const apply = (j: any) => {
     utils.omnipart.getOrderTracking.setData(undefined, (old: any) =>
-      patchJob(old, order.orderRef, { id: j.id, ga4Number: j.ga4Number, docNo: j.docNo }));
+      patchJob(old, order.orderRef, { id: j.id, ga4Number: j.ga4Number, docNo: j.docNo }, { reg: j.registration, vehicle: j.vehicle }));
     link.mutate({ orderRef: order.orderRef, jobSheetId: j.id });
   };
   const jobs = q.data || [];
@@ -174,7 +183,8 @@ function JobLink({ order, base }: { order: any; base: string }) {
   const link = trpc.omnipart.setOrderJobSheet.useMutation();
   const reset = () => { setEditing(false); setQ(""); setReg(null); };
   const applyJob = (job: any) => {
-    utils.omnipart.getOrderTracking.setData(undefined, (old: any) => patchJob(old, order.orderRef, job));
+    utils.omnipart.getOrderTracking.setData(undefined, (old: any) =>
+      patchJob(old, order.orderRef, job, { reg: reg?.registration, vehicle: reg?.vehicle }));
     link.mutate({ orderRef: order.orderRef, jobSheetId: job.id });
     reset();
   };
@@ -358,9 +368,14 @@ function BoardRow({ o, base }: { o: any; base: string }) {
   // Parts come with the board data itself (getOrderTracking reads them from the order list), so the
   // row expands instantly and there's no extra API call to fail or get rate-limited.
   const parts = o.parts || [];
-  const vehicle = o.source === "ebay"
-    ? (o.vehicleText || parts[0]?.name || "eBay item")
+  const isEmail = o.source === "ebay" || o.source === "amazon";
+  const itemTitle = parts[0]?.name || o.vehicleText || null;
+  // Vehicle column shows the associated CAR first. ECP has its own vehicle; eBay/Amazon show the
+  // linked car once linked, otherwise the item itself.
+  const vehicle = isEmail
+    ? (o.linkedVehicle || itemTitle || "eBay item")
     : [o.make, o.model, o.year].filter(Boolean).join(" ");
+  const secondaryItem = isEmail && o.linkedVehicle ? itemTitle : null;
   return (
     <>
       <TableRow className={(o.needsAttention ? "bg-amber-50 " : "") + "cursor-pointer"} onClick={() => setOpen((v) => !v)}>
@@ -384,7 +399,10 @@ function BoardRow({ o, base }: { o: any; base: string }) {
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
-            <span>{vehicle || "—"}</span>
+            <div className="min-w-0">
+              <span className="font-medium uppercase tracking-wide">{vehicle || "—"}</span>
+              {secondaryItem && <span className="block text-xs text-muted-foreground truncate normal-case">{secondaryItem}</span>}
+            </div>
             <span className={"text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 " +
               (o.category === "general" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200")}>
               {o.category === "general" ? "General" : "Car"}

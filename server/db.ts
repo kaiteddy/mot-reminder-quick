@@ -6104,17 +6104,20 @@ export async function setOmnipartJobSheet(orderRef: string, jobSheetId: number |
   }
 }
 
-// Look up specific job sheets by id (to resolve a manual order→job link).
+// Look up specific job sheets by id (to resolve a manual order→job link), incl. the vehicle.
 export async function getJobSheetsByIds(ids: number[]) {
   const db = await getDb();
-  if (!db || !ids?.length) return [] as Array<{ id: number; docNo: string | null; ga4Number: string | null; registration: string | null; docType: string | null; dateIssued: Date | null; dateCreated: Date | null }>;
+  if (!db || !ids?.length) return [] as Array<{ id: number; docNo: string | null; ga4Number: string | null; registration: string | null; docType: string | null; make: string | null; model: string | null; dateIssued: Date | null; dateCreated: Date | null }>;
   const uniq = Array.from(new Set(ids.filter((n) => Number.isFinite(n))));
   if (!uniq.length) return [];
   return db.select({
     id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
     registration: serviceHistory.registration, docType: serviceHistory.docType,
+    make: vehicles.make, model: vehicles.model,
     dateIssued: serviceHistory.dateIssued, dateCreated: serviceHistory.dateCreated,
-  }).from(serviceHistory).where(sql`${serviceHistory.id} in (${sql.join(uniq.map((n) => sql`${n}`), sql`, `)})`);
+  }).from(serviceHistory)
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(sql`${serviceHistory.id} in (${sql.join(uniq.map((n) => sql`${n}`), sql`, `)})`);
 }
 
 // Search job sheets to link an order to — by registration, doc number or GA4 number.

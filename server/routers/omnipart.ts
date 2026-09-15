@@ -601,6 +601,8 @@ export const omnipartRouter = router({
               o.jobSheet = { id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, docType: j.docType, date: j.dateIssued || j.dateCreated || null };
               o.jobSheetLinked = true;                              // manually linked (vs auto-matched)
               if (!o.reg && j.registration) o.reg = j.registration; // show the linked car's reg in the Reg column
+              const lv = [j.make, j.model].filter(Boolean).join(" ");
+              if (lv) o.linkedVehicle = lv;                         // the associated car (shown in the Vehicle column)
             }
             // For eBay/Amazon orders with no reg, guess the vehicle from the item so the Reg column
             // shows the associated car and we can suggest a job to link.
