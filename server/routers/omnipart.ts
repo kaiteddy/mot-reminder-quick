@@ -518,6 +518,57 @@ export const omnipartRouter = router({
           })
           .sort((a, b) => String(b.orderDate || "").localeCompare(String(a.orderDate || "")));
 
+        // Pull in GSF trade orders and merge them onto the same board BEFORE the job match below,
+        // so they go through exactly the same reg+date matching as Euro Car Parts rather than a
+        // second copy of it.
+        //
+        // GSF have no registration field, but they do have purchaseOrderNumber — what we typed at
+        // order time. Measured over 50 real orders: all 50 carry one and 36 are plate-shaped, so
+        // most GSF orders can place themselves. The rest are initials or a word like "stock", which
+        // is why only a plate-SHAPED reference becomes a reg: a wrong one would put the parts on
+        // somebody else's job silently, which is worse than leaving it for a person.
+        try {
+          const { recentOrders } = await import("./gsf");
+          const gsf = await recentOrders(90, 100);
+          const PLATE = /^([A-Z]{2}[0-9]{2}\s?[A-Z]{3}|[A-Z][0-9]{1,3}\s?[A-Z]{3}|[A-Z]{3}\s?[0-9]{1,3}[A-Z])$/;
+          for (const g of gsf) {
+            const po = (g.purchaseOrderNumber || "").trim().toUpperCase();
+            (orders as any[]).push({
+              orderRef: g.orderRef,
+              source: "gsf",
+              reg: PLATE.test(po) ? po : null,
+              make: null, model: null, year: null, vin: null,
+              vehicleText: null,
+              seller: "GSF Car Parts",
+              orderDate: g.orderDate,
+              status: g.status,
+              deliveryStatus: g.status,
+              // The journey's latest comment is more use than the bare status when chasing.
+              eta: g.deliveryUpdates.length ? g.deliveryUpdates[g.deliveryUpdates.length - 1].comments || null : null,
+              tracking: null,
+              courier: null,
+              numberOfItems: g.parts.length,
+              parts: g.parts.map((p) => ({
+                code: p.code, name: p.name, quantity: p.quantity,
+                status: p.credit ? "Credited" : g.status,
+                lineCost: p.unitCost, image: null, usage: null,
+              })),
+              totalIncTax: g.grossTotal,
+              totalExcTax: g.netTotal,
+              dbOrderId: null,
+              branchId: null,
+              ageHours: g.orderDate ? Math.max(0, Math.round((Date.now() - new Date(g.orderDate).getTime()) / 3600000)) : null,
+              needsAttention: false,
+              jobSheet: null,
+              // A reference that is not a plate still says something — show it rather than hide it.
+              customerOrderRef: g.purchaseOrderNumber || null,
+            });
+          }
+        } catch (e: any) {
+          // Non-fatal, like the eBay merge: GSF being down must not take the whole board with it.
+          console.error("GSF merge error:", e?.message);
+        }
+
         // Match each order to the job it was ordered against. The reg is the clean join (the order's
         // customer_order_ref == serviceHistory.registration); the order DATE picks the specific job
         // among that vehicle's several — the one open when the parts were ordered.

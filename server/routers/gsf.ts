@@ -237,7 +237,7 @@ export const gsfRouter = router({
  * The date window is required; the portal's own UI sends one week. `includeDetailedJourney` is what
  * fills `deliveryUpdates`, which is the per-step delivery history rather than just a status.
  */
-async function recentOrders(days: number, limit: number): Promise<GsfOrder[]> {
+export async function recentOrders(days: number, limit: number): Promise<GsfOrder[]> {
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
