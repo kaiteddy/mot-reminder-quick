@@ -793,8 +793,11 @@ export const omnipartRouter = router({
   // `dbOrderId` is the NUMERIC order id (db_order_id, already captured off the wismo list), NOT
   // the order ref that getReturnableItems above takes.
   //
-  // STILL UNVERIFIED against a live submission. Transcribed from their builder, which beats a
-  // guess, but watch one real return in the browser network tab before trusting it.
+  // VERIFIED 15 Sep against a real return captured from Omnipart's own site (HAR, POST
+  // /digital-returns -> 201, /digital-returns/5212). The body below matches it key for key,
+  // including that unitPriceExcTax is passed through EXACTLY as the returnable-items response
+  // gives it — that response reported excTax 835 and the site sent 835, so no unit conversion
+  // anywhere. Multiplying or dividing by 100 here would credit 100x the right amount.
   submitDigitalReturn: protectedProcedure
     .input(z.object({
       dbOrderId: z.union([z.string(), z.number()]),
@@ -812,6 +815,17 @@ export const omnipartRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
+        // The order REF ('311-00005677556') and the db order id ('5677556') are different values,
+        // and this endpoint wants the second. Passing the ref would build "/orders/311-00005677556"
+        // and return somebody else's stock, or nothing. Refuse rather than send it.
+        const dbOrderId = String(input.dbOrderId).trim();
+        if (!/^\d+$/.test(dbOrderId)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Expected the numeric order id, got "${dbOrderId}". That looks like the order reference.`,
+          });
+        }
+
         const headers = await omnipartHeaders(input.token, "https://omnipart.eurocarparts.com/account/order-tracking");
 
         // Resolve reason codes to IRIs against the live list rather than trusting the client.
@@ -833,7 +847,7 @@ export const omnipartRouter = router({
           };
         });
 
-        const body = JSON.stringify({ lines, order: `/orders/${input.dbOrderId}` });
+        const body = JSON.stringify({ lines, order: `/orders/${dbOrderId}` });
         const data = await omnipartFetch("POST", "https://api.omnipart.eurocarparts.com/digital-returns", headers, body);
         if (data && (data["@type"] === "hydra:Error" || data.detail)) {
             throw new Error(data.detail || "Digital return was rejected by Euro Car Parts.");
