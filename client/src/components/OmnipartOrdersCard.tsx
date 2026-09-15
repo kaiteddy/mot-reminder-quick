@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useClassicBase } from "@/lib/classicNav";
 import { ReturnDialog } from "@/components/ReturnDialog";
+import { isFinalStatus, orderStage } from "@shared/partsBoard";
 
 // Normalise a registration for comparison — vehicles.registration is stored solid (no space),
 // and WISMO returns the reg as customer_order_ref; strip spaces and upper-case both sides.
@@ -13,23 +14,26 @@ export function normReg(reg?: string | null): string {
   return (reg || "").toUpperCase().replace(/\s+/g, "");
 }
 
+// "Out for delivery" contains "deliver", so checking for that word painted it green and put the progress
+// bar at Delivered. The stage comes from shared/partsBoard.ts instead, which the board reads too.
+const STAGE_BADGE: Record<string, string> = {
+  delivered: "bg-green-100 text-green-800 border-green-200",
+  on_the_way: "bg-blue-100 text-blue-800 border-blue-200",
+  ordered: "bg-amber-100 text-amber-800 border-amber-200",
+  cancelled: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
 export function OrderStatusBadge({ status }: { status?: string | null }) {
-  const s = (status || "").toLowerCase();
-  let cls = "bg-slate-100 text-slate-700 border-slate-200";
-  if (s.includes("deliver")) cls = "bg-green-100 text-green-800 border-green-200";
-  else if (s.includes("prepar") || s.includes("picking") || s.includes("process") || s.includes("pending") || s.includes("confirm"))
-    cls = "bg-amber-100 text-amber-800 border-amber-200";
-  else if (s.includes("dispatch") || s.includes("transit") || s.includes("ready") || s.includes("out for"))
-    cls = "bg-blue-100 text-blue-800 border-blue-200";
+  const cls = status ? STAGE_BADGE[orderStage(status)] : "bg-slate-100 text-slate-700 border-slate-200";
   return <Badge variant="outline" className={cls}>{status || "Unknown"}</Badge>;
 }
 
 const STAGES = ["Preparing", "Picking & packing", "Ready for dispatch", "Delivered"];
 export function stageIndex(status?: string | null): number {
-  const s = (status || "").toLowerCase();
-  if (s.includes("deliver")) return 3;
-  if (s.includes("dispatch") || s.includes("ready") || s.includes("out for") || s.includes("transit")) return 2;
-  if (s.includes("picking") || s.includes("packing")) return 1;
+  const stage = orderStage(status);
+  if (stage === "delivered") return 3;
+  if (stage === "on_the_way") return 2;
+  if (/picking|packing/i.test(status || "")) return 1;
   return 0;
 }
 
@@ -101,7 +105,7 @@ function OrderRow({ o, base }: { o: any; base: string }) {
             <OrderStatusBadge status={o.status} />
             <ReturnDialog orderRef={o.orderRef} orderId={o.dbOrderId} />
           </div>
-          {o.status && !String(o.status).toLowerCase().includes("deliver") && (
+          {o.status && !isFinalStatus(o.status) && (
             <span className={"text-xs inline-flex items-center gap-1 " + (o.needsAttention ? "text-amber-700 font-semibold" : "text-muted-foreground")}>
               {o.needsAttention && <AlertTriangle className="w-3 h-3" />}
               ordered {ago(o.ageHours)}{o.needsAttention ? " · not arrived" : ""}

@@ -6185,6 +6185,29 @@ export async function jobsForReg(reg: string, limit = 25) {
     .limit(limit);
 }
 
+// The cars in recently: job sheets and invoices opened in the last `days` days, newest first, with the
+// car. Feeds the parts board's Car dropdown.
+export async function recentJobSheets(days = 30, limit = 80) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+  const since = new Date(Date.now() - days * 86_400_000);
+  return db.select({
+    id: serviceHistory.id, docNo: serviceHistory.docNo, ga4Number: serviceHistory.ga4Number,
+    docType: serviceHistory.docType, registration: serviceHistory.registration,
+    customerName: serviceHistory.customerName, description: serviceHistory.description,
+    make: vehicles.make, model: vehicles.model,
+    dateCreated: serviceHistory.dateCreated, dateIssued: serviceHistory.dateIssued,
+  }).from(serviceHistory)
+    .leftJoin(vehicles, eq(serviceHistory.vehicleId, vehicles.id))
+    .where(and(
+      inArray(serviceHistory.docType, ["JS", "SI"]),
+      isNotNull(serviceHistory.registration),
+      sql`${serviceHistory.dateCreated} >= ${since}`,
+    ))
+    .orderBy(desc(serviceHistory.dateCreated))
+    .limit(limit);
+}
+
 // Recommend jobs for a guessed vehicle ("Vauxhall Mokka"): find that make/model's cars and their
 // recent jobs. This is what powers the eBay "no reg" suggestions.
 export async function suggestJobsByVehicle(vehicle: string, limit = 8) {

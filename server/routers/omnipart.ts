@@ -1,6 +1,7 @@
 import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { readUsage } from "../../shared/partUsage";
+import { needsChasing } from "../../shared/partsBoard";
 import { z } from "zod";
 import * as cp from "child_process";
 import { promisify } from "util";
@@ -597,15 +598,10 @@ export const omnipartRouter = router({
               branchId: o?.branch_id ?? null,
               // How long ago it was ordered, and whether it needs chasing — flagged once it hasn't
               // been delivered by the evening (18:00) of the day it was ordered, so a same-day order
-              // that never arrived surfaces instead of going unnoticed.
+              // that never arrived surfaces instead of going unnoticed. A cancelled order, or one more
+              // than a week old, is never chased (shared/partsBoard.ts).
               ageHours: o?.order_date ? Math.max(0, Math.round((Date.now() - new Date(o.order_date).getTime()) / 3600000)) : null,
-              needsAttention: (() => {
-                const delivered = String(o?.order_status || "").toLowerCase().includes("deliver");
-                if (delivered || !o?.order_date) return false;
-                const od = new Date(o.order_date);
-                const endOfOrderDay = new Date(od.getFullYear(), od.getMonth(), od.getDate(), 18, 0, 0).getTime();
-                return Date.now() > endOfOrderDay;
-              })(),
+              needsAttention: needsChasing({ status: o?.order_status, orderDate: o?.order_date }),
               // filled in below by the reg+date job match (null if no job sheet found)
               jobSheet: null as null | { id: number; docNo: string | null; ga4Number: string | null; docType: string | null; date: Date | string | null },
             };
@@ -625,7 +621,6 @@ export const omnipartRouter = router({
             const reg = PLATE.test(poKey) ? poRaw : null;         // only a plate-shaped PO counts as a reg
             const goods = g.orderTotal != null ? Number(g.orderTotal) : null;
             const vat = g.orderTotalVat != null ? Number(g.orderTotalVat) : 0;
-            const delivered = String(g.deliveryStatus || "").toLowerCase().includes("deliver");
             (orders as any[]).push({
               orderRef: g.documentNumber || poRaw || "GSF",
               source: "gsf",
@@ -644,12 +639,8 @@ export const omnipartRouter = router({
               totalExcTax: goods,                                 // GSF goods total is ex-VAT (trade cost)
               dbOrderId: null, branchId: null,
               ageHours: g.orderedAt ? Math.max(0, Math.round((Date.now() - new Date(g.orderedAt).getTime()) / 3600000)) : null,
-              needsAttention: (() => {
-                if (delivered || !g.orderedAt) return false;
-                const od = new Date(g.orderedAt);
-                const endOfDay = new Date(od.getFullYear(), od.getMonth(), od.getDate(), 18, 0, 0).getTime();
-                return Date.now() > endOfDay;
-              })(),
+              // GSF says "Cancelled" outright; 4 of the board's 6 chases were cancelled orders.
+              needsAttention: needsChasing({ status: g.deliveryStatus, orderDate: g.orderedAt }),
               jobSheet: null,
             });
           }
@@ -900,6 +891,20 @@ export const omnipartRouter = router({
         id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, registration: j.registration,
         docType: j.docType, customerName: j.customerName, description: j.description,
         date: j.dateIssued || j.dateCreated || null,
+      }));
+    }),
+
+  // The cars in recently: job sheets and invoices opened in the last few weeks, newest first. Feeds
+  // the board's Car dropdown, so linking an order is one click on a car that is actually in.
+  recentJobs: protectedProcedure
+    .input(z.object({ days: z.number().int().min(1).max(120).default(30) }).optional())
+    .query(async ({ input }) => {
+      const { recentJobSheets } = await import("../db");
+      const rows = await recentJobSheets(input?.days ?? 30);
+      return rows.map((j: any) => ({
+        id: j.id, docNo: j.docNo, ga4Number: j.ga4Number, docType: j.docType, registration: j.registration,
+        customerName: j.customerName, vehicle: [j.make, j.model].filter(Boolean).join(" "),
+        description: j.description, date: j.dateCreated || j.dateIssued || null,
       }));
     }),
 
