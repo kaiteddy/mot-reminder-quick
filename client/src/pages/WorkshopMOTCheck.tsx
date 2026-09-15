@@ -34,6 +34,7 @@ import { MOTEstimateCreator } from "@/components/MOTEstimateCreator";
 import { MOTMileageChart } from "@/components/MOTMileageChart";
 import { SWSDeepIntelEmbed } from "@/components/SWSDeepIntelEmbed";
 import { ServiceHistory } from "@/components/ServiceHistory";
+import { WorkshopPhoneSetup } from "@/components/WorkshopPhoneSetup";
 
 interface MOTTest {
   completedDate: string;
@@ -265,8 +266,9 @@ function WorkshopMOTCheckInner() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Mobile Top Bar */}
-      <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center justify-between">
+      {/* Mobile Top Bar — the top padding clears the iPhone status bar once this runs from the
+          home screen; the safe-area inset is zero in a browser tab. */}
+      <div className="bg-slate-900 text-white p-4 pt-[calc(1rem_+_env(safe-area-inset-top))] shadow-md sticky top-0 z-50 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/">
             <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
@@ -281,6 +283,7 @@ function WorkshopMOTCheckInner() {
       </div>
 
       <div className="p-3 space-y-5 flex-1">
+        <WorkshopPhoneSetup />
 
         {/* Search Form */}
         <Card className="shadow-lg border-primary/20 bg-white">
@@ -407,7 +410,7 @@ function WorkshopMOTCheckInner() {
               lookupMutation.reset();
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="w-full h-14 text-lg font-bold bg-slate-900 border-2 border-slate-700 shadow-xl hover:bg-slate-800 sticky top-20 z-40 mb-2 rounded-xl"
+            className="w-full h-14 text-lg font-bold bg-slate-900 border-2 border-slate-700 shadow-xl hover:bg-slate-800 sticky top-[calc(5rem_+_env(safe-area-inset-top))] z-40 mb-2 rounded-xl"
           >
             <Search className="w-5 h-5 mr-3" />
             SCAN ANOTHER VEHICLE

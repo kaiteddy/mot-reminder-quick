@@ -412,6 +412,7 @@ function orderFlags(o: any) {
 const SOURCE_TAG: Record<string, { label: string; cls: string }> = {
   ebay: { label: "eBay", cls: "bg-[#e53238]/10 text-[#e53238] border-[#e53238]/30" },
   amazon: { label: "Amazon", cls: "bg-[#ff9900]/10 text-[#b06f00] border-[#ff9900]/40" },
+  gsf: { label: "GSF", cls: "bg-blue-100 text-blue-700 border-blue-200" },
   ecp: { label: "ECP", cls: "bg-orange-100 text-orange-700 border-orange-200" },
 };
 function SourceBadge({ source }: { source?: string }) {

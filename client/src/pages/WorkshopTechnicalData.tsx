@@ -284,7 +284,7 @@ function WorkshopTechnicalDataInner() {
     return (
         <div className="min-h-screen bg-slate-100 flex flex-col">
             {/* Mobile Top Bar */}
-            <div className="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50 flex items-center justify-between">
+            <div className="bg-slate-900 text-white p-4 pt-[calc(1rem_+_env(safe-area-inset-top))] shadow-md sticky top-0 z-50 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <Link href={`/workshop?reg=${encodeURIComponent(vrm)}`}>
                         <div className="p-2 bg-slate-800 rounded-full cursor-pointer hover:bg-slate-700 active:scale-95 transition-all">
