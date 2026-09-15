@@ -37,11 +37,9 @@ function bucketOf(dateStr?: string | null): (typeof BUCKET_ORDER)[number] {
 /** One board row that expands on click to show the parts on the order. */
 function BoardRow({ o, base }: { o: any; base: string }) {
   const [open, setOpen] = useState(false);
-  const detail = trpc.omnipart.getOrderDetail.useQuery(
-    { ref: o.orderRef, branchId: o.branchId ?? undefined },
-    { enabled: open, retry: false, staleTime: 60 * 1000 },
-  );
-  const parts = detail.data?.parts || [];
+  // Parts come with the board data itself (getOrderTracking reads them from the order list), so the
+  // row expands instantly and there's no extra API call to fail or get rate-limited.
+  const parts = o.parts || [];
   const vehicle = [o.make, o.model, o.year].filter(Boolean).join(" ");
   return (
     <>
@@ -87,9 +85,8 @@ function BoardRow({ o, base }: { o: any; base: string }) {
             <div className="px-6 space-y-2">
               <OrderProgress status={o.status} />
               <div className="pt-1">
-                {detail.isLoading && <div className="text-xs text-muted-foreground">Loading parts…</div>}
-                {!detail.isLoading && parts.length === 0 && (
-                  <div className="text-xs text-muted-foreground/70">Part detail not available for this order.</div>
+                {parts.length === 0 && (
+                  <div className="text-xs text-muted-foreground/70">No part detail on this order.</div>
                 )}
                 {parts.map((p: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 text-sm py-0.5">

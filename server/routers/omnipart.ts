@@ -418,10 +418,27 @@ export const omnipartRouter = router({
             const deliveries = o?.deliveries || {};
             let deliveryStatus: string | null = null;
             let deliveryEta: string | null = null;
+            // The order-LIST response already carries every part (deliveries.*.lines, each with
+            // product_name and price inline). So we read them straight off the list here — no
+            // per-order follow-up call, which means nothing extra to be WAF-blocked and the parts
+            // show instantly when a row expands.
+            const parts: Array<{ code: string | null; name: string | null; quantity: number | null; status: string | null; lineCost: number | null }> = [];
             for (const v of Object.values(deliveries)) {
               if (v && typeof v === "object") {
-                if ((v as any).delivery_status && !deliveryStatus) deliveryStatus = (v as any).delivery_status;
-                if ((v as any).eta && !deliveryEta) deliveryEta = (v as any).eta;
+                const dv = v as any;
+                if (dv.delivery_status && !deliveryStatus) deliveryStatus = dv.delivery_status;
+                if (dv.eta && !deliveryEta) deliveryEta = dv.eta;
+                for (const ln of Object.values(dv.lines || {}) as any[]) {
+                  parts.push({
+                    code: ln.product_code || ln.sku || null,
+                    name: ln.product_name || ln.name || null,
+                    quantity: ln.quantity ?? ln.qty ?? null,
+                    status: ln.product_line_delivery_status === true ? "Delivered"
+                          : ln.product_line_delivery_status === false ? "Pending"
+                          : (ln.status || null),
+                    lineCost: ln.price?.total_cost ?? null,
+                  });
+                }
               }
             }
             return {
@@ -436,6 +453,7 @@ export const omnipartRouter = router({
               deliveryStatus,
               eta: o?.eta ?? deliveryEta ?? null,
               numberOfItems: o?.number_of_items ?? null,
+              parts,                                                  // the actual parts on the order, from the list itself
               totalIncTax: o?.totals?.total_inc_tax ?? null,
               totalExcTax: o?.totals?.total_exc_tax ?? null,   // ELI's ex-VAT parts cost — for internal margin
               dbOrderId: o?.db_order_id || null,
